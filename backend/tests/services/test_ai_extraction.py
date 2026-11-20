@@ -565,11 +565,11 @@ def test_a_halted_extraction_is_not_read(tmp_path: Any) -> None:
 
 def test_known_gap_rows_are_seeded_for_the_types_that_allow_them() -> None:
     gaps = {(c.canonical_type_id, c.field_id): c for c in load_default_extraction_configs() if c.ai_only}
-    assert set(gaps) == {("CT-S1-FUELQTY", "heat_content"), ("CT-S1-FUELQTY", "meter_number"),
+    # the meter number is a rule target now (EXT-027); Claude still fills it when the rules miss it
+    assert set(gaps) == {("CT-S1-FUELQTY", "heat_content"),
                          ("CT-S1-MOBFUEL", "vehicle_type"), ("CT-S1-MOBFUEL", "model_year"),
                          ("CT-S1-MOBFUEL", "distance"), ("CT-S1-MOBFUEL", "on_or_non_road"),
-                         ("CT-S1-MOBFUEL", "heat_content"), ("CT-S2-ELEC", "meter_number"),
-                         ("CT-S2-THERMAL", "meter_number")}
+                         ("CT-S1-MOBFUEL", "heat_content")}
     assert all(c.required_status == "optional" and c.extraction_methods == ("llm_structured",) for c in gaps.values())
     assert gaps[("CT-S1-MOBFUEL", "distance")].expected_units == ("mi", "km")
 

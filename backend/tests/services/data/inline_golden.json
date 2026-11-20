@@ -651,6 +651,61 @@
     },
     "unit": null,
     "validation_flags": []
+   },
+   {
+    "candidate_id": "candidate::EV-PDF-NG-001.pdf::DOC-PDF-NG-001.pdf::meter_number",
+    "confidence": 0.88,
+    "display_label": "Meter number",
+    "document_id": "DOC-PDF-NG-001.pdf",
+    "evidence_id": "EV-PDF-NG-001.pdf",
+    "field_name": "meter_number",
+    "normalized_value": "NFG-BWV-239871",
+    "raw_value": "NFG-BWV-239871",
+    "record_index": null,
+    "record_key": null,
+    "source_reference": {
+     "bounding_box": {
+      "height": 0.013879,
+      "width": 0.109686,
+      "x": 0.231235,
+      "y": 0.317424
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b14"
+     ],
+     "sheet_name": null,
+     "source_reference_id": "SRC-pymupdf-p1-14",
+     "text_snippet": "Meter ID Previous Read Current Read Billing Days Usage Unit | NFG-BWV-239871 1,027,540 1,059,940 31 32,400 MMBtu"
+    },
+    "unit": null,
+    "validation_flags": []
+   },
+   {
+    "candidate_id": "candidate::EV-PDF-NG-001.pdf::DOC-PDF-NG-001.pdf::statement_date",
+    "confidence": 0.2,
+    "display_label": "Statement date",
+    "document_id": "DOC-PDF-NG-001.pdf",
+    "evidence_id": "EV-PDF-NG-001.pdf",
+    "field_name": "statement_date",
+    "normalized_value": null,
+    "raw_value": null,
+    "record_index": null,
+    "record_key": null,
+    "source_reference": {
+     "bounding_box": null,
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": null,
+     "parser_block_ids": [],
+     "sheet_name": null,
+     "source_reference_id": "missing::DOC-PDF-NG-001.pdf::statement_date",
+     "text_snippet": null
+    },
+    "unit": null,
+    "validation_flags": []
    }
   ],
   "parser_output": {
@@ -1269,7 +1324,7 @@
     "candidate_output_path": null,
     "parser_output_path": null
    },
-   "candidate_count": 9,
+   "candidate_count": 11,
    "canonical_type_id": "CT-S1-FUELQTY",
    "canonical_type_source": "classifier",
    "classification_status": "classified",
@@ -1277,11 +1332,11 @@
    "engagement_id": "ENG-GOLDEN",
    "errors": [],
    "evidence_id": "EV-PDF-NG-001.pdf",
-   "found_candidate_count": 9,
+   "found_candidate_count": 10,
    "halt_reason": null,
    "input_file_name": "PDF-NG-001.pdf",
-   "low_confidence_candidate_count": 0,
-   "missing_candidate_count": 0,
+   "low_confidence_candidate_count": 1,
+   "missing_candidate_count": 1,
    "org_id": null,
    "parser_status": "parsed",
    "processing_run_id": "RUN-PDF-NG-001.pdf",
@@ -1292,7 +1347,7 @@
     "target_plan": "completed"
    },
    "status": "completed",
-   "target_count": 9,
+   "target_count": 11,
    "warnings": []
   }
  }
