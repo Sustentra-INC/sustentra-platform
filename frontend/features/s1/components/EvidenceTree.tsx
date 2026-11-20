@@ -14,9 +14,11 @@ import {
   type EvidenceLineSetting,
   type EvidenceTree as EvidenceTreeData,
   type Placement,
+  type RereadChoice,
   type TreeCategory,
   type TreeCounts,
   type TreeDocRow,
+  type TreeFolder,
   type TreeLevel2,
   type TreeLineNode,
   type TreeScope,
@@ -37,6 +39,14 @@ import { ContainerStateSurface } from "./ContainerStateSurface";
  * what is open is kept by the app, so it survives a visit to a document or a schedule.
  */
 
+/** A re-read the reviewer's move asked for, by document id: reading now, or failed (the document stays where it was moved). */
+export interface RereadState {
+  typeId: string;
+  typeName: string;
+  status: "reading" | "failed";
+  message?: string;
+}
+
 export interface EvidenceTreeProps {
   engagement: EngagementConfig;
   /** Changes when the evidence changes (a read finished, a file arrived): the tree loads again. */
@@ -51,7 +61,7 @@ export interface EvidenceTreeProps {
   onOpenSchedule: (lineKey: string) => void;
   onOpenSetup?: () => void;
   /** Saves one move of one placement; rejects with the reason when it did not save. */
-  onMovePlacement: (documentId: string, move: Placement) => Promise<void>;
+  onMovePlacement: (documentId: string, move: Placement, reread?: RereadChoice) => Promise<void>;
   /** The reviewer takes Claude's facility suggestion: places the document on that Setup facility (their own decision,
    *  audited on the server); rejects with the reason when it did not save. */
   onPlaceOnFacility?: (documentId: string, facilityId: string) => Promise<void>;
@@ -60,6 +70,18 @@ export interface EvidenceTreeProps {
   onRenameLine: (line: CalculationLine, label: string) => Promise<void>;
   /** Resolves with how many documents moved to Unassigned supporting evidence. */
   onDeleteLine: (line: CalculationLine) => Promise<number>;
+  /** Re-reads that moves asked for, by document id. */
+  rereads?: Record<string, RereadState>;
+  /** Asks again for a re-read that failed (or whose wait was lost): the type to read it as comes from the row. */
+  onRetryReread?: (documentId: string, typeId: string, typeName: string) => void;
+  /** Block 1 folders (one level). Each runs on the server with its own audit event and rejects with the reason.
+   *  Without them (an older server), Block 1 stays a flat list. */
+  onCreateFolder?: (name: string) => Promise<void>;
+  onRenameFolder?: (folder: TreeFolder, name: string) => Promise<void>;
+  /** Resolves with how many documents went to the top of Block 1. */
+  onDeleteFolder?: (folder: TreeFolder) => Promise<number>;
+  /** Puts a Block 1 document in a folder, or out of it (null). */
+  onSetDocumentFolder?: (documentId: string, folderId: string | null) => Promise<void>;
   /** Gives the app a chance to handle an ended session; true when it did. */
   onError?: (error: unknown) => boolean;
   writesEnabled: boolean;
@@ -70,6 +92,10 @@ type Dialog =
   | { kind: "newLine"; scope: string; category: string; level2: TreeLevel2 }
   | { kind: "newFuel"; scope: string; category: TreeCategory }
   | { kind: "rename"; line: CalculationLine }
+  | { kind: "newFolder" }
+  | { kind: "renameFolder"; folder: TreeFolder }
+  | { kind: "deleteFolder"; folder: TreeFolder }
+  | { kind: "folderOf"; doc: TreeDocRow }
   /** `documents` is how many documents are on the line in the whole tree; null when that is not known. */
   | { kind: "delete"; line: CalculationLine; documents: number | null };
 
@@ -179,10 +205,19 @@ export function EvidenceTree(props: EvidenceTreeProps) {
     return [scope, category, line.level2_label, line.label].join(" › ");
   }
 
+  /** The folders of Block 1; empty on an older server. */
+  const folderList = tree.blocks.summary_folders ?? [];
+  const foldersOn = tree.blocks.summary_folders !== undefined && Boolean(props.onCreateFolder);
+
   function docRow(doc: TreeDocRow, section: string) {
     const id = `${section}|${doc.document_id}`;
     const from = doc.placement_from ?? section;
     const period = doc.period_start && doc.period_end ? formatPeriod(doc.period_start, doc.period_end) : null;
+    // This session's own state wins; else what the server kept (so a reload still shows it, and the way to try again).
+    const local = props.rereads?.[doc.document_id];
+    const kept = doc.reread;
+    const rereadStatus: RereadState | null =
+      local ?? (kept ? { typeId: kept.canonical_type_id, typeName: kept.type_name, status: kept.status === "failed" ? "failed" : "reading", message: kept.error ?? undefined } : null);
     const also = doc.also_in.map((key) => lineMap.get(key)).filter((l): l is CalculationLine => Boolean(l));
     return (
       <div key={id} className="s1-et-doc">
@@ -211,6 +246,31 @@ export function EvidenceTree(props: EvidenceTreeProps) {
             </span>
           ) : null}
           {section === BLOCK_UNASSIGNED ? <span>{processingText(doc.processing_status)}</span> : null}
+          {rereadStatus ? (
+            rereadStatus.status === "failed" ? (
+              <span role="alert">
+                Couldn&apos;t re-read as {rereadStatus.typeName}.{rereadStatus.message ? ` ${rereadStatus.message}` : ""}{" "}
+                {props.onRetryReread ? (
+                  <button className="s1-linklike" type="button" onClick={() => props.onRetryReread!(doc.document_id, rereadStatus.typeId, rereadStatus.typeName)}>
+                    Try again
+                  </button>
+                ) : null}
+              </span>
+            ) : (
+              <span role="status">
+                Re-reading as {rereadStatus.typeName}…
+                {/* After a reload nothing in this session is waiting for the read: it can be asked for again. */}
+                {!local && props.onRetryReread ? (
+                  <>
+                    {" "}
+                    <button className="s1-linklike" type="button" onClick={() => props.onRetryReread!(doc.document_id, rereadStatus.typeId, rereadStatus.typeName)}>
+                      Try again
+                    </button>
+                  </>
+                ) : null}
+              </span>
+            )
+          ) : null}
           {doc.flags.includes("unknown_line") ? <span>Its line was deleted</span> : null}
           {also.map((l) => (
             <span key={l.key} className="s1-et-also">
@@ -238,6 +298,9 @@ export function EvidenceTree(props: EvidenceTreeProps) {
                 }]
               : []),
             { label: "Move to…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "move", doc, from, section }) },
+            ...(section === BLOCK_SUMMARY && folderList.length > 0 && props.onSetDocumentFolder
+              ? [{ label: "Move to folder…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "folderOf", doc }) }]
+              : []),
           ]}
         />
       </div>
@@ -319,6 +382,51 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           </button>
         ) : null}
       </Fold>
+    );
+  }
+
+  /** Block 1: its folders (one level) first, then the documents at its top. */
+  function summaryBody() {
+    const loose = summary.filter((d) => !d.folder_id);
+    const shownFolders = [...folderList]
+      .filter((f) => !filtered || summary.some((d) => d.folder_id === f.folder_id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (!summary.length && !shownFolders.length) return <p className="s1-et-none">No summary documents yet.</p>;
+    return (
+      <>
+        {shownFolders.map((folder) => {
+          const id = `folder:${folder.folder_id}`;
+          const inside = summary.filter((d) => d.folder_id === folder.folder_id);
+          return (
+            <Fold
+              key={id}
+              id={id}
+              depth={1}
+              open={isOpen(id)}
+              onToggle={toggle}
+              title={folder.name}
+              counts={{ documents: inside.length, values: 0, accepted: 0, to_review: 0, issues: 0, pct_accepted: 0 }}
+              countOnly
+              actions={
+                props.writesEnabled && !filtered && props.onRenameFolder && props.onDeleteFolder ? (
+                  <ActionMenu
+                    label={`Actions for folder ${folder.name}`}
+                    isOpen={menuId === id}
+                    onOpenChange={(o) => setMenuId(o ? id : null)}
+                    entries={[
+                      { label: "Rename", action: () => setDialog({ kind: "renameFolder", folder }) },
+                      { label: "Delete", action: () => setDialog({ kind: "deleteFolder", folder }) },
+                    ]}
+                  />
+                ) : null
+              }
+            >
+              {inside.length ? docList(inside, BLOCK_SUMMARY) : <p className="s1-et-none">This folder is empty.</p>}
+            </Fold>
+          );
+        })}
+        {loose.length ? docList(loose, BLOCK_SUMMARY) : null}
+      </>
     );
   }
 
@@ -414,7 +522,12 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           counts={tree.blocks.summary_counts}
           countOnly
         >
-          {summary.length ? docList(summary, BLOCK_SUMMARY) : <p className="s1-et-none">No summary documents yet.</p>}
+          {summaryBody()}
+          {foldersOn && props.writesEnabled && !filtered ? (
+            <button className="s1-et-add" type="button" onClick={() => setDialog({ kind: "newFolder" })}>
+              <Plus aria-hidden /> New folder
+            </button>
+          ) : null}
         </Fold>
       ) : null}
 
@@ -494,9 +607,13 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           placeLabel={placeLabel}
           onError={onError}
           onCancel={() => setDialog(null)}
-          onMove={async (to) => {
+          onMove={async (to, reread) => {
             // The server refuses a move from a place the document is no longer in (409), saving nothing.
-            await guard(() => props.onMovePlacement(dialog.doc.document_id, { from: dialog.from, to }));
+            await guard(() =>
+              reread
+                ? props.onMovePlacement(dialog.doc.document_id, { from: dialog.from, to }, reread)
+                : props.onMovePlacement(dialog.doc.document_id, { from: dialog.from, to })
+            );
             done();
           }}
         />
@@ -527,6 +644,69 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           onCancel={() => setDialog(null)}
           onSubmit={async (name) => {
             await guard(() => props.onRenameLine(dialog.line, name));
+            done();
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === "newFolder" ? (
+        <TextDialog
+          title="New folder"
+          label="Folder name"
+          initial=""
+          action="Create folder"
+          onError={onError}
+          onCancel={() => setDialog(null)}
+          onSubmit={async (name) => {
+            await guard(() => props.onCreateFolder!(name));
+            done();
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === "renameFolder" ? (
+        <TextDialog
+          title="Rename folder"
+          label="Folder name"
+          initial={dialog.folder.name}
+          action="Rename"
+          onError={onError}
+          onCancel={() => setDialog(null)}
+          onSubmit={async (name) => {
+            await guard(() => props.onRenameFolder!(dialog.folder, name));
+            done();
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === "deleteFolder" ? (
+        <ConfirmDialog
+          title={`Delete folder ${dialog.folder.name}?`}
+          body={
+            dialog.folder.documents === 0
+              ? "The folder is empty."
+              : dialog.folder.documents === 1
+                ? "Its 1 document is not deleted. It moves to the top of Summary documents and workbook."
+                : `Its ${dialog.folder.documents} documents are not deleted. They move to the top of Summary documents and workbook.`
+          }
+          action="Delete folder"
+          onError={onError}
+          onCancel={() => setDialog(null)}
+          onConfirm={async () => {
+            await guard(() => props.onDeleteFolder!(dialog.folder));
+            done();
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === "folderOf" ? (
+        <FolderMoveDialog
+          doc={dialog.doc}
+          folders={folderList}
+          onError={onError}
+          onCancel={() => setDialog(null)}
+          onMove={async (folderId) => {
+            await guard(() => props.onSetDocumentFolder!(dialog.doc.document_id, folderId));
             done();
           }}
         />
@@ -582,6 +762,7 @@ function defaultOpen(tree: EvidenceTreeData): string[] {
 
 function collectIds(tree: EvidenceTreeData): string[] {
   const ids = ["b:summary", "b:unassigned", "b:supporting", "b:supporting-unassigned", "b:set-aside"];
+  for (const folder of tree.blocks.summary_folders ?? []) ids.push(`folder:${folder.folder_id}`);
   for (const scope of tree.blocks.supporting.scopes) {
     ids.push(`scope:${scope.scope}`);
     for (const category of scope.categories) {
@@ -764,7 +945,7 @@ function MoveDialog({
   placeLabel: (key: string) => string;
   onError: OnError;
   onCancel: () => void;
-  onMove: (to: string) => Promise<void>;
+  onMove: (to: string, reread?: RereadChoice) => Promise<void>;
 }) {
   const [to, setTo] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -793,7 +974,8 @@ function MoveDialog({
   const fromSummary = from === BLOCK_SUMMARY || section === BLOCK_SUMMARY;
   // What changes: the values this placement holds, and the lines whose calculations read them.
   let consequence: string | null = null;
-  if (needsConfirm && !fromSummary) {
+  const rereadAs = toLine?.read_as && doc.detected_type !== toLine.read_as ? toLine.read_as : null;
+  if (needsConfirm && !fromSummary && !rereadAs) {
     const n = doc.values;
     const fromName = lineMap.has(from) ? placeLabel(from) : null;
     const toName = toLine ? placeLabel(to) : null;
@@ -802,9 +984,15 @@ function MoveDialog({
     else if (toName) consequence = `${valuesText(n)} to ${toName}. Its calculation changes.`;
     else if (fromName) consequence = `${valuesText(n)} out of ${fromName}. Its calculation changes.`;
   }
-  // Moves that are allowed but whose values will not count where they land.
+  // A re-read takes the document off every other line it is on, so the reviewer chooses.
+  const alsoOn = rereadAs ? doc.also_in.filter((k) => k !== to && k !== from && lineMap.has(k)).map(placeLabel) : [];
+  const choosing = confirming && alsoOn.length > 0;
+  // Moves that are allowed but whose values will not count where they land. A line that holds a document type
+  // reads the document again as that type, so its values are new, and start unreviewed.
   let warning: string | null = null;
-  if (toLine && fromSummary) {
+  if (rereadAs) {
+    warning = `The document will be read again as ${rereadAs}. The values it gives start unreviewed, and the earlier reading stays in the record.`;
+  } else if (toLine && fromSummary) {
     warning = "This is a summary document, and its values don't feed lines. Moving it here changes no calculation.";
   } else if (toLine && doc.value_family && toLine.family !== doc.value_family) {
     const why = toLine.family ? `it calculates ${FAMILY_WORDS[toLine.family]}` : "no calculation reads this kind of line";
@@ -843,7 +1031,11 @@ function MoveDialog({
           {warning}
         </p>
       ) : null}
-      {confirming ? (
+      {choosing ? (
+        <p className="s1-modal__note" role="alert">
+          {doc.file_name} is also on {alsoOn.join(" and ")}. Re-reading it as {rereadAs} takes it off those lines.
+        </p>
+      ) : confirming ? (
         <p className="s1-modal__note" role="alert">
           {consequence ?? `This changes the calculation for ${affected.join(" and ")}.`}
         </p>
@@ -854,6 +1046,17 @@ function MoveDialog({
         </p>
       ) : null}
       <div className="s1-modal__actions">
+        {choosing ? (
+          <>
+            {/* The safe choice has the focus: it moves only this placement and leaves the document as it is. */}
+            <button className="s1-button s1-button--pri" type="button" autoFocus disabled={busy} onClick={() => void run(() => onMove(to, "move_only"))}>
+              Move without re-reading
+            </button>
+            <button className="s1-button" type="button" disabled={busy} onClick={() => void run(() => onMove(to, "reread"))}>
+              Re-read and move
+            </button>
+          </>
+        ) : (
         <button
           className="s1-button s1-button--pri"
           type="button"
@@ -865,8 +1068,57 @@ function MoveDialog({
         >
           {confirming ? "Confirm move" : "Move"}
         </button>
+        )}
         <button className="s1-linklike" type="button" onClick={confirming ? () => setConfirming(false) : onCancel}>
           {confirming ? "Back" : "Cancel"}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+function FolderMoveDialog({
+  doc,
+  folders,
+  onError,
+  onCancel,
+  onMove,
+}: {
+  doc: TreeDocRow;
+  folders: TreeFolder[];
+  onError: OnError;
+  onCancel: () => void;
+  onMove: (folderId: string | null) => Promise<void>;
+}) {
+  const current = doc.folder_id ?? "";
+  const [to, setTo] = useState(current);
+  const { busy, error, run } = useSubmit(onError);
+  return (
+    <Dialog title="Move to folder…" onClose={onCancel} busy={busy}>
+      <label className="s1-modal__field">
+        <span>Move {doc.file_name} to</span>
+        <select value={to} disabled={busy} onChange={(e) => setTo(e.target.value)} aria-label="Folder">
+          <option value="">Top of Summary documents and workbook</option>
+          {[...folders]
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((f) => (
+              <option key={f.folder_id} value={f.folder_id}>
+                {f.name}
+              </option>
+            ))}
+        </select>
+      </label>
+      {error ? (
+        <p className="s1-modal__note" role="alert">
+          Not moved. {error}
+        </p>
+      ) : null}
+      <div className="s1-modal__actions">
+        <button className="s1-button s1-button--pri" type="button" disabled={busy || to === current} onClick={() => void run(() => onMove(to || null))}>
+          Move
+        </button>
+        <button className="s1-linklike" type="button" disabled={busy} onClick={onCancel}>
+          Cancel
         </button>
       </div>
     </Dialog>

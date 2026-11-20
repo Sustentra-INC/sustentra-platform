@@ -27,7 +27,7 @@ export interface WorkpaperUser {
   firstName: string | null;
   role: "provider_admin" | "org_admin" | "org_member";
   orgSlug: string | null;
-  /** The organisation's id, for tasks and notifications. */
+  /** The user's organisation: the Setup team picker, tasks and notifications. */
   orgId?: string | null;
 }
 
@@ -272,6 +272,11 @@ function ContextBar({
               {user.role === "org_admin" && user.orgSlug ? (
                 <Link className="s1-linklike" href={`/org/${user.orgSlug}`}>
                   Admin
+                </Link>
+              ) : null}
+              {user.role === "org_admin" && user.orgSlug ? (
+                <Link className="s1-linklike" href={`/org/${user.orgSlug}/admin/people?add=1`}>
+                  Add people
                 </Link>
               ) : null}
               {user.role === "provider_admin" ? (

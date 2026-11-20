@@ -17,7 +17,7 @@ from backend.app.core.auth import CurrentUser
 
 from backend.app.repositories import s1_stores
 from backend.app.services.review_decision_service import ReviewDecisionService
-from backend.app.services.reviewed_evidence import mark_review_targets
+from backend.app.services.reviewed_evidence import mark_review_targets, reviews_for_latest_type
 
 router = APIRouter(prefix="/v1", tags=["reviews"])
 
@@ -123,7 +123,11 @@ def list_document_reviews(document_id: str, user: CurrentUser = Depends(s1_reade
     results = visible(pipeline_service().list_extraction_results_by_document(document_id), user)
     if not results:
         return reviews
-    return mark_review_targets(results[-1].get("items") or [], reviews)
+    # A decision made before a read as another document type was stored applies to none of its values: still listed.
+    applying = reviews_for_latest_type(results, reviews)
+    marked = iter(mark_review_targets(results[-1].get("items") or [], applying))
+    kept = {id(d) for d in applying}
+    return [next(marked) if id(d) in kept else {**d, "applies_to_candidate_id": None} for d in reviews]
 
 
 @router.get("/candidates/{candidate_id}/reviews/latest")

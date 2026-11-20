@@ -907,7 +907,8 @@ def test_the_per_entity_yes_no_is_set_only_when_the_quote_supports_it() -> None:
         named_entity("Caf\u00e9 Qu\u00e9bec Holdings Inc.", "Caf\u00e9 Qu\u00e9bec Holdings Inc. and Z\u00fcrich B\u00fcro AG are inside the boundary", "L3", op="No"),
         named_entity("Z\u00fcrich B\u00fcro AG", "Z\u00fcrich B\u00fcro AG are inside the boundary", "L3")]), [doc(BOUNDARY)])
     assert dict(dropped) == {}
-    assert [(k.suggestion["value"]["name"], k.suggestion["value"]["operational_control"]) for k in kept] == [
+    assert {k.suggestion["value"]["included"] for k in kept} == {"Yes"}  # every kept entity is Included
+    assert [(k.suggestion["value"]["name"], k.suggestion["value"].get("control_quoted")) for k in kept] == [
         ("Acme Foods Kent LLC", "Yes"), ("Stockton Cold Storage JV", "No"), ("Caf\u00e9 Qu\u00e9bec Holdings Inc.", None),
         ("Z\u00fcrich B\u00fcro AG", None)]  # inclusion alone says nothing about control; Claude's own values are not trusted
 
@@ -916,12 +917,13 @@ def test_an_entity_whose_quote_does_not_say_yes_or_no_keeps_it_blank_and_claude_
     quote = "Our offices in Moscow are within the boundary"
     for claimed in ("Yes", "No", None):
         kept, dropped = check(answer(entities=[named_entity("Moscow", quote, "L6", op=claimed)]), [doc(BOUNDARY)])
-        assert dict(dropped) == {} and kept[0].suggestion["value"]["operational_control"] is None  # "within the boundary" is inclusion, not control
+        assert dict(dropped) == {} and "control_quoted" not in kept[0].suggestion["value"]  # "within the boundary" is inclusion, not control
+        assert kept[0].suggestion["value"]["included"] == "Yes"  # Included
     quote = "Our offices in Moscow and Houston"
     kept, dropped = check(answer(entities=[named_entity("Moscow", quote, "L6", op="Yes")]), [doc([(1, "Our offices in Moscow and Houston, listed in the plan")])])
     assert kept == [] and dict(dropped) == {"not_an_inclusion": 1}
     kept, _ = check(answer(entities=[named_entity("Acme Foods Kent LLC", "equity share 51%", "L4", equity=51, op="Yes")]), [doc(BOUNDARY)])
-    assert kept[0].suggestion["value"]["operational_control"] is None  # a percentage alone does not say who operates it
+    assert "control_quoted" not in kept[0].suggestion["value"]  # a percentage alone does not say who operates it
 
 
 def test_the_boundary_sentence_is_the_one_that_says_what_is_covered_not_an_exclusion_sentence() -> None:
@@ -942,7 +944,8 @@ def test_included_under_the_equity_share_approach_does_not_set_operational_contr
     line = "Acme Foods Kent LLC is included under the equity share approach."
     for claimed in ("Yes", "No", None):
         kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", line.rstrip("."), "L1", op=claimed)]), [doc([(1, line)])])
-        assert dict(dropped) == {} and kept[0].suggestion["value"]["operational_control"] is None
+        assert dict(dropped) == {} and "control_quoted" not in kept[0].suggestion["value"]  # nothing quoted about control
+        assert kept[0].suggestion["value"]["included"] == "Yes"  # but the entity is Included
     for quote, expected in (("X is included", None), ("X is inside the boundary", None), ("X is within the boundary", None),
                             ("X is included under the operational control approach", "Yes"), ("X: operational control: yes", "Yes")):
         assert mp.entity_statement(quote, "X") == (True, expected), quote
@@ -1218,3 +1221,46 @@ def test_the_use_note_orders_the_gwp_sets_before_anything_else() -> None:
     assert [g.set for g in mp.gwp_in_order([embedded, fridge, general])] == ["AR4", "AR5", "AR6"]
     # "standard" no longer marks a primary set
     assert "standard" not in mp._PRIMARY_WORDS
+
+
+# --- the request sent to Claude stays inside the structured-output limits -------------------------
+
+def _count_schema(node: Any, acc: dict[str, int]) -> None:
+    if isinstance(node, dict):
+        if "properties" in node:
+            required = set(node.get("required", []))
+            acc["optional"] += len([k for k in node["properties"] if k not in required])
+        if "anyOf" in node:
+            acc["unions"] += 1
+        for key in ("minimum", "maximum", "minLength", "maxLength", "pattern", "oneOf", "allOf", "$ref"):
+            if key in node and key != "$ref":
+                acc["unsupported"] += 1
+        for value in node.values():
+            _count_schema(value, acc)
+    elif isinstance(node, list):
+        for value in node:
+            _count_schema(value, acc)
+
+
+def test_prefill_output_schema_fits_the_structured_output_limits() -> None:
+    """Anthropic's documented limits for a strict schema: at most 24 optional parameters and 16
+    union-typed (anyOf) parameters. The schema is also kept small, and has no keyword the API
+    rejects. A pydantic change that breaks one fails here, not as a 400 on staging."""
+
+    import json
+
+    import anthropic
+
+    schema = anthropic.transform_schema(mp.PrefillOutput.model_json_schema())
+    counts = {"optional": 0, "unions": 0, "unsupported": 0}
+    _count_schema(schema, counts)
+    assert counts["optional"] <= 24
+    assert counts["unions"] <= 16
+    assert counts["unsupported"] == 0
+    assert len(json.dumps(schema)) < 20_000
+
+
+def test_prefill_has_a_timeout_that_fits_a_long_reply() -> None:
+    from backend.app.adapters.llm.claude import REQUEST_TIMEOUT_S
+
+    assert mp.REQUEST_TIMEOUT_S > REQUEST_TIMEOUT_S

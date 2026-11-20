@@ -542,7 +542,7 @@ class AiExtraction:
                                 gap_targets)
         except Exception as exc:  # the pipeline must go on; the type only is logged
             logger.warning("ai extraction: failed (%s)", type(exc).__name__)
-            return AssistOutcome(extraction_result, [f"{UNAVAILABLE}: Claude could not be used to read the values."])
+            return AssistOutcome(extraction_result, [f"{UNAVAILABLE}: Sustentra's AI could not be used to read the values."])
 
     def _assist(self, settings: Settings, parser_output: dict[str, Any], extraction_result: dict[str, Any],
                 targets: Sequence[Mapping[str, Any]], canonical_type_id: str, file_name: str, org_text: str,
@@ -574,8 +574,8 @@ class AiExtraction:
         ledger = self._ledger or DbLedger(feature=FEATURE)
         spent = ledger.month_spend_microusd(org_id)
         if ai_usage.cap_reached(spent, settings.ai_monthly_cap_usd):
-            return AssistOutcome(extraction_result, [f"{CAP_REACHED}: this month's limit on Claude suggestions is "
-                                                     "reached, so the values were not read by Claude."])
+            return AssistOutcome(extraction_result, [f"{CAP_REACHED}: this month's limit on Sustentra's AI suggestions is "
+                                                     "reached, so the values were not read by Sustentra's AI."])
 
         units = page_units(lines)
         inline = settings.s1_processing == "inline"
@@ -583,7 +583,7 @@ class AiExtraction:
         windows, skipped = make_windows(units, settings.ai_window_pages, max_windows)
         warnings: list[str] = []
         if skipped:
-            warnings.append(f"ai_pages_skipped: {describe(skipped)} were not read by Claude "
+            warnings.append(f"ai_pages_skipped: {describe(skipped)} were not read by Sustentra's AI "
                             f"(at most {max_windows} windows).")
         by_name = {f.name: f for f in asked}
         system, output_type = system_prompt(asked), reading_output(tuple(by_name))
@@ -611,7 +611,7 @@ class AiExtraction:
                                 f"{describe(_not_read(left, windows[:index - 1]))} not read.")
                 break
             if ai_usage.cap_reached(spent + cost, settings.ai_monthly_cap_usd):
-                warnings.append(f"{CAP_REACHED}: this month's limit on Claude suggestions was reached after "
+                warnings.append(f"{CAP_REACHED}: this month's limit on Sustentra's AI suggestions was reached after "
                                 f"{read} of {len(windows)} windows.")
                 break
             window_lines = [line for unit in window for line in unit.lines]
@@ -624,7 +624,7 @@ class AiExtraction:
                                           max_tokens=MAX_OUTPUT_TOKENS)
             except Exception as exc:  # network, auth, rate limit: no reply, so nothing to record
                 logger.warning("ai extraction: Claude call failed (%s)", type(exc).__name__)
-                warnings.append(f"{UNAVAILABLE}: Claude could not be reached after {read} of {len(windows)} windows.")
+                warnings.append(f"{UNAVAILABLE}: Sustentra's AI could not be reached after {read} of {len(windows)} windows.")
                 break
             ledger.record(org_id=org_id, engagement_id=_uuid_or_none(engagement_id), provider=client.provider,
                           reply=reply)  # committed whatever the answer is
@@ -634,7 +634,7 @@ class AiExtraction:
                         len(windows), reply.outcome, len(window_lines), reply.cost_microusd,
                         int((self._clock() - began) * 1000))
             if reply.outcome != "ok" or reply.output is None:
-                warnings.append(f"{UNAVAILABLE}: Claude gave no usable answer ({reply.outcome}) for window {index}.")
+                warnings.append(f"{UNAVAILABLE}: Sustentra's AI gave no usable answer ({reply.outcome}) for window {index}.")
                 break
             for reading in getattr(reply.output, "readings"):
                 verdict = verify_reading(reading, by_name, window_lines, confidence_of)

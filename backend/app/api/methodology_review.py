@@ -5,7 +5,7 @@ exclusions, factor sources, GWP and calculation methods (the page's fields).
 * POST   /v1/engagements/{id}/methodology-review/{field_id}/accept  take the suggestion, or the current value
 * POST   /v1/engagements/{id}/methodology-review/{field_id}/edit    {value}
 * POST   /v1/engagements/{id}/methodology-review/{field_id}/reject  {reason}
-* POST   /v1/engagements/{id}/methodology-review/{field_id}/revert  back to pending
+* POST   /v1/engagements/{id}/methodology-review/{field_id}/revert  back to the previous value
 * POST   /v1/engagements/{id}/methodology-review/rows               {group}: add an entity or factor row (201)
 * DELETE /v1/engagements/{id}/methodology-review/{field_id}         remove a row the reviewer added
 
@@ -25,10 +25,12 @@ from contextlib import asynccontextmanager, contextmanager
 import asyncio
 from collections import Counter
 import logging
+import re
 import time
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+import anthropic
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
@@ -93,9 +95,50 @@ def new_client(settings: Settings) -> ClaudeClient | None:
     """The Claude client, or None when this deployment has none set up (tests replace this)."""
 
     try:
-        return get_claude(settings)
+        return get_claude(settings, timeout_s=prefill.REQUEST_TIMEOUT_S)
     except AiNotConfiguredError:
         return None
+
+
+_CONFIG = "Sustentra's AI couldn't process this request (configuration)."
+
+
+def _is_request_rejected(exc: BaseException) -> bool:
+    """True when the provider answered 400 or 422: the request itself is wrong, so retrying cannot help."""
+
+    return isinstance(exc, anthropic.APIStatusError) and exc.status_code in (400, 401, 403, 404, 422)
+
+
+def _reason(exc: BaseException) -> str:
+    """A short, safe reason for the response: provider error type and the first 120 characters of its
+    message (which describes the request, never the documents), with anything key-shaped removed."""
+
+    if not isinstance(exc, anthropic.APIStatusError):
+        return type(exc).__name__
+    body: dict[str, Any] = exc.body if isinstance(exc.body, dict) else {}
+    inner = body.get("error")
+    error: dict[str, Any] = inner if isinstance(inner, dict) else body
+    message = re.sub(r"sk-[A-Za-z0-9_\-]+|[A-Za-z0-9_\-]{32,}", "[removed]", str(error.get("message", "")))
+    kind = "billing" if "credit balance" in message.lower() else str(error.get("type") or exc.status_code)
+    return f"{kind}: {message[:120]}".strip()
+
+
+def _log_call_failure(exc: BaseException) -> None:
+    """Exception type, and for a provider answer its status, error type, message and request id.
+
+    The provider's message describes the request's shape (for example a schema limit), not the
+    document; the prompt and the documents are never logged.
+    """
+
+    if isinstance(exc, anthropic.APIStatusError):
+        body: dict[str, Any] = exc.body if isinstance(exc.body, dict) else {}
+        inner = body.get("error")
+        error: dict[str, Any] = inner if isinstance(inner, dict) else body
+        logger.warning("methodology prefill: Claude call failed (%s) status=%s error_type=%s request_id=%s message=%s",
+                       type(exc).__name__, exc.status_code, error.get("type"), exc.request_id,
+                       str(error.get("message", ""))[:500])
+    else:
+        logger.warning("methodology prefill: Claude call failed (%s)", type(exc).__name__)
 
 
 def _gate(settings: Settings, spent_microusd: int, candidates: list[dict[str, Any]]) -> tuple[str | None, str | None]:
@@ -104,7 +147,7 @@ def _gate(settings: Settings, spent_microusd: int, candidates: list[dict[str, An
     if not settings.ai_suggestions_enabled:
         return "off", "Suggestions from the documents are switched off for this deployment."
     if new_client(settings) is None:
-        return "not_configured", ("Suggestions from the documents are switched on, but Claude is not set up "
+        return "not_configured", ("Suggestions from the documents are switched on, but Sustentra's AI is not set up "
                                   "for this deployment. Contact support.")
     if ai_usage.cap_reached(spent_microusd, settings.ai_monthly_cap_usd):
         return "cap_reached", (f"This month's limit on suggestions (${settings.ai_monthly_cap_usd:,.2f}) has been "
@@ -187,7 +230,7 @@ async def _save(db: AsyncSession, engagement: dict[str, Any], field_id: str, rec
 
 
 async def _audit(db: AsyncSession, request: Request, user: CurrentUser, engagement: dict[str, Any],
-                 field_id: str, action: str, status: str | None) -> None:
+                 field_id: str, action: str, status: str | None, restored: str | None = None) -> None:
     await write_audit_event(
         db,
         "methodology_decision",
@@ -199,7 +242,8 @@ async def _audit(db: AsyncSession, request: Request, user: CurrentUser, engageme
         request_id=getattr(request.state, "request_id", None),
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
-        metadata={"field_id": field_id, "action": action, "status": status},  # never a value or reason
+        # never a value or reason; a revert also says what it restored: previous, detected or empty
+        metadata={"field_id": field_id, "action": action, "status": status, **({"restored": restored} if restored else {})},
     )
 
 
@@ -253,7 +297,8 @@ async def _act(action: str, field_id: str, request: Request, user: CurrentUser, 
         else:
             updated = rules.revert(record, field, actor, now)
     saved = await _save(db, engagement, field_id, updated, user)
-    await _audit(db, request, user, engagement, field_id, action, rules.status_of(saved))
+    restored = (saved.get("history") or [{}])[-1].get("restored") if action == "revert" else None
+    await _audit(db, request, user, engagement, field_id, action, rules.status_of(saved), restored=restored)
     return rules.public(saved)
 
 
@@ -371,9 +416,9 @@ async def remove_row(
 logger = logging.getLogger(__name__)
 
 _FAILED = {
-    "refused": "Claude declined to read these documents. Nothing was changed.",
-    "incomplete": "Claude's answer was cut short, so none of it was kept. Try again.",
-    "invalid": "Claude's answer could not be read, so none of it was kept. Try again.",
+    "refused": "Sustentra's AI declined to read these documents. Nothing was changed.",
+    "incomplete": "The AI's answer was cut short, so none of it was kept. Try again.",
+    "invalid": "The AI's answer could not be read, so none of it was kept. Try again.",
 }
 
 
@@ -496,7 +541,7 @@ async def _short_transaction(sessions: async_sessionmaker[AsyncSession], org_id:
 # sees the spend of the call before it.
 _RUNNING: set[str] = set()
 _BUSY = "Suggestions are already being prepared for this organization. Try again in a minute."
-_NOT_SAVED = ("Claude answered, but its suggestions could not be saved, so none were kept. "
+_NOT_SAVED = ("Sustentra's AI answered, but its suggestions could not be saved, so none were kept. "
               "The call was recorded. Try again.")
 
 
@@ -563,9 +608,12 @@ async def _prefill(request: Request, user: CurrentUser, engagement: dict[str, An
         reply = await asyncio.to_thread(
             client.structured, system=prefill.SYSTEM_PROMPT, content=prefill.render_documents(documents),
             output_type=prefill.PrefillOutput, max_tokens=prefill.MAX_OUTPUT_TOKENS)
-    except Exception as exc:  # network, auth, rate limit: no usage to record; the type only is logged
-        logger.warning("methodology prefill: Claude call failed (%s)", type(exc).__name__)
-        raise HTTPException(status_code=502, detail="Claude could not be reached. Try again in a moment.") from exc
+    except Exception as exc:  # no usage to record; type, status and provider message are logged, never content
+        _log_call_failure(exc)
+        if _is_request_rejected(exc):
+            raise HTTPException(status_code=500, detail=f"{_CONFIG[:-1]} (provider: {_reason(exc)}).") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Sustentra's AI could not be reached. Try again in a moment. ({_reason(exc)})") from exc
     cost_usd = round((reply.cost_microusd or 0) / ai_usage.MICRO, 6)
     ok = reply.outcome == "ok" and reply.output is not None
     async with _short_transaction(sessions, org_id) as ledger:  # committed whatever happens next

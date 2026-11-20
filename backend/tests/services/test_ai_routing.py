@@ -137,7 +137,7 @@ def test_an_unknown_document_gets_claudes_type_flagged_for_review(tmp_path: Any)
     assert record["used"] is True and record["review_required"] is True and record["disagrees"] is False
     assert (record["quote"], record["line"], record["page_number"], record["reason_code"]) == (
         "Refrigerant charge log and top-up record", "L2", 1, "title")  # the page is the parser's
-    assert any("Claude suggested CT-S1-REFRSVC" in w for w in run["warnings"])
+    assert any("Sustentra's AI suggested CT-S1-REFRSVC" in w for w in run["warnings"])
     assert [(r["outcome"], r["org_id"]) for r in ledger.rows] == [("ok", uuid.UUID(ORG))]
 
 

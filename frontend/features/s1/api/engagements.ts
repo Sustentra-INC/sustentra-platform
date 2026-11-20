@@ -43,7 +43,7 @@ export const SETTINGS_KEYS = [
 
 /** Read from `settings` but never sent back. The reviewers' Evidence lines change only through the Evidence
  *  actions (the server keeps them and ignores a save's copy), so a Setup save from a stale tab cannot undo them. */
-const READ_ONLY_KEYS = ["evidenceLines"] as const satisfies readonly (keyof EngagementConfig)[];
+const READ_ONLY_KEYS = ["evidenceLines", "evidenceFolders"] as const satisfies readonly (keyof EngagementConfig)[];
 
 export interface EngagementPayload {
   name: string;
@@ -105,6 +105,23 @@ export function engagementSaveProblem(config: EngagementConfig): string | null {
   const { start, end } = config.reportingPeriod;
   if (start && end && end < start) return "The reporting period ends before it starts.";
   return null;
+}
+
+/**
+ * What a Setup save sends. Each section saves on its own: one that cannot be saved yet (a reporting period that ends
+ * before it starts) keeps the value the server has, and the rest of the page is saved. `problems` says which
+ * sections were held back and why.
+ */
+export function setupSavePayload(
+  config: EngagementConfig,
+  saved: EngagementConfig | null
+): { payload: EngagementConfig; problems: Partial<Record<"company", string>> } {
+  const periodProblem = engagementSaveProblem(config);
+  if (!periodProblem) return { payload: config, problems: {} };
+  return {
+    payload: { ...config, reportingPeriod: saved?.reportingPeriod ?? { start: "", end: "" } },
+    problems: { company: periodProblem },
+  };
 }
 
 export async function listEngagements(): Promise<BackendEngagement[]> {

@@ -16,6 +16,9 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
 
 import { api, ApiError } from "../../../lib/api";
 import { AssignTaskProvider } from "../../tasks/AssignTaskContext";
+import type { EngagementConfig } from "../types";
+import type { Ask } from "../types/requests";
+import type { AskDraft } from "../requests/requestsStore";
 import { BackendMethodologyReview, aiStatusWords, dropReasonWords, statusWord } from "../components/BackendMethodologyReview";
 
 const BASE = "/engagements/e1/methodology-review";
@@ -108,7 +111,7 @@ beforeEach(() => {
 describe("Methodology review on real data", () => {
   it("tells the reviewer the result lists the documents read", async () => {
     await open();
-    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
     expect(screen.getByRole("alertdialog").textContent).toMatch(/list the documents it read/);
   });
 
@@ -116,7 +119,7 @@ describe("Methodology review on real data", () => {
     const { onActivity } = await open();
     const whats = (onActivity.mock.calls[0][0] as { what: string }[]).map((e) => e.what);
     expect(whats).toContain("Edited on methodology: Reporting period");
-    expect(whats).toContain("Suggested by Claude on methodology: Consolidation approach");
+    expect(whats).toContain("Suggested by Sustentra's AI on methodology: Consolidation approach");
   });
 
   it("does not send a non-numeric percent", async () => {
@@ -150,7 +153,7 @@ describe("Methodology review on real data", () => {
     const { onOpenDocument, onActivity } = await open();
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Organizational boundary", "GWP factors source", "Emission factors source"]);
     const approach = row("Consolidation approach");
-    expect(within(approach).getByText("Suggested by Claude")).toBeTruthy();
+    expect(within(approach).getByText("Suggested by Sustentra's AI")).toBeTruthy();
     expect(within(approach).getByText("We use the operational control approach.")).toBeTruthy();
     expect(within(approach).getByText("Pending")).toBeTruthy();
     fireEvent.click(within(approach).getByRole("button", { name: "GHG report.pdf, page 4" }));
@@ -278,7 +281,7 @@ describe("Methodology review on real data", () => {
       cost_usd: 0.0312,
       model: "m",
     };
-    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
     expect(calls().some(([p]) => String(p).endsWith("/prefill"))).toBe(false);
     expect(screen.getByRole("alertdialog").textContent).toMatch(/Suggestions need your review/);
     fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
@@ -309,33 +312,33 @@ describe("Methodology review on real data", () => {
   it("shows Claude's refusal sentence from the prefill", async () => {
     await open();
     mock.fail[`POST ${BASE}/prefill`] = new ApiError(409, "Upload the company's GHG inventory report first.", null, null);
-    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
     fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Upload the company's GHG inventory report first.");
   });
 
   it.each([
-    "Claude is switched off. An administrator turns it on.",
-    "Claude is not set up for this workspace.",
-    "The monthly limit for Claude is reached.",
+    "Sustentra's AI is switched off. An administrator turns it on.",
+    "Sustentra's AI is not set up for this workspace.",
+    "The monthly limit for Sustentra's AI is reached.",
     "Upload the company's GHG inventory report, boundary statement or methodology document first.",
-    "Claude is already reading reports for your organization. Try again in a minute.",
-    "Claude's answer could not be used. Nothing was kept.",
+    "Sustentra's AI is already reading reports for your organization. Try again in a minute.",
+    "The AI's answer could not be used. Nothing was kept.",
   ])("shows the 409 sentence as the server words it: %s", async (sentence) => {
     await open();
     mock.fail[`POST ${BASE}/prefill`] = new ApiError(409, sentence, null, null);
-    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
     fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
     expect((await screen.findByRole("alert")).textContent).toBe(sentence);
   });
 
   it.each([
-    "Claude could not be reached. Try again in a moment.",
-    "Claude's suggestions could not be saved. Nothing was kept.",
+    "Sustentra's AI could not be reached. Try again in a moment.",
+    "The AI's suggestions could not be saved. Nothing was kept.",
   ])("shows the 502 sentence: %s", async (sentence) => {
     await open();
     mock.fail[`POST ${BASE}/prefill`] = new ApiError(502, sentence, null, null);
-    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
     fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
     expect((await screen.findByRole("alert")).textContent).toBe(sentence);
   });
@@ -344,7 +347,7 @@ describe("Methodology review on real data", () => {
     await open();
     let finish: (v: unknown) => void = () => {};
     mock.fail.prefillResult = new Promise((resolve) => (finish = resolve));
-    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
     const confirm = screen.getByRole("button", { name: "Read the reports" });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
@@ -352,24 +355,24 @@ describe("Methodology review on real data", () => {
     expect((button as HTMLButtonElement).disabled).toBe(true);
     expect(calls().filter(([p]) => String(p).endsWith("/prefill"))).toHaveLength(1);
     finish({ suggested: 0, dropped: {}, kept_reviewer_decision: 0, documents_read: [], cost_usd: 0, model: "m" });
-    await waitFor(() => expect((screen.getByRole("button", { name: "Read the client's reports with Claude" }) as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect((screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }) as HTMLButtonElement).disabled).toBe(false));
   });
 
   it.each([
     ["off", "Off: an administrator turns it on."],
     ["cap_reached", "Monthly limit reached."],
     ["no_documents", "No report documents yet."],
-    ["not_configured", "Claude is not set up for this workspace."],
+    ["not_configured", "Sustentra's AI is not set up for this workspace."],
     ["a_code_from_the_future", "Some other sentence."],
   ])("states the AI status with the server's sentence and disables the button: %s", async (code, reason) => {
     await open(vi.fn(), fixture({ enabled: false, reason_code: code, reason }));
     expect(screen.getByText(reason)).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Read the client's reports with Claude" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("enables the button when the AI is on", async () => {
     await open();
-    expect((screen.getByRole("button", { name: "Read the client's reports with Claude" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }) as HTMLButtonElement).disabled).toBe(false);
     expect(aiStatusWords({ enabled: true, reason_code: null, reason: null })).toBeNull();
   });
 
@@ -478,7 +481,7 @@ describe("Methodology review on real data", () => {
 
     it("shows an optional row once a suggestion has arrived", async () => {
       await open(vi.fn(), withStates({}, { shown: true, state: "has_value", suggestion: true }));
-      expect(within(row(LABEL)).getByText("Suggested by Claude")).toBeTruthy();
+      expect(within(row(LABEL)).getByText("Suggested by Sustentra's AI")).toBeTruthy();
       expect(screen.queryByRole("combobox", { name: "Add an item" })).toBeNull();
     });
 
@@ -791,7 +794,8 @@ describe("entities and the boundary sentence", () => {
     { key: "facilities", label: "Facilities", kind: "list" },
     { key: "equity_share_pct", label: "Equity share (%, if stated)", kind: "percent" },
     { key: "financial_control", label: "Financial control (%, if stated)", kind: "percent" },
-    { key: "operational_control", label: "Operational control", kind: "enum", allowed: ["Yes", "No"], optional: true },
+    { key: "included", label: "Included", kind: "enum", allowed: ["Yes", "No"], optional: true },
+    { key: "control_quoted", label: "Operational control (as quoted)", kind: "enum", allowed: ["Yes", "No"], optional: true, show_if_present: true },
   ];
   const withBoundary = (sentence: string | null, entity: unknown = null) => {
     const d = fixture() as { catalog: Record<string, unknown>[]; fields: Record<string, unknown>[] };
@@ -828,44 +832,76 @@ describe("entities and the boundary sentence", () => {
   });
 
   it("does not call it 'the only' thing the report gives once an entity is named", async () => {
-    const entity = { name: "Café Québec Holdings Inc.", facilities: [], equity_share_pct: null, financial_control: null, operational_control: "Yes" };
+    const entity = { name: "Café Québec Holdings Inc.", facilities: [], equity_share_pct: null, financial_control: null, included: "Yes" };
     await open(vi.fn(), withBoundary(SENTENCE, entity));
     expect(within(row("Entities and facilities in the boundary")).queryByText("Boundary sentence only")).toBeNull();
   });
 
   it("labels each percentage of an entity, shows a missing one as absent, and keeps the Yes / No", async () => {
-    const entity = { name: "Café Québec Holdings Inc.", facilities: ["Kent"], equity_share_pct: 51, financial_control: null, operational_control: "Yes" };
+    const entity = { name: "Café Québec Holdings Inc.", facilities: ["Kent"], equity_share_pct: 51, financial_control: null, included: "Yes" };
     await open(vi.fn(), withBoundary(null, entity));
     const r = row("Entity row");
-    expect(within(r).getByText("Café Québec Holdings Inc. · facilities: Kent · equity share 51% · operational control: Yes")).toBeTruthy();
-    const none = { name: "Zürich Büro AG", facilities: [], equity_share_pct: null, financial_control: null, operational_control: "No" };
+    expect(within(r).getByText("Café Québec Holdings Inc. · facilities: Kent · equity share 51% · included: Yes")).toBeTruthy();
+    const none = { name: "Zürich Büro AG", facilities: [], equity_share_pct: null, financial_control: null, included: "No" };
     cleanup();
     await open(vi.fn(), withBoundary(null, none));
-    expect(within(row("Entity row")).getByText("Zürich Büro AG · operational control: No")).toBeTruthy();
+    expect(within(row("Entity row")).getByText("Zürich Büro AG · included: No")).toBeTruthy();
   });
 
   it("shows an entity whose Yes / No is not stated without one, and lets the reviewer leave it as Not stated", async () => {
-    const entity = { name: "Zürich Büro AG", facilities: [], equity_share_pct: 51, financial_control: null, operational_control: null };
+    const entity = { name: "Zürich Büro AG", facilities: [], equity_share_pct: 51, financial_control: null, included: null };
     await open(vi.fn(), withBoundary(null, entity));
     const r = row("Entity row");
     expect(within(r).getByText("Zürich Büro AG · equity share 51%")).toBeTruthy();
     fireEvent.click(within(r).getByRole("button", { name: "Edit: Entity row" }));
-    const control = screen.getByLabelText("Entity row: Operational control") as HTMLSelectElement;
+    const control = screen.getByLabelText("Entity row: Included") as HTMLSelectElement;
     expect(Array.from(control.options).map((o) => o.textContent)).toEqual(["Not stated", "Yes", "No"]);
     expect(control.value).toBe("");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(calls()).toContainEqual([
         `${BASE}/entity%3Aabc123/edit`,
-        expect.objectContaining({ body: { value: { name: "Zürich Büro AG", facilities: [], equity_share_pct: 51, financial_control: null, operational_control: null } } }),
+        expect.objectContaining({ body: { value: { name: "Zürich Büro AG", facilities: [], equity_share_pct: 51, financial_control: null, included: null } } }),
       ])
     );
     cleanup();
     await open(vi.fn(), withBoundary(null, entity));
     fireEvent.click(within(row("Entity row")).getByRole("button", { name: "Edit: Entity row" }));
-    fireEvent.change(screen.getByLabelText("Entity row: Operational control"), { target: { value: "No" } });
+    fireEvent.change(screen.getByLabelText("Entity row: Included"), { target: { value: "No" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(calls().some(([, o]) => JSON.stringify(o).includes('"operational_control":"No"'))).toBe(true));
+    await waitFor(() => expect(calls().some(([, o]) => JSON.stringify(o).includes('"included":"No"'))).toBe(true));
+  });
+
+  it("labels the per-entity Yes / No 'Included' and shows operational control separately, only when it was quoted", async () => {
+    const quoted = { name: "Stockton Cold Storage JV", facilities: [], equity_share_pct: 50, financial_control: null, included: "Yes", control_quoted: "No" };
+    await open(vi.fn(), withBoundary(null, quoted));
+    const r = row("Entity row");
+    expect(within(r).getByText("Stockton Cold Storage JV · equity share 50% · included: Yes · operational control (as quoted): No")).toBeTruthy();
+    fireEvent.click(within(r).getByRole("button", { name: "Edit: Entity row" }));
+    expect(screen.queryByLabelText("Entity row: Operational control")).toBeNull(); // the old label is gone
+    const asQuoted = screen.getByLabelText("Entity row: Operational control (as quoted)") as HTMLSelectElement;
+    expect(asQuoted.value).toBe("No");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls()).toContainEqual([
+        `${BASE}/entity%3Aabc123/edit`,
+        expect.objectContaining({ body: { value: { name: "Stockton Cold Storage JV", facilities: [], equity_share_pct: 50, financial_control: null, included: "Yes", control_quoted: "No" } } }),
+      ])
+    );
+    cleanup();
+    const plain = { name: "Zürich Büro AG", facilities: [], equity_share_pct: null, financial_control: null, included: "Yes" };
+    await open(vi.fn(), withBoundary(null, plain));
+    fireEvent.click(within(row("Entity row")).getByRole("button", { name: "Edit: Entity row" }));
+    expect(screen.queryByLabelText("Entity row: Operational control (as quoted)")).toBeNull(); // not quoted: not shown
+    expect(screen.getByLabelText("Entity row: Included")).toBeTruthy();
+  });
+
+  it("never reads an entity saved before Included had its own key as 'Included: No'", async () => {
+    const legacy = { name: "Städtische Werke 纸", facilities: [], equity_share_pct: 50, financial_control: null, operational_control: "No" };
+    await open(vi.fn(), withBoundary(null, legacy));
+    const text = row("Entity row").textContent ?? "";
+    expect(text).toContain("operational control (as quoted): No");
+    expect(text).not.toContain("included: No");
   });
 
   it("says in words why an exclusion sentence was not kept as an entity or the boundary sentence", () => {
@@ -874,7 +910,7 @@ describe("entities and the boundary sentence", () => {
   });
 
   it("lets the reviewer correct the name and leave both percentages blank, sending null for each", async () => {
-    const entity = { name: "Café Québec Holdings", facilities: [], equity_share_pct: null, financial_control: null, operational_control: "Yes" };
+    const entity = { name: "Café Québec Holdings", facilities: [], equity_share_pct: null, financial_control: null, included: "Yes" };
     await open(vi.fn(), withBoundary(null, entity));
     const r = row("Entity row");
     fireEvent.click(within(r).getByRole("button", { name: "Edit: Entity row" }));
@@ -885,7 +921,7 @@ describe("entities and the boundary sentence", () => {
       expect(calls()).toContainEqual([
         `${BASE}/entity%3Aabc123/edit`,
         expect.objectContaining({
-          body: { value: { name: "Café Québec Holdings, Inc.", facilities: [], equity_share_pct: null, financial_control: null, operational_control: "Yes" } },
+          body: { value: { name: "Café Québec Holdings, Inc.", facilities: [], equity_share_pct: null, financial_control: null, included: "Yes" } },
         }),
       ])
     );
@@ -912,5 +948,95 @@ describe("Assign to… on a methodology row", () => {
   it("is not offered where assigning is not available", async () => {
     await open();
     expect(screen.queryByRole("button", { name: /^Assign to…/ })).toBeNull();
+describe("Mark for client follow-up", () => {
+  const engagement = { reportingPeriod: { start: "2025-01-01", end: "2025-12-31" }, signedInLogin: "ada@acme.test", signedInName: "Ada Admin", engagementTeam: [] } as unknown as EngagementConfig;
+  const ask = (over: Partial<Ask> & { fieldKey?: string; origin?: Ask["source"]["origin"] } = {}): Ask => ({
+    id: "ASK-METH-consolidation_approach",
+    type: "clarify",
+    whatIsNeeded: "x",
+    source: { origin: over.origin ?? "methodology_row", fieldKey: over.fieldKey ?? "consolidation_approach", itemLabel: "Consolidation approach", facilityName: null, period: "FY 2025" },
+    raisedByName: "Ada Admin",
+    raisedByLogin: "ada@acme.test",
+    raisedAt: "2026-11-20T15:04:05.000Z",
+    state: over.state ?? "not_yet_sent",
+    requestNumber: null,
+    lineNumber: null,
+    history: [],
+  });
+  const mount = async (asks: Ask[], onSaveAsk = vi.fn(() => Promise.resolve({})), data: unknown = fixture()) => {
+    mock.data = data;
+    const onOpenRequests = vi.fn();
+    render(<BackendMethodologyReview engagementId="e1" onOpenDocument={vi.fn()} followUp={{ engagement, asks, onSaveAsk, onOpenRequests, serverRecordsActor: true }} />);
+    await screen.findByText("Consolidation approach");
+    return { onSaveAsk, onOpenRequests };
+  };
+
+  it("offers the action on a row, opens the same Add to requests window and raises a methodology request", async () => {
+    const { onSaveAsk } = await mount([]);
+    const r = row("Consolidation approach");
+    fireEvent.click(within(r).getByRole("button", { name: "Mark for client follow-up: Consolidation approach" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Add to requests" })).toBeTruthy();
+    expect(within(dialog).getByText("Consolidation approach")).toBeTruthy(); // the Item line
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Add to requests$/ }));
+    await waitFor(() => expect(onSaveAsk).toHaveBeenCalledTimes(1));
+    const draft = (onSaveAsk.mock.calls[0] as unknown as [AskDraft])[0];
+    expect(draft).toMatchObject({ origin: "methodology_row", fieldKey: "consolidation_approach", itemLabel: "Consolidation approach", type: "clarify", period: "FY 2025" });
+    expect(draft.whatIsNeeded).toContain("Operational Control"); // what the row holds now
+    await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/added to requests, not sent yet/));
+  });
+
+  it("shows a 'Requested · <date>' chip instead of the button once the row has an open request, and links to the requests", async () => {
+    const { onSaveAsk, onOpenRequests } = await mount([ask()]);
+    const r = row("Consolidation approach");
+    expect(within(r).getByText("Requested · Nov 20, 2026")).toBeTruthy();
+    expect(within(r).queryByRole("button", { name: /Mark for client follow-up/ })).toBeNull(); // so it cannot be raised twice
+    fireEvent.click(within(r).getByRole("button", { name: "View in requests: Consolidation approach" }));
+    expect(onOpenRequests).toHaveBeenCalledTimes(1);
+    expect(onSaveAsk).not.toHaveBeenCalled();
+    cleanup();
+    await mount([ask({ state: "requested" })]);
+    expect(within(row("Consolidation approach")).getByText(/^Requested · /)).toBeTruthy();
+  });
+
+  it("offers the action again when the earlier request is closed, and ignores other rows' and other pages' requests", async () => {
+    await mount([ask({ state: "resolved" })]);
+    expect(within(row("Consolidation approach")).getByRole("button", { name: /Mark for client follow-up/ })).toBeTruthy();
+    cleanup();
+    await mount([ask({ state: "withdrawn" }), ask({ fieldKey: "reporting_period" }), ask({ origin: "data_point" })]);
+    expect(within(row("Consolidation approach")).getByRole("button", { name: /Mark for client follow-up/ })).toBeTruthy();
+    expect(within(row("Reporting period")).getByText(/^Requested · /)).toBeTruthy(); // the period row's own request
+  });
+
+  it("keeps the window open with the server's sentence when the request fails, and sends one request per click", async () => {
+    const onSaveAsk = vi.fn(() => Promise.reject(new Error("The request could not be saved. Try again.")));
+    await mount([], onSaveAsk);
+    fireEvent.click(within(row("Consolidation approach")).getByRole("button", { name: /Mark for client follow-up/ }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Add to requests$/ }));
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByText(/could not be saved/)).toBeTruthy());
+    expect(onSaveAsk).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Requested ·/)).toBeNull();
+  });
+
+  it("reads a hostile or non-ASCII row label and value as plain text", async () => {
+    const d = fixture() as { catalog: Record<string, unknown>[]; fields: Record<string, unknown>[] };
+    const hostile = `Zürich 排放 <img src=x onerror=alert(1)> "quoted" & more`;
+    d.catalog.find((c) => c.field_id === "exclusion:boundary")!.label = hostile;
+    const r = d.fields.find((f) => f.field_id === "exclusion:boundary")!;
+    r.decision = { status: "edited", value: "Käserei <b>bold</b> 燃料", by, at: "2026-11-02T10:00:00Z" };
+    const { onSaveAsk } = await mount([], vi.fn(() => Promise.resolve({})), d);
+    fireEvent.click(within(row(hostile)).getByRole("button", { name: `Mark for client follow-up: ${hostile}` }));
+    expect(document.querySelector("img")).toBeNull(); // nothing was parsed as markup
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Add to requests$/ }));
+    await waitFor(() => expect(onSaveAsk).toHaveBeenCalled());
+    const draft = (onSaveAsk.mock.calls[0] as unknown as [AskDraft])[0];
+    expect(draft.itemLabel).toBe(hostile);
+    expect(draft.whatIsNeeded).toContain("Käserei <b>bold</b> 燃料");
+  });
+
+  it("shows no action where the page cannot raise requests", async () => {
+    await open();
+    expect(screen.queryByRole("button", { name: /Mark for client follow-up/ })).toBeNull();
   });
 });

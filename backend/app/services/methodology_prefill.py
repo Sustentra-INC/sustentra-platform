@@ -48,6 +48,10 @@ MAX_DOCUMENTS = 5
 MAX_LINES = 1_500
 MAX_CHARS = 150_000
 MAX_OUTPUT_TOKENS = 8_000
+# The call is not streamed, so the provider sends nothing until the whole reply is written and the
+# SDK's read timeout is the time to write it. Up to 8,000 tokens of structured output after reading
+# up to MAX_CHARS of documents takes well over the 90 s that fits the short extraction calls.
+REQUEST_TIMEOUT_S = 300.0
 MIN_QUOTE = 8  # characters
 NO_DOCUMENTS = "Upload the company's GHG inventory report, boundary statement or methodology document first."
 
@@ -633,7 +637,8 @@ What the items mean
   or "".
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
   equity share (percent, 0 to 100), financial control (percent, 0 to 100) and whether the company
-  has operational control (Yes or No, or null: set it only when the quote says so, never guess).
+  has operational control (Yes or No, or null: set it only when the quote says so, never guess; the
+  server marks every kept entity Included and reads operational control from the quote itself).
   Give a percentage only when the cited line prints it (the number must be in the quote); otherwise
   null. The entity's name must be printed in the quote, and the quote must say the entity is IN the
   boundary. A sentence that leaves something out ("data centers used by X are excluded", "not
@@ -1006,7 +1011,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         try:
             value = rules.validate_value(definition, {
                 "name": entity.name, "facilities": entity.facilities, "equity_share_pct": entity.equity_share_pct,
-                "financial_control": entity.financial_control, "operational_control": entity.operational_control})
+                "financial_control": entity.financial_control, "included": None})
         except rules.MethodologyInvalid:
             dropped["invalid_value"] += 1
             continue
@@ -1014,7 +1019,11 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         if not included:  # an exclusion sentence, or one with no inclusion wording, makes no entity row
             dropped["not_an_inclusion"] += 1
             continue
-        value["operational_control"] = control  # only what the quote supports; Claude's own Yes / No is not trusted
+        # Claire C-M2: a kept entity is Included (it comes from an inclusion statement); what the quote says about
+        # operational control is kept apart, only when quoted. Claude's own Yes / No is not trusted.
+        value["included"] = "Yes"
+        if control is not None:
+            value["control_quoted"] = control
         given = tuple(n for n in (entity.equity_share_pct, entity.financial_control) if n is not None)
         # A percentage is checked in the quote. With none given, the quote must name the entity, or nothing ties it.
         keep(entity, value, None, "entities", numbers=given, words=() if given else [value["name"]])
@@ -1041,6 +1050,6 @@ def same_row_value(group: str, a: Any, b: Any) -> bool:
     return all(norm(str(a.get(k) or "")) == norm(str(b.get(k) or "")) for k in keys)
 
 
-__all__ = ["FEATURE", "MAX_DOCUMENTS", "MAX_LINES", "MAX_CHARS", "MAX_OUTPUT_TOKENS", "NO_DOCUMENTS", "SYSTEM_PROMPT",
+__all__ = ["REQUEST_TIMEOUT_S", "FEATURE", "MAX_DOCUMENTS", "MAX_LINES", "MAX_CHARS", "MAX_OUTPUT_TOKENS", "NO_DOCUMENTS", "SYSTEM_PROMPT",
            "PrefillOutput", "PrefillDocument", "Verified", "candidate_documents", "read_documents",
            "render_documents", "verify", "same_row_value"]

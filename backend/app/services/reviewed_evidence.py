@@ -13,7 +13,7 @@ import re
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Iterable
 
 from backend.app.domain import fuel_units
@@ -750,6 +750,56 @@ def stale_decision_ids(items: list[dict[str, Any]], reviews: Iterable[dict[str, 
     decisions = [d for d in reviews]
     kept = {id(d) for d in applicable_decisions(items, decisions, read_documents)}
     return {str(d.get("review_decision_id")) for d in decisions if id(d) not in kept and d.get("review_decision_id")}
+
+
+def _moment(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")) if value else None
+    except ValueError:
+        return None
+
+
+def reviews_for_latest_type(results: list[dict[str, Any]], reviews: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The decisions that can apply to the document's latest read. A read as another document type
+    (a re-read after a move onto a line of another type, or a type the reviewer set) is a new set of values:
+    a decision made before it was stored does not apply to it, whatever record index or field name it shares.
+    It stays in the record. ``results`` oldest first. A decision or read with no usable time is kept, and a read
+    that had no type (nothing was identified) is not a type change."""
+
+    cutoff = None
+    for earlier, later in zip(results, results[1:]):
+        before, after = earlier.get("canonical_type_id"), later.get("canonical_type_id")
+        if before and after and before != after:
+            cutoff = _moment(later.get("created_at")) or cutoff
+    if cutoff is None:
+        return reviews
+    out = []
+    for decision in reviews:
+        made = _moment(decision.get("reviewed_at"))
+        if made is not None and made.tzinfo is None and cutoff.tzinfo is not None:
+            made = made.replace(tzinfo=cutoff.tzinfo)
+        if made is not None and cutoff.tzinfo is None and made.tzinfo is not None:
+            made = made.replace(tzinfo=None)
+        if made is None or made >= cutoff:
+            out.append(decision)
+    return out
+
+
+def reviews_for_latest_types(results: list[dict[str, Any]], reviews: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """``reviews_for_latest_type`` for the reads of several documents (an evidence's): each document's decisions are
+    judged by that document's own reads. Decisions on a document with no read here are kept."""
+
+    by_document: dict[str, list[dict[str, Any]]] = {}
+    for result in results:
+        by_document.setdefault(str(result.get("document_id")), []).append(result)
+    kept = []
+    for document_id, own in by_document.items():
+        theirs = [d for d in reviews if str(d.get("document_id")) == document_id]
+        kept.extend(reviews_for_latest_type(own, theirs))
+    kept_ids = {id(d) for d in kept}
+    return [d for d in reviews if id(d) in kept_ids or str(d.get("document_id")) not in by_document]
 
 
 def mark_reread_items(items: list[dict[str, Any]], reviews: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:

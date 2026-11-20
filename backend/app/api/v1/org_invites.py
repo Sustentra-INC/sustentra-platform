@@ -24,7 +24,9 @@ from .deps import Principal, require_org_admin
 router = APIRouter(prefix="/orgs/{org_id}/invites", tags=["org-invites"])
 
 # Deliberately simple (no email-validator dependency): one @, no spaces, a dot in the domain.
-_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Never accepted anywhere: , ; < > " ' \\ and whitespace/control characters (nothing odd reaches the To header).
+_PART = r"[^@\s,;<>\"'\\\x00-\x1f\x7f]+"
+_EMAIL = re.compile(rf"^{_PART}@{_PART}\.{_PART}\Z")
 
 
 class CreateInviteRequest(BaseModel):
@@ -66,6 +68,26 @@ class InviteResponse(BaseModel):
     created_at: datetime
 
 
+class BulkInviteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # A pasted list: bad rows are reported per email, not a failure of the whole request.
+    emails: list[str] = Field(min_length=1, max_length=invites.BULK_INVITE_MAX)
+    role: Literal["org_admin", "org_member"]
+
+
+class BulkInviteResult(BaseModel):
+    email: str
+    # invited | already_member | duplicate | invalid | seat_limit
+    status: str
+    user_id: UUID | None = None
+
+
+class BulkInviteResponse(BaseModel):
+    results: list[BulkInviteResult]
+    invited: int
+
+
 OrgAdmin = Annotated[Principal, Depends(require_org_admin)]
 Db = Annotated[AsyncSession, Depends(get_db_session, scope="function")]
 Sender = Annotated[InviteSender, Depends(get_invite_sender)]
@@ -91,6 +113,7 @@ async def create_invite(
     background: BackgroundTasks,
     send_invite: Sender,
 ) -> InviteResponse:
+    await invites.enforce_invite_quota(db, _actor(principal, request), org_id, 1)
     row, pending = await invites.create_invite(
         db, _actor(principal, request), org_id, email=payload.email, role=payload.role,
         first_name=payload.first_name, last_name=payload.last_name,
@@ -112,3 +135,24 @@ async def resend_invite(
     row, pending = await invites.resend_invite(db, _actor(principal, request), org_id, user_id)
     background.add_task(send_invite, pending.to, pending.link)
     return InviteResponse(**row)
+
+
+@router.post("/bulk", response_model=BulkInviteResponse, status_code=status.HTTP_201_CREATED)
+async def create_bulk_invites(
+    org_id: str,
+    payload: BulkInviteRequest,
+    principal: OrgAdmin,
+    db: Db,
+    request: Request,
+    background: BackgroundTasks,
+    send_invite: Sender,
+) -> BulkInviteResponse:
+    """Invite up to 50 people in one go. The same invite (and audit trail) as the single route, per email."""
+    emails = [e.strip().lower() for e in payload.emails]
+    results, pending = await invites.create_bulk_invites(
+        db, _actor(principal, request), org_id, emails=emails,
+        valid=[len(e) <= 320 and bool(_EMAIL.match(e)) for e in emails], role=payload.role,
+    )
+    for item in pending:
+        background.add_task(send_invite, item.to, item.link)
+    return BulkInviteResponse(results=[BulkInviteResult(**r) for r in results], invited=len(pending))

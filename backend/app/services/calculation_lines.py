@@ -19,6 +19,7 @@ Where a document is filed
 from __future__ import annotations
 
 import re
+import unicodedata
 import uuid
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
@@ -48,6 +49,7 @@ from backend.app.services.thermal_extractor import thermal_kind
 BLOCK_SUMMARY = "block:summary"  # Block 1: Summary documents and workbook
 BLOCK_UNASSIGNED = "block:unassigned"  # Block 2: Unassigned documents
 SUPPORTING_UNASSIGNED = "supporting:unassigned"  # Block 3: Unassigned supporting evidence
+ALL_PLACES = "*"  # a move's ``from`` that means every place the document is in (see ``apply_placements``)
 FIXED_TARGETS = frozenset({BLOCK_SUMMARY, BLOCK_UNASSIGNED, SUPPORTING_UNASSIGNED})
 
 SCOPES: tuple[tuple[str, str], ...] = (("s1", "Scope 1"), ("s2", "Scope 2"), ("biogenic", "Biogenic"))
@@ -87,6 +89,28 @@ LINE_TYPE_NAMES: dict[str, str] = {
     THERMAL: "Purchased steam, heat or cooling record",
 }
 THERMAL_LEVEL2 = {"steam": ("steam", "Steam"), "hot_water": ("heating", "Heating"), "chilled_water": ("cooling", "Cooling")}
+
+
+def line_type_id(line: CalculationLine) -> str | None:
+    """The document type whose records a line holds, so a document of another type moved onto it is
+    read again as this one; None when no extractor feeds that line (process, contractual)."""
+
+    if line.category in ("stationary", "biogenic"):
+        return MOBILE if line.anchor_kind == "vehicle_group" else STATIONARY
+    return {"mobile": MOBILE, "fugitive": REFRIGERANT,
+            "purchased_energy": ELECTRICITY if line.level2 == "electricity" else THERMAL}.get(line.category)
+
+
+def reread_pending(decision: dict[str, Any] | None, canonical_type_id: str | None) -> dict[str, Any] | None:
+    """The re-read a move asked for that has not produced its values yet: the decision's ``rereadPending``
+    (``canonical_type_id``, ``type_name``, ``requested_at``, ``error``), while the document's latest extraction
+    is still not of that type. Once a read of that type is stored it no longer applies. A failed read keeps
+    it (``error`` is the reason), so the document stays out of the calculation until it is read or moved."""
+
+    pending = (decision or {}).get("rereadPending")
+    if not isinstance(pending, dict) or not isinstance(pending.get("canonical_type_id"), str):
+        return None
+    return None if pending["canonical_type_id"] == canonical_type_id else pending
 
 
 def type_name(canonical_type_id: str | None) -> str | None:
@@ -434,6 +458,53 @@ def user_lines(settings: dict[str, Any] | None) -> list[CalculationLine]:
     return list(lines.values())
 
 
+# --- Block 1 folders: settings["evidenceFolders"] ---------------------------------------------
+MAX_FOLDERS = 50
+MAX_FOLDER_NAME = 120
+
+
+def clean_folder_name(raw: Any) -> str:
+    """A folder name as stored: Unicode NFC, inner whitespace collapsed, trimmed. ValueError (a message for
+    the user) when it is empty, has control characters or is too long. Any script is fine."""
+
+    if not isinstance(raw, str):
+        raise ValueError("Give the folder a name.")
+    name = " ".join(unicodedata.normalize("NFC", raw).split())
+    if not name:
+        raise ValueError("Give the folder a name.")
+    if any(unicodedata.category(ch).startswith("C") for ch in name):
+        raise ValueError("A folder name can't contain control characters.")
+    if len(name) > MAX_FOLDER_NAME:
+        raise ValueError(f"A folder name can be at most {MAX_FOLDER_NAME} characters.")
+    return name
+
+
+def folder_name_key(name: str) -> str:
+    """Two names are the same folder when they match ignoring case and Unicode form."""
+
+    return unicodedata.normalize("NFC", name).casefold()
+
+
+def stored_folders(settings: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The folders in settings, trusting stored data less than a request: an entry without a text id and name
+    or repeating an id is skipped."""
+
+    raw = (settings or {}).get("evidenceFolders")
+    out: dict[str, dict[str, Any]] = {}
+    for entry in raw[:MAX_FOLDERS] if isinstance(raw, list) else []:
+        if isinstance(entry, dict) and isinstance(entry.get("id"), str) and isinstance(entry.get("name"), str):
+            out.setdefault(entry["id"], entry)
+    return list(out.values())
+
+
+def document_folder(decision: dict[str, Any] | None, folder_ids: set[str]) -> str | None:
+    """The folder a summary document sits in, or None (top of Block 1): a decision naming a folder that
+    does not exist (deleted, or never there) counts as no folder."""
+
+    folder = (decision or {}).get("folderId")
+    return folder if isinstance(folder, str) and folder in folder_ids else None
+
+
 # --- where a record belongs by default ------------------------------------------------------
 @dataclass(frozen=True)
 class RecordPlacement:
@@ -580,7 +651,9 @@ def apply_placements(slots: list[Slot], overrides: Any, known_lines: set[str] | 
     """The reviewer's moves, in order: each ``{"from", "to"}`` moves the document's placement
     named ``from`` to ``to`` (its records with it). ``from`` is what the row showed
     (``DocRow.placement_from``): a line key, a block, or ``supporting:unassigned``, which also
-    covers placements on a line that no longer exists (given ``known_lines``). A move whose
+    covers placements on a line that no longer exists (given ``known_lines``), or ``ALL_PLACES``: every
+    place the document is in (saved when a move onto a line of another type has the document read
+    again, so its new records are filed where the reviewer put it). A move whose
     ``from`` the document no longer has is ignored; a move onto a place the document already
     has merges the two."""
 
@@ -592,7 +665,8 @@ def apply_placements(slots: list[Slot], overrides: Any, known_lines: set[str] | 
         source, target = move.get("from"), move.get("to")
         if not isinstance(source, str) or not isinstance(target, str) or source == target:
             continue
-        moving = [s for s in out if s.target == source or _effective(s, known) == source]
+        moving = list(out) if source == ALL_PLACES else [
+            s for s in out if s.target == source or _effective(s, known) == source]
         if not moving:
             continue
         stay = [s for s in out if s not in moving]

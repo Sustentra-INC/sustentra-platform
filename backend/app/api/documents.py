@@ -24,7 +24,7 @@ from backend.app.repositories.document_chunk_repository import DocumentChunkRepo
 from backend.app.repositories.processing_run_repository import ProcessingRunRepository
 from backend.app.services.document_content_service import UnreadableContent, UnsupportedContent, document_content
 from backend.app.services.document_file_types import served_type
-from backend.app.services.reviewed_evidence import mark_reread_items
+from backend.app.services.reviewed_evidence import mark_reread_items, reviews_for_latest_type
 from backend.app.services.document_processing_service import (
     STILL_READING_MESSAGE,
     DocumentProcessingService,
@@ -296,7 +296,9 @@ def latest_extraction_result(document_id: str, user: CurrentUser = Depends(s1_re
     from backend.app.api.reviews import current_service as review_service
 
     # A re-read can leave an earlier decision on a value it no longer fits: those items say so.
-    items = mark_reread_items(latest.get("items") or [], visible(review_service().list_by_document(document_id), user))
+    items = mark_reread_items(
+        latest.get("items") or [],
+        reviews_for_latest_type(results, visible(review_service().list_by_document(document_id), user)))
     return {
         "evidence_id": latest.get("evidence_id"),
         "document_id": latest.get("document_id"),

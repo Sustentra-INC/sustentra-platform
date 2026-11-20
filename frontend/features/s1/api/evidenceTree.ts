@@ -28,6 +28,10 @@ export interface CalculationLine {
   created_by_name?: string | null;
   /** The calculation this line feeds; null when none reads it (fugitive, process, steam…). */
   family?: CalculationFamily | null;
+  /** The document type this line holds (id and display name): a document of another type moved here is read again
+   *  as this one. Null when no extractor feeds the line (process, contractual). Absent on an older server. */
+  read_as_id?: string | null;
+  read_as?: string | null;
 }
 
 export type CalculationFamily = "stationary" | "mobile" | "electricity";
@@ -74,6 +78,18 @@ export interface TreeDocRow {
   value_family?: CalculationFamily | null;
   /** The placement this row stands for, sent as `from` when the row is moved (else the row's line key). */
   placement_from?: string;
+  /** A re-read this document's move asked for that has not finished, or failed (kept by the server, so it survives
+   *  a reload). Its values count on no line until a read of that type arrives. */
+  reread?: { canonical_type_id: string; type_name: string; status: "pending" | "failed"; error: string | null } | null;
+  /** Block 1 rows only: the folder the document is in, or null at the top of Block 1. Absent on an older server. */
+  folder_id?: string | null;
+}
+
+/** A folder in Block 1 and how many of its documents the tree shows (the server counts them). */
+export interface TreeFolder {
+  folder_id: string;
+  name: string;
+  documents: number;
 }
 
 export interface TreeLineNode {
@@ -107,6 +123,8 @@ export interface EvidenceTree {
   blocks: {
     summary: TreeDocRow[];
     summary_counts?: TreeCounts;
+    /** The folders of Block 1, one level. Absent on an older server (then Block 1 is flat). */
+    summary_folders?: TreeFolder[];
     unassigned: TreeDocRow[];
     unassigned_counts?: TreeCounts;
     supporting: { scopes: TreeScope[]; unassigned: TreeDocRow[]; unassigned_counts?: TreeCounts };
@@ -317,15 +335,87 @@ export function deleteEvidenceLine(engagementId: string, lineKey: string): Promi
   return api<LineAnswer>(`${lines(engagementId)}/${encodeURIComponent(lineKey)}`, { method: "DELETE" });
 }
 
-/** Moves one placement of a document. 409 when another tab moved it first. Answers the saved payload. */
+/** One entry of the engagement setting `evidenceFolders`; the server makes the id and records who added it. */
+export interface EvidenceFolderSetting {
+  id: string;
+  name: string;
+  created_by?: string;
+  created_at?: string;
+}
+
+/** What a folder action answers: the engagement's folders as they now stand, plus the folder or the count. */
+export interface FolderAnswer {
+  evidenceFolders: EvidenceFolderSetting[];
+  folder?: EvidenceFolderSetting;
+  documents_moved?: number;
+  /** A delete answers with the saved payload of every document that left the folder. */
+  documents?: Record<string, DocumentDecision>;
+}
+
+const folders = (engagementId: string) => `/engagements/${encodeURIComponent(engagementId)}/evidence-folders`;
+
+/** Adds a folder to Block 1. 422 says what is wrong with the name; 409 when the name is taken. */
+export function createEvidenceFolder(engagementId: string, name: string): Promise<FolderAnswer> {
+  return api<FolderAnswer>(folders(engagementId), { method: "POST", body: { name } });
+}
+
+export function renameEvidenceFolder(engagementId: string, folderId: string, name: string): Promise<FolderAnswer> {
+  return api<FolderAnswer>(`${folders(engagementId)}/${encodeURIComponent(folderId)}`, { method: "PATCH", body: { name } });
+}
+
+/** Deletes a folder; its documents go to the top of Block 1 (the count comes back). */
+export function deleteEvidenceFolder(engagementId: string, folderId: string): Promise<FolderAnswer> {
+  return api<FolderAnswer>(`${folders(engagementId)}/${encodeURIComponent(folderId)}`, { method: "DELETE" });
+}
+
+/** Puts a Block 1 document in a folder, or out of it (null: the top of Block 1). Answers the saved payload. */
+export function setDocumentFolder(
+  engagementId: string,
+  documentId: string,
+  folderId: string | null
+): Promise<{ document_id: string; payload: DocumentDecision }> {
+  return api(`/engagements/${encodeURIComponent(engagementId)}/documents/${encodeURIComponent(documentId)}/folder`, {
+    method: "POST",
+    body: { folder_id: folderId },
+  });
+}
+
+/** The read a move asks for: the document read again as the type of the line it was moved onto. */
+export interface RereadRequest {
+  canonical_type_id: string;
+  type_name: string;
+}
+
+/** Moves one placement of a document. 409 when another tab moved it first. Answers the saved payload, and `reread`
+ *  when the document is of another type than the line it was moved onto: the client then asks the extraction queue
+ *  to read it as that type (`requestRead`). */
 export function moveEvidenceDocument(
   engagementId: string,
   documentId: string,
-  move: Placement
-): Promise<{ document_id: string; payload: DocumentDecision }> {
+  move: Placement,
+  /** A document that is also on other places must say: "reread" reads it again as the line's type (taking it off
+   *  those places), "move_only" moves just this placement and leaves its type alone. */
+  reread?: RereadChoice
+): Promise<{ document_id: string; payload: DocumentDecision; reread?: RereadRequest | null }> {
   return api(`/engagements/${encodeURIComponent(engagementId)}/documents/${encodeURIComponent(documentId)}/placements`, {
     method: "POST",
-    body: move,
+    body: reread ? { ...move, reread } : move,
+  });
+}
+
+export type RereadChoice = "reread" | "move_only";
+
+/** Keeps on the server what became of the read a move asked for: `failed` with the reason (the document stays out of
+ *  the calculation), `pending` to try again, `done` when the wait is over. */
+export function setRereadState(
+  engagementId: string,
+  documentId: string,
+  state: "pending" | "failed" | "done",
+  error?: string
+): Promise<{ document_id: string; payload: DocumentDecision }> {
+  return api(`/engagements/${encodeURIComponent(engagementId)}/documents/${encodeURIComponent(documentId)}/reread-state`, {
+    method: "POST",
+    body: error ? { state, error } : { state },
   });
 }
 
@@ -352,7 +442,11 @@ export interface EvidenceActivityItem {
     | "evidence_line_renamed"
     | "evidence_line_deleted"
     | "evidence_document_moved"
-    | "evidence_document_facility_set";
+    | "evidence_document_facility_set"
+    | "evidence_folder_created"
+    | "evidence_folder_renamed"
+    | "evidence_folder_deleted"
+    | "evidence_document_folder_set";
   at: string;
   actor_name: string | null;
   line_key?: string;
@@ -366,6 +460,12 @@ export interface EvidenceActivityItem {
   to_label?: string;
   facility_id?: string;
   facility_name?: string;
+  /** The move had the document read again as this type (display name). */
+  reread_as_label?: string;
+  /** "reread" or "move_only": what the reviewer chose for a document that is also on other places. */
+  reread_choice?: "reread" | "move_only";
+  folder_id?: string | null;
+  folder_name?: string;
   /** The reviewer took Claude's suggestion. */
   suggested?: boolean;
 }

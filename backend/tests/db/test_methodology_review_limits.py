@@ -75,7 +75,7 @@ def test_the_generic_list_filters_removed_rows_and_uses_the_review_shape() -> No
     call("DELETE", f"{BASE}/{eid}/methodology-review/{gone}")
     items = call("GET", f"{BASE}/{eid}/workpaper-items?kind=methodology").json()["items"]
     assert sorted(i["item_key"] for i in items) == sorted(["exclusion:boundary", kept])
-    assert all(set(i["payload"]) == {"field_id", "suggestion", "decision", "history", "user_added"} for i in items)
+    assert all(set(i["payload"]) == {"field_id", "suggestion", "decision", "history", "value_history", "user_added"} for i in items)
 
 
 def test_reverting_a_reviewer_added_row_restores_its_blank_value() -> None:

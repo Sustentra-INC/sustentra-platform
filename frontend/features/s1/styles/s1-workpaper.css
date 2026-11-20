@@ -2990,6 +2990,10 @@ html, body { margin: 0; padding: 0; }
 .s1-setup-add:hover { background: var(--accent-softer); border-color: var(--accent-solid); }
 .s1-setup-add:active { transform: scale(0.98); }
 .s1-setup-add svg { width: 0.95rem; height: 0.95rem; }
+.s1-team-picker { display: flex; flex-direction: column; gap: var(--sp-2); }
+.s1-team-picker input { width: 100%; }
+.s1-team-picker__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.s1-team-picker__list button { text-align: left; }
 /* Narrow: the name and its remove button share row one; every other field takes a full-width line below.
    Team rows get the facility rows' divider and tighter in-row gap, so a login reads with its own name, not the next one. */
 @media (max-width: 48rem) {
@@ -3803,3 +3807,7 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-bell__item.is-unread { background: var(--accent-soft); font-weight: var(--weight-strong); }
 .s1-bell__text { overflow-wrap: anywhere; font-size: var(--text-md); }
 .s1-bell__when { font-size: var(--text-sm); font-weight: var(--weight-regular); }
+/* Setup: where the page says whether its edits are saved */
+.s1-setup-savebar { display: flex; align-items: center; gap: var(--sp-3); }
+.s1-setup-save { font-size: var(--text-sm); color: var(--ink-3); white-space: nowrap; }
+.s1-setup-save--error { color: var(--state-blocking-fg); white-space: normal; }

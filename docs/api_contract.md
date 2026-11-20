@@ -215,9 +215,12 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     or over AI_MONTHLY_CAP_USD) or `no_documents` (no document whose latest type is a client-prepared summary
     type), and `reason` is the sentence to show; both are `null` when enabled. Checked in that order.
 - GWP horizon and use note. The gwp value is `{set, horizon, applies_to?}`. `horizon` may be `Not stated`: the set is named and the document gives no horizon for it, so "AR5" alone is kept (Claude's "Not stated" is refused when the quote ties a horizon to that set, and a set the quote does not name is dropped). `applies_to` is an optional use note of at most 200 characters ("default", "embedded in the supplier factors"), left out when blank; Claude's note is kept only when it is printed in the same quote in the clause that names that set (a clause ends at a semicolon, a sentence end or a line break; "AR5 for energy; AR6 for refrigerants" gives AR6 "for refrigerants"), and it is stored in the quote's own casing; a note from another set's clause is blanked without costing the set. Every set the document names is kept, each with its own quote; entries dedupe on set, horizon and note, and a `Not stated` entry collapses into a stated horizon for the same set. Horizon wording includes "100 year", "100-yr" and "one hundred-year".
+- Revert and the value history (`value_history`, Claire C-M3). Every accept, edit or reject pushes the decision it replaces onto the record's `value_history` (the decisions before the current one, oldest first, at most 10, fewer if the record would pass 32 KB with room kept for the event history; listed on every record, `[]` when empty). `revert` (any decided state; a pending field answers 409) pops the last one and makes it the decision again, with its own status (accepted, edited or rejected with its reason) and value, checked against the field again: an entry that no longer validates is skipped, never restored. A previous decision that was saved but cannot be restored (it no longer validates, is not a decision, or was too large to keep, recorded as `previous_lost`) refuses the revert with 409 "The previous value can no longer be restored (<reason>). Edit the value instead."; nothing changes and nothing is logged. With no previous decision ever saved it restores the detected value (the suggestion stays on the field, pending, ready to accept); with no suggestion either the field is empty (a reviewer-added row goes back to its blank value). The history event of a revert carries `restored` (`previous`, `detected` or `empty`), and every revert writes a `methodology_decision` audit event with `{field_id, action: "revert", status, restored}` (never a value). Bodies cannot write `value_history`.
+- Entity rows, "Included" (Claire C-M2). The per-entity Yes / No is labelled "Included" and has its own key, `included` ("Yes", "No" or null when nobody has said). Claude marks every entity it keeps Included, because an entity row only comes from an inclusion statement. What the report quoted about operational control is a separate optional part, `control_quoted` ("Yes" or "No", present only when quoted, `show_if_present: true`), set from the quote's own wording and never from Claude's value. An entity value saved before this change kept the quoted operational control under `operational_control`: on read (and when validated) that key moves to `control_quoted` and `included` stays null until a reviewer confirms it, so an old record never reads as "Included: No". The stored record is not rewritten by a read.
+- Mark for client follow-up (Claire C-M4). A Methodology row raises a client request through the ordinary `POST /v1/engagements/{id}/requests`, with `source.origin` `methodology_row` and `source.fieldKey` the row's field id (a fixed field, or a row stored on this engagement and not removed: an id that is not even the shape of a row id is 422, a well formed id with no such row here, or a removed one, is 404). It lands in Coverage & requests like any other not-yet-sent request and is sent and resolved the same way. A row has at most one open (not yet sent, or sent) request: the server makes the request's id from the row (`ASK-METH-<field id>`, the id in the body is not used), so a second click, a second tab or a retry gets the open request back (200, nothing created, no second audit event) instead of a duplicate. A resolved or withdrawn request is closed: asking again creates a new one (201) under the next key. The screen shows "Requested · <date>" on a row with an open request.
 - `POST .../{field_id}/accept` takes the suggestion's value, or the value already set. `POST .../{field_id}/edit`
   `{value}`. `POST .../{field_id}/reject` `{reason}` (required, at most 500 characters). `POST
-  .../{field_id}/revert` returns to pending. Each answers the updated record. Accept and reject only work from
+  .../{field_id}/revert` goes back to the PREVIOUS value (Claire C-M3, below). Each answers the updated record. Accept and reject only work from
   pending; edit works from any state; revert from any decided state.
 - `POST .../{field_id}/reveal` ("Add an item", no body) shows a hidden optional field and keeps it shown
   (answers `{field_id, shown: true}`; repeating it is fine). A field that is always shown answers 422, an unknown field or a row 404. It
@@ -415,8 +418,13 @@ text or file name.
 | `POST /v1/engagements/{id}/evidence-lines` | `{category, level2_label, anchor_kind, anchor_id?, label, scope?}` | 201 `{line, evidenceLines}` |
 | `PATCH /v1/engagements/{id}/evidence-lines/{line_key}` | `{label}` | 200 `{line, evidenceLines}` |
 | `DELETE /v1/engagements/{id}/evidence-lines/{line_key}` | none | 200 `{documents_moved, documents, evidenceLines}` |
-| `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to}` | 200 `{document_id, payload}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to, reread?}` | 200 `{document_id, payload, reread}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/reread-state` | `{state: "pending"\|"failed"\|"done", error?}` | 200 `{document_id, payload}` |
 | `POST /v1/engagements/{id}/documents/{document_id}/facility` | `{facility_id, expected_facility_id?}` | 200 `{document_id, payload}` |
+| `POST /v1/engagements/{id}/evidence-folders` | `{name}` | 201 `{folder, evidenceFolders}` |
+| `PATCH /v1/engagements/{id}/evidence-folders/{folder_id}` | `{name}` | 200 `{folder, evidenceFolders}` |
+| `DELETE /v1/engagements/{id}/evidence-folders/{folder_id}` | none | 200 `{documents_moved, documents, evidenceFolders}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/folder` | `{folder_id}` (null: out of any folder) | 200 `{document_id, payload}` |
 
 * **Create** checks the same as saving the setting (anchor on a Setup facility, vehicle group or the
   company; letters or numbers in the name; at most 200 lines; not a line the system creates), 422 with a
@@ -459,8 +467,39 @@ Audit events (`target_type` "engagement", `target_id` the engagement):
 | `evidence_line_created` | `line_key, label, level2_label, category` |
 | `evidence_line_renamed` | `line_key, old_label, new_label` |
 | `evidence_line_deleted` | `line_key, label, documents_moved` |
-| `evidence_document_moved` | `document_id, from, to, from_label, to_label` |
+| `evidence_document_moved` | `document_id, from, to, from_label, to_label, reread_as?, reread_as_label?` |
 | `evidence_document_facility_set` | `document_id, facility_id, facility_name, suggested` |
+| `evidence_folder_created` | `folder_id, folder_name` |
+| `evidence_folder_renamed` | `folder_id, old_label, new_label` |
+| `evidence_folder_deleted` | `folder_id, folder_name, documents_moved` |
+| `evidence_document_folder_set` | `document_id, folder_id, from_label, to_label` |
+
+Block 1 folders (Summary documents and workbook), one level: `settings.evidenceFolders` holds `{id, name, created_by,
+created_at}` (changed only by these actions; a settings save's copy is dropped, as for `evidenceLines`), and a document's
+folder is `payload.folderId` (kept by the server on a document save, like `placements`). Names are Unicode NFC, trimmed,
+at most 120 characters, unique ignoring case (409), at most 50 folders. Only a document in Block 1 can go in a folder
+(422); one moved out of Block 1 leaves its folder. Deleting a folder keeps its documents and puts them at the top of Block 1,
+in one transaction, answering the changed payloads. The evidence tree sends `blocks.summary_folders` (`folder_id, name,
+documents`) and `folder_id` on each Block 1 row.
+
+Re-read on move: a document moved onto a line whose type differs from the document's (a summary or workbook document, an
+unidentified one, a bill of another kind) answers `reread: {canonical_type_id, type_name}`, the type of the line
+(`read_as_id` / `read_as` on each line of the evidence tree); otherwise `reread` is null (a block, a line no extractor feeds
+such as process or contractual, a document of the line's type, or one being read now). The move is saved first, as one move
+from `"*"` (every place the document is in), because the new read files its records again. The client then calls
+`POST /v1/documents/{id}/processing-runs` with `canonical_type_id_override` set to `reread.canonical_type_id`: the existing
+extraction queue. The earlier extraction result and reviewer decisions stay in the record; no earlier decision applies to
+the new values, which start unreviewed. The audit row also holds `reread_as` and `reread_as_label`. If the read fails the
+document stays on the line it was moved to, with the failure on its row.
+
+A document that is also on other places must choose (`reread` in the move body, 409 without it): `"reread"` takes it off
+those places (the move is `from "*"`), `"move_only"` moves just that placement as an ordinary move and asks for no read;
+the audit row holds `reread_choice`. A re-read keeps `payload.rereadPending` (`canonical_type_id, type_name, requested_at,
+error`; set by the move, changed only by `.../reread-state`, kept by a document save) until a read of that type is stored. While
+it is set the document's old-type records count on no line (uncounted reason `awaiting_reread`, hint "Re-read in
+Evidence.") and are left out of the line schedule; the tree row carries `reread: {canonical_type_id, type_name, status:
+"pending"|"failed", error}`, so a failure survives a reload. Decisions made before the latest read of a different document
+type was stored do not apply to its values (they stay in the record).
 
 `POST .../documents/{document_id}/facility` places a document on a Setup facility: it saves the reviewer's own facility
 decision (`payload.facilityId`, which wins over every rule), under the engagement's row lock, and writes

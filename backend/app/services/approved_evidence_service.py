@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from backend.app.domain.evidence import ApprovedEvidence, ApprovedEvidenceField, ApprovedEvidenceReviewStatus
 from backend.app.repositories import s1_stores
-from backend.app.services.reviewed_evidence import applicable_decisions
+from backend.app.services.reviewed_evidence import applicable_decisions, reviews_for_latest_types
 
 REQUIRED_REVIEW_DECISION_FIELDS = (
     "review_decision_id",
@@ -99,14 +99,19 @@ class ApprovedEvidenceService:
         org_id: str | None = None,
         current_items: list[dict] | None = None,
         read_documents: set[str] | None = None,
+        read_results: list[dict] | None = None,
     ) -> dict:
         """``current_items``: the extracted items of the document's latest read. Given, only the decisions
         that still apply to one of them are projected (a re-read can leave an old decision on another
-        value); the rest stay in the review history and count as unreviewed. None projects every decision."""
+        value); the rest stay in the review history and count as unreviewed. None projects every decision.
+        ``read_results``: the document(s)' extraction results, oldest first: a decision made before a read as another
+        document type was stored does not apply to that read's values either."""
 
         decisions = self._review_repository.list_by_evidence(evidence_id)
         if org_id is not None:  # SEC-001: never project another org's (or unowned) decisions
             decisions = [d for d in decisions if d.get("org_id") == org_id]
+        if read_results:
+            decisions = reviews_for_latest_types(read_results, decisions)
         if current_items is not None:
             decisions = applicable_decisions(current_items, decisions, read_documents)
         if not decisions:

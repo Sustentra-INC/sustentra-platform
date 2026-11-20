@@ -16,6 +16,8 @@ export interface FieldPart {
   allowed?: string[];
   /** An enum or number the document may not give: the editor offers "Not stated" and sends null. */
   optional?: boolean;
+  /** Shown in the editor only when the value already has it (kept apart from the editable fields). */
+  show_if_present?: boolean;
 }
 
 export interface CatalogField {

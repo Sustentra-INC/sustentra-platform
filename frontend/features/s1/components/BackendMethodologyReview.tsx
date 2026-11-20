@@ -22,6 +22,12 @@ import {
   type PrefillResult,
 } from "../api/methodologyReview";
 import { useAssignTask } from "../../tasks/AssignTaskContext";
+import type { EngagementConfig } from "../types";
+import type { Ask } from "../types/requests";
+import type { MaybePromise } from "../requests/maybePromise";
+import { andThen } from "../requests/maybePromise";
+import type { AskDraft } from "../requests/requestsStore";
+import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { InfoTip } from "./InfoTip";
 
 /**
@@ -67,6 +73,27 @@ const ADD_ROW_LABEL: Record<string, string> = {
 /** Options that stand alone (the server's STANDALONE_OPTIONS): the explicit answer when nothing is named. */
 const STANDALONE = ["None", "Not stated"];
 const isStandalone = (option: string) => STANDALONE.includes(option);
+
+/** "Mark for client follow-up": what a row needs from the page that mounts it (the same request store as Add to requests). */
+export interface FollowUpSupport {
+  engagement: EngagementConfig;
+  asks: Ask[];
+  onSaveAsk: (draft: AskDraft) => MaybePromise<unknown>;
+  onOpenRequests?: () => void;
+  /** The server records the signed-in user as the person who raised it. */
+  serverRecordsActor?: boolean;
+}
+
+/** The row's open follow-up request (not yet sent, or sent): one per row. A resolved or withdrawn one is closed. */
+export function openFollowUp(asks: Ask[], fieldId: string): Ask | undefined {
+  return asks.find((a) => a.source.origin === "methodology_row" && a.source.fieldKey === fieldId && (a.state === "not_yet_sent" || a.state === "requested"));
+}
+
+/** "Nov 20, 2026" in the reader's locale, or the stamp as it came when it is not a date. */
+function requestedOn(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
 /** One folding rule for option names, like the server's: case-folded, single spaces. */
 const foldOption = (text: string) => text.toLowerCase().replaceAll("\u00df", "ss").split(/\s+/).filter(Boolean).join(" ");
@@ -124,11 +151,11 @@ function valueText(value: MethodologyValue | undefined): string {
     const basis = typeof value.basis === "string" && value.basis ? `, ${value.basis.toLowerCase()}` : "";
     return `${value.start}${flag(value.start_implied)} to ${value.end}${flag(value.end_implied)}${basis}`;
   }
-  if (typeof value === "object" && typeof value.name === "string" && "operational_control" in value) {
+  if (typeof value === "object" && typeof value.name === "string" && ("included" in value || "operational_control" in value)) {
     // An entity: each percentage is optional, so each is labelled (a bare "51" would not say which one it is).
     const pct = (v: MethodologyValue | undefined, label: string) => (typeof v === "number" ? [`${label} ${v}%`] : []);
     const facilities = Array.isArray(value.facilities) && value.facilities.length ? [`facilities: ${value.facilities.join(", ")}`] : [];
-    return [value.name, ...facilities, ...pct(value.equity_share_pct, "equity share"), ...pct(value.financial_control, "financial control"), ...(value.operational_control ? [`operational control: ${valueText(value.operational_control)}`] : [])]
+    return [value.name, ...facilities, ...pct(value.equity_share_pct, "equity share"), ...pct(value.financial_control, "financial control"), ...(value.included ? [`included: ${valueText(value.included)}`] : []), ...(value.control_quoted || value.operational_control ? [`operational control (as quoted): ${valueText((value.control_quoted ?? value.operational_control) as MethodologyValue)}`] : [])]
       .filter(Boolean)
       .join(" · ");
   }
@@ -156,7 +183,7 @@ export function methodologyActivityFrom(data: MethodologyReviewData): { at: stri
       who: h.by?.name ?? "Reviewer",
       what: `${ACTION_WORD[h.action] ?? h.action.replaceAll("_", " ")} on methodology: ${name}`,
     }));
-    if (record.suggestion) entries.push({ at: record.suggestion.suggested_at, who: "Claude", what: `Suggested by Claude on methodology: ${name}` });
+    if (record.suggestion) entries.push({ at: record.suggestion.suggested_at, who: "Sustentra's AI", what: `Suggested by Sustentra's AI on methodology: ${name}` });
     return entries;
   });
 }
@@ -188,8 +215,9 @@ function ValueEditor({
   onCancel: () => void;
   busy: boolean;
 }) {
-  const parts = def.parts ?? null;
   const current = start !== null && typeof start === "object" && !Array.isArray(start) ? start : {};
+  // A part flagged show_if_present (operational control as quoted) is shown, and kept, only when the value has it.
+  const parts = def.parts ? def.parts.filter((p) => !p.show_if_present || (current[p.key] !== undefined && current[p.key] !== null)) : null;
   const [draft, setDraft] = useState<Record<string, string>>(() =>
     Object.fromEntries((parts ?? []).map((p) => [p.key, valueText(current[p.key] as MethodologyValue)]))
   );
@@ -401,6 +429,8 @@ function FieldRow({
   record,
   busy,
   entitiesNamed,
+  followUp,
+  onMarkFollowUp,
   onAct,
   onOpenDocument,
 }: {
@@ -410,6 +440,8 @@ function FieldRow({
   busy: boolean;
   /** True when at least one entity row has a name: then a boundary sentence is not "the only" thing the report gives. */
   entitiesNamed: boolean;
+  followUp?: FollowUpSupport;
+  onMarkFollowUp: (def: CatalogField) => void;
   onAct: (run: () => Promise<unknown>) => void;
   onOpenDocument: (documentId: string) => void;
 }) {
@@ -424,6 +456,7 @@ function FieldRow({
   // A period saved before it became two dates is kept as the text it was; the reviewer re-enters it as dates.
   const oldText = def.kind === "date_range" && typeof decision?.value === "string" && decision.value ? decision.value : null;
   const suggestionIsOldText = def.kind === "date_range" && typeof suggestion?.value === "string";
+  const asked = followUp ? openFollowUp(followUp.asks, def.fieldId) : undefined;
   const finish = (run: () => Promise<unknown>) => {
     setMode("view");
     setReason("");
@@ -449,7 +482,7 @@ function FieldRow({
 
       {suggestion ? (
         <div className="s1-mb-suggest">
-          <span className="s1-chip s1-mb-chip">Suggested by Claude</span>
+          <span className="s1-chip s1-mb-chip">Suggested by Sustentra&apos;s AI</span>
           <span className="s1-mr-value">{valueText(suggestion.value)}</span>
           {def.value_note && !entitiesNamed ? <span className="s1-mr-muted">{def.value_note}</span> : null}
           {suggestion.evidence?.length ? (
@@ -559,6 +592,22 @@ function FieldRow({
               Assign to…
             </button>
           ) : null}
+          {followUp ? (
+            asked ? (
+              <>
+                <span className="s1-chip s1-mb-chip">Requested · {requestedOn(asked.raisedAt)}</span>
+                {followUp.onOpenRequests ? (
+                  <button type="button" className="s1-mr-link" aria-label={`View in requests: ${def.label}`} onClick={followUp.onOpenRequests}>
+                    View in requests
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <button type="button" className="s1-button s1-button--compact" disabled={busy} aria-label={`Mark for client follow-up: ${def.label}`} onClick={() => onMarkFollowUp(def)}>
+                Mark for client follow-up
+              </button>
+            )
+          ) : null}
           {record.userAdded ? (
             <button type="button" className="s1-mr-link" disabled={busy} aria-label={`Remove row: ${def.label}`} onClick={() => finish(() => removeRow(engagementId, def.fieldId))}>
               Remove row
@@ -575,12 +624,17 @@ export function BackendMethodologyReview({
   onOpenDocument,
   onError,
   onActivity,
+  followUp,
 }: {
   engagementId: string;
   onOpenDocument: (documentId: string) => void;
   onError?: (error: unknown) => boolean;
   onActivity?: (entries: { at: string; who: string; what: string }[]) => void;
+  /** Present on pages that can raise client requests: adds "Mark for client follow-up" to every row. */
+  followUp?: FollowUpSupport;
 }) {
+  const [requestFor, setRequestFor] = useState<CatalogField | null>(null);
+  const [added, setAdded] = useState<string | null>(null);
   const [data, setData] = useState<MethodologyReviewData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -701,13 +755,13 @@ export function BackendMethodologyReview({
         <h2 className="s1-mr-card__title">
           Methodology review
           <InfoTip label="Methodology review">
-            Claude reads the client&apos;s reports and suggests what they state, each with a quote. Nothing counts until you accept or edit it.
+            Sustentra&apos;s AI reads the client&apos;s reports and suggests what they state, each with a quote. Nothing counts until you accept or edit it.
           </InfoTip>
         </h2>
         <span className="s1-mr-muted">{pending} suggested, waiting for review</span>
         <span className="s1-mr-actions">
           <button type="button" className="s1-button s1-button--pri" disabled={busy || prefilling || aiOff !== null} onClick={() => setConfirming(true)}>
-            {prefilling ? "Reading the reports…" : "Read the client's reports with Claude"}
+            {prefilling ? "Reading the reports…" : "Read the client's reports with Sustentra's AI"}
           </button>
           {aiOff ? <span className="s1-mb-ai">{aiOff}</span> : null}
         </span>
@@ -716,7 +770,7 @@ export function BackendMethodologyReview({
       {confirming ? (
         <div className="s1-mb-confirm" role="alertdialog" aria-label="Read the client's reports">
           <p>
-            Claude will read this engagement&apos;s report documents (the GHG inventory report, boundary statement and methodology documents, up to five) and suggest values with quotes. Suggestions need your review before they count. The result will list the documents it read.
+            Sustentra&apos;s AI will read this engagement&apos;s report documents (the GHG inventory report, boundary statement and methodology documents, up to five) and suggest values with quotes. Suggestions need your review before they count. The result will list the documents it read.
           </p>
           <span className="s1-mr-actions">
             <button type="button" className="s1-button s1-button--pri" disabled={prefilling} onClick={() => void runPrefill()}>
@@ -786,11 +840,49 @@ export function BackendMethodologyReview({
           </div>
           <ul className="s1-mb-list">
             {defs.map((def) => (
-              <FieldRow key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} entitiesNamed={entitiesNamed} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
+              <FieldRow key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} entitiesNamed={entitiesNamed} followUp={followUp} onMarkFollowUp={setRequestFor} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
             ))}
           </ul>
         </section>
       ))}
+
+      {added ? (
+        <p className="s1-mb-result" role="status">
+          {added}
+        </p>
+      ) : null}
+
+      {followUp && requestFor ? (
+        <AddToRequestsModal
+          target={followUpTarget(requestFor, records.get(requestFor.fieldId), followUp.engagement)}
+          engagement={followUp.engagement}
+          serverRecordsActor={followUp.serverRecordsActor}
+          onCancel={() => setRequestFor(null)}
+          onAdd={(draft) =>
+            andThen(followUp.onSaveAsk(draft), () => {
+              setRequestFor(null);
+              setAdded(`${requestFor.label}: added to requests, not sent yet.`);
+            })
+          }
+        />
+      ) : null}
     </section>
   );
+}
+
+/** The Add to requests window's target for a Methodology row: the row's label and what it holds now. */
+export function followUpTarget(def: CatalogField, record: MethodologyRecord | undefined, engagement: EngagementConfig): AddToRequestsTarget {
+  const decided = record?.decision && record.decision.status !== "pending" ? record.decision.value : null;
+  const now = valueText((decided ?? record?.suggestion?.value) as MethodologyValue);
+  const year = engagement.reportingPeriod.start.slice(0, 4);
+  return {
+    origin: "methodology_row",
+    fieldKey: def.fieldId,
+    itemLabel: def.label,
+    facilityName: null,
+    period: year ? `FY ${year}` : null,
+    headerLine: `Methodology review · ${def.label}`,
+    defaultType: "clarify",
+    prefill: now ? `${def.label}: please confirm. We have "${now.slice(0, 300)}".` : `${def.label}: please tell us what applies.`,
+  };
 }
