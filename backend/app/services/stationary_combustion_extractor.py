@@ -46,6 +46,7 @@ CONF_SAME_CELL = 0.92
 CONF_NEXT_CELL = 0.9
 CONF_TABLE = 0.88
 CONF_NEXT_ROW = 0.8
+CONF_FOOTER_SUPPLIER = 0.45  # a name read only from a footer or a copyright line: below the review threshold
 CONF_LETTERHEAD = 0.75
 CONF_DOCUMENT_SCAN = 0.7
 CONF_INHERITED = 0.85  # record field taken from the document header (e.g. statement period)
@@ -271,6 +272,23 @@ _NUMBER_RE = re.compile(
 _EXPORTED_FROM_RE = re.compile(
     r"\bexported (?:from|by)\s+(.+?)(?:\s+(?:business |customer |online |web )?(?:portal|account|website)\b|\s+on\s|\s+\d{1,2}/\d{1,2}/\d{2,4}|$)",
     re.IGNORECASE)
+# A footer that names the organisation behind a portal export: "Data exported 07/08/2025 from Sierra Basin Energy Co.
+# MyAccount portal." or "\u00a9 2025 Sierra Basin Energy Co. All rights reserved". A lower candidate than the letterhead.
+_FOOTER_EXPORT_RE = re.compile(
+    r"\bexported(?:\s+(?:on\s+)?\d{1,2}[/.]\d{1,2}[/.]\d{2,4})?\s+(?:from|by)\s+(.+?)"
+    r"(?:\s+(?:my\s?account|(?:business |customer |online |web )?(?:portal|account|website))\b|\s+on\s|\.\s|$)",
+    re.IGNORECASE)
+_FOOTER_COPYRIGHT_RE = re.compile(r"\u00a9\s*(?:\d{4}(?:\s*[-\u2013]\s*\d{4})?\s+)?(.+?)(?:\.?\s+all rights\b|\s*[|\u00b7]|$)",
+                                 re.IGNORECASE)
+# An email's header lines (the body that follows holds the bill's own letterhead).
+# A line that credits the software behind a portal or a bill, and the vendors known to be behind them: "Powered by Itron",
+# "\u00a9 Oracle Utilities". Never the supplier.
+_VENDOR_LINE = re.compile(
+    r"\b(?:powered by|built by|developed by|software|platform|cloud|technologies|systems)\b"
+    r"|\b(?:oracle|itron|sap|opower|bidgely|zuora|hansen|landis)\b", re.IGNORECASE)
+_FORWARDED = re.compile(r"\bfwd?:|forwarded message|original message", re.IGNORECASE)
+_GREETING = re.compile(r"\s*(?:hello|dear|hi|hey|good (?:morning|afternoon|evening))\b", re.IGNORECASE)
+_MAIL_HEADER = re.compile(r"\s*(?:from|to|cc|bcc|sent|date|subject|reply-to|return-path)\s*:", re.IGNORECASE)
 _SLASH_DATE_RE = re.compile(r"(?<!\d)(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})(?!\d)")
 
 
@@ -356,6 +374,7 @@ class UsageRecord:
     fuel: Located | None = None
     extra: dict[str, Located] = field(default_factory=dict)  # subclass EXTRA_COLUMNS values
     energy: str | None = None  # thermal bills: the energy type told from this line (steam / hot_water / chilled_water)
+    quantity_header: str | None = None  # table lines: the header of the quantity's own column (not the whole header row)
 
 
 @dataclass
@@ -1472,7 +1491,7 @@ class StationaryCombustionExtractor:
         # A "Service For" block is the site's (``SERVICE_BLOCK_HEADINGS``), but the first line in it that is not a
         # site is still a customer, so its name is the other party too.
         customers = [name for name in (self._party_name(rows, BILL_TO_LABELS),
-                                       self._party_name(rows, (SERVICE_BLOCK_HEADINGS[:1],))) if name]
+                                       self._party_name(rows, (SERVICE_BLOCK_HEADINGS[:1],)), self._greeted(rows)) if name]
 
         def other_party(found: Located | None) -> Located | None:
             return None if found is not None and _is_customer(found.raw.split(",")[0], customers) else found
@@ -1492,7 +1511,62 @@ class StationaryCombustionExtractor:
         if labeled is not None:
             labeled.raw = re.split(r"\s{2,}|\s+(?:GST|HST|VAT|Tax ID|EIN)\b", labeled.raw)[0].strip()
             return labeled
-        return self._exported_from(rows) or other_party(self._remit_to(rows))
+        return (self._exported_from(rows) or other_party(self._remit_to(rows))
+                or other_party(self._from_header(rows)) or other_party(self._footer_organisation(rows)))
+
+    @staticmethod
+    def _footer_organisation(rows: Sequence[Row]) -> Located | None:
+        """The organisation a portal export or a page footer names ("Data exported 07/08/2025 from Sierra Basin
+        Energy Co. MyAccount portal"; "\u00a9 2025 Sierra Basin Energy Co. All rights reserved"): a lower candidate
+        than the letterhead, the labels and the payee."""
+
+        for row in reversed(rows):
+            for cell in row.cells:
+                for pattern in (_FOOTER_EXPORT_RE, _FOOTER_COPYRIGHT_RE):
+                    match = pattern.search(cell.text)
+                    if match is None or _VENDOR_LINE.search(cell.text):
+                        continue
+                    name = match.group(1).strip(" ,;")
+                    words = re.sub(r"[^\w ]+", " ", name.casefold()).split()
+                    if words and words[-1] in ("co", "inc", "corp", "ltd") and cell.text[match.end(1):match.end(1) + 1] == ".":
+                        name += "."  # the abbreviation's own full stop
+                    if (name and len(words) >= 2 and words[-1] in _ORGANISATION_WORDS
+                            and StationaryCombustionExtractor._looks_like_org_name(name)):
+                        return Located(name, [cell], row, CONF_FOOTER_SUPPLIER, context=cell.text)
+        return None
+
+    @staticmethod
+    def _from_header(rows: Sequence[Row]) -> Located | None:
+        """An email's "From: Display Name <address>": the display name, never the address or its angle brackets. The
+        bill's own letterhead in the body is preferred (it is tried first); an address alone names nobody. A
+        forwarded email (Fwd:, "Forwarded message", "Original Message") has the forwarder's From, not the sender's."""
+
+        if any(_FORWARDED.search(row.text) for row in rows):
+            return None
+        for row in rows[:6]:
+            if len(row.cells) != 1:
+                continue
+            match = re.match(r"\s*from\s*:\s*(.+)$", row.cells[0].text, re.IGNORECASE)
+            if match is None:
+                continue
+            name = re.split(r"\s*<", match.group(1))[0].strip().strip("\"'").strip()
+            if ("@" in name or not re.search(r"[^\W\d_]{2}", name)
+                    or not StationaryCombustionExtractor._looks_like_org_name(name)
+                    or not set(_company_words(name) + re.sub(r"[^\w ]+", " ", name.casefold()).split())
+                    & (_LEGAL_SUFFIXES | _UTILITY_WORDS | _ORGANISATION_WORDS | {"light", "lights", "stadtwerke"})):
+                return None  # an address names nobody, and a person's name ("Maria M\u00fcller") is not an organisation
+            return Located(name, [row.cells[0]], row, CONF_LETTERHEAD - 0.15, context=row.cells[0].text)
+        return None
+
+    @staticmethod
+    def _greeted(rows: Sequence[Row]) -> str:
+        """Who a message greets ("Hello Northgate Provisions Inc.,"): the customer, whatever else it names."""
+
+        for row in rows[:20]:
+            match = re.match(r"\s*(?:hello|dear|hi)\s+(.+?)\s*[,:]?\s*$", row.text, re.IGNORECASE) if len(row.cells) == 1 else None
+            if match is not None and len(match.group(1).split()) >= 2:
+                return match.group(1).rstrip(".,")
+        return ""
 
     def _party_name(self, rows: Sequence[Row], groups: Sequence[Sequence[str]]) -> str:
         """The name a billing-party label gives, as written ("" when the document has none)."""
@@ -1545,7 +1619,7 @@ class StationaryCombustionExtractor:
         for row in rows:
             for cell in row.cells:
                 match = _EXPORTED_FROM_RE.search(cell.text)
-                if match:
+                if match and not _VENDOR_LINE.search(match.group(1)) and not _VENDOR_LINE.search(cell.text.split("exported")[0]):
                     return Located(match.group(1).strip(), [cell], row, CONF_LETTERHEAD - 0.05, context=cell.text)
         return None
 
@@ -1555,11 +1629,15 @@ class StationaryCombustionExtractor:
         Without geometry (plain text), the first of the top lines naming a company.
         """
 
-        first_page = [r for r in rows if (r.page or 1) == (rows[0].page or 1)][:6] if rows else []
+        first_page = [r for r in rows if (r.page or 1) == (rows[0].page or 1)
+                      and not _MAIL_HEADER.match(r.text)][:6] if rows else []
         cells = [c for r in first_page for c in r.cells if c.box and c.box["top"] < 0.2]
         if not cells:
             for row in first_page[:4]:
                 text = row.cells[0].text
+                if (_GREETING.match(text) or _FOOTER_EXPORT_RE.search(text) or _FOOTER_COPYRIGHT_RE.search(text)
+                        or _VENDOR_LINE.search(text) or self._label_prefix(text, REMIT_LABELS[0]) is not None):
+                    continue  # a greeting names the customer; a footer or a Remit To line is not the sender's letterhead
                 if len(row.cells) == 1 and re.search(r"(?<!\w)(company|co\.?|inc\.?|llc|ltd\.?|corp\.?|utilities)(?!\w)", text, re.I):
                     name = re.split(r"\s+[-\u2013\u2014|]\s+", text)[0].strip()
                     if self._looks_like_org_name(name):
@@ -1574,10 +1652,58 @@ class StationaryCombustionExtractor:
         prefix = self._label_prefix(text, SUPPLIER_LABELS[0])
         if prefix is not None and prefix[1]:
             text = prefix[1]
-        if not self._looks_like_org_name(text):
+        if not self._looks_like_org_name(text) or _VENDOR_LINE.search(text):
             return None
         row = next(r for r in first_page if cell in r.cells)
-        return Located(self._trim_value(text), [cell], row, CONF_LETTERHEAD)
+        return Located(self._with_continuation(rows, row, cell, self._trim_value(text)), [cell], row, CONF_LETTERHEAD)
+
+    # What a letterhead name may run on to on a second line. Anything else under it is the customer's name block, a
+    # department, a tagline or an address, and never joins.
+    _NAME_CONTINUATIONS = frozenset({"power and light", "gas and electric", "light and power", "electric", "light",
+                                     "utilities", "utility district", "water and power"})
+    _NOT_A_NAME_CONTINUATION = re.compile(
+        r"\b(?:department|dept|service|services|billing|customer|inc|co|corp|llc)\b", re.IGNORECASE)
+
+    def _with_continuation(self, rows: Sequence[Row], row: Row, cell: Cell, text: str) -> str:
+        """A letterhead name that runs on to a second line directly under it ("RAINIER SOUND" over "POWER & LIGHT").
+        Only a known continuation phrase joins (power & light, gas & electric, light & power, electric, light,
+        utilities, utility district, water & power), never a line with department, service, billing, customer, Inc,
+        Co, Corp or LLC in it (a customer's name block, "NATURAL GAS SERVICE", "BILLING DEPARTMENT"), and only when
+        the line is no taller than the first and less than half a line below it."""
+
+        words = re.sub(r"[^\w ]+", " ", text.casefold()).split()
+        if cell.box is None or not words or words[-1] in LETTERHEAD_END_WORDS:
+            return text
+        bottom = cell.box["top"] + cell.box["height"]
+        for below in rows[row.index + 1:row.index + 3]:
+            if below.page != row.page:
+                break
+            for other in below.cells:
+                if other.box is None or abs(other.left - cell.left) > 0.02:
+                    continue
+                gap = other.box["top"] - bottom
+                line = other.text.strip()
+                phrase = " ".join(re.sub(r"[^\w ]+", " ", line.casefold().replace("&", " and ")).split())
+                if (0 <= gap <= 0.5 * cell.height and other.height <= cell.height and phrase in self._NAME_CONTINUATIONS
+                        and not self._NOT_A_NAME_CONTINUATION.search(line) and line.isupper() == text.isupper()):
+                    return f"{text} {line}"
+        return text
+        bottom = cell.box["top"] + cell.box["height"]
+        for below in rows[row.index + 1:row.index + 3]:
+            if below.page != row.page:
+                break
+            for other in below.cells:
+                if other.box is None or abs(other.left - cell.left) > 0.02:
+                    continue
+                gap = other.box["top"] - bottom
+                line = other.text.strip()
+                parts = re.sub(r"[^\w ]+", " ", line.casefold()).split()
+                if (0 <= gap <= cell.height and not re.search(r"\d", line) and 0 < len(parts) <= 4
+                        and any(part in LETTERHEAD_END_WORDS or part in ("light", "lights") for part in parts)
+                        and line.isupper() == text.isupper()  # a tagline in another case is not a name
+                        and self._label_prefix(line, self.ALL_LABELS) is None):
+                    return f"{text} {line}"
+        return text
 
     def _first_line_letterhead(self, first_page: Sequence[Row]) -> Located | None:
         """The first line of the page when it is alone on its row and its last word is an
@@ -1824,6 +1950,9 @@ class StationaryCombustionExtractor:
                 unit_located=unit_located,
                 hint=hint_cell.text if hint_cell is not None else None,
                 fuel=fuel,
+                # A row with fewer cells than the header, placed by order only, may have shifted: its quantity
+                # column is then not certain, so the whole header row judges it (as before).
+                quantity_header=None if self._shifted_row(row, header_cells) else header_text,
             )
             for key in self.EXTRA_COLUMNS:
                 cell = assigned.get(columns[key]) if key in columns else None
@@ -1833,6 +1962,19 @@ class StationaryCombustionExtractor:
             self._row_dates(record, row, assigned, columns, header_row)
             records.append(record)
         return records
+
+    @staticmethod
+    def _shifted_row(row: Row, header_cells: Sequence[Cell]) -> bool:
+        """True when ``row`` was placed under the header by order alone and has fewer cells than the header:
+        a blank cell may have moved the others one column to the left."""
+
+        if len(row.cells) >= len(header_cells):
+            return False
+        if all(c.box for c in row.cells) and all(h.box for h in header_cells):
+            return False  # placed by geometry
+        if all(c.column for c in row.cells) and all(h.column for h in header_cells):
+            return False  # placed by spreadsheet column
+        return True
 
     def _row_dates(self, record: UsageRecord, row: Row, assigned: dict[int, Cell], columns: dict[str, int],
                    header_row: Row) -> None:
@@ -1858,6 +2000,11 @@ class StationaryCombustionExtractor:
             by_column = {h.column: index for index, h in enumerate(header_cells)}
             return {by_column[c.column]: c for c in row.cells if c.column in by_column}
         if not all(c.box for c in row.cells) or not all(h.box for h in header_cells):
+            if all(c.part for c in row.cells) and all(h.part for h in header_cells):
+                # A CSV row or a delimited line keeps each cell's place, so a blank cell leaves its column
+                # empty instead of shifting the cells after it left.
+                by_part = {h.part: index for index, h in enumerate(header_cells)}
+                return {by_part[c.part]: c for c in row.cells if c.part in by_part}
             for index, cell in enumerate(row.cells[: len(header_cells)]):
                 assigned[index] = cell
             return assigned

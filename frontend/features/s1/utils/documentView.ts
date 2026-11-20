@@ -198,6 +198,19 @@ export function applyDocumentView(
     const chosen = decision?.facilityId ? facilities.find((f) => f.facilityId === decision.facilityId) : undefined;
     const matched = chosen ? [] : matchedFacilities(fact, facilities, company);
     const next: EvidenceItem = { ...item };
+    // Claude's facility suggestion stays only while it awaits a decision: the bill is unplaced, nothing in it asks for
+    // a choice by its own note, the bill names no place of its own, the reviewer has not chosen, and the suggested facility is still in Setup (the
+    // backend's Evidence tree applies the same rule to its rows).
+    const suggestion = item.facilitySuggestion;
+    const awaiting =
+      Boolean(suggestion) &&
+      !chosen &&
+      matched.length === 0 &&
+      facilities.some((f) => f.facilityId === suggestion?.facilityId) &&
+      (fact ? recordsOf(fact) : []).every(
+        (rec) => placeRecord(rec, facilities, company).note === null && !usable(rec.name) && !usable(rec.address)
+      );
+    if (!awaiting) delete next.facilitySuggestion;
     if (chosen || matched.length === 1) {
       const facility = chosen ?? matched[0];
       next.facilityState = "resolved";

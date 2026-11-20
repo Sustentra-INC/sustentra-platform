@@ -277,6 +277,9 @@ same value and unit. An edit, reject or needs-more-evidence carries over when th
 and a changed extracted value adds the validation flag `extracted_value_changed_since_review`.
 A decision that does not apply leaves the item unreviewed for every purpose; it is never deleted.
 
+- `GET /v1/documents/{document_id}/extraction-result/latest` also carries `facility_suggestion`
+  (`{facility_id, quote, source: "file_name" | "line", page_number}`) when Claude suggested a facility for a bill that names
+  none; absent otherwise. A suggestion, never a placement.
 - `GET /v1/documents/{document_id}/extraction-result/latest`: an item whose earlier decision no longer
   applies carries `review_reread_changed: true` (the screen says "The document was re-read and this value
   changed. Review it again."). Absent otherwise.
@@ -321,6 +324,7 @@ engagement is 404). Nothing is stored by this route.
 counts  = {documents, values, accepted, to_review, issues, pct_accepted}
 DocRow  = {document_id, file_name, period_start, period_end, facility_id, facility_name,
            facility_note,    // when facility_id is null: why an account or meter number placed nothing, or null
+           facility_suggestion, // Claude's suggestion while it awaits a decision (see "Claude's facility suggestion"), or null
            processing_status, detected_type, also_in: [lineKey], values, accepted,
            placement_from,   // send this as a move's "from" to move this row
            value_family,     // "stationary" | "mobile" | "electricity" | null: the calculation this row's
@@ -407,6 +411,7 @@ text or file name.
 | `PATCH /v1/engagements/{id}/evidence-lines/{line_key}` | `{label}` | 200 `{line, evidenceLines}` |
 | `DELETE /v1/engagements/{id}/evidence-lines/{line_key}` | none | 200 `{documents_moved, documents, evidenceLines}` |
 | `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to}` | 200 `{document_id, payload}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/facility` | `{facility_id, expected_facility_id?}` | 200 `{document_id, payload}` |
 
 * **Create** checks the same as saving the setting (anchor on a Setup facility, vehicle group or the
   company; letters or numbers in the name; at most 200 lines; not a line the system creates), 422 with a
@@ -450,9 +455,45 @@ Audit events (`target_type` "engagement", `target_id` the engagement):
 | `evidence_line_renamed` | `line_key, old_label, new_label` |
 | `evidence_line_deleted` | `line_key, label, documents_moved` |
 | `evidence_document_moved` | `document_id, from, to, from_label, to_label` |
+| `evidence_document_facility_set` | `document_id, facility_id, facility_name, suggested` |
+
+`POST .../documents/{document_id}/facility` places a document on a Setup facility: it saves the reviewer's own facility
+decision (`payload.facilityId`, which wins over every rule), under the engagement's row lock, and writes
+`evidence_document_facility_set` (`suggested` is true when the facility is the one Claude suggested for the document). The
+actor is the session's. Safe to repeat: when the document is already on that facility the answer is 200 with the saved
+payload and nothing is written or logged. `expected_facility_id` (null for none) is the facility the page believes the
+document is on; when it is sent and is not what is saved, 409 ("Another reviewer already chose a facility for this document.
+Reload Evidence to see it.") and nothing is written. A document with saved moves (`placements`) is 409 ("This document was
+moved by hand. Move it back to Unassigned first, or place it from the Evidence tree."). 422 for a facility that is not in Setup,
+for any other key in the body, and for a kind of document that is not placed on a facility (vehicle fuel, summaries); 404 for
+a document that is not on the Evidence page or an engagement of another org; writers only (a provider admin is 403).
+
+#### Claude's facility suggestion (EXT-026)
+For a bill that names no facility, Claude may suggest one. It is asked only when `place_on_facility` would place nothing for
+every record with nothing to go on: no usable name, no usable address, and no account or meter number matched a Setup
+facility (a bill whose own name or address matched nothing, or matched ambiguously, is never sent: "Choose the facility").
+Vehicle fuel is not asked. Claude gets the Setup facilities (id, name, address), the file name and a bounded sample of the
+text (pages 1 to 3, at most 150 lines and 8,000 characters) and answers a facility id or none, with a quote. The suggestion
+is kept only when the id is in Setup, the quote is found in the file name or on a line of the sample as whole words, and the
+quote holds a word that points at the chosen facility and no other: a word of its name or address that is in no other
+facility, not in the company's name, not generic (plant, warehouse, road, a street suffix, a shared city) and not only digits.
+A quote, or a quoted line, that names a facility id or talks to the assistant (AI, Claude, instructions, prompt, ignore) gives
+none, and so does a facility with no such word. A document the reviewer already placed (on a facility still in Setup) is not
+asked about. The prompt carries at most 50 facilities (name and address cut short) and a file name cut to 200 characters.
+A file name or sample that also holds a word that points at another facility gives none (the document points two ways).
+It is shown again when a saved choice's facility has left Setup.
+
+Known limit: a single site's real word used for an unrelated reason (an instruction or a vendor address that names one site,
+with none of the wording above) cannot be told from a bill that mentions the site, so it can still be suggested. That is why
+it stays a suggestion with its quote, never a placement: a reviewer has to confirm it. It is stored with the
+extraction result as `facility_suggestion` and shown, while the bill is unplaced and the reviewer has not chosen, on the
+Evidence tree row as `facility_suggestion: {facility_id, facility_name, quote, where, label: "Suggested by Claude"}` and on
+the review screen, each with one click, "Place on <facility>". Until that click the bill is unplaced, in the Evidence tree and
+in the recalculation. It needs `AI_SUGGESTIONS_ENABLED`, a configured client and room under the organization's monthly cap
+(feature `facility` on the usage ledger); with AI off there is no suggestion and no error.
 
 ### GET /v1/engagements/{engagement_id}/evidence-activity[?limit=50&cursor=]
-The four events above for this engagement, newest first, 1 to 100 per page (an index on `audit_logs (org_id, target_type, target_id, created_at, id)` serves it) (`next_cursor` is null on the
+The five events above for this engagement, newest first, 1 to 100 per page (an index on `audit_logs (org_id, target_type, target_id, created_at, id)` serves it) (`next_cursor` is null on the
 last page; a cursor that does not decode is 400). Any reader of the engagement (`org_admin`,
 `org_member`, `provider_admin`); another org's engagement is 404.
 
