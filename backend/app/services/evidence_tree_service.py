@@ -27,6 +27,7 @@ from backend.app.services.reviewed_evidence import (
     THERMAL,
     VALUE_CHANGED,
     ReviewedRecord,
+    _norm_text as norm_text,
     group_reviewed_records,
     set_aside_reason,
     superseded_ids,
@@ -80,6 +81,8 @@ class DocState:
     # why a record's account or meter number could not place it ("Account 4417-2290-31 is listed on two facilities")
     facility_notes: list[str | None] = field(default_factory=list)
     default_slots: list[cl.Slot] = field(default_factory=list)  # where it is filed before the reviewer's moves
+    # Claude's suggested facility for a bill that names none (a suggestion, not a placement: services/ai_facility.py)
+    facility_suggestion: dict[str, Any] | None = None
 
 
 @dataclass
@@ -143,7 +146,8 @@ class EvidenceTreeService:
             reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
             records = group_reviewed_records(document, canonical or "", latest.get("items") or [], reviews,
                                              with_history=True)
-            state = DocState(document, document_id, canonical, _iso(latest.get("created_at")), records)
+            state = DocState(document, document_id, canonical, _iso(latest.get("created_at")), records,
+                             facility_suggestion=latest.get("facility_suggestion") or None)
             if reason is not None:
                 set_aside.append({"document_id": document_id, "file_name": document.get("file_name"),
                                   "reason": reason})
@@ -201,10 +205,11 @@ class EvidenceTreeService:
         by_key = {line.key: line for line in loaded.lines}
         shown_lines = [ln for ln in loaded.lines if facility_id is None or ln.facility_id == facility_id]
         facility_names = {cl.facility_anchor_id(f): str(f.get("name")) for f in loaded.facilities}
+        setup_names = {str(f.get("facilityId")): str(f.get("name")) for f in loaded.facilities}
         rows: dict[str, list[tuple[dict[str, Any], DocState, cl.Slot]]] = {}
         for doc in loaded.docs:
             for slot in doc.slots:
-                row = self._row(doc, slot, by_key, facility_names)
+                row = self._row(doc, slot, by_key, facility_names, setup_names, decisions)
                 if facility_id is None or row["facility_id"] == facility_id:
                     rows.setdefault(slot.target, []).append((row, doc, slot))
 
@@ -269,8 +274,33 @@ class EvidenceTreeService:
             "set_aside": loaded.set_aside,
         }
 
+    @staticmethod
+    def _suggestion(doc: DocState, setup_names: dict[str, str],
+                    decisions: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+        """Claude's facility suggestion for this document, while it awaits a decision: the bill is unplaced, the
+        reviewer has not chosen a facility for it, and the suggested facility is still in Setup."""
+
+        found = doc.facility_suggestion
+        decided = (decisions.get(doc.document_id) or {}).get("facilityId")
+        # a decision whose facility has left Setup places nothing: the suggestion shows again
+        if not isinstance(found, dict) or (decided and str(decided) in setup_names):
+            return None
+        if any(norm_text(r.for_placement("facility_name")) or norm_text(r.for_placement("service_address"))
+               for r in doc.records):
+            return None  # the bill names a place (Setup does not have it): that is the reviewer's choice, not Claude's
+        facility_id = str(found.get("facility_id") or "")
+        name = setup_names.get(facility_id)
+        quote = str(found.get("quote") or "").strip()
+        if not name or not quote:
+            return None
+        page = found.get("page_number")
+        where = "the file name" if found.get("source") == "file_name" else (f"page {page}" if page else "the text")
+        return {"facility_id": facility_id, "facility_name": name, "quote": quote, "where": where,
+                "label": "Suggested by Claude"}
+
     def _row(self, doc: DocState, slot: cl.Slot, lines: dict[str, cl.CalculationLine],
-             facility_names: dict[str, str]) -> dict[str, Any]:
+             facility_names: dict[str, str], setup_names: dict[str, str] | None = None,
+             decisions: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
         records = [doc.records[i] for i in sorted(slot.records)]
         periods = [cl.record_period(r) for r in records]
         starts = [p[0] for p in periods if p[0]]
@@ -292,6 +322,8 @@ class EvidenceTreeService:
             "period_end": max(ends).isoformat() if ends else None,
             "facility_id": facility_id, "facility_name": facility_name,
             "facility_note": facility_note if facility_id is None else None,
+            "facility_suggestion": (self._suggestion(doc, setup_names or {}, decisions or {})
+                                    if facility_id is None and not facility_note else None),
             "processing_status": doc.document.get("processing_status"),
             "detected_type": cl.type_name(doc.canonical_type_id),
             "also_in": [s.target for s in doc.slots if s.target != slot.target and s.target in lines],
