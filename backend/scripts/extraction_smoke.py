@@ -37,7 +37,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from backend.app.services.extraction_service import ExtractionService  # noqa: E402
-from backend.app.services.extraction_target_service import ExtractionTargetService  # noqa: E402
+from backend.app.services.extraction_target_service import DISPLAY_ONLY_FIELDS, ExtractionTargetService  # noqa: E402
 from backend.scripts.parser_smoke import _safe_stem, run_smoke  # noqa: E402
 
 DEFAULT_INPUT_DOC_DIR = "local-samples/parser-smoke/inputs"
@@ -209,7 +209,10 @@ def run_extraction_smoke(
             }
         )
         items = result["items"]
-        metrics = _summarize_candidates(items, len(targets))
+        # a display-only field (meter number, statement date) the file does not print is not an expected target
+        read = {i.get("field_name") for i in items if i.get("normalized_value") is not None}
+        expected = [t for t in targets if t.get("field_id") not in DISPLAY_ONLY_FIELDS or t.get("field_id") in read]
+        metrics = _summarize_candidates(items, len(expected))
 
         candidate_stem = _safe_stem(base_stem)
         candidate_file = output_path / f"{candidate_stem}{CANDIDATE_SUFFIX}"
