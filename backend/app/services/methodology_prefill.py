@@ -260,15 +260,34 @@ def basis_in_words(quote: str) -> str | None:
     return rules.PERIOD_BASES[1] if fis else None
 
 
-_TITLE_YEAR = re.compile(r"(?<![0-9])((?:19|20)[0-9]{2})(?![0-9])")
+_TITLE_YEAR = re.compile(r"(?<![0-9])(199[0-9]|20[0-9]{2}|2100)(?![0-9])")
 TITLE_LINES = 15  # a title or heading is among the first lines of the document
+_NOT_A_TITLE = re.compile(r"^(?:prepared|for the|for\s+\d|this|the following|as of|in\s+\d|during|dated|submitted|issued|report(?:ed)? for)\b")
 
 
 def single_year_of(quote: str) -> int | None:
-    """The one four digit year a heading prints ("2023 Statement of GHG Emissions"); None for none or several."""
+    """The one four digit year (1990 to 2100) a heading prints ("2023 Statement of GHG Emissions"); None for none
+    or several."""
 
     years = {int(y) for y in _TITLE_YEAR.findall(norm(quote))}
     return years.pop() if len(years) == 1 else None
+
+
+def title_year(lines: Sequence[DocumentLine], line: DocumentLine) -> int | None:
+    """The year a document's title names, or None when ``line`` is not a clean title. It must be the document's
+    first heading: the first of the first 15 lines that prints a year, with that year alone on the WHOLE line (not
+    just in the quoted words), no sentence-ending period, no "Prepared ..." / "For the ..." opening, and no other
+    four digit year (1990 to 2100) on any other of those lines (a comparison year, an audit cycle)."""
+
+    head = list(lines[:TITLE_LINES])
+    first = next((x for x in head if _TITLE_YEAR.search(norm(x.text))), None)
+    text = line.text.strip()
+    if first is None or first is not line or text.endswith((".", "!", "?")) or _NOT_A_TITLE.match(norm(text)):
+        return None
+    year = single_year_of(text)
+    if year is None or any(_TITLE_YEAR.search(norm(x.text)) for x in head if x is not line):
+        return None
+    return year
 
 
 _NEGATIONS = frozenset({"not", "no", "never", "without", "none", "neither", "nor", "cannot"})
@@ -386,7 +405,7 @@ What the items mean
   start_implied for "three years ended", for a 52 or 53 week year, or for a period the quote does
   not call a year, and never give an end date the quote does not print. If the quote says "calendar
   year" or "calendar reporting year" and prints no date at all, and the document's title or heading
-  names a single year ("2023 Statement of GHG Emissions"), give 1 January to 31 December of that year
+  names a single year ("2023 Statement of GHG Emissions"; the document's first heading, not a sentence, and no other year in the first lines), give 1 January to 31 December of that year
   and put the title line in title_line and its words in title_quote; otherwise title_line and
   title_quote are "". If the document shows several periods (such as
   the current and the prior year), give only the reporting year of the inventory. At most one.
@@ -687,7 +706,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             title = cited(_Cited(document=period.document, line=period.title_line, quote=period.title_quote))
             if title is None:  # the title quote is not on its line (counted by ``cited``)
                 continue
-            if single_year_of(period.title_quote) != start.year or title[0].lines.index(title[1]) >= TITLE_LINES:
+            if title_year(title[0].lines, title[1]) != start.year:
                 dropped["value_not_in_quote"] += 1
                 continue
             title_found = title

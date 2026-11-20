@@ -401,8 +401,6 @@ def test_the_basis_comes_from_the_quotes_own_words_before_the_dates() -> None:
 TITLE_DOC = [
     (1, "2023 Statement of GHG Emissions"),                                                    # L1, the title
     (1, "Management asserts the emissions are stated on the calendar reporting year basis."),  # L2
-    (1, "Prepared for the 2024 audit cycle."),                                                 # L3
-    (1, "Greenhouse gas emissions and water use, 2022 and 2023"),                              # L4, two years
 ]
 
 
@@ -425,7 +423,6 @@ def test_calendar_year_with_no_date_takes_the_year_from_the_title_and_keeps_both
 
 @pytest.mark.parametrize(("title", "start", "end", "quote"), [
     (("L1", "2023 Statement of GHG Emissions"), "2024-01-01", "2024-12-31", "calendar reporting year basis"),  # title year is 2023
-    (("L4", "Greenhouse gas emissions and water use, 2022 and 2023"), "2023-01-01", "2023-12-31", "calendar reporting year basis"),  # two years
     (("", ""), "2023-01-01", "2023-12-31", "calendar reporting year basis"),                              # no title quoted
     (("L1", "2023 Statement of GHG Emissions"), "2023-01-01", "2023-12-31", "on the fiscal year basis"),  # not a calendar year
     (("L1", "2023 Statement of GHG Emissions"), "2023-02-01", "2024-01-31", "calendar reporting year basis"),  # not Jan 1 to Dec 31
@@ -434,6 +431,40 @@ def test_the_title_year_is_refused_unless_it_is_one_year_on_a_title_line_and_the
         title: tuple[str, str], start: str, end: str, quote: str) -> None:
     kept, dropped = check(answer(periods=[period(start, end, quote, "L2", True, title)]), [doc(TITLE_DOC)])
     assert kept == [] and sum(dropped.values()) >= 1
+
+
+CAL = "calendar reporting year basis"
+
+
+@pytest.mark.parametrize(("title_line", "title_quote", "extra"), [
+    ("Greenhouse gas emissions and water use, 2022 and 2023", "2023", []),                 # two years on the line, the quote shows one
+    ("2023 Statement of GHG Emissions compared with 2022", "2023 Statement of GHG Emissions", []),
+    ("2023 Statement of GHG Emissions", "2023 Statement of GHG Emissions", ["2022 Comparison"]),  # a comparison heading follows
+    ("Prepared for the 2024 audit cycle.", "2024 audit cycle", []),                         # not a title
+    ("For the year 2024 we report", "2024", []),
+    ("2023 Statement of GHG Emissions.", "2023 Statement of GHG Emissions", []),            # a sentence, not a heading
+    ("2023 Statement of GHG Emissions", "2023 Statement of GHG Emissions", ["Audit cycle 2100 and beyond"]),
+])
+def test_the_title_year_is_read_from_the_whole_line_and_only_from_a_clean_first_heading(title_line: str, title_quote: str, extra: list[str]) -> None:
+    year = next(y for y in ("2023", "2024") if y in title_line)
+    lines = [(1, title_line), (1, "Management asserts the emissions are stated on the calendar reporting year basis."), *[(1, e) for e in extra]]
+    kept, dropped = check(answer(periods=[period(f"{year}-01-01", f"{year}-12-31", CAL, "L2", True, ("L1", title_quote))]), [doc(lines)])
+    assert kept == [] and sum(dropped.values()) == 1, title_line  # a short quote like "2023" is refused earlier, still refused
+
+
+def test_a_clean_first_heading_still_gives_the_year_and_a_year_in_the_body_after_line_15_does_not_matter() -> None:
+    lines = [(1, "2023 Statement of GHG Emissions"), (1, "Management asserts the emissions are stated on the calendar reporting year basis.")]
+    lines += [(1, f"Row {i}") for i in range(20)] + [(2, "Prior year 2022 values are shown for comparison.")]
+    kept, dropped = check(answer(periods=[period("2023-01-01", "2023-12-31", CAL, "L2", True, ("L1", "2023 Statement of GHG Emissions"))]),
+                          [doc(lines)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["implied_from"] == "calendar year, year from title"
+
+
+def test_a_heading_after_a_cover_line_without_a_year_is_still_the_first_heading_that_names_a_year() -> None:
+    lines = [(1, "Acme Foods"), (1, "2023 Statement of GHG Emissions"), (1, "Management asserts the emissions are stated on the calendar reporting year basis.")]
+    kept, dropped = check(answer(periods=[period("2023-01-01", "2023-12-31", CAL, "L3", True, ("L2", "2023 Statement of GHG Emissions"))]),
+                          [doc(lines)])
+    assert dict(dropped) == {} and len(kept) == 1
 
 
 def test_the_title_must_be_early_in_the_document_and_printed_on_its_line() -> None:
