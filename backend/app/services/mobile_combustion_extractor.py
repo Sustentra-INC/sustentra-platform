@@ -30,6 +30,7 @@ from backend.app.services.stationary_combustion_extractor import (
 )
 from backend.app.services.stationary_combustion_extractor import (
     CONF_DOCUMENT_SCAN,
+    CONF_LETTERHEAD,
     CONF_TABLE,
     ELECTRIC_UNITS,
     HALT_UNREADABLE,
@@ -244,6 +245,10 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
     """Builds CT-S1-MOBFUEL candidates: one record per fuel transaction."""
 
     CANONICAL_TYPE_ID = CANONICAL_TYPE_ID
+    # A fleet card statement read as the issuer's: its supplier is the issuer on the letterhead and its account the
+    # one printed in the header, with each transaction's station as where it was fuelled. False keeps what the
+    # golden set (MF-01) expects: the station of each transaction as the merchant and each card as the account.
+    CARD_STATEMENT_AS_ISSUER = False
     HEADLINE_QUANTITY = False  # only the natural gas reader reads a number in large type over a unit
     INLINE_TOTAL_QUANTITY = False  # ... or "TOTAL 1,273.1 THERMS" inside a line of a statement
     FUEL_LABEL_GROUPS = FUEL_LABELS
@@ -331,6 +336,9 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
                                                  accept_bare=self._looks_like_id),
             "account_number": self._find_labeled(rows, CARD_LABELS, accept=self._looks_like_id,
                                                  accept_bare=self._looks_like_id),
+            # A card statement: the issuer on the letterhead and the account printed on it
+            "issuer": self._issuer(rows),
+            "statement_account": self._statement_account(rows),
         }
         doc_date = self._find_labeled(rows, DATE_LABELS, accept=lambda v: parse_date(v) is not None)
         if doc_date is None:
@@ -400,6 +408,14 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
         if column is None:
             return self._missing(target, *args, ["unsupported_extraction_method"])
         located = record.extra.get(column) if record is not None else None
+        statement = (self.CARD_STATEMENT_AS_ISSUER and record is not None and "card" in record.extra
+                     and document.get("issuer") is not None)
+        if statement and field_id == "merchant_or_supplier":
+            located = document["issuer"]  # the card issuer, not the station of each transaction
+        elif statement and field_id == "fueling_location" and located is None:
+            located = record.extra.get("merchant") if record is not None else None  # where it was fuelled
+        elif statement and field_id == "account_number" and document.get("statement_account") is not None:
+            located = document["statement_account"]  # the account, not each transaction's card number
         if located is None:
             located = document.get(field_id)
         masked: list[str] = []
@@ -408,6 +424,28 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
         candidate = self._candidate_for_text(target, located, *args, parser_output, field_id)
         candidate["validation_flags"].extend(masked)
         return candidate
+
+    def _issuer(self, rows: Sequence[Row]) -> Located | None:
+        """The organisation at the top of a laid-out card statement: the largest text near the top of page 1 (a
+        guess at the first line of plain text is not enough to say who issued a card)."""
+
+        found = self._letterhead(rows)
+        return found if found is not None and found.confidence >= CONF_LETTERHEAD else None
+
+    _STATEMENT_ACCOUNT = re.compile(
+        r"(?<![\w])(?:account|acct)\s*(?:no\.?|number|#)?\s*[:#]?\s+(?P<id>[A-Za-z0-9][A-Za-z0-9-]*\d[A-Za-z0-9-]*)(?![\w-])",
+        re.IGNORECASE)
+
+    def _statement_account(self, rows: Sequence[Row]) -> Located | None:
+        """The account a statement prints in its header ("Account QF-6620-1187 · Statement date 10/03/2025"): an
+        identifier of five characters or more after "Account", never a card number (those are in the table)."""
+
+        for row in rows[:12]:
+            for cell in row.cells:
+                match = self._STATEMENT_ACCOUNT.search(cell.text)
+                if match is not None and len(match.group("id")) >= 5 and not _PAN_RE.search(match.group("id")):
+                    return Located(match.group("id"), [cell], row, CONF_DOCUMENT_SCAN, context=cell.text)
+        return None
 
     def _merchant(self, rows: Sequence[Row]) -> Located | None:
         labeled = self._find_labeled(rows, MERCHANT_LABELS, accept=self._looks_like_org_name, allow_next_row=False)

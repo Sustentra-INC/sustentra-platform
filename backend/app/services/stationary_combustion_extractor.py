@@ -262,6 +262,17 @@ _NUMBER_RE = re.compile(
 _EXPORTED_FROM_RE = re.compile(
     r"\bexported (?:from|by)\s+(.+?)(?:\s+(?:business |customer |online |web )?(?:portal|account|website)\b|\s+on\s|\s+\d{1,2}/\d{1,2}/\d{2,4}|$)",
     re.IGNORECASE)
+# A footer that names the organisation behind a portal export: "Data exported 07/08/2025 from Sierra Basin Energy Co.
+# MyAccount portal." or "\u00a9 2025 Sierra Basin Energy Co. All rights reserved". A lower candidate than the letterhead.
+_FOOTER_EXPORT_RE = re.compile(
+    r"\bexported(?:\s+(?:on\s+)?\d{1,2}[/.]\d{1,2}[/.]\d{2,4})?\s+(?:from|by)\s+(.+?)"
+    r"(?:\s+(?:my\s?account|(?:business |customer |online |web )?(?:portal|account|website))\b|\s+on\s|\.\s|$)",
+    re.IGNORECASE)
+_FOOTER_COPYRIGHT_RE = re.compile(r"\u00a9\s*(?:\d{4}(?:\s*[-\u2013]\s*\d{4})?\s+)?(.+?)(?:\.?\s+all rights\b|\s*[|\u00b7]|$)",
+                                 re.IGNORECASE)
+# An email's header lines (the body that follows holds the bill's own letterhead).
+_GREETING = re.compile(r"\s*(?:hello|dear|hi|hey|good (?:morning|afternoon|evening))\b", re.IGNORECASE)
+_MAIL_HEADER = re.compile(r"\s*(?:from|to|cc|bcc|sent|date|subject|reply-to|return-path)\s*:", re.IGNORECASE)
 _SLASH_DATE_RE = re.compile(r"(?<!\d)(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})(?!\d)")
 
 
@@ -1483,7 +1494,49 @@ class StationaryCombustionExtractor:
         if labeled is not None:
             labeled.raw = re.split(r"\s{2,}|\s+(?:GST|HST|VAT|Tax ID|EIN)\b", labeled.raw)[0].strip()
             return labeled
-        return self._exported_from(rows) or other_party(self._remit_to(rows))
+        return (self._exported_from(rows) or other_party(self._remit_to(rows))
+                or other_party(self._footer_organisation(rows)) or other_party(self._from_header(rows)))
+
+    @staticmethod
+    def _footer_organisation(rows: Sequence[Row]) -> Located | None:
+        """The organisation a portal export or a page footer names ("Data exported 07/08/2025 from Sierra Basin
+        Energy Co. MyAccount portal"; "\u00a9 2025 Sierra Basin Energy Co. All rights reserved"): a lower candidate
+        than the letterhead, the labels and the payee."""
+
+        for row in reversed(rows):
+            for cell in row.cells:
+                for pattern in (_FOOTER_EXPORT_RE, _FOOTER_COPYRIGHT_RE):
+                    match = pattern.search(cell.text)
+                    if match is None:
+                        continue
+                    name = match.group(1).strip(" ,;")
+                    words = re.sub(r"[^\w ]+", " ", name.casefold()).split()
+                    if words and words[-1] in ("co", "inc", "corp", "ltd") and cell.text[match.end(1):match.end(1) + 1] == ".":
+                        name += "."  # the abbreviation's own full stop
+                    if (name and len(words) >= 2 and words[-1] in _ORGANISATION_WORDS
+                            and StationaryCombustionExtractor._looks_like_org_name(name)):
+                        return Located(name, [cell], row, CONF_LETTERHEAD - 0.15, context=cell.text)
+        return None
+
+    @staticmethod
+    def _from_header(rows: Sequence[Row]) -> Located | None:
+        """An email's "From: Display Name <address>": the display name, never the address or its angle brackets. The
+        bill's own letterhead in the body is preferred (it is tried first); an address alone names nobody."""
+
+        for row in rows[:6]:
+            if len(row.cells) != 1:
+                continue
+            match = re.match(r"\s*from\s*:\s*(.+)$", row.cells[0].text, re.IGNORECASE)
+            if match is None:
+                continue
+            name = re.split(r"\s*<", match.group(1))[0].strip().strip("\"'").strip()
+            if ("@" in name or not re.search(r"[^\W\d_]{2}", name)
+                    or not StationaryCombustionExtractor._looks_like_org_name(name)
+                    or not set(_company_words(name) + re.sub(r"[^\w ]+", " ", name.casefold()).split())
+                    & (_LEGAL_SUFFIXES | _UTILITY_WORDS | _ORGANISATION_WORDS | {"light", "lights", "stadtwerke"})):
+                return None  # an address names nobody, and a person's name ("Maria M\u00fcller") is not an organisation
+            return Located(name, [row.cells[0]], row, CONF_LETTERHEAD - 0.15, context=row.cells[0].text)
+        return None
 
     def _party_name(self, rows: Sequence[Row], groups: Sequence[Sequence[str]]) -> str:
         """The name a billing-party label gives, as written ("" when the document has none)."""
@@ -1546,11 +1599,15 @@ class StationaryCombustionExtractor:
         Without geometry (plain text), the first of the top lines naming a company.
         """
 
-        first_page = [r for r in rows if (r.page or 1) == (rows[0].page or 1)][:6] if rows else []
+        first_page = [r for r in rows if (r.page or 1) == (rows[0].page or 1)
+                      and not _MAIL_HEADER.match(r.text)][:6] if rows else []
         cells = [c for r in first_page for c in r.cells if c.box and c.box["top"] < 0.2]
         if not cells:
             for row in first_page[:4]:
                 text = row.cells[0].text
+                if (_GREETING.match(text) or _FOOTER_EXPORT_RE.search(text) or _FOOTER_COPYRIGHT_RE.search(text)
+                        or self._label_prefix(text, REMIT_LABELS[0]) is not None):
+                    continue  # a greeting names the customer; a footer or a Remit To line is not the sender's letterhead
                 if len(row.cells) == 1 and re.search(r"(?<!\w)(company|co\.?|inc\.?|llc|ltd\.?|corp\.?|utilities)(?!\w)", text, re.I):
                     name = re.split(r"\s+[-\u2013\u2014|]\s+", text)[0].strip()
                     if self._looks_like_org_name(name):
@@ -1568,7 +1625,32 @@ class StationaryCombustionExtractor:
         if not self._looks_like_org_name(text):
             return None
         row = next(r for r in first_page if cell in r.cells)
-        return Located(self._trim_value(text), [cell], row, CONF_LETTERHEAD)
+        return Located(self._with_continuation(rows, row, cell, self._trim_value(text)), [cell], row, CONF_LETTERHEAD)
+
+    def _with_continuation(self, rows: Sequence[Row], row: Row, cell: Cell, text: str) -> str:
+        """A letterhead name that runs on to a second, smaller line directly under it ("RAINIER SOUND" over "POWER &
+        LIGHT"): joined when the first line does not end in an organisation word and the line under it does. A
+        tagline ("Natural gas service") or an address has no organisation word or has digits, so it never joins."""
+
+        words = re.sub(r"[^\w ]+", " ", text.casefold()).split()
+        if cell.box is None or not words or words[-1] in LETTERHEAD_END_WORDS:
+            return text
+        bottom = cell.box["top"] + cell.box["height"]
+        for below in rows[row.index + 1:row.index + 3]:
+            if below.page != row.page:
+                break
+            for other in below.cells:
+                if other.box is None or abs(other.left - cell.left) > 0.02:
+                    continue
+                gap = other.box["top"] - bottom
+                line = other.text.strip()
+                parts = re.sub(r"[^\w ]+", " ", line.casefold()).split()
+                if (0 <= gap <= cell.height and not re.search(r"\d", line) and 0 < len(parts) <= 4
+                        and any(part in LETTERHEAD_END_WORDS or part in ("light", "lights") for part in parts)
+                        and line.isupper() == text.isupper()  # a tagline in another case is not a name
+                        and self._label_prefix(line, self.ALL_LABELS) is None):
+                    return f"{text} {line}"
+        return text
 
     def _first_line_letterhead(self, first_page: Sequence[Row]) -> Located | None:
         """The first line of the page when it is alone on its row and its last word is an
