@@ -82,7 +82,7 @@ def test_the_automatic_read_stores_suggestions_records_the_call_and_names_its_ac
     assert (row["outcome"], row["feature"], row["created_by"]) == ("ok", "methodology_prefill", None)
     [event] = events()
     assert event["actor"] == ACTOR and event["automatic"] is True and event["outcome"] == "ok"
-    assert event["actor_user_id"] is None and event["suggested"] == 5 and len(claude.calls) == 4
+    assert event["actor_user_id"] is None and event["suggested"] == 6 and len(claude.calls) == 4  # 6: Scope 1 is offered from its category
     assert review(eid).json()["auto_read"] is None  # finished: nothing is shown any more
 
 
@@ -95,7 +95,7 @@ def test_a_reviewers_decision_is_kept_by_the_automatic_read(claude: FakeClaude) 
     assert approach["suggestion"] is None and approach["decision"]["value"] == "Equity Share"
     assert record(eid, "category:scope1:stationary")["decision"]["status"] == "rejected"
     [event] = events()
-    assert event["kept_reviewer_decision"] == 2 and event["suggested"] == 3
+    assert event["kept_reviewer_decision"] == 2 and event["suggested"] == 4  # 4: Scope 1 is offered from its category
 
 
 def test_the_monthly_spend_gate_causes_a_skip_that_says_why(claude: FakeClaude) -> None:
