@@ -1,7 +1,9 @@
 """MVP-86 (DB-010): evidence requests change only through these actions, which check the
 request's state, number sent requests and record who acted.
 
-* POST  /v1/engagements/{id}/requests                    raise a request (201)
+* POST  /v1/engagements/{id}/requests                    raise a request (201); a Methodology row ("Mark for client
+                                                         follow-up") has at most one open request: asking again answers
+                                                         the open one (200), never a second
 * PATCH /v1/engagements/{id}/requests/{ask_id}           change its text while not yet sent
 * POST  /v1/engagements/{id}/requests/send               send asks together as one numbered request
 * POST  /v1/engagements/{id}/requests/{ask_id}/resolve
@@ -22,12 +24,13 @@ state, the numbers, the history or who raised a request.
 No ``from __future__ import annotations``: FastAPI resolves these at runtime.
 """
 
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictInt, StringConstraints, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,7 +38,7 @@ from backend.app.api.engagements import require_open_engagement
 from backend.app.api.s1_access import s1_writer
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
-from backend.app.services import request_service, workpaper_item_service
+from backend.app.services import methodology_review, request_service, workpaper_item_service
 from backend.app.services.audit_log import write_audit_event
 from backend.app.services.request_service import RequestConflict, RequestInvalid
 from backend.app.services.workpaper_item_service import ITEM_KEY, MAX_PAYLOAD_BYTES
@@ -54,7 +57,7 @@ def _item_key(value: str) -> str:
 
 AskId = Annotated[str, AfterValidator(_item_key)]
 RequestType = Literal["missing_document", "replace_document", "missing_data", "clarify", "confirm_or_restate"]
-AskOrigin = Literal["workspace_document", "review_value", "expected_item", "data_point"]
+AskOrigin = Literal["workspace_document", "review_value", "expected_item", "data_point", "methodology_row"]
 # Text a person writes: surrounding spaces removed; the required ones must not be blank.
 WhatIsNeeded = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 ItemLabel = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
@@ -187,14 +190,54 @@ async def _audit(
     )
 
 
+_METHODOLOGY_OPEN = (request_service.NOT_YET_SENT, request_service.REQUESTED)
+_UNSAFE_KEY = re.compile(r"[^A-Za-z0-9:._-]")
+
+
+async def _methodology_follow_up(
+    db: AsyncSession, request: Request, response: Response, user: CurrentUser, engagement: dict[str, Any],
+    body: RequestCreate,
+) -> dict[str, Any]:
+    """"Mark for client follow-up" on a Methodology row: one open request per row. The request's id is made from
+    the row's id (the one in the body is not used), so two clicks, two tabs or a retry meet on the same key and the
+    second gets the first's request back (200) instead of a second one. A request that was resolved or withdrawn
+    is closed: asking again starts a new one under the next key."""
+
+    field_id = (body.source.fieldKey or "").strip()
+    if methodology_review.catalog_field(field_id) is None and methodology_review.row_field(field_id) is None:
+        raise HTTPException(status_code=422, detail="Choose a Methodology row to follow up on.")
+    base = "ASK-METH-" + _UNSAFE_KEY.sub("_", field_id)[:150]
+    for number in range(1, 200):
+        key = base if number == 1 else f"{base}-{number}"
+        for _ in range(2):  # the second pass reads a row another request put under this key a moment ago
+            rows = await workpaper_item_service.get_items(db, engagement["id"], KIND, [key])
+            if rows:
+                if rows[0]["payload"].get("state") in _METHODOLOGY_OPEN:
+                    response.status_code = 200
+                    return rows[0]["payload"]
+                break  # closed: the next key
+            ask = request_service.new_ask(key, body.model_dump(), request_service.actor_of(user), _now())
+            row = await workpaper_item_service.insert_item(
+                db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind=KIND, item_key=key,
+                payload=ask, user_id=user.id)
+            if row is not None:
+                await _audit(db, request, user, engagement, "request_created", {
+                    "ask_id": key, "type": body.type, "origin": body.source.origin, "follow_up_of": None})
+                return row["payload"]
+    raise HTTPException(status_code=409, detail="This row has too many earlier requests to start another.")
+
+
 @router.post("/engagements/{engagement_id}/requests", status_code=201, response_model=dict[str, Any])
 async def create_request(
     body: RequestCreate,
     request: Request,
+    response: Response,
     user: CurrentUser = Depends(s1_writer),
     engagement: dict[str, Any] = Depends(require_open_engagement),
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> dict[str, Any]:
+    if body.source.origin == "methodology_row":
+        return await _methodology_follow_up(db, request, response, user, engagement, body)
     if body.linkedFromAskId is not None:
         rows = await workpaper_item_service.get_items(db, engagement["id"], KIND, [body.linkedFromAskId])
         with _rules():

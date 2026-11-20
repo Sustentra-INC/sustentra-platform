@@ -275,3 +275,93 @@ def test_a_client_cannot_set_the_state_numbers_history_or_raiser() -> None:
     assert act(engagement["id"], "ASK-1", "withdraw", {"reason": "x", "state": "resolved"}).status_code == 422
     saved = json.loads(stored("ASK-1")[0])
     assert (saved["state"], saved["requestNumber"], len(saved["history"])) == ("not_yet_sent", None, 1)
+
+
+# --- "Mark for client follow-up" on a Methodology row (Claire C-M4) -----------------------------------
+
+def mark(engagement_id: str, field_id: str = "consolidation_approach", token: str = "a_member", **fields: Any) -> Any:
+    body = {"id": "ASK-whatever", "type": "clarify", "whatIsNeeded": "Please confirm: Konsolidierung é纸",
+            "source": {"origin": "methodology_row", "fieldKey": field_id, "itemLabel": "Consolidation approach",
+                       "facilityName": None, "period": "FY 2025"}, **fields}
+    return call("POST", f"{BASE}/{engagement_id}/requests", token, body)
+
+
+def asks(engagement_id: str) -> list[dict[str, Any]]:
+    return [i["payload"] for i in call("GET", f"{BASE}/{engagement_id}/workpaper-items?kind=ask").json()["items"]]
+
+
+def test_marking_a_methodology_row_creates_a_request_in_the_same_store_as_add_to_requests() -> None:
+    eid = create()["id"]
+    plain = raise_request(eid, "ASK-1")  # an Add to requests on another page
+    created = mark(eid)
+    assert created.status_code == 201, created.text
+    ask = created.json()
+    assert ask["state"] == "not_yet_sent" and ask["source"]["origin"] == "methodology_row"
+    assert ask["source"]["fieldKey"] == "consolidation_approach" and ask["whatIsNeeded"].endswith("é纸")
+    assert (ask["raisedByName"], ask["raisedByLogin"]) == ("member@acme.test", "member@acme.test")
+    assert [a["id"] for a in asks(eid)] == [plain.json()["id"], ask["id"]]  # listed with the others, so Coverage & requests shows it
+    sent = send(eid, [ask["id"]])  # and it goes through the same send as any request
+    assert sent.status_code == 200 and sent.json()["requestNumber"] == 1
+
+
+def test_asking_twice_returns_the_open_request_and_never_creates_a_duplicate() -> None:
+    eid = create()["id"]
+    first = mark(eid)
+    second = mark(eid, id="ASK-another-id", whatIsNeeded="Asked again")
+    assert (first.status_code, second.status_code) == (201, 200)
+    assert second.json()["id"] == first.json()["id"] and second.json()["whatIsNeeded"] == first.json()["whatIsNeeded"]
+    assert len(asks(eid)) == 1
+    assert len([e for e in events() if json.loads(e["metadata"]).get("origin") == "methodology_row"]) == 1  # one audit event
+    assert send(eid, [first.json()["id"]]).status_code == 200
+    third = mark(eid)  # sent, still open: still the same request
+    assert third.status_code == 200 and third.json()["id"] == first.json()["id"] and len(asks(eid)) == 1
+    other_row = mark(eid, "reporting_period")  # another row has its own
+    assert other_row.status_code == 201 and len(asks(eid)) == 2
+
+
+def test_two_clicks_at_once_make_one_request() -> None:
+    eid = create()["id"]
+    path = f"{BASE}/{eid}/requests"
+    body = {"id": "ASK-x", "type": "clarify", "whatIsNeeded": "Please confirm",
+            "source": {"origin": "methodology_row", "fieldKey": "gwp", "itemLabel": "GWP", "facilityName": None, "period": None}}
+
+    async def together() -> list[Any]:
+        return list(await asyncio.gather(*[_call("POST", path, "a_member", {**body, "id": f"ASK-{n}"}) for n in range(5)]))
+
+    results = asyncio.run(together())
+    assert sorted(r.status_code for r in results).count(201) == 1 and all(r.status_code in (200, 201) for r in results)
+    assert len({r.json()["id"] for r in results}) == 1 and len(asks(eid)) == 1
+
+
+def test_a_resolved_or_withdrawn_follow_up_is_closed_so_asking_again_starts_a_new_one() -> None:
+    eid = create()["id"]
+    first = mark(eid).json()
+    assert act(eid, first["id"], "withdraw", {"reason": "Asked by mistake é"}).status_code == 200
+    second = mark(eid)
+    assert second.status_code == 201 and second.json()["id"] != first["id"] and second.json()["state"] == "not_yet_sent"
+    assert send(eid, [second.json()["id"]]).status_code == 200
+    assert act(eid, second.json()["id"], "resolve", {"note": "Confirmed 纸"}).status_code == 200
+    third = mark(eid)
+    assert third.status_code == 201 and len({first["id"], second.json()["id"], third.json()["id"]}) == 3
+    assert mark(eid).json()["id"] == third.json()["id"]  # the new one is open again
+    assert [a["state"] for a in asks(eid)] == ["withdrawn", "resolved", "not_yet_sent"]
+
+
+def test_only_a_real_methodology_row_can_be_followed_up_and_hostile_keys_are_refused_or_made_safe() -> None:
+    eid = create()["id"]
+    for bad in ("", "nonsense", "../../etc/passwd", "reporting_period; DROP TABLE x", "entity:", "纸" * 20):
+        assert mark(eid, bad).status_code == 422, bad
+    assert mark(eid, "x" * 600).status_code == 422
+    row = call("POST", f"{BASE}/{eid}/methodology-review/rows", "a_member", {"group": "entities"}).json()["field"]["field_id"]
+    made = mark(eid, row)  # a row the reviewer added is a real row
+    assert made.status_code == 201 and made.json()["source"]["fieldKey"] == row and made.json()["id"].startswith("ASK-METH-entity:")
+    assert asks(eid)[0]["source"]["origin"] == "methodology_row" and len(asks(eid)) == 1
+
+
+def test_methodology_follow_ups_follow_the_same_access_rules_as_every_request() -> None:
+    eid = create()["id"]
+    assert mark(eid, token="b_member").status_code == 404  # another org's engagement
+    assert mark(eid, token="provider").status_code == 403
+    call("PATCH", f"{BASE}/{eid}", body={"status": "archived"})
+    assert mark(eid).status_code == 409
+    assert asks(eid) == []

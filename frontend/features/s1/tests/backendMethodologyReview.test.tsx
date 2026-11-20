@@ -14,6 +14,9 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
 }));
 
 import { api, ApiError } from "../../../lib/api";
+import type { EngagementConfig } from "../types";
+import type { Ask } from "../types/requests";
+import type { AskDraft } from "../requests/requestsStore";
 import { BackendMethodologyReview, aiStatusWords, dropReasonWords, statusWord } from "../components/BackendMethodologyReview";
 
 const BASE = "/engagements/e1/methodology-review";
@@ -912,5 +915,98 @@ describe("entities and the boundary sentence", () => {
         }),
       ])
     );
+  });
+});
+
+describe("Mark for client follow-up", () => {
+  const engagement = { reportingPeriod: { start: "2025-01-01", end: "2025-12-31" }, signedInLogin: "ada@acme.test", signedInName: "Ada Admin", engagementTeam: [] } as unknown as EngagementConfig;
+  const ask = (over: Partial<Ask> & { fieldKey?: string; origin?: Ask["source"]["origin"] } = {}): Ask => ({
+    id: "ASK-METH-consolidation_approach",
+    type: "clarify",
+    whatIsNeeded: "x",
+    source: { origin: over.origin ?? "methodology_row", fieldKey: over.fieldKey ?? "consolidation_approach", itemLabel: "Consolidation approach", facilityName: null, period: "FY 2025" },
+    raisedByName: "Ada Admin",
+    raisedByLogin: "ada@acme.test",
+    raisedAt: "2026-11-20T15:04:05.000Z",
+    state: over.state ?? "not_yet_sent",
+    requestNumber: null,
+    lineNumber: null,
+    history: [],
+  });
+  const mount = async (asks: Ask[], onSaveAsk = vi.fn(() => Promise.resolve({})), data: unknown = fixture()) => {
+    mock.data = data;
+    const onOpenRequests = vi.fn();
+    render(<BackendMethodologyReview engagementId="e1" onOpenDocument={vi.fn()} followUp={{ engagement, asks, onSaveAsk, onOpenRequests, serverRecordsActor: true }} />);
+    await screen.findByText("Consolidation approach");
+    return { onSaveAsk, onOpenRequests };
+  };
+
+  it("offers the action on a row, opens the same Add to requests window and raises a methodology request", async () => {
+    const { onSaveAsk } = await mount([]);
+    const r = row("Consolidation approach");
+    fireEvent.click(within(r).getByRole("button", { name: "Mark for client follow-up: Consolidation approach" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Add to requests" })).toBeTruthy();
+    expect(within(dialog).getByText("Consolidation approach")).toBeTruthy(); // the Item line
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Add to requests$/ }));
+    await waitFor(() => expect(onSaveAsk).toHaveBeenCalledTimes(1));
+    const draft = (onSaveAsk.mock.calls[0] as unknown as [AskDraft])[0];
+    expect(draft).toMatchObject({ origin: "methodology_row", fieldKey: "consolidation_approach", itemLabel: "Consolidation approach", type: "clarify", period: "FY 2025" });
+    expect(draft.whatIsNeeded).toContain("Operational Control"); // what the row holds now
+    await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/added to requests, not sent yet/));
+  });
+
+  it("shows a 'Requested · <date>' chip instead of the button once the row has an open request, and links to the requests", async () => {
+    const { onSaveAsk, onOpenRequests } = await mount([ask()]);
+    const r = row("Consolidation approach");
+    expect(within(r).getByText("Requested · Nov 20, 2026")).toBeTruthy();
+    expect(within(r).queryByRole("button", { name: /Mark for client follow-up/ })).toBeNull(); // so it cannot be raised twice
+    fireEvent.click(within(r).getByRole("button", { name: "View in requests: Consolidation approach" }));
+    expect(onOpenRequests).toHaveBeenCalledTimes(1);
+    expect(onSaveAsk).not.toHaveBeenCalled();
+    cleanup();
+    await mount([ask({ state: "requested" })]);
+    expect(within(row("Consolidation approach")).getByText(/^Requested · /)).toBeTruthy();
+  });
+
+  it("offers the action again when the earlier request is closed, and ignores other rows' and other pages' requests", async () => {
+    await mount([ask({ state: "resolved" })]);
+    expect(within(row("Consolidation approach")).getByRole("button", { name: /Mark for client follow-up/ })).toBeTruthy();
+    cleanup();
+    await mount([ask({ state: "withdrawn" }), ask({ fieldKey: "reporting_period" }), ask({ origin: "data_point" })]);
+    expect(within(row("Consolidation approach")).getByRole("button", { name: /Mark for client follow-up/ })).toBeTruthy();
+    expect(within(row("Reporting period")).getByText(/^Requested · /)).toBeTruthy(); // the period row's own request
+  });
+
+  it("keeps the window open with the server's sentence when the request fails, and sends one request per click", async () => {
+    const onSaveAsk = vi.fn(() => Promise.reject(new Error("The request could not be saved. Try again.")));
+    await mount([], onSaveAsk);
+    fireEvent.click(within(row("Consolidation approach")).getByRole("button", { name: /Mark for client follow-up/ }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Add to requests$/ }));
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByText(/could not be saved/)).toBeTruthy());
+    expect(onSaveAsk).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Requested ·/)).toBeNull();
+  });
+
+  it("reads a hostile or non-ASCII row label and value as plain text", async () => {
+    const d = fixture() as { catalog: Record<string, unknown>[]; fields: Record<string, unknown>[] };
+    const hostile = `Zürich 排放 <img src=x onerror=alert(1)> "quoted" & more`;
+    d.catalog.find((c) => c.field_id === "exclusion:boundary")!.label = hostile;
+    const r = d.fields.find((f) => f.field_id === "exclusion:boundary")!;
+    r.decision = { status: "edited", value: "Käserei <b>bold</b> 燃料", by, at: "2026-11-02T10:00:00Z" };
+    const { onSaveAsk } = await mount([], vi.fn(() => Promise.resolve({})), d);
+    fireEvent.click(within(row(hostile)).getByRole("button", { name: `Mark for client follow-up: ${hostile}` }));
+    expect(document.querySelector("img")).toBeNull(); // nothing was parsed as markup
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Add to requests$/ }));
+    await waitFor(() => expect(onSaveAsk).toHaveBeenCalled());
+    const draft = (onSaveAsk.mock.calls[0] as unknown as [AskDraft])[0];
+    expect(draft.itemLabel).toBe(hostile);
+    expect(draft.whatIsNeeded).toContain("Käserei <b>bold</b> 燃料");
+  });
+
+  it("shows no action where the page cannot raise requests", async () => {
+    await open();
+    expect(screen.queryByRole("button", { name: /Mark for client follow-up/ })).toBeNull();
   });
 });

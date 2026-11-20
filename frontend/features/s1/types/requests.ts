@@ -23,7 +23,7 @@ export const REQUEST_TYPES: ReadonlyArray<{ value: RequestType; label: string }>
 ];
 
 /** Where an ask was raised. Enough to render the Item cell and link back. */
-export type AskOrigin = "workspace_document" | "review_value" | "expected_item" | "data_point";
+export type AskOrigin = "workspace_document" | "review_value" | "expected_item" | "data_point" | "methodology_row";
 
 export interface AskSource {
   origin: AskOrigin;
