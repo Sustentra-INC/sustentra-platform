@@ -171,6 +171,22 @@ export const evidenceActionRoutes: DemoRoute[] = [
     },
   },
   {
+    // The reviewer places a document on a Setup facility: their own decision, logged (the server's `set_document_facility`).
+    method: "POST",
+    path: /^\/engagements\/(?<id>[^/]+)\/documents\/(?<doc>[^/]+)\/facility$/,
+    handle: ({ params, body }) => {
+      const facilityId = String((body as { facility_id?: unknown } | undefined)?.facility_id ?? "");
+      const model = buildModel();
+      if (!model.records.some((r) => r.documentId === params.doc)) demoError(404, "That document isn't on the Evidence page for this engagement.");
+      const facility = model.facilities.find((f) => f.facilityId === facilityId);
+      if (!facility) demoError(422, "That facility is not in Setup. Reload Evidence and pick another.");
+      const decision = { ...(demoDecisions().get(params.doc) ?? {}), documentId: params.doc, facilityId } as DocumentDecision;
+      saveDemoDecision(decision);
+      log({ event_type: "evidence_document_facility_set", document_id: params.doc, facility_id: facilityId, facility_name: facility!.name, suggested: false });
+      return { document_id: params.doc, payload: decision };
+    },
+  },
+  {
     method: "GET",
     path: /^\/engagements\/(?<id>[^/]+)\/evidence-activity$/,
     handle: ({ params }) => ({ items: demoEvidenceEvents(params.id), next_cursor: null }),

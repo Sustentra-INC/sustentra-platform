@@ -24,7 +24,9 @@ interface Case {
   type?: string;
   record_indexes?: number[];
   records: Record<string, Reading | Reading[]>[];
-  expect: { facility: (string | null)[]; note: (string | null)[]; reason?: string };
+  /** Claude's facility suggestion stored with the extraction result (a suggestion, never a placement). */
+  suggestion?: { facility_id: string; quote: string; source: "file_name" | "line"; page_number?: number | null };
+  expect: { facility: (string | null)[]; note: (string | null)[]; reason?: string; suggestion?: string | null };
 }
 const shared = JSON.parse(
   readFileSync(resolve(process.cwd(), "../backend/tests/fixtures/facility_placement_cases.json"), "utf-8")
@@ -62,10 +64,15 @@ describe("the Evidence screen places a bill where the backend does (shared cases
       const company = "company" in c ? c.company : shared.company;
       const multi = c.records.length > 1;
       const indexes = c.record_indexes ?? c.records.map((_, i) => i + 1);
-      const facts = documentFacts(fieldsOf(c)).get("D1")!;
-      const item = { documentId: "D1", filename: "D1.pdf", facilityState: "unresolved", facilityId: null, facilityName: null, disposition: "active", relationships: [] } as unknown as EvidenceItem;
+      const facts = documentFacts(fieldsOf(c)).get("D1");
+      const item = {
+        documentId: "D1", filename: "D1.pdf", facilityState: "unresolved", facilityId: null, facilityName: null, disposition: "active", relationships: [],
+        ...(c.suggestion ? { facilitySuggestion: { facilityId: c.suggestion.facility_id, quote: c.suggestion.quote, where: "the file name" } } : {}),
+      } as unknown as EvidenceItem;
       const decisions: Record<string, DocumentDecision> = c.decision ? { D1: { documentId: "D1", facilityId: c.decision.facilityId } } : {};
-      const [row] = applyDocumentView([item], new Map([["D1", facts]]), decisions, shared.facilities, company);
+      const [row] = applyDocumentView([item], new Map(facts ? [["D1", facts]] : []), decisions, shared.facilities, company);
+      // Claude's suggestion is shown only while the bill awaits a decision: the Evidence screen and the backend tree agree
+      expect(row.facilitySuggestion?.facilityId ?? null).toBe(c.expect.suggestion ?? null);
 
       if (c.decision) {
         expect(row.facilityId).toBe(c.decision.facilityId); // the reviewer's choice comes first
@@ -74,7 +81,7 @@ describe("the Evidence screen places a bill where the backend does (shared cases
       // A record whose every value is blocked (rejected, or only Claude read it) has nothing left to read.
       const nothing = { name: null, address: null, account: null, meter: null };
       const placements = indexes.map((index) => {
-        const rec = facts.records?.find((r) => r.recordIndex === (multi ? index : null));
+        const rec = facts?.records?.find((r) => r.recordIndex === (multi ? index : null));
         return placeRecord(rec ?? nothing, shared.facilities, company);
       });
       expect(placements.map((p) => p.facility?.facilityId ?? null)).toEqual(c.expect.facility);

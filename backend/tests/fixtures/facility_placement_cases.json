@@ -1,5 +1,5 @@
 {
- "_about": "Shared by backend/tests/services/test_facility_placement_cases.py and frontend/features/s1/tests/facilityPlacementCases.test.ts. Each case is one document with one or more records. A field is [value, status]; status is rule (read by the rules, not reviewed), ai_only (read only by Claude, nobody accepted it), accepted (Claude read it and a reviewer accepted it), rejected or needs_more_evidence (a reviewer decided against using it). expect.facility has one entry per record: the Setup facility id it is placed on, or null. expect.note has one entry per record: null, or text the plain-sentence note must contain. A field may be a list of readings ([[value, status], ...], in the order read). Optional per case: company (a key with null means no company), decision (the reviewer's own facility choice), type (\"electricity\" for a purchased electricity bill; gas by default). expect.reason, when present, is the recalculation's reason for the unplaced record (a single-record case). The company is the engagement's own (client_name); the name and address rules are #282's (match, ambiguous or none).",
+ "_about": "Shared by backend/tests/services/test_facility_placement_cases.py and frontend/features/s1/tests/facilityPlacementCases.test.ts. Each case is one document with one or more records. A field is [value, status]; status is rule (read by the rules, not reviewed), ai_only (read only by Claude, nobody accepted it), accepted (Claude read it and a reviewer accepted it), rejected or needs_more_evidence (a reviewer decided against using it). expect.facility has one entry per record: the Setup facility id it is placed on, or null. expect.note has one entry per record: null, or text the plain-sentence note must contain. A field may be a list of readings ([[value, status], ...], in the order read). Optional per case: company (a key with null means no company), decision (the reviewer's own facility choice), type (\"electricity\" for a purchased electricity bill; gas by default). expect.reason, when present, is the recalculation's reason for the unplaced record (a single-record case). The company is the engagement's own (client_name); the name and address rules are #282's (match, ambiguous or none). Optional per case: suggestion (Claude's facility suggestion stored with the extraction result: a suggestion, never a placement) and expect.suggestion, the Setup facility id the Evidence tree row and the screen show as awaiting a decision, or null. A confirmed suggestion is the reviewer's own decision (decision), after which none is shown.",
  "company": "Northgate Provisions Inc.",
  "facilities": [
   {
@@ -1138,6 +1138,143 @@
      null,
      null
     ]
+   }
+  },
+  {
+   "id": "a bill that names nothing and has no suggestion shows none",
+   "records": [
+    {}
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "suggestion": null,
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "a suggestion awaits a decision and the bill stays unplaced",
+   "records": [
+    {}
+   ],
+   "suggestion": {
+    "facility_id": "fac-kent",
+    "quote": "Kent",
+    "source": "file_name",
+    "page_number": null
+   },
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "suggestion": "fac-kent",
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "a confirmed suggestion is the reviewer's decision: placed, and none is shown",
+   "records": [
+    {}
+   ],
+   "suggestion": {
+    "facility_id": "fac-kent",
+    "quote": "Kent",
+    "source": "file_name",
+    "page_number": null
+   },
+   "decision": {
+    "facilityId": "fac-kent"
+   },
+   "expect": {
+    "facility": [
+     "fac-kent"
+    ],
+    "note": [
+     null
+    ],
+    "suggestion": null
+   }
+  },
+  {
+   "id": "a suggestion for a facility that left Setup is not shown",
+   "records": [
+    {}
+   ],
+   "suggestion": {
+    "facility_id": "fac-gone",
+    "quote": "Gone",
+    "source": "file_name",
+    "page_number": null
+   },
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "suggestion": null,
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "a bill whose own name is not in Setup shows no suggestion (the annex case)",
+   "records": [
+    {
+     "facility_name": [
+      "Müller Käserei – Zürich",
+      "rule"
+     ]
+    }
+   ],
+   "suggestion": {
+    "facility_id": "fac-kent",
+    "quote": "Kent",
+    "source": "file_name",
+    "page_number": null
+   },
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "suggestion": null,
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "a bill whose number places it shows no suggestion",
+   "records": [
+    {
+     "account_number": [
+      "2001-7788",
+      "rule"
+     ]
+    }
+   ],
+   "suggestion": {
+    "facility_id": "fac-kent",
+    "quote": "Kent",
+    "source": "file_name",
+    "page_number": null
+   },
+   "expect": {
+    "facility": [
+     "fac-tac"
+    ],
+    "note": [
+     null
+    ],
+    "suggestion": null
    }
   }
  ]

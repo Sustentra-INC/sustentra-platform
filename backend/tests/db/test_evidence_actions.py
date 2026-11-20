@@ -548,3 +548,86 @@ def test_the_audit_labels_follow_the_pages_line_title_rule(store: FakeStore) -> 
 def test_the_audit_log_has_an_index_for_one_engagements_events() -> None:
     rows = asyncio.run(_admin("SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_audit_logs_target'"))
     assert rows and "target_id" in rows[0]["indexdef"] and "created_at DESC" in rows[0]["indexdef"]
+
+
+# --- Claude's facility suggestion, confirmed by the reviewer (EXT-026) -------------------------------------------------
+def add_unplaced(store: FakeStore, document_id: str, engagement_id: str, suggestion: dict | None) -> None:
+    """A bill that names no facility (so it is unplaced), with Claude's suggestion stored with its result."""
+
+    bill = {k: v for k, v in _gas().items() if k != "facility_name"}
+    store.add_document(document_id, "CT-S1-FUELQTY", [bill], engagement_id=engagement_id, org_id=str(ORG_A))
+    store.documents[-1]["file_name"] = f"{SECRET}-{document_id}.pdf"
+    if suggestion:
+        store.results[document_id][0]["facility_suggestion"] = suggestion
+
+
+def doc_rows(engagement_id: str) -> dict[str, dict]:
+    tree = call("GET", path(engagement_id, "evidence-tree"), "a_member").json()
+    rows: dict[str, dict] = {}
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            if "document_id" in node and "facility_id" in node:
+                rows[node["document_id"]] = node
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(tree)
+    return rows
+
+
+SUGGESTION = {"facility_id": "F2", "quote": "Tacoma Käserei 工場", "source": "line", "page_number": 2}
+
+
+def test_a_suggestion_awaits_the_reviewer_then_one_click_places_it_and_the_audit_trail_shows_it(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, facilities=[KENT, TACOMA])
+    add_unplaced(store, "D0", engagement_id, SUGGESTION)
+    row = doc_rows(engagement_id)["D0"]
+    assert row["facility_id"] is None  # a suggestion is not a placement
+    assert row["facility_suggestion"] == {"facility_id": "F2", "facility_name": "Tacoma Works",
+                                           "quote": "Tacoma Käserei 工場", "where": "page 2", "label": "Suggested by Claude"}
+    assert tree_lines(engagement_id)[GAS_TACOMA] == [] and tree_lines(engagement_id)[UNASSIGNED] == ["D0"]  # still unplaced
+
+    placed = call("POST", path(engagement_id, "documents/D0/facility"), "a_member", {"facility_id": "F2"})
+    assert placed.status_code == 200, placed.text
+    assert placed.json()["payload"]["facilityId"] == "F2"
+    assert tree_lines(engagement_id)[GAS_TACOMA] == ["D0"]  # the reviewer's own decision places it
+    assert doc_rows(engagement_id)["D0"]["facility_suggestion"] is None  # nothing is left to decide
+
+    [event] = [e for e in events(engagement_id) if e["event_type"] == "evidence_document_facility_set"]
+    assert event["actor_user_id"] == A_MEMBER  # the actor is the session's
+    assert event["metadata"] == {"document_id": "D0", "facility_id": "F2", "facility_name": "Tacoma Works", "suggested": True}
+    assert SECRET not in json.dumps(event["metadata"]) and "Käserei" not in json.dumps(event["metadata"], ensure_ascii=False)
+    log = call("GET", path(engagement_id, "evidence-activity"), "a_member").json()["items"]
+    assert log[0]["event_type"] == "evidence_document_facility_set" and log[0]["facility_name"] == "Tacoma Works"
+    assert log[0]["suggested"] is True and log[0]["actor_name"]
+
+
+def test_choosing_another_facility_is_audited_as_not_the_suggestion(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, facilities=[KENT, TACOMA])
+    add_unplaced(store, "D0", engagement_id, SUGGESTION)
+    assert call("POST", path(engagement_id, "documents/D0/facility"), "a_member", {"facility_id": "F1"}).status_code == 200
+    assert tree_lines(engagement_id)[GAS_KENT] == ["D0"]
+    [event] = [e for e in events(engagement_id) if e["event_type"] == "evidence_document_facility_set"]
+    assert event["metadata"]["suggested"] is False
+
+
+def test_a_facility_not_in_setup_a_missing_document_and_a_reader_are_refused(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, facilities=[KENT, TACOMA])
+    add_unplaced(store, "D0", engagement_id, SUGGESTION)
+    url = path(engagement_id, "documents/D0/facility")
+    assert call("POST", url, "a_member", {"facility_id": "F9"}).status_code == 422
+    assert call("POST", url, "a_member", {"facility_id": "F2", "actor": "x"}).status_code == 422  # no extra keys
+    assert call("POST", path(engagement_id, "documents/NOPE/facility"), "a_member", {"facility_id": "F2"}).status_code == 404
+    assert call("POST", url, None, {"facility_id": "F2"}).status_code == 401
+    assert [e for e in events(engagement_id) if e["event_type"] == "evidence_document_facility_set"] == []
+    assert doc_rows(engagement_id)["D0"]["facility_suggestion"] is not None  # nothing changed
+
+
+def test_a_suggestion_for_a_facility_that_left_setup_is_not_shown(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, facilities=[KENT])
+    add_unplaced(store, "D0", engagement_id, SUGGESTION)  # F2 is not in this Setup
+    assert doc_rows(engagement_id)["D0"]["facility_suggestion"] is None
