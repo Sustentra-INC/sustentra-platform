@@ -37,22 +37,22 @@ describe("Claude's readings on the review cards", () => {
     const card = cardOf(candidate({ validation_flags: ["ai_suggested"] }));
     expect(card.reviewState).toBe("to_review"); // needs review
     expect(card.ai).toEqual({ suggested: true });
-    expect(card.record[0].actor).toBe("Claude");
+    expect(card.record[0].actor).toBe("Sustentra's AI");
   });
 
-  it("shows the Suggested by Claude chip with the verified snippet and its page", () => {
+  it("shows the Suggested by Sustentra's AI chip with the verified snippet and its page", () => {
     const html = renderToStaticMarkup(<AiValueNote value={cardOf(candidate({ validation_flags: ["ai_suggested"] }))} />);
-    expect(html).toContain("Suggested by Claude");
+    expect(html).toContain("Suggested by Sustentra&#x27;s AI");
     expect(html).toContain("Account Number 5521-8890");
     expect(html).toContain("page 2");
   });
 
-  it("says Claude read two different values when the suggestion has a conflict", () => {
+  it("says Sustentra's AI read two different values when the suggestion has a conflict", () => {
     const html = renderToStaticMarkup(
       <AiValueNote value={cardOf(candidate({ validation_flags: ["ai_suggested", "ai_conflict"] }))} />
     );
-    expect(html).toContain("Suggested by Claude");
-    expect(html).toContain("Claude read two different values here");
+    expect(html).toContain("Suggested by Sustentra&#x27;s AI");
+    expect(html).toContain("Sustentra&#x27;s AI read two different values here");
   });
 
   it("shows Claude's value and quote where the rules read another value, and keeps the rules' value", () => {
@@ -70,11 +70,11 @@ describe("Claude's readings on the review cards", () => {
     );
     expect(card.value).toBe("Acme Energy");
     const html = renderToStaticMarkup(<AiValueNote value={card} />);
-    expect(html).toContain("Claude read a different value here");
+    expect(html).toContain("Sustentra&#x27;s AI read a different value here");
     expect(html).toContain("Meridian Power &amp; Light");
     expect(html).toContain("Supplier Meridian Power &amp; Light");
     expect(html).toContain("page 1");
-    expect(html).not.toContain("Suggested by Claude");
+    expect(html).not.toContain("Suggested by Sustentra&#x27;s AI");
   });
 
   it("names no page for a workbook or CSV reading", () => {

@@ -755,7 +755,7 @@ def test_the_workpaper_labels_claudes_unreviewed_readings_and_counts_them_apart(
     (document,) = register["documents"]
     assert document["suggested_count"] == 2 and document["candidate_count"] == 4
     labels = {v["field"]: v["decision"] for v in register["values"]}
-    assert labels["activity_quantity"] == "Suggested by Claude (not reviewed)"
+    assert labels["activity_quantity"] == "Suggested by Sustentra's AI (not reviewed)"
     assert labels["fuel_type"] == "accepted"
     from io import BytesIO
 
@@ -766,4 +766,4 @@ def test_the_workpaper_labels_claudes_unreviewed_readings_and_counts_them_apart(
     content = build_workbook(engagement={"name": "E", "client_name": "C", "settings": {}}, recalculation={},
                              register=register, items=[], exported_by="m@x.test")
     rows = list(load_workbook(BytesIO(content))["Evidence"].iter_rows(values_only=True))
-    assert tuple(rows[0][-2:]) == ("Values extracted", "Suggested by Claude") and tuple(rows[1][-2:]) == (4, 2)
+    assert tuple(rows[0][-2:]) == ("Values extracted", "Suggested by Sustentra's AI") and tuple(rows[1][-2:]) == (4, 2)

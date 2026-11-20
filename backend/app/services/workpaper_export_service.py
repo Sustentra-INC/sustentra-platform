@@ -262,7 +262,7 @@ def build_workbook(
     _sheet(
         book, "Evidence",
         ["File", "Document type", "Uploaded", "Uploaded by", "Values extracted"]
-        + (["Suggested by Claude"] if with_claude else []),
+        + (["Suggested by Sustentra's AI"] if with_claude else []),
         [[d.get("file_name"), d.get("canonical_type_id") or "Not identified", _when(d.get("uploaded_at")),
           d.get("uploaded_by"), d.get("candidate_count")] + ([d.get("suggested_count") or 0] if with_claude else [])
          for d in documents],

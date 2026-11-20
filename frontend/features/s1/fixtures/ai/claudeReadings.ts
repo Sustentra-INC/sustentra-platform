@@ -49,7 +49,7 @@ function printedTherms(documentId: string): number {
 const oneDecimal = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 const claude = (reading: string): ReviewValue["record"] => [
-  { kind: "machine", actor: "Claude", at: "2025-09-10T08:00:00Z", action: reading },
+  { kind: "machine", actor: "Sustentra's AI", at: "2025-09-10T08:00:00Z", action: reading },
 ];
 
 /** The gas bills' readings. The heat content follows from the therms the bill's usage line says. */

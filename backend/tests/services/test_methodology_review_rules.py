@@ -440,7 +440,7 @@ def test_a_conditional_row_shown_only_by_claudes_suggestion_says_so() -> None:
     market = m.MARKET_CATEGORY_IDS
     claude_only = {**m.new_record(f["field_id"]), "suggestion": {"value": [pick("PPA or VPPA")]}}
     note = m.shown_note(f, claude_only, meta, {})
-    assert note == "Shown because Claude found it, although no market-based category is Yes."
+    assert note == "Shown because Sustentra's AI found it, although no market-based category is Yes."
     assert m.shown_note(f, claude_only, meta, {market[0]: rec(market[0], "Yes")}) is None  # the condition holds
     assert m.shown_note(f, {**claude_only, "decision": rec(f["field_id"], [pick("None")])["decision"]}, meta, {}) is None
     assert m.shown_note(f, claude_only, {**meta, "revealed": [f["field_id"]]}, {}) is None  # the reviewer added it

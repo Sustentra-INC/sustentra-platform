@@ -59,7 +59,7 @@ describe("Accept all and Claude's readings", () => {
       candidate("activity_quantity", "13100", ["ai_suggested", "ai_conflict"], "q2"),
     ]);
     expect(screen.getByRole("button", { name: "Accept all 2" })).toBeInTheDocument();
-    expect(screen.getByText("3 suggested by Claude need individual review")).toBeInTheDocument();
+    expect(screen.getByText("3 suggested by Sustentra's AI need individual review")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Accept all 2" }));
     const next = (onValuesChange.mock.calls[0][0] as (cur: ReviewValue[]) => ReviewValue[])(values);
@@ -76,6 +76,6 @@ describe("Accept all and Claude's readings", () => {
   it("offers no Accept all when only Claude's readings are left, but still says so", () => {
     review([candidate("account_number", "5521-8890", ["ai_suggested"]), candidate("meter_number", "MTR-1", ["ai_suggested"])]);
     expect(screen.queryByRole("button", { name: /Accept all/ })).toBeNull();
-    expect(screen.getByText("2 suggested by Claude need individual review")).toBeInTheDocument();
+    expect(screen.getByText("2 suggested by Sustentra's AI need individual review")).toBeInTheDocument();
   });
 });
