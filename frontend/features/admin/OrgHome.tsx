@@ -42,7 +42,13 @@ export function OrgHome({ me, slug }: { me: Me; slug: string }) {
       </div>
       {isAdmin ? (
         <div className={styles.actions}>
-          <Link className={styles.button} href={`/org/${slug}/admin/users`}>
+          <Link className={styles.button} href={`/org/${slug}/admin/people?add=1`}>
+            Add people
+          </Link>
+          <Link className={`${styles.button} ${styles.ghost}`} href={`/org/${slug}/admin/people`}>
+            People
+          </Link>
+          <Link className={`${styles.button} ${styles.ghost}`} href={`/org/${slug}/admin/users`}>
             Manage users
           </Link>
           <Link className={`${styles.button} ${styles.ghost}`} href={`/org/${slug}/admin/audit-log`}>

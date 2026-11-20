@@ -24,6 +24,7 @@ Audit events (DB-003): user_invited, user_invite_resent, invite_accepted.
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -49,8 +50,11 @@ _ORG_NOT_FOUND = HTTPException(status_code=404, detail="Organization not found")
 _USER_NOT_FOUND = HTTPException(status_code=404, detail="User not found")
 _SEATED = ", ".join(f"'{s}'" for s in SEATED_USER_STATUSES)
 
-__all__ = ["Actor", "INVITE_TTL", "PendingInvite", "accept_invite", "create_invite", "create_invited_user",
-           "invite_link", "resend_invite", "validate_invite"]
+__all__ = ["Actor", "BULK_INVITE_MAX", "INVITE_TTL", "PendingInvite", "accept_invite", "create_bulk_invites",
+           "create_invite", "create_invited_user", "invite_link", "resend_invite", "validate_invite"]
+
+# Most emails one bulk request may carry (the route's schema enforces it; 422 above).
+BULK_INVITE_MAX = 50
 
 
 @dataclass(frozen=True)
@@ -163,6 +167,59 @@ async def create_invite(db: AsyncSession, actor: Actor, org_id: str, *, email: s
         db, actor, oid, email=email, role=role, first_name=first_name, last_name=last_name, source="invite"
     )
     return await _invite_row(db, oid, user_id, expires), pending
+
+
+def name_from_email(email: str) -> tuple[str, str]:
+    """A first/last name guessed from the address (jane.doe@x -> Jane, Doe), for invites that give no name."""
+    parts = [p for p in re.split(r"[._\-+\d]+", email.split("@", 1)[0]) if p]
+    if not parts:
+        return email.split("@", 1)[0][:100] or "New", ""
+    return parts[0].capitalize()[:100], " ".join(p.capitalize() for p in parts[1:])[:100]
+
+
+async def create_bulk_invites(db: AsyncSession, actor: Actor, org_id: str, *, emails: list[str], valid: list[bool],
+                              role: str) -> tuple[list[dict[str, Any]], list[PendingInvite]]:
+    """Invite many people at once. One result per input email, in order, never raising for a single bad row:
+    status is invited | already_member | duplicate | invalid | seat_limit. `valid[i]` is the route's email check.
+    Every invite goes through create_invite, so it gets the same lock, seat check and `user_invited` audit event;
+    one `users_bulk_invited` summary event (counts only, no emails) is added on top."""
+    results: list[dict[str, Any]] = []
+    pending: list[PendingInvite] = []
+    seen: set[str] = set()
+    seats_full = False
+    for email, ok in zip(emails, valid, strict=True):
+        if not ok:
+            results.append({"email": email, "status": "invalid", "user_id": None})
+        elif email in seen:
+            results.append({"email": email, "status": "duplicate", "user_id": None})
+        elif seats_full:
+            results.append({"email": email, "status": "seat_limit", "user_id": None})
+        else:
+            seen.add(email)
+            first, last = name_from_email(email)
+            try:
+                row, invite = await create_invite(db, actor, org_id, email=email, role=role, first_name=first,
+                                                  last_name=last)
+            except HTTPException as exc:
+                if exc.status_code == 409:
+                    results.append({"email": email, "status": "already_member", "user_id": None})
+                    continue
+                if exc.status_code == 422:
+                    seats_full = True
+                    results.append({"email": email, "status": "seat_limit", "user_id": None})
+                    continue
+                raise
+            pending.append(invite)
+            results.append({"email": email, "status": "invited", "user_id": row["id"]})
+    oid = _uuid(org_id, _ORG_NOT_FOUND)
+    counts = {k: sum(1 for r in results if r["status"] == k) for k in
+              ("invited", "already_member", "duplicate", "invalid", "seat_limit")}
+    await write_audit_event(
+        db, "users_bulk_invited", org_id=oid, actor_user_id=actor.user_id, actor_role=actor.role,
+        target_type="org", target_id=str(oid), request_id=actor.request_id, ip_address=actor.ip_address,
+        user_agent=actor.user_agent, metadata={"role": role, "requested": len(emails), **counts},
+    )
+    return results, pending
 
 
 async def resend_invite(db: AsyncSession, actor: Actor, org_id: str, user_id: str) -> tuple[dict[str, Any],

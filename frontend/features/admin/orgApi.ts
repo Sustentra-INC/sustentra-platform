@@ -95,6 +95,46 @@ export function inviteUser(orgId: string, input: InviteInput): Promise<OrgUser> 
   return api<OrgUser>(`/orgs/${encodeURIComponent(orgId)}/invites`, { method: "POST", body: input });
 }
 
+export type BulkInviteStatus = "invited" | "already_member" | "duplicate" | "invalid" | "seat_limit";
+
+export interface BulkInviteResult {
+  email: string;
+  status: BulkInviteStatus;
+}
+
+export interface BulkInviteResponse {
+  results: BulkInviteResult[];
+  invited: number;
+}
+
+/** The most emails the API takes in one bulk invite (422 above it). */
+export const BULK_INVITE_MAX = 50;
+
+/** Invite many people at once (one result per email, bad rows reported, the rest still sent). */
+export function bulkInvite(orgId: string, emails: string[], role: UserRole): Promise<BulkInviteResponse> {
+  return api<BulkInviteResponse>(`/orgs/${encodeURIComponent(orgId)}/invites/bulk`, {
+    method: "POST",
+    body: { emails, role },
+  });
+}
+
+/** A person in the org's directory: what the Setup team picker may see (no role, no other orgs). */
+export interface OrgMember {
+  id: string;
+  email: string;
+  name: string;
+  status: "active" | "invited";
+}
+
+export interface MembersResult {
+  org_name: string;
+  items: OrgMember[];
+}
+
+export function listMembers(orgId: string): Promise<MembersResult> {
+  return api<MembersResult>(`/orgs/${encodeURIComponent(orgId)}/members`);
+}
+
 export function resendInvite(orgId: string, userId: string): Promise<void> {
   return api<void>(`/orgs/${encodeURIComponent(orgId)}/invites/${encodeURIComponent(userId)}/resend`, {
     method: "POST",

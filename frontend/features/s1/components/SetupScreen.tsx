@@ -7,6 +7,7 @@ import type { EngagementConfig, FacilityOption } from "../types";
 import type { InScopeField } from "../types/scope";
 import type { VehicleTypeOption } from "../api/recalculation";
 import { InfoTip } from "./InfoTip";
+import { TeamMemberPicker, type TeamDirectory } from "./TeamMemberPicker";
 import { SetupVehicleGroups } from "./SetupVehicleGroups";
 import { ZipRegionHint } from "./ZipRegionHint";
 import { FacilityNumbersField } from "./FacilityNumbersField";
@@ -66,9 +67,12 @@ export function SetupScreen({
   lookupZip,
   foundFacilities = [],
   vehicleReference,
+  teamDirectory,
 }: {
   engagement: EngagementConfig;
   onChange: (next: EngagementConfig) => void;
+  /** Backend mode: the company's people. The team is picked from them (or invited) instead of typed. */
+  teamDirectory?: TeamDirectory;
   inScopeFields: InScopeField[];
   onInScopeChange: (fields: InScopeField[]) => void;
   /** Backend mode: choose / create the engagement being edited (S1-BE-002). */
@@ -415,15 +419,29 @@ export function SetupScreen({
                 aria-label="Login"
                 className="s1-num s1-setup-row__login"
                 value={m.login}
+                readOnly={Boolean(teamDirectory)}
+                title={
+                  teamDirectory?.members.find((p) => p.email.toLowerCase() === m.login.toLowerCase())?.status === "invited"
+                    ? "Invited. Joins the team's sign-ins once they accept."
+                    : undefined
+                }
                 onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, login: e.target.value } : t)))}
               />
               <RemoveButton label={`Remove ${m.name}`} onClick={() => setTeam(team.filter((_, j) => j !== i))} />
             </div>
           ))}
         </div>
-        <AddButton onClick={() => setTeam([...team, { name: "New member", login: `login${team.length + 1}` }])}>
-          Add member
-        </AddButton>
+        {teamDirectory ? (
+          <TeamMemberPicker
+            directory={teamDirectory}
+            taken={team.map((m) => m.login)}
+            onPick={(member) => setTeam([...team, member])}
+          />
+        ) : (
+          <AddButton onClick={() => setTeam([...team, { name: "New member", login: `login${team.length + 1}` }])}>
+            Add member
+          </AddButton>
+        )}
       </div>
 
       {/* In-scope data points: the workbook's reported data points (live), placeholders (demo) */}

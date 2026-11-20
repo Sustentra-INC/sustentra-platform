@@ -14,6 +14,7 @@ import {
 import { ApiError } from "../../../lib/api";
 import { isActiveRun, readFailureMessage, requestRead, type ProcessingRunView } from "../api/processingRuns";
 import { useProcessingRuns } from "../hooks/useProcessingRuns";
+import { useTeamDirectory } from "../hooks/useTeamDirectory";
 import { createDocumentBatch } from "../api/documentBatches";
 import { demoBatchAiTypeDocument, registerDemoBatch } from "../demo-backend/batches";
 import { BATCH_NOT_CREATED, useBatchProgress } from "../hooks/useBatchProgress";
@@ -179,6 +180,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const STAGING_SCREENS: boolean = dataMode === "backend" || dataMode === "fixture";
   // Demo-only: rehydrate the fixture state from localStorage once, so a refresh
   // does not wipe the walkthrough. Read a single time on mount.
+  const teamDirectory = useTeamDirectory(dataMode === "backend" ? user?.orgId : null, user?.role);
   const [persisted] = useState<DemoSnapshot | null>(() => (dataMode === "fixture" ? loadDemoState() : null));
   const [signedIn, setSignedIn] = useState<boolean>(() => (dataMode === "fixture" ? loadSignedIn() : true));
   // localStorage is read in initializers above; render nothing until mounted so
@@ -1239,6 +1241,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           <SetupScreen
             engagement={engagement}
             onChange={changeEngagement}
+            teamDirectory={teamDirectory}
             picker={
               dataMode === "backend" && engagements !== null ? (
                 <EngagementPicker
