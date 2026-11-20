@@ -334,6 +334,16 @@ def account_summary_pages(rows: Sequence[Row]) -> set[int]:
         numbers = {m.group(1).lower() for row in page_rows for m in _INVOICE_NUMBER_RE.finditer(row.text)}
         if len(numbers) >= 2 or len(_page_ranges(page_rows)) >= 2:
             found.add(page)
+            continue
+        # one period, spanning the periods of two or more other statements of the same account in the file
+        period, accounts = summary_period(page_rows), _accounts(page_rows)
+        if period is None or not accounts:
+            continue
+        spanned = {p for other, other_rows in by_page.items() if other != page and accounts & _accounts(other_rows)
+                   and (p := next((q for r in other_rows if (q := statement_period(r)) is not None), None)) is not None
+                   and p != period and inside(p, period)}
+        if len(spanned) >= 2:
+            found.add(page)
     return found
 
 

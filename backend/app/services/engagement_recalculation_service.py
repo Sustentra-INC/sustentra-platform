@@ -523,8 +523,9 @@ class EngagementRecalculationService:
         try:
             filing = recalculation_lines.file_records(self.reference, placed, inputs, settings, decisions,
                                                       self._facilities, self._company)
-            records = [r for r in placed if filing.on_a_line(r)]
-            off_line = [r for r in placed if not filing.on_a_line(r)]
+            held = [r for r in placed if self._held_summary(r)]  # counts 0 until a reviewer decides
+            records = [r for r in placed if filing.on_a_line(r) and r not in held]
+            off_line = [r for r in placed if not filing.on_a_line(r) and r not in held]
         except Exception as exc:  # noqa: BLE001 - a placement that cannot be read must not take the page down
             # Fail closed: with no placement nothing is known to be on a line, so nothing from evidence counts.
             log.warning("record placement failed: %s", type(exc).__name__)
@@ -1385,6 +1386,14 @@ class EngagementRecalculationService:
         if unit == "g":
             return number / 1000, "kg"
         return (number, unit) if unit in ("lb", "kg") else None
+
+    @staticmethod
+    def _held_summary(record: ReviewedRecord) -> bool:
+        """A statement of account flagged for double counting that has no period of its own: with no period it
+        would be taken for a whole year, so it counts nothing until a reviewer decides (the open item stays)."""
+
+        return bool(record.best("statement_total_check")
+                    and not record.best("service_period_start") and not record.best("service_period_end"))
 
     def _evidence_record(self, record: ReviewedRecord) -> EvidenceRecord | None:
         """A record as the data quality checks see it (extracted values count before review:

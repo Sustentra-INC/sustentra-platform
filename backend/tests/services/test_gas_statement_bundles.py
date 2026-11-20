@@ -365,18 +365,87 @@ def test_a_statement_of_account_with_no_invoice_in_the_file_is_a_reading_of_its_
     assert len(_facts(blocks, targets)) == 2 and not any("differs" in n for n in outcome.notes)
 
 
+def _flag_record(period: bool) -> dict[str, tuple]:
+    record: dict[str, tuple] = {
+        "fuel_type": ("natural_gas", None), "activity_quantity": (299.95, "MMBtu"), "activity_unit": ("MMBtu", None),
+        "account_number": (ACCOUNT, None), "service_address": (ADDRESS, None),
+        "statement_total_check": ("Statement of account total 620.0 therms differs from its invoices 555.4 therms; "
+                                  "check for double counting.", None)}
+    if period:
+        record |= {"service_period_start": ("2025-01-13", None), "service_period_end": ("2025-02-11", None)}
+    return record
+
+
 def test_a_flagged_statement_of_account_is_an_open_item_and_the_category_is_incomplete() -> None:
     store = RecalcStore()
-    month = {"fuel_type": ("natural_gas", None), "activity_quantity": (299.95, "MMBtu"), "activity_unit": ("MMBtu", None),
-             "service_period_start": ("2025-01-13", None), "service_period_end": ("2025-02-11", None),
-             "account_number": (ACCOUNT, None), "service_address": (ADDRESS, None)}
-    flagged = {**month, "statement_total_check": ("Statement of account total 620.0 therms differs from its invoices "
-                                                  "555.4 therms; check for double counting.", None)}
-    store.add("PKG", [dict(month), flagged], canonical_type_id="CT-S1-FUELQTY", pages=[2, 5], keys=["r1:A", "r2:B"])
+    month = {k: v for k, v in _flag_record(True).items() if k != "statement_total_check"}
+    store.add("PKG", [month, _flag_record(True)], canonical_type_id="CT-S1-FUELQTY", pages=[2, 5], keys=["r1:A", "r2:B"])
     result = recalculate(store, FACILITIES)
     items = [n for n in result["needs_input"] if n["kind"] == "statement_total_differs"]
     assert len(items) == 1 and "check for double counting" in items[0]["message"]
-    assert result["rollup"] is not None
+    # with its own period the flagged record is counted (both, until a reviewer decides) and Q-004 can see it
+    assert result["categories"]["stationary_combustion"]["lines"][0]["mass_t"]["CO2"] == pytest.approx(
+        2 * 299.95 * 53.06 / 1000)
+
+
+def test_a_flagged_statement_of_account_with_no_period_counts_nothing_until_a_reviewer_decides() -> None:
+    store = RecalcStore()
+    month = {k: v for k, v in _flag_record(True).items() if k != "statement_total_check"}
+    store.add("PKG", [month, _flag_record(False)], canonical_type_id="CT-S1-FUELQTY", pages=[2, 5], keys=["r1:A", "r2:B"])
+    result = recalculate(store, FACILITIES)
+    assert [n for n in result["needs_input"] if n["kind"] == "statement_total_differs"]  # still flagged
+    line = result["categories"]["stationary_combustion"]["lines"][0]
+    assert line["mass_t"]["CO2"] == pytest.approx(299.95 * 53.06 / 1000)  # the one month; not a whole extra year
+    assert "prorated_to_reporting_period" not in line["flags"]
+
+
+def _quarter_summary(page: int, total: float | None = None) -> list[dict[str, Any]]:
+    """A statement of account with ONE billing period line over the quarter and a usage table: no invoice listed."""
+
+    quarter = MONTHS[1:4]
+    return _page(page, [
+        [(SUPPLIER, 0.15)], [("Statement of Account", 0.15)], [("Account Number:", 0.07), (ACCOUNT, 0.3)],
+        [("Billing Period:", 0.07), (f"{quarter[0][0]} - {quarter[-1][1]}", 0.3)],
+        [("Meter", 0.075), ("Start Read", 0.3), ("End Read", 0.5), ("Usage (therms)", 0.75)],
+        [("GM-0091742", 0.075), ("215,480", 0.3), ("218,860", 0.5),
+         (f"{(sum(m[2] for m in quarter) if total is None else total):,.1f}", 0.75)]])
+
+
+QUARTER = [(m[2], m[0][6:] + "-" + m[0][:2] + "-" + m[0][3:5], m[1][6:] + "-" + m[1][:2] + "-" + m[1][3:5])
+           for m in MONTHS[1:4]]
+
+
+@pytest.mark.parametrize("where", ["first", "middle", "last"])
+def test_a_single_period_statement_of_account_over_the_quarter_is_found_wherever_it_sits(
+        targets: list[dict], where: str) -> None:
+    invoices = [_invoice(10 + 10 * n, m) for n, m in enumerate(MONTHS[1:4])]
+    summary = _quarter_summary(60)
+    blocks = {"first": summary + sum(invoices, []), "middle": invoices[0] + summary + invoices[1] + invoices[2],
+              "last": sum(invoices, []) + summary}[where]
+    outcome = StationaryCombustionExtractor().extract(_output(blocks), targets, "EV-1")
+    assert _facts(blocks, targets) == [(pytest.approx(v), a, b) for v, a, b in QUARTER]
+    assert ACCOUNT_SUMMARY_NOTE in outcome.notes
+
+
+def test_a_single_period_statement_of_account_that_does_not_add_up_is_kept_with_its_period(
+        targets: list[dict]) -> None:
+    blocks = sum([_invoice(10 + 10 * n, m) for n, m in enumerate(MONTHS[1:4])], []) + _quarter_summary(60, total=8000.0)
+    outcome = StationaryCombustionExtractor().extract(_output(blocks), targets, "EV-1")
+    facts = _facts(blocks, targets)
+    assert len(facts) == 4 and facts[3] == (pytest.approx(8000.0), "2025-01-13", "2025-04-11")
+    assert any("differs" in n for n in outcome.notes)
+
+
+def test_a_statement_of_account_that_prints_no_period_is_flagged_and_has_none(targets: list[dict]) -> None:
+    summary = _page(60, [[(SUPPLIER, 0.15)], [("Statement of Account", 0.15)], [("Account Number:", 0.07), (ACCOUNT, 0.3)],
+                         [("Invoice INV-001", 0.07)], [("Invoice INV-002", 0.07)],
+                         [("Meter", 0.075), ("Start Read", 0.3), ("End Read", 0.5), ("Usage (therms)", 0.75)],
+                         [("GM-0091742", 0.075), ("215,480", 0.3), ("218,860", 0.5), ("5,553.9", 0.75)]])
+    blocks = _invoice(10, MONTHS[1]) + _invoice(20, MONTHS[2]) + summary
+    outcome = StationaryCombustionExtractor().extract(_output(blocks), targets, "EV-1")
+    facts = _facts(blocks, targets)
+    assert len(facts) == 3 and facts[2][1] is None  # kept, with no period
+    assert any("prints no period" in n for n in outcome.notes)
 
 
 def test_a_two_page_bill_headed_account_statement_keeps_both_meters(targets: list[dict]) -> None:

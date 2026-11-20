@@ -1205,11 +1205,11 @@ class StationaryCombustionExtractor:
         for at in sorted(summary_at):
             part, hint, records, _ = found[at]
             accounts, period = seg.accounts_of(part), seg.summary_period(part)
-            if not accounts or period is None:
+            if not accounts:
                 continue
             invoices = [(i, p) for i, (other, _h, _r, _m) in enumerate(found)
                         if i not in summary_at and accounts & seg.accounts_of(other)
-                        and (p := first_period(other)) is not None and seg.inside(p, period)]
+                        and (p := first_period(other)) is not None and (period is None or seg.inside(p, period))]
             if not invoices:
                 continue
             amounts = [a for r in records if (a := self._amount(r, hint)) is not None]
@@ -1220,17 +1220,26 @@ class StationaryCombustionExtractor:
             summed = sum(v for v, _ in billed)
             units = {u for _, u in amounts} | {u for _, u in billed}
             unit = next(iter(units)) if len(units) == 1 else None
-            covered = seg.covers(period, [p for _, p in invoices])
+            covered = period is not None and seg.covers(period, [p for _, p in invoices])
             if covered and unit is not None and total > 0 and abs(total - summed) <= SUMMARY_TOLERANCE * total:
                 dropped.add(at)
                 notes.append(ACCOUNT_SUMMARY_NOTE)
                 continue
             label = f" {unit}" if unit else ""
             message = (f"Statement of account total {total:,.1f}{label} differs from its invoices {summed:,.1f}{label}"
-                       + ("" if covered else " (they cover only part of its period)")
+                       + (" (it prints no period)" if period is None
+                          else "" if covered else " (they cover only part of its period)")
                        + "; check for double counting.")
+            own_period = self._document_period(part)
             for record in records:
                 record.total_check = message
+                if (period is not None and record.start is None and record.end is None
+                        and own_period[0] is None and own_period[1] is None):
+                    # no period line of its own: it keeps the span of the periods it lists (else it has none)
+                    record.start = Located(period[0], record.quantity.cells, record.quantity.row,
+                                           record.quantity.confidence, context=f"{period[0]} - {period[1]}")
+                    record.end = Located(period[1], record.quantity.cells, record.quantity.row,
+                                         record.quantity.confidence, context=f"{period[0]} - {period[1]}")
             notes.append(message)
         kept = [item for i, item in enumerate(found) if i not in dropped]
         if kept and notes:
