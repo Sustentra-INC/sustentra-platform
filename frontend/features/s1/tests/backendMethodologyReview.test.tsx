@@ -545,4 +545,36 @@ describe("Methodology review on real data", () => {
       expect((await screen.findByRole("alert")).textContent).toContain("can't be before the start date");
     });
   });
+  describe("list suggestions", () => {
+    it("says when a quote was cut and when entries were left out", async () => {
+      const d = fixture() as unknown as { catalog: Record<string, unknown>[]; fields: Record<string, unknown>[] };
+      d.catalog.push({ group_label: "x", user_added: false, field_id: "calculation:estimation", group: "boundary", label: "Estimation method", kind: "entry_list", required: false });
+      d.fields.push({
+        field_id: "calculation:estimation",
+        user_added: false,
+        display_state: "has_value",
+        shown: true,
+        suggestion: {
+          value: [{ source_type: "Fuel cards", method: "Prior year" }],
+          quote: "fuel cards",
+          document_id: "d1",
+          file_name: "Report.pdf",
+          source_reference: { page_number: 2 },
+          evidence: [{ label: "Fuel cards", quote: "Where fuel cards have gaps", quote_truncated: true, document_id: "d1", file_name: "Report.pdf", source_reference: { page_number: 2 } }],
+          entries_omitted: 3,
+          origin: "ai",
+          model: "m",
+          request_id: "r",
+          suggested_at: "2026-11-01T10:00:00Z",
+        },
+        decision: null,
+        history: [],
+      });
+      await open(vi.fn(), d);
+      const est = row("Estimation method");
+      expect(within(est).getByText("(quote shortened)")).toBeTruthy();
+      expect(within(est).getByText(/3 more entries were found but not shown/)).toBeTruthy();
+      expect(within(est).getByRole("button", { name: "Report.pdf, page 2" })).toBeTruthy();
+    });
+  });
 });
