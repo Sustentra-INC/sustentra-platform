@@ -146,13 +146,13 @@ def test_identifiers_group_documents_by_value_with_not_found() -> None:
     store = _schedule_store()
     store.add_document("BILL-D", "CT-S1-FUELQTY", [_gas(10, "2025-03-01", "2025-03-10")])
     groups = {g["label"]: g for g in _schedule(store)["identifier_groups"]}
-    assert list(groups) == ["Facility", "Service address", "Account number", "Meter number"]
+    assert list(groups) == ["Facility", "Service address", "Account number", "Meter number", "Statement date"]
     account = groups["Account number"]
     assert [(v["value"], [d["document_id"] for d in v["documents"]]) for v in account["values"]] == [
         ("ACC-7", ["BILL-C"]), ("ACC-9", ["BILL-A", "BILL-B"])]
     assert account["not_found"] == [{"document_id": "BILL-D", "file_name": "BILL-D.pdf"}]
     assert (account["documents_with"], account["documents_total"]) == (3, 4)
-    meter = groups["Meter number"]  # no extractor produces it: every document is Not found
+    meter = groups["Meter number"]  # no bill in this test prints one: every document is Not found
     assert meter["values"] == [] and len(meter["not_found"]) == 4 and meter["documents_with"] == 0
 
 
@@ -273,7 +273,7 @@ def test_a_mobile_line_shows_facility_only() -> None:
     key = "s1:mobile:diesel-fuel:vg-delivery-trucks"
     schedule = _tree_service(store).schedule(engagement, _own, key)
     assert schedule is not None
-    assert _labels(schedule) == ["Facility"]
+    assert _labels(schedule) == ["Facility", "Statement date"]
     assert {i["label"] for i in schedule["identifiers"]} <= {"Facility"}  # no "Meter number: Not found"
 
 
@@ -282,17 +282,17 @@ def test_identifiers_by_category_facility_only_except_utility_lines() -> None:
         line = cl.make_line(category, level2, level2, "company", "company", "x", created_by_user=False)
         return [label for label, _ in EvidenceTreeService._identifier_defs(line)]
 
-    four = ["Facility", "Service address", "Account number", "Meter number"]
+    four = ["Facility", "Service address", "Account number", "Meter number", "Statement date"]
     assert labels("stationary", "natural-gas") == four
     assert labels("purchased_energy", "electricity") == four
     for thermal in ("steam", "heating", "cooling"):
         assert labels("purchased_energy", thermal) == four
     for category, level2 in (("mobile", "diesel-fuel"), ("fugitive", "r410a"), ("process", "x"),
                              ("contractual", "x"), ("stationary", "propane")):
-        assert labels(category, level2) == ["Facility"]
+        assert labels(category, level2) == ["Facility", "Statement date"]
     unknown = dataclasses.replace(cl.make_line("mobile", "x", "x", "company", "company", "x", created_by_user=False),
                                   category="something-new")
-    assert [label for label, _ in EvidenceTreeService._identifier_defs(unknown)] == ["Facility"]  # never crashes
+    assert [label for label, _ in EvidenceTreeService._identifier_defs(unknown)] == ["Facility", "Statement date"]  # never crashes
 
 
 def test_a_line_with_no_documents_lists_its_identifiers_with_zero_counts() -> None:
@@ -300,7 +300,7 @@ def test_a_line_with_no_documents_lists_its_identifiers_with_zero_counts() -> No
                                          "anchor_kind": "facility", "anchor_id": "fac-kc01", "label": "KC gas"}])
     schedule = _tree_service(FakeStore()).schedule(_engagement(evidenceLines=mine), _own, GAS_KC)
     assert schedule is not None
-    assert _labels(schedule) == ["Facility", "Service address", "Account number", "Meter number"]
+    assert _labels(schedule) == ["Facility", "Service address", "Account number", "Meter number", "Statement date"]
     assert all(g["documents_total"] == 0 and g["values"] == [] for g in schedule["identifier_groups"])
 
 
@@ -355,7 +355,7 @@ def test_a_whitespace_only_value_is_not_found_and_counts_read_n_of_total() -> No
 def test_electricity_lines_show_all_four_identifiers() -> None:
     store = FakeStore()
     store.add_document("E", "CT-S2-ELEC", [_elec(10)])
-    assert _labels(_schedule(store, ELEC_KC)) == ["Facility", "Service address", "Account number", "Meter number"]
+    assert _labels(_schedule(store, ELEC_KC)) == ["Facility", "Service address", "Account number", "Meter number", "Statement date"]
 
 
 # --- EXT-011: identifiers Claude read count before a decision; they never feed a number --------
@@ -400,14 +400,14 @@ def test_what_claude_read_never_reaches_best_or_the_calculation() -> None:
     store.add_document("A", "CT-S1-FUELQTY", [_gas(10, meter_number="M-1")])
     _ai_meter(store, "A", "M-1")
     item = store.results["A"][0]["items"]
-    (record,) = group_reviewed_records({"document_id": "A", "file_name": "A.pdf"}, "CT-S1-FUELQTY", item, {})
+    (record,) = group_reviewed_records({"document_id": "A", "file_name": "A.pdf"}, "CT-S1-FUELQTY", item, [])
     assert record.best("meter_number") is None and record.reviewed("meter_number") is None
     assert record.identifiers("meter_number") == [("M-1", True)]
     # a field that is not an identifier keeps nothing of Claude's reading
     for it in item:
         if it["field_name"] == "fuel_type":
             it["validation_flags"] = ["ai_suggested"]
-    (again,) = group_reviewed_records({"document_id": "A", "file_name": "A.pdf"}, "CT-S1-FUELQTY", item, {})
+    (again,) = group_reviewed_records({"document_id": "A", "file_name": "A.pdf"}, "CT-S1-FUELQTY", item, [])
     assert again.fields["fuel_type"].ai_reads == [] and again.best("fuel_type") is None
 
 
@@ -584,14 +584,14 @@ def test_a_bulk_accept_in_one_minute_is_one_entry_but_the_same_value_twice_is_no
     store = FakeStore()
     for i in range(9):
         store.add_document(f"D{i}", "CT-S1-FUELQTY", [_gas(10)], decision=None)
-        store.reviews[f"D{i}"] = [_review(f"D{i}:1:activity_quantity", "accepted", "kl", f"2025-04-02T10:00:{i:02}Z", 10)]
+        store.reviews[f"D{i}"] = [_review(f"D{i}:1:activity_quantity", "accepted", "kl", f"2025-04-02T10:00:{i:02}Z", 10, found=10)]
     bulk = [h for h in _history(store, name_of=lambda login: "K. Lee") if h["action"] == "accepted"]
     assert len(bulk) == 1 and bulk[0]["count"] == 9 and bulk[0]["actor_name"] == "K. Lee"
     twice = FakeStore()
     twice.add_document("A", "CT-S1-FUELQTY", [_gas(10)], decision=None)
     q = "A:1:activity_quantity"
-    twice.reviews["A"] = [_review(q, "accepted", "kl", "2025-04-02T10:00:01Z", 10),
-                          _review(q, "accepted", "kl", "2025-04-02T10:00:30Z", 10)]
+    twice.reviews["A"] = [_review(q, "accepted", "kl", "2025-04-02T10:00:01Z", 10, found=10),
+                          _review(q, "accepted", "kl", "2025-04-02T10:00:30Z", 10, found=10)]
     assert [h["count"] for h in _history(twice) if h["action"] == "accepted"] == [1, 1]
 
 

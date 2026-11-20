@@ -70,6 +70,104 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           role="group"
         >
           <button
+            aria-pressed="false"
+            class="s1-cr-filter s1-cr-filter--open"
+            type="button"
+          >
+            <span
+              aria-hidden="true"
+              class="s1-cr-filter__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="lucide lucide-circle-alert"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="10"
+                />
+                <line
+                  x1="12"
+                  x2="12"
+                  y1="8"
+                  y2="12"
+                />
+                <line
+                  x1="12"
+                  x2="12.01"
+                  y1="16"
+                  y2="16"
+                />
+              </svg>
+            </span>
+            <span
+              class="s1-cr-filter__n"
+            >
+              0
+            </span>
+             
+            awaiting review
+          </button>
+          <button
+            aria-pressed="false"
+            class="s1-cr-filter s1-cr-filter--open"
+            type="button"
+          >
+            <span
+              aria-hidden="true"
+              class="s1-cr-filter__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="lucide lucide-circle-alert"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="10"
+                />
+                <line
+                  x1="12"
+                  x2="12"
+                  y1="8"
+                  y2="12"
+                />
+                <line
+                  x1="12"
+                  x2="12.01"
+                  y1="16"
+                  y2="16"
+                />
+              </svg>
+            </span>
+            <span
+              class="s1-cr-filter__n"
+            >
+              0
+            </span>
+             
+            need a choice
+          </button>
+          <button
             aria-pressed="true"
             class="s1-cr-filter s1-cr-filter--open is-on"
             type="button"
@@ -115,7 +213,8 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
             >
               3
             </span>
-            Inputs missing
+             
+            missing
           </button>
           <button
             aria-pressed="false"
@@ -154,7 +253,8 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
             >
               3
             </span>
-            Inputs present
+             
+            present
           </button>
           <button
             aria-pressed="false"
@@ -193,7 +293,8 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
             >
               1
             </span>
-            Not applicable
+             
+            not applicable
           </button>
           <button
             aria-pressed="false"
@@ -232,7 +333,8 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
             >
               1
             </span>
-            Out of scope
+             
+            out of scope
           </button>
         </div>
       </div>
@@ -246,7 +348,7 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           <span
             aria-hidden="true"
             class="s1-cr-rule__icon"
-            title="Inputs missing"
+            title="Missing"
           >
             <svg
               aria-hidden="true"
@@ -339,7 +441,7 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           <span
             aria-hidden="true"
             class="s1-cr-rule__icon"
-            title="Inputs missing"
+            title="Missing"
           >
             <svg
               aria-hidden="true"
@@ -435,7 +537,7 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           <span
             aria-hidden="true"
             class="s1-cr-rule__icon"
-            title="Inputs missing"
+            title="Missing"
           >
             <svg
               aria-hidden="true"

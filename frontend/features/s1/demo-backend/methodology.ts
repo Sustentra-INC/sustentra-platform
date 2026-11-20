@@ -40,16 +40,33 @@ type Def = {
   allowed?: Json;
   allowed_labels?: Json;
   parts?: Json;
+  free?: boolean;
+  shown_if_yes?: string[];
 };
+const INSTRUMENT_OPTIONS = ["RECs or other energy attribute certificates", "PPA or VPPA", "Green tariff or utility program", "Supplier-specific rate", "Residual mix", "None"];
+const SOURCE_RECORD_OPTIONS = ["Utility invoices", "Meter readings", "Fuel cards", "Fuel receipts or logs", "Landlord reports", "Lease agreements"];
+const MARKET_CATEGORIES = ["electricity", "heating", "steam", "cooling"].map((k) => `category:market:${k}`);
+const MAX_FREE_OPTIONS = 10;
+const ENTRY_PARTS = [
+  { key: "source_type", label: "Source type", kind: "text" },
+  { key: "method", label: "Estimation method", kind: "text" },
+];
 
 const INCLUSIONS = ["Yes", "No", "Not detected"];
 const GWP_SETS = ["AR4", "AR5", "AR6"];
-const GWP_HORIZONS = ["100-year", "20-year"];
+const GWP_HORIZONS = ["100-year", "20-year", "500-year"];
 const YES_NO = ["Yes", "No"];
+/** The gas rows' own values, kept apart from the categories' Yes / No / Not detected. */
+const GAS_STATUSES = ["Included", "Declared absent", "Not mentioned"];
+const GASES: [string, string][] = [["co2", "CO2"], ["ch4", "CH4"], ["n2o", "N2O"], ["hfcs", "HFCs"], ["pfcs", "PFCs"], ["sf6", "SF6"], ["nf3", "NF3"]];
 const MAX_ADDED_ROWS = 200;
+const GWP_SET_LABELS = {
+  set: { AR4: "IPCC Fourth Assessment Report (AR4)", AR5: "IPCC Fifth Assessment Report (AR5)", AR6: "IPCC Sixth Assessment Report (AR6)" },
+};
 
 const GROUPS: [string, string][] = [
   ["boundary", "Organizational boundary"],
+  ["gases", "Gases covered"],
   ["scope1", "Scope 1 emission categories"],
   ["scope2", "Scope 2 emission categories"],
   ["biogenic", "Biogenic emissions"],
@@ -64,6 +81,8 @@ const ROW_GROUPS: Record<string, { prefix: string; kind: string; group: string; 
   entities: { prefix: "entity", kind: "entity", group: "boundary", label: "Entity" },
   "factor:scope1": { prefix: "factor:scope1", kind: "factor", group: "factors", label: "Scope 1 emission factor source" },
   "factor:scope2": { prefix: "factor:scope2", kind: "factor", group: "factors", label: "Scope 2 emission factor source" },
+  // A report may name more than one GWP set: the first is the fixed "gwp" field, each other is a row.
+  gwp: { prefix: "gwp", kind: "gwp", group: "gwp", label: "GWP set" },
 };
 
 const PARTS: Record<string, Json[]> = {
@@ -88,6 +107,7 @@ function def(fieldId: string, group: string, label: string, kind: string, allowe
   const d: Def = { fieldId: fieldId, group, group_label: GROUP_LABEL.get(group) ?? group, label, kind, user_added: false, required };
   if (allowed !== undefined) d.allowed = allowed;
   if (PARTS[kind]) d.parts = clone(PARTS[kind]);
+  if (kind === "entry_list") d.parts = clone(ENTRY_PARTS);
   return d;
 }
 
@@ -99,6 +119,12 @@ function staticCatalog(): Def[] {
     def("boundary:acquisitions", "boundary", "Acquisitions and divestitures", "text", undefined, false),
     def("boundary:leased_space", "boundary", "Treatment of leased space", "text", undefined, false),
   ];
+  // Only if the company reports a market-based Scope 2 number: a market-based category that is Yes.
+  const instruments = def("scope2:instruments", "scope2", "Scope 2 instrument types (market-based)", "multiselect", INSTRUMENT_OPTIONS, false);
+  instruments.shown_if_yes = MARKET_CATEGORIES;
+  fields.push(instruments);
+  // One row per gas, "only if the company has a value".
+  for (const [key, name] of GASES) fields.push(def(`gas:${key}`, "gases", `Gas: ${name}`, "enum", GAS_STATUSES, false));
   const scope1 = { stationary: "Stationary Combustion", mobile: "Mobile Combustion", process: "Process Emissions", fugitive: "Fugitive Emissions" };
   for (const [key, name] of Object.entries(scope1)) fields.push(def(`category:scope1:${key}`, "scope1", `Scope 1 ${name}`, "enum", INCLUSIONS));
   const purchased = { electricity: "Purchased Electricity", heating: "Purchased Heating", steam: "Purchased Steam", cooling: "Purchased Cooling" };
@@ -111,18 +137,23 @@ function staticCatalog(): Def[] {
   fields.push(def("exclusion:inventory", "exclusions", "Excluded from this inventory", "text"));
   fields.push(def("exclusion:materiality", "exclusions", "Excluded under the materiality threshold", "text"));
   const gwp = def("gwp", "gwp", "GWP factors source", "gwp", { set: GWP_SETS, horizon: GWP_HORIZONS });
-  gwp.allowed_labels = {
-    set: { AR4: "IPCC Fourth Assessment Report (AR4)", AR5: "IPCC Fifth Assessment Report (AR5)", AR6: "IPCC Sixth Assessment Report (AR6)" },
-  };
+  gwp.allowed_labels = GWP_SET_LABELS;
   fields.push(gwp);
   fields.push(def("calculation:approach", "calculation", "Calculation approach", "text"));
   fields.push(def("calculation:process", "calculation", "Process-specific calculations", "text"));
+  // "Only if the company has a value": one entry per source type.
+  fields.push(def("calculation:estimation", "calculation", "Estimation method for missing data", "entry_list", undefined, false));
+  const records = def("calculation:source_records", "calculation", "Source records", "multiselect", SOURCE_RECORD_OPTIONS, false);
+  records.free = true;
+  fields.push(records);
   return fields;
 }
 
 function rowDef(fieldId: string, group: string): Def {
   const g = ROW_GROUPS[group];
-  const d = def(fieldId, g.group, g.label, g.kind, g.kind === "entity" ? { operational_control: YES_NO } : undefined);
+  const allowed = g.kind === "entity" ? { operational_control: YES_NO } : g.kind === "gwp" ? { set: GWP_SETS, horizon: GWP_HORIZONS } : undefined;
+  const d = def(fieldId, g.group, g.label, g.kind, allowed);
+  if (g.kind === "gwp") d.allowed_labels = GWP_SET_LABELS;
   d.user_added = true;
   return d;
 }
@@ -138,6 +169,7 @@ const toWire = <T extends { fieldId: string }>(item: T): Record<string, unknown>
 };
 
 function blankValue(fieldId: string): Json {
+  if (fieldId.startsWith("gwp:")) return { set: "", horizon: "" };
   if (fieldId.startsWith("entity:")) return { name: "", facilities: [], equity_share_pct: 0, financial_control: 0, operational_control: "No" };
   return { database: "", edition: "" };
 }
@@ -221,8 +253,49 @@ function isoDate(text: Json): string | null {
   return made.getUTCFullYear() === y && made.getUTCMonth() === m - 1 && made.getUTCDate() === day ? text : null;
 }
 
+/** One folding rule, like the server's: case-folded, single spaces. */
+const fold = (text: string) => text.toLowerCase().replaceAll("\u00df", "ss").split(/\s+/).filter(Boolean).join(" ");
+
 function validate(d: Def, value: Json): Json {
   switch (d.kind) {
+    case "multiselect": {
+      const allowed = d.allowed as string[];
+      if (!Array.isArray(value) || value.length > allowed.length + (d.free ? MAX_FREE_OPTIONS : 0)) {
+        return invalid(d, "choose from the listed options" + (d.free ? `, and add at most ${MAX_FREE_OPTIONS} of your own.` : "."));
+      }
+      const seen = new Set<string>();
+      let extra = 0;
+      const out = value.map((entry) => {
+        const o = only(d, entry as Json, ["option", "wording"]);
+        let option = text(d, o.option, "the option", true, 60);
+        const key = fold(option);
+        const listed = allowed.find((a) => fold(a) === key);
+        if (listed) option = listed;
+        else if (!d.free) return invalid(d, `choose options from the list: ${allowed.join(", ")}.`);
+        else if (key === "none") return invalid(d, "'None' can't be added as an option of your own.");
+        else if (++extra > MAX_FREE_OPTIONS) return invalid(d, `add at most ${MAX_FREE_OPTIONS} options of your own.`);
+        if (seen.has(key)) return invalid(d, `'${option}' is chosen twice.`);
+        seen.add(key);
+        return { option, wording: text(d, o.wording, "the company's wording", false, 200) };
+      });
+      if (out.length === 0) {
+        return invalid(d, "choose at least one option" + (allowed.includes("None") ? ", or None if there are none." : ", or reject this row if the company has none."));
+      }
+      if (out.length > 1 && out.some((e) => e.option === "None")) return invalid(d, "'None' can't be chosen together with other options.");
+      return out;
+    }
+    case "entry_list": {
+      if (!Array.isArray(value) || value.length > 10) return invalid(d, "enter a list of at most 10 entries.");
+      const seen = new Set<string>();
+      return value.map((entry) => {
+        const o = only(d, entry as Json, ["source_type", "method"]);
+        const source = text(d, o.source_type, "the source type", true, 60);
+        const key = fold(source);
+        if (seen.has(key)) return invalid(d, `'${source}' appears twice. Keep one entry per source type.`);
+        seen.add(key);
+        return { source_type: source, method: text(d, o.method, "the method", true, 300) };
+      });
+    }
     case "date_range": {
       const o = value as Record<string, Json> | null;
       if (!o || typeof o !== "object" || Array.isArray(o) || Object.keys(o).sort().join() !== "end,start") {
@@ -309,8 +382,21 @@ function listedRecord(state: State, r: Rec): Record<string, unknown> {
   const decision = r.decision;
   const hasValue = Boolean(r.suggestion) || (decision !== null && (decision.status !== "pending" || (decision.value !== null && decision.value !== undefined)));
   const displayState = hasValue ? "has_value" : state.prefilled ? "not_detected" : "not_checked";
-  const shown = d?.required !== false || hasValue || state.revealed.has(r.fieldId);
-  return { ...publicRecord(r), display_state: displayState, shown };
+  const marketDepends = d?.shown_if_yes ?? [];
+  const marketYes = marketDepends.some((id) => {
+    const other = state.records.find((x) => x.fieldId === id);
+    const dec = other?.decision;
+    if (dec && (dec.status === "accepted" || dec.status === "edited")) return dec.value === "Yes";
+    return (!dec || dec.status === "pending") && other?.suggestion?.value === "Yes";
+  });
+  const shown = d?.required !== false || hasValue || state.revealed.has(r.fieldId) || marketYes;
+  const claudeOnly = marketDepends.length > 0 && Boolean(r.suggestion) && !r.decision && !state.revealed.has(r.fieldId) && !marketYes;
+  return {
+    ...publicRecord(r),
+    display_state: displayState,
+    shown,
+    ...(claudeOnly ? { shown_note: "Shown because Claude found it, although no market-based category is Yes." } : {}),
+  };
 }
 
 const fieldPath = (action: string) => new RegExp(`^/engagements/(?<id>[^/]+)/methodology-review/(?<field>[^/]+)/${action}$`);
@@ -325,7 +411,7 @@ function sameRow(group: string, a: Json, b: Json): boolean {
   const x = a as Record<string, string>;
   const y = b as Record<string, string>;
   const n = (s: string | undefined) => (s ?? "").trim().toLowerCase();
-  const keys = group === "entities" ? ["name"] : ["database", "edition"];
+  const keys = group === "entities" ? ["name"] : group === "gwp" ? ["set", "horizon"] : ["database", "edition"];
   return keys.every((k) => n(x?.[k]) === n(y?.[k]));
 }
 
@@ -339,7 +425,9 @@ function demoReference(text: string): Record<string, Json> {
 }
 
 function suggestionOf(item: ClaudeItem, at: string): Record<string, Json> {
+  const evidence = item.evidence?.map((e) => ({ label: e.label, quote: e.quote, document_id: item.source.document_id, file_name: item.source.file_name, source_reference: demoReference(e.page) }));
   return {
+    ...(evidence ? { evidence } : {}),
     value: clone(item.value),
     quote: item.quote,
     document_id: item.source.document_id,

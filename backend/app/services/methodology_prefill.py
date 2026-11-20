@@ -52,7 +52,8 @@ NO_DOCUMENTS = "Upload the company's GHG inventory report, boundary statement or
 
 # --- the reply's schema ----------------------------------------------------------------------
 
-_CHOICE_IDS = tuple(f["field_id"] for f in rules.CATALOG if f["kind"] == "enum")
+_CHOICE_IDS = tuple(f["field_id"] for f in rules.CATALOG if f["kind"] == "enum" and f["field_id"] not in rules.GAS_IDS)
+_MULTI_IDS = tuple(f["field_id"] for f in rules.CATALOG if f["kind"] == "multiselect")
 _TEXT_IDS = tuple(f["field_id"] for f in rules.CATALOG if f["kind"] == "text")
 _CHOICES = tuple(dict.fromkeys((*rules.CONSOLIDATION_APPROACHES, *rules.INCLUSIONS)))
 
@@ -72,6 +73,11 @@ class ChoiceSuggestion(_Cited):
     value: Literal[_CHOICES]  # type: ignore[valid-type]
 
 
+class GasSuggestion(_Cited):
+    field_id: Literal[rules.GAS_IDS]  # type: ignore[valid-type]
+    value: Literal["Included", "Declared absent"]  # "Not mentioned" has nothing to quote: the reviewer sets it
+
+
 class TextSuggestion(_Cited):
     field_id: Literal[_TEXT_IDS]  # type: ignore[valid-type]
     value: str
@@ -82,9 +88,20 @@ class PeriodSuggestion(_Cited):
     end: str  # YYYY-MM-DD
 
 
+class EstimationSuggestion(_Cited):
+    source_type: str  # for example "Utility invoices"
+    method: str  # how missing data for that source type is estimated
+
+
+class SelectionSuggestion(_Cited):
+    field_id: Literal[_MULTI_IDS]  # type: ignore[valid-type]
+    option: str  # one of the field's listed options (never "None": that has nothing to quote)
+    wording: str  # the company's own words for it, copied from the quote ("" if none)
+
+
 class GwpSuggestion(_Cited):
     set: Literal["AR4", "AR5", "AR6"]
-    horizon: Literal["100-year", "20-year"]
+    horizon: Literal["100-year", "20-year", "500-year"]
 
 
 class EntitySuggestion(_Cited):
@@ -103,7 +120,10 @@ class FactorSuggestion(_Cited):
 
 class PrefillOutput(_Strict):
     choices: list[ChoiceSuggestion]
+    gases: list[GasSuggestion]
     texts: list[TextSuggestion]
+    estimations: list[EstimationSuggestion]
+    selections: list[SelectionSuggestion]
     periods: list[PeriodSuggestion]
     gwp: list[GwpSuggestion]
     entities: list[EntitySuggestion]
@@ -163,8 +183,89 @@ def dates_in(quote: str) -> set[date]:
 # What a quote must say for a choice to be tied to it (compared after ``norm``).
 _CHOICE_TERMS = {"Equity Share": ("equity share", "equity"), "Financial Control": ("financial control",),
                  "Operational Control": ("operational control",)}
+# What a quote must name for a gas row (compared after ``norm``, which folds CO\u2082 to co2).
+_GAS_TERMS = {"gas:co2": ("co2", "carbon dioxide"), "gas:ch4": ("ch4", "methane"),
+              "gas:n2o": ("n2o", "nitrous oxide"), "gas:hfcs": ("hfc", "hydrofluorocarbon"),
+              "gas:pfcs": ("pfc", "perfluorocarbon"), "gas:sf6": ("sf6", "sulfur hexafluoride", "sulphur hexafluoride"),
+              "gas:nf3": ("nf3", "nitrogen trifluoride")}
+# What a quote must name for an option to be tied to it: whole words or whole phrases, never a piece of
+# another word ("records" is not "REC", "release" is not a lease agreement).
+_OPTION_TERMS = {
+    "RECs or other energy attribute certificates": (
+        "rec", "recs", "eac", "eacs", "renewable energy certificate", "renewable energy certificates",
+        "renewable energy credit", "renewable energy credits",
+        "energy attribute certificate", "energy attribute certificates", "guarantee of origin", "guarantees of origin"),
+    "PPA or VPPA": ("ppa", "ppas", "vppa", "vppas", "power purchase agreement", "power purchase agreements"),
+    "Green tariff or utility program": ("green tariff", "green tariffs", "green power program", "utility program",
+                                        "green pricing"),
+    "Supplier-specific rate": ("supplier-specific", "supplier specific", "supplier emission factor"),
+    "Residual mix": ("residual mix",),
+    "Utility invoices": ("utility invoice", "utility invoices", "utility bill", "utility bills"),
+    "Meter readings": ("meter reading", "meter readings"),
+    "Fuel cards": ("fuel card", "fuel cards"),
+    "Fuel receipts or logs": ("fuel receipt", "fuel receipts", "fuel log", "fuel logs"),
+    "Landlord reports": ("landlord report", "landlord reports", "landlord"),
+    "Lease agreements": ("lease agreement", "lease agreements"),
+}
+_NEGATIONS = frozenset({"not", "no", "never", "without", "none", "neither", "nor", "cannot"})
+
+
+def names_option(quote: str, terms: Sequence[str]) -> str:
+    """How a quote names an option: ``yes`` (a term as a whole word or phrase, not negated), ``negated``
+    (every mention has a negation within five words before it: "we do not buy RECs") or ``no``."""
+
+    text = norm(quote)
+    negated = False
+    for term in terms:
+        pattern = r"(?<![0-9a-z.])(?<!\d,)" + re.escape(norm(term)) + r"(?![0-9a-z])(?![.,]\d)"
+        for match in re.finditer(pattern, text):
+            before = re.findall(r"[a-z0-9'-]+", text[:match.start()])[-5:]
+            if any(word in _NEGATIONS or word.endswith("n't") for word in before):
+                negated = True
+            else:
+                return "yes"
+    return "negated" if negated else "no"
+
+
 _GWP_TERMS = {"AR4": ("ar4", "fourth assessment"), "AR5": ("ar5", "fifth assessment"),
               "AR6": ("ar6", "sixth assessment")}
+# The horizon the quote must name, as whole tokens ("120-year" is not "20-year").
+_HORIZON_TERMS = {
+    "20-year": ("20-year", "20 year", "20-years", "20 years", "20-yr", "20 yr", "twenty-year", "twenty year",
+                "gwp20", "gwp-20", "gwp 20"),
+    "100-year": ("100-year", "100 year", "100-years", "100 years", "100-yr", "100 yr", "hundred-year", "hundred year",
+                 "gwp100", "gwp-100", "gwp 100"),
+    "500-year": ("500-year", "500 year", "500-years", "500 years", "500-yr", "500 yr", "five-hundred-year",
+                 "five hundred year", "gwp500", "gwp-500", "gwp 500"),
+}
+
+
+def _mentions(text: str, terms: Sequence[str]) -> list[int]:
+    """Where each term starts in the (normalized) text, as a whole word or phrase."""
+
+    out: list[int] = []
+    for term in terms:
+        pattern = r"(?<![0-9a-z.])(?<!\d,)" + re.escape(norm(term)) + r"(?![0-9a-z])(?![.,]\d)"
+        out += [m.start() for m in re.finditer(pattern, text)]
+    return out
+
+
+def set_has_horizon(quote: str, set_: str, horizon: str) -> bool:
+    """Whether the quote ties this set to this horizon: the set is named, and a mention of the horizon sits
+    nearer to a mention of this set than to a mention of any other set. A quote that names two sets with two
+    horizons ("AR5 100-year and AR6 20-year") pairs each set with the horizon next to it."""
+
+    text = norm(quote)
+    sets = [(pos, name) for name, terms in _GWP_TERMS.items() for pos in _mentions(text, terms)]
+    if not any(name == set_ for _, name in sets):
+        return False
+    for name, terms in _HORIZON_TERMS.items():
+        if name != horizon:
+            continue
+        for pos in _mentions(text, terms):
+            if min(sets, key=lambda item: abs(item[0] - pos))[1] == set_:
+                return True
+    return False
 
 
 SYSTEM_PROMPT = """\
@@ -196,6 +297,22 @@ What the items mean
   Scope 1 categories: stationary combustion, mobile combustion, process emissions, fugitive emissions.
   Scope 2: purchased electricity, heating, steam, cooling, each location-based and market-based.
   Biogenic: direct and indirect biogenic CO2.
+- estimations: how the company estimates missing or incomplete data, one entry per source type
+  (for example utility invoices, meter readings, fuel records): the source type and the method in a
+  few words. Each entry cites its own line. Leave it out if the documents do not say.
+- selections: for the multi-select fields (field_id scope2:instruments, the contractual instruments the
+  company uses for market-based Scope 2; calculation:source_records, the records its figures come
+  from), one item per option the documents state, with the option exactly as listed (instruments:
+  "RECs or other energy attribute certificates", "PPA or VPPA", "Green tariff or utility program",
+  "Supplier-specific rate", "Residual mix"; source records: "Utility invoices", "Meter readings",
+  "Fuel cards", "Fuel receipts or logs", "Landlord reports", "Lease agreements"). Each item cites its
+  own line, and the quote must name the option. "wording" is the company's own words for it, copied
+  from the quote, or "". Do not choose an option the documents do not mention, or say the company does
+  not use.
+- gases: for each greenhouse gas (field_id gas:co2, gas:ch4, gas:n2o, gas:hfcs, gas:pfcs, gas:sf6,
+  gas:nf3) the document states, "Included" (the gas is covered by the inventory) or "Declared absent"
+  (the document says the gas is not emitted or not applicable). The quote must name the gas. If a
+  document does not say, leave the gas out: do not guess from the industry.
 - periods: the inventory's reporting period: its start and end dates, each as YYYY-MM-DD. Both
   dates must be printed in the quote (for example "January 1 to December 31, 2024", or
   "1/1/2025 - 12/31/2025"). If the document shows several periods (such as the current and the
@@ -209,7 +326,8 @@ What the items mean
   boundary:leased_space only if a document states something about them; if it is silent, leave
   them out.
 - gwp: the Global Warming Potential set the company uses (IPCC assessment report AR4, AR5 or AR6)
-  and the time horizon (100-year or 20-year). At most one.
+  and the time horizon (20-year, 100-year or 500-year). If the report uses more than one set or
+  horizon, give each one separately; do not pick between them.
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
   equity share (percent, 0 to 100), financial control (percent, 0 to 100) and whether the company
   has operational control (Yes or No). Include an entity only if the cited line states its equity
@@ -341,23 +459,34 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     by_alias = {d.alias: d for d in documents}
     seen: set[str] = set()
 
-    def keep(item: _Cited, value: Any, field_id: str | None, row_group: str | None,
-             numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = ()) -> None:
+    def cited(item: _Cited) -> tuple[PrefillDocument, DocumentLine] | None:
+        """The document and line the quote was read from, or None (counted in ``dropped``)."""
+
         document = by_alias.get(item.document.strip().upper())
         if document is None:
             dropped["unknown_document"] += 1
-            return
+            return None
         if len(item.quote.strip()) < MIN_QUOTE:  # too short to show anything
             dropped["quote_not_on_document"] += 1
-            return
+            return None
         line = locate_quote(item.quote, item.line, document.lines)
         if isinstance(line, NotLocated):
             dropped[line.reason] += 1
+            return None
+        return document, line
+
+    def keep(item: _Cited, value: Any, field_id: str | None, row_group: str | None,
+             numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = (),
+             ok: Callable[[str], bool] | None = None) -> None:
+        found = cited(item)
+        if found is None:
             return
+        document, line = found
         quote_text = norm(item.quote)
         if (any(not value_in_quote(_fmt(n), item.quote) for n in numbers)
                 or any(not value_in_quote(w, item.quote) for w in words)
-                or (terms and not any(term in quote_text for term in terms))):
+                or (terms and not any(term in quote_text for term in terms))
+                or (ok is not None and not ok(item.quote))):
             dropped["value_not_in_quote"] += 1
             return
         if field_id is not None:
@@ -369,6 +498,39 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             "value": value, "quote": item.quote.strip(), "document_id": document.document_id,
             "file_name": document.file_name, "source_reference": line.source_reference, "origin": "ai",
             "model": model, "request_id": request_id, "suggested_at": now_iso}))
+
+    def keep_list(field_id: str, parts: list[dict[str, str]], quoted: list[tuple[str, str, PrefillDocument, DocumentLine]],
+                  limit: int = rules.MAX_ENTRIES) -> None:
+        """One suggestion for a list field: the entries that hold up, each with the quote it was read from."""
+
+        if field_id in seen:
+            return
+        good: list[dict[str, str]] = []
+        evidence: list[dict[str, Any]] = []
+        names: set[str] = set()
+        for part, (label, quote, document, line) in zip(parts, quoted, strict=True):
+            key = " ".join(label.casefold().split())
+            if not key or key in names:  # a blank or repeated source type: the first stands
+                dropped["empty_value" if not key else "duplicate_entry"] += 1
+                continue
+            if checked(field_id, [part]) is None:  # this entry alone is invalid: the others stand
+                continue
+            if len(good) >= limit:
+                dropped["too_many_entries"] += 1
+                continue
+            names.add(key)
+            good.append(part)
+            evidence.append({"label": label.strip(), "quote": quote.strip(), "document_id": document.document_id,
+                             "file_name": document.file_name, "source_reference": line.source_reference})
+        value = checked(field_id, good) if good else None
+        if value is None:
+            return
+        seen.add(field_id)
+        first = evidence[0]
+        kept.append(Verified(field_id, None, {
+            "value": value, "quote": first["quote"], "document_id": first["document_id"],
+            "file_name": first["file_name"], "source_reference": first["source_reference"], "evidence": evidence,
+            "origin": "ai", "model": model, "request_id": request_id, "suggested_at": now_iso}))
 
     def checked(field_id: str, value: Any) -> Any | None:
         definition = rules.catalog_field(field_id)
@@ -385,6 +547,41 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         value = checked(choice.field_id, choice.value)
         if value is not None:
             keep(choice, value, choice.field_id, None, terms=_CHOICE_TERMS.get(str(value), ()) if choice.field_id == "consolidation_approach" else ())
+    entries: list[tuple[EstimationSuggestion, PrefillDocument, DocumentLine]] = []
+    for estimate in output.estimations:
+        found = cited(estimate)
+        if found is None:
+            continue
+        if not value_in_quote(estimate.source_type, estimate.quote):  # the entry is about what its quote names
+            dropped["value_not_in_quote"] += 1
+            continue
+        entries.append((estimate, *found))
+    if entries:
+        keep_list("calculation:estimation", [{"source_type": e.source_type, "method": e.method} for e, _, _ in entries],
+                  [(e.source_type, e.quote, d, ln) for e, d, ln in entries])
+    picked: dict[str, list[tuple[dict[str, str], tuple[str, str, PrefillDocument, DocumentLine]]]] = {}
+    for sel in output.selections:
+        definition = rules.catalog_field(sel.field_id)
+        by_key = {norm(a): a for a in (definition or {}).get("allowed", [])}
+        option = by_key.get(norm(sel.option))
+        if option is None or option == "None":
+            dropped["invalid_value"] += 1
+            continue
+        found = cited(sel)
+        if found is None:
+            continue
+        named = names_option(sel.quote, _OPTION_TERMS.get(option, ()))
+        if named != "yes":  # the quote does not name the option, or says the company does not have it
+            dropped["negated" if named == "negated" else "value_not_in_quote"] += 1
+            continue
+        wording = sel.wording.strip() if sel.wording.strip() and norm(sel.wording) in norm(sel.quote) else ""
+        picked.setdefault(sel.field_id, []).append(({"option": option, "wording": wording}, (option, sel.quote, *found)))
+    for field_id, items in picked.items():
+        keep_list(field_id, [part for part, _ in items], [q for _, q in items], limit=len((rules.catalog_field(field_id) or {}).get("allowed", [])) + rules.MAX_FREE_OPTIONS)
+    for gas in output.gases:
+        value = checked(gas.field_id, gas.value)
+        if value is not None:
+            keep(gas, value, gas.field_id, None, terms=_GAS_TERMS[gas.field_id])
     for text in output.texts:
         if not norm(text.value):
             dropped["empty_value"] += 1
@@ -402,10 +599,24 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             dropped["value_not_in_quote"] += 1
             continue
         keep(period, value, "reporting_period", None)
+    gwp_pairs: set[tuple[str, str]] = set()
     for gwp in output.gwp:
         value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon})
-        if value is not None:
-            keep(gwp, value, "gwp", None, terms=_GWP_TERMS[gwp.set])
+        if value is None:
+            continue
+        pair = (value["set"], value["horizon"])
+        if pair in gwp_pairs:  # the same set and horizon named again
+            dropped["duplicate_entry"] += 1
+            continue
+        # The first set the report names is the fixed GWP field; every other set is a row of its own.
+        ties = lambda quote, s_=gwp.set, h_=gwp.horizon: set_has_horizon(quote, s_, h_)  # noqa: E731
+        before = len(kept)
+        if "gwp" not in seen:
+            keep(gwp, value, "gwp", None, ok=ties)
+        else:
+            keep(gwp, value, None, "gwp", ok=ties)
+        if len(kept) > before:  # only a pair that held up counts as seen
+            gwp_pairs.add(pair)
     for entity in output.entities:
         definition = rules.row_field("entity:aaaa")
         assert definition is not None
@@ -436,7 +647,7 @@ def same_row_value(group: str, a: Any, b: Any) -> bool:
 
     if not isinstance(a, dict) or not isinstance(b, dict):
         return False
-    keys = ("name",) if group == "entities" else ("database", "edition")
+    keys = ("name",) if group == "entities" else ("set", "horizon") if group == "gwp" else ("database", "edition")
     return all(norm(str(a.get(k) or "")) == norm(str(b.get(k) or "")) for k in keys)
 
 

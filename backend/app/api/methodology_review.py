@@ -70,7 +70,7 @@ class RejectBody(_Body):
 
 
 class RowBody(_Body):
-    group: Literal["entities", "factor:scope1", "factor:scope2"]
+    group: Literal["entities", "factor:scope1", "factor:scope2", "gwp"]
 
 
 @contextmanager
@@ -158,7 +158,8 @@ async def _locked(db: AsyncSession, engagement: dict[str, Any], field_id: str, u
 
 
 async def _update_meta(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser, *,
-                       prefill_ran_at: str | None = None, reveal: str | None = None) -> None:
+                       prefill_ran_at: str | None = None, covered: list[str] | None = None,
+                       reveal: str | None = None) -> None:
     """The page-state item (prefill marker, revealed rows), created on first use and locked while
     it is changed."""
 
@@ -169,6 +170,7 @@ async def _update_meta(db: AsyncSession, engagement: dict[str, Any], user: Curre
     meta = {**rules.new_meta(), **row["payload"]}
     if prefill_ran_at:
         meta["prefill_ran_at"] = prefill_ran_at
+        meta["prefill_covered"] = covered or []
     if reveal and reveal not in meta["revealed"]:
         meta["revealed"] = [*meta["revealed"], reveal]
     await workpaper_item_service.update_payload(db, engagement["id"], KIND, rules.META_KEY, meta, user.id)
@@ -214,8 +216,12 @@ async def get_methodology_review(
     fields = []
     for f in rules.CATALOG:
         record = stored.get(f["field_id"]) or rules.new_record(f["field_id"])
-        fields.append({**rules.public(record), "display_state": rules.display_state(record, meta),
-                       "shown": rules.is_shown(f, record, meta)})
+        item = {**rules.public(record), "display_state": rules.display_state(record, meta),
+                "shown": rules.is_shown(f, record, meta, stored)}
+        note = rules.shown_note(f, record, meta, stored)
+        if note:
+            item["shown_note"] = note
+        fields.append(item)
     catalog = [dict(f) for f in rules.CATALOG]
     for key, record in stored.items():  # rows the reviewer added, oldest first
         definition = rules.row_field(key)
@@ -381,12 +387,49 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser
 
     suggested = kept = 0
     fixed = {v.field_id: v for v in verified if v.field_id}
-    for field_id in fixed:  # a record for each, so it can be locked and its state read
+    # GWP: the report may name several sets. The fixed field takes one and every other is a row, whatever
+    # the order of this reply: a pending suggestion keeps its set if this run still found it, and a set that
+    # is already on a row never goes into the fixed field as well.
+    gwp_items = [fixed.pop("gwp")] if "gwp" in fixed else []
+    gwp_items += [v for v in verified if v.row_group == "gwp"]
+    if gwp_items:
+        fixed["gwp"] = gwp_items[0]  # a record for the fixed field, so it can be locked and read
+    for field_id in fixed:
         await workpaper_item_service.insert_item(
             db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind=KIND, item_key=field_id,
             payload=rules.new_record(field_id), user_id=user.id)
     locked = {row["item_key"]: row["payload"] for row in await workpaper_item_service.get_items(
         db, engagement["id"], KIND, list(fixed), for_update=True)}
+    stored_rows = [row for row in await workpaper_item_service.list_items(db, engagement["id"], KIND)
+                   if row["item_key"].startswith("gwp:") and not row["payload"].get("removed")]
+    row_values = [v for row in stored_rows for v in ((row["payload"].get("suggestion") or {}).get("value"),
+                                                      (row["payload"].get("decision") or {}).get("value"))]
+    same = lambda a, b: prefill.same_row_value("gwp", a, b)  # noqa: E731
+    moved: list[prefill.Verified] = []  # the GWP sets that are not the fixed field's
+    gwp_fixed_values: list[Any] = []
+    if gwp_items:
+        record = locked["gwp"]
+        if rules.status_of(record) != rules.PENDING:
+            # The decision's value, and the set that was suggested when it was decided: a rejected field has
+            # no value, but the set it rejected must never come back as a row.
+            decided = (record.get("decision") or {}).get("value")
+            suggested_then = (record.get("suggestion") or {}).get("value")
+            gwp_fixed_values += [decided, suggested_then]
+            held = lambda g: same(decided, g.suggestion["value"]) or same(suggested_then, g.suggestion["value"])  # noqa: E731
+            if any(held(g) for g in gwp_items):
+                kept += 1
+            moved = [prefill.Verified(None, "gwp", g.suggestion) for g in gwp_items if not held(g)]
+            fixed.pop("gwp")
+        else:
+            current = (record.get("suggestion") or {}).get("value")
+            chosen = next((g for g in gwp_items if current and same(current, g.suggestion["value"])), None) or next(
+                (g for g in gwp_items if not any(same(v, g.suggestion["value"]) for v in row_values)), None)
+            if chosen is None:
+                fixed.pop("gwp")
+            else:
+                fixed["gwp"] = chosen
+                gwp_fixed_values.append(chosen.suggestion["value"])
+            moved = [prefill.Verified(None, "gwp", g.suggestion) for g in gwp_items if g is not chosen]
     for field_id, item in fixed.items():
         if rules.status_of(locked[field_id]) != rules.PENDING:
             kept += 1
@@ -400,9 +443,11 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser
         suggested += 1 if saved is not None else 0
     existing = [row for row in await workpaper_item_service.list_items(db, engagement["id"], KIND)
                 if rules.row_field(row["item_key"]) is not None and not row["payload"].get("removed")]
-    for item in (v for v in verified if v.row_group):
+    for item in [*(v for v in verified if v.row_group and v.row_group != "gwp"), *moved]:
         group = str(item.row_group)
         value = item.suggestion["value"]
+        if group == "gwp" and any(prefill.same_row_value(group, mine, value) for mine in gwp_fixed_values):
+            continue  # the fixed GWP field already holds this set
         if any(row["item_key"].startswith(rules.ROW_GROUPS[group][0] + ":") and any(
                 prefill.same_row_value(group, mine, value)
                 for mine in ((row["payload"].get("suggestion") or {}).get("value"),
@@ -538,7 +583,8 @@ async def _prefill(request: Request, user: CurrentUser, engagement: dict[str, An
                                            now_iso=stamp(_now()))
         async with _short_transaction(sessions, org_id) as work:
             suggested, kept = await _store(work, engagement, user, verified, dropped)
-            await _update_meta(work, engagement, user, prefill_ran_at=stamp(_now()))
+            await _update_meta(work, engagement, user, prefill_ran_at=stamp(_now()),
+                               covered=[f["field_id"] for f in rules.CATALOG])
             await _audit_prefill(work, request, user, engagement, {
                 "outcome": "ok", "documents": len(documents), "suggested": suggested,
                 "dropped": sum(dropped.values()), "kept_reviewer_decision": kept, "cost_usd": cost_usd})

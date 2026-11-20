@@ -42,10 +42,17 @@ export interface BackendExtractionResult {
   /** When this document's read was recorded (not when it was uploaded). */
   created_at?: string | null;
   items: BackendExtractionCandidateLike[];
+  /** Claude's facility suggestion for a bill that names none (a suggestion, never a placement). */
+  facility_suggestion?: { facility_id: string; quote: string; source: "file_name" | "line"; page_number?: number | null } | null;
 }
 
-interface BackendReviewDecision {
+export interface BackendReviewDecision {
   candidate_id: string;
+  /**
+   * After a re-read: the candidate this decision now applies to (its record moved), or null when it
+   * applies to no value of the latest read. Absent when it applies to its own candidate.
+   */
+  applies_to_candidate_id?: string | null;
   field_name: string;
   decision: "accepted" | "edited" | "rejected" | "needs_more_evidence";
   reviewed_value: string | number | boolean | null;
@@ -60,6 +67,51 @@ interface BackendReviewDecision {
  * and the API scopes the data to the caller's org (SEC-001). A 401 means the
  * session ended: see `isSessionEnded` / `signInAgainPath`.
  */
+
+/**
+ * A document's extracted fields with the reviewer's latest decision on each laid over it. A rejected value, or one
+ * needing more evidence, is marked ``placementBlocked``: it is never used to place the bill (as on the backend).
+ */
+export function fieldsFromExtraction(
+  extractionResult: Pick<BackendExtractionResult, "items" | "created_at"> | null,
+  reviews: BackendReviewDecision[],
+  canonicalTypeId: string | null
+): ExtractedField[] {
+  const latestReviewByCandidate = new Map<string, BackendReviewDecision>();
+  for (const review of reviews) {
+    // A decision the re-read left on no value stays in the history only: it decides nothing here.
+    const target = review.applies_to_candidate_id === undefined ? review.candidate_id : review.applies_to_candidate_id;
+    if (target) latestReviewByCandidate.set(target, review);
+  }
+  return (
+    extractionResult?.items.map((candidate) => {
+      const field = {
+        ...mapBackendCandidateToExtractedField(candidate, canonicalTypeId),
+        ...(extractionResult.created_at ? { readAt: extractionResult.created_at } : {}),
+      };
+      const review = candidate.candidate_id ? latestReviewByCandidate.get(candidate.candidate_id) : undefined;
+      if (!review) return field;
+      const who = { reviewedBy: review.reviewer_id ?? null, reviewedAt: review.reviewed_at ?? null };
+      if (review.decision === "accepted") {
+        return { ...field, ...who, reviewStatus: "accepted" as const };
+      }
+      if (review.decision === "edited") {
+        return {
+          ...field,
+          ...who,
+          correctedUnit: review.reviewed_unit ?? null,
+          correctedValue:
+            review.reviewed_value === null || review.reviewed_value === undefined ? null : String(review.reviewed_value),
+          reviewStatus: field.value === null ? ("keyed_by_reviewer" as const) : ("corrected" as const),
+        };
+      }
+      if (review.decision === "rejected" || review.decision === "needs_more_evidence") {
+        return { ...field, ...who, placementBlocked: true };
+      }
+      return field;
+    }) ?? []
+  );
+}
 
 /** The signed-in user, as the workpaper needs it. */
 export interface SignedInUser {
@@ -96,41 +148,23 @@ export async function listWorkspaceEvidence(engagementId: string): Promise<{
         `/documents/${encodeURIComponent(document.document_id)}/reviews`
       );
       const canonicalTypeId = extractionResult?.canonical_type_id ?? latestRun?.canonical_type_id ?? null;
-      const latestReviewByCandidate = new Map<string, BackendReviewDecision>();
-      for (const review of reviews ?? []) {
-        latestReviewByCandidate.set(review.candidate_id, review);
-      }
 
+      const suggestion = extractionResult?.facility_suggestion;
       return {
-        evidence: mapBackendDocumentToEvidenceItem(document, latestRun),
-        fields:
-          extractionResult?.items.map((candidate) => {
-            const field = {
-              ...mapBackendCandidateToExtractedField(candidate, canonicalTypeId),
-              ...(extractionResult.created_at ? { readAt: extractionResult.created_at } : {}),
-            };
-            const review = candidate.candidate_id
-              ? latestReviewByCandidate.get(candidate.candidate_id)
-              : undefined;
-            if (!review) return field;
-            const who = { reviewedBy: review.reviewer_id ?? null, reviewedAt: review.reviewed_at ?? null };
-            if (review.decision === "accepted") {
-              return { ...field, ...who, reviewStatus: "accepted" as const };
-            }
-            if (review.decision === "edited") {
-              return {
-                ...field,
-                ...who,
-                correctedUnit: review.reviewed_unit ?? null,
-                correctedValue:
-                  review.reviewed_value === null || review.reviewed_value === undefined
-                    ? null
-                    : String(review.reviewed_value),
-                reviewStatus: field.value === null ? ("keyed_by_reviewer" as const) : ("corrected" as const),
-              };
-            }
-            return field;
-          }) ?? [],
+        evidence: {
+          ...mapBackendDocumentToEvidenceItem(document, latestRun),
+          ...(suggestion?.facility_id && suggestion.quote
+            ? {
+                facilitySuggestion: {
+                  facilityId: suggestion.facility_id,
+                  quote: suggestion.quote,
+                  where:
+                    suggestion.source === "file_name" ? "the file name" : suggestion.page_number ? `page ${suggestion.page_number}` : "the text",
+                },
+              }
+            : {}),
+        },
+        fields: fieldsFromExtraction(extractionResult, reviews ?? [], canonicalTypeId),
       };
     })
   );

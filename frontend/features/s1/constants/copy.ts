@@ -18,6 +18,12 @@ export const AI_TYPE = {
     `The rules chose ${rulesType}, but Claude read the first pages as ${claudeType}. The type was not changed.`,
 } as const;
 
+/** Claude's facility suggestion for a bill that names none (backend services/ai_facility.py). */
+export const AI_FACILITY = {
+  suggested: "Facility suggested by Claude",
+  place: (facilityName: string) => `Place on ${facilityName}`,
+} as const;
+
 /** Claude's reading of a value (backend services/ai_extraction.py). */
 export const AI_VALUE = {
   suggested: "Suggested by Claude",
@@ -28,6 +34,13 @@ export const AI_VALUE = {
   disagreesHelp: "The rules read the value above and kept it. Claude read another: check the page.",
   readBy: "Read by Claude",
   needIndividual: (n: number) => `${n} suggested by Claude need individual review`,
+} as const;
+
+/** A re-read changed what a reviewer had decided on (backend S1-BE-014). */
+export const REREAD = {
+  again: "Review it again",
+  reviewAgain: "The document was re-read and this value changed. Review it again.",
+  valueChanged: "The document was re-read and the extracted value changed since this was reviewed.",
 } as const;
 
 export const EXACT_COPY = {

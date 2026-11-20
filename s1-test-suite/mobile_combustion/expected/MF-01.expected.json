@@ -1,7 +1,7 @@
 {
   "document_id": "MF-01",
   "file": "MF-01_northline_fleet_card_statement.pdf",
-  "description": "Fleet fuel-card statement: one record per fuel transaction; DEF and car wash lines skipped; odometer column ignored; masked card per line; B20 is diesel with a 20% blend.",
+  "description": "Fleet fuel-card statement: one record per fuel transaction; DEF and car wash lines skipped; odometer column ignored; masked card per line; B20 is diesel with a 20% blend. Supplier is the card issuer (19 Nov ruling); station and card are kept per transaction (fuelling location and card number); the account is the statement's.",
   "expected_classification": "CT-S1-MOBFUEL",
   "expected_halt": null,
   "document_fields": {},
@@ -16,9 +16,10 @@
       "biofuel_blend_pct": null,
       "record_hint": "T-101",
       "vehicle_or_equipment_id": "T-101",
-      "merchant_or_supplier": "River Fuel Stop",
-      "fueling_location": "Akron, OH",
-      "account_number": "****0417"
+      "merchant_or_supplier": "Northline Fleet Card",
+      "fueling_location": "River Fuel Stop, Akron, OH",
+      "account_number": "NFC-20931",
+      "card_number": "****0417"
     },
     {
       "transaction_date": "2024-03-05",
@@ -30,9 +31,10 @@
       "biofuel_blend_pct": null,
       "record_hint": "V-12",
       "vehicle_or_equipment_id": "V-12",
-      "merchant_or_supplier": "Corner Gas",
-      "fueling_location": "Kent, OH",
-      "account_number": "****0522"
+      "merchant_or_supplier": "Northline Fleet Card",
+      "fueling_location": "Corner Gas, Kent, OH",
+      "account_number": "NFC-20931",
+      "card_number": "****0522"
     },
     {
       "transaction_date": "2024-03-14",
@@ -44,9 +46,10 @@
       "biofuel_blend_pct": 20,
       "record_hint": "T-101",
       "vehicle_or_equipment_id": "T-101",
-      "merchant_or_supplier": "Lakeview Travel Ctr",
-      "fueling_location": "Erie, PA",
-      "account_number": "****0417"
+      "merchant_or_supplier": "Northline Fleet Card",
+      "fueling_location": "Lakeview Travel Ctr, Erie, PA",
+      "account_number": "NFC-20931",
+      "card_number": "****0417"
     },
     {
       "transaction_date": "2024-03-21",
@@ -58,9 +61,10 @@
       "biofuel_blend_pct": null,
       "record_hint": "T-107",
       "vehicle_or_equipment_id": "T-107",
-      "merchant_or_supplier": "River Fuel Stop",
-      "fueling_location": "Akron, OH",
-      "account_number": "****0630"
+      "merchant_or_supplier": "Northline Fleet Card",
+      "fueling_location": "River Fuel Stop, Akron, OH",
+      "account_number": "NFC-20931",
+      "card_number": "****0630"
     }
   ]
 }

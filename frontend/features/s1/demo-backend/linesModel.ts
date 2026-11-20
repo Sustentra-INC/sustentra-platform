@@ -17,6 +17,7 @@ import { manufacturerValues } from "../fixtures/extraction/manufacturerValues";
 import type { EngagementConfig, FacilityOption } from "../types/engagement";
 import type { EvidenceLineSetting } from "../api/evidenceTree";
 import type { EvidenceItem } from "../types/evidence";
+import { placeRecord } from "../utils/documentView";
 import { demoDecisions, demoEngagement } from "./state";
 
 export const BLOCK_SUMMARY = "block:summary";
@@ -34,7 +35,7 @@ export const CATEGORIES: [string, string, string][] = [
   ["contractual", "Contractual instruments", "s2"],
   ["biogenic", "Biogenic CO₂", "biogenic"],
 ];
-const CATEGORY_SCOPE = Object.fromEntries(CATEGORIES.map(([k, , s]) => [k, s]));
+export const CATEGORY_SCOPE = Object.fromEntries(CATEGORIES.map(([k, , s]) => [k, s]));
 
 export function slug(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/g, "") || "none";
@@ -115,6 +116,8 @@ export interface ModelRecord {
   processingStatus: string;
   detectedType: string | null;
   matchedBy: string;
+  /** Why the account or meter number placed nothing (listed on two facilities). */
+  facilityNote: string | null;
   /** Kinds of quality note the record carries. */
   flags: string[];
 }
@@ -189,7 +192,13 @@ export function buildRecords(facilities: FacilityOption[]): Built {
     }
 
     const type = doc.detectedType;
-    const facilityId = doc.facilityId ?? null;
+    // The account or meter number places a bill only when the name and address steps found no facility.
+    // The same decision the screen and the backend make (placeRecord): the bill's own name, then, only when it
+    // gives no name and no address, its account or meter number; a name that is not in Setup is never overridden.
+    const placed = doc.facilityId
+      ? null
+      : placeRecord({ name: doc.facilityName, address: null, account: doc.accountNumber ?? null, meter: doc.meterNumber ?? null }, facilities, engagementConfig.clientName);
+    const facilityId = doc.facilityId ?? placed?.facility?.facilityId ?? null;
     const code = facilityId ? FAC_CODE[facilityId] ?? slug(facName(facilityId) ?? "") : "";
     let kind: RecordKind = "other";
     let target = SUPPORTING_UNASSIGNED;
@@ -239,7 +248,8 @@ export function buildRecords(facilities: FacilityOption[]): Built {
       meter: utility && facilityId && doc.documentId !== "DOC-PARTIAL" ? (kind === "gas" ? GAS_METERS[facilityId] : ELEC_METER[code]) ?? null : null,
       address: utility ? address(facilityId) : null,
       processingStatus: doc.processingState, detectedType: type,
-      matchedBy: doc.documentId === "DOC-PARTIAL" ? "Service address in Setup" : "Facility name in Setup",
+      matchedBy: placed?.facility ? placed.how ?? "" : doc.documentId === "DOC-PARTIAL" ? "Service address in Setup" : "Facility name in Setup",
+      facilityNote: placed?.note ?? null,
       flags: [],
     });
   }
@@ -320,16 +330,27 @@ export function newLineProblem(engagement: EngagementConfig, lines: EvidenceLine
   return null;
 }
 
+/** The server's `vehicle_group_anchors`: a group's own `group_id`; a group without one (the demo's built-in fleet) takes
+ *  its old anchor, `vg-<label slug>` numbered by order among groups with the same slug. */
 function vehicleGroupAnchors(engagement: EngagementConfig): { anchor_id: string; label: string; fuel: string }[] {
-  return (engagement.recalculation?.vehicle_groups ?? [DEFAULT_VEHICLE_GROUP]).map((g, i, all) => {
-    const label = g.label ?? `${g.vehicle_type} (${g.factor_fuel_type})`;
+  const groups = engagement.recalculation?.vehicle_groups ?? [DEFAULT_VEHICLE_GROUP];
+  const labelOf = (g: { label?: string; vehicle_type: string; factor_fuel_type: string }) => g.label ?? `${g.vehicle_type} (${g.factor_fuel_type})`;
+  const own = new Set(groups.map((g) => (g as { group_id?: string }).group_id).filter((id): id is string => Boolean(id)));
+  const seen = new Map<string, number>();
+  return groups.map((g) => {
+    const label = labelOf(g);
     const base = `vg-${slug(label)}`;
-    const n = all.slice(0, i).filter((o) => `vg-${slug(o.label ?? `${o.vehicle_type} (${o.factor_fuel_type})`)}` === base).length;
-    return { anchor_id: n ? `${base}-${n + 1}` : base, label, fuel: g.fuel };
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    const given = (g as { group_id?: string }).group_id;
+    let anchor = given ?? (n === 1 ? base : `${base}-${n}`);
+    for (let k = 2; !given && own.has(anchor); k += 1) anchor = `${base}-x${k}`;
+    if (!given) own.add(anchor);
+    return { anchor_id: anchor, label, fuel: g.fuel };
   });
 }
 
-function applyMoves(slots: Slot[], moves: { from: string; to: string }[] | undefined, known: Set<string>): Slot[] {
+export function applyMoves(slots: Slot[], moves: { from: string; to: string }[] | undefined, known: Set<string>): Slot[] {
   const effective = (s: Slot) => (FIXED.has(s.target) || known.has(s.target) ? s.target : SUPPORTING_UNASSIGNED);
   let out = slots.map((s) => ({ ...s, flags: [...s.flags] }));
   for (const move of moves ?? []) {

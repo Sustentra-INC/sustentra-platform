@@ -58,7 +58,11 @@ const ADD_ROW_LABEL: Record<string, string> = {
   entities: "Add entity",
   "factor:scope1": "Add Scope 1 factor row",
   "factor:scope2": "Add Scope 2 factor row",
+  gwp: "Add GWP set",
 };
+
+/** One folding rule for option names, like the server's: case-folded, single spaces. */
+const foldOption = (text: string) => text.toLowerCase().replaceAll("\u00df", "ss").split(/\s+/).filter(Boolean).join(" ");
 
 /** What an empty row reads, by the server's display state. Never "Not set". */
 export function emptyWords(status: string, displayState: string | undefined): string {
@@ -85,7 +89,21 @@ export function aiStatusWords(ai: AiStatus): string | null {
 
 function valueText(value: MethodologyValue | undefined): string {
   if (value === null || value === undefined || value === "") return "";
-  if (Array.isArray(value)) return value.join(", ");
+  if (Array.isArray(value)) {
+    // A list of entries ({source_type, method}) reads "Source: method"; a list of names reads as a comma list.
+    if (value.some((v) => v !== null && typeof v === "object")) {
+      return value
+        .map((v) =>
+          v !== null && typeof v === "object" && !Array.isArray(v) && typeof v.source_type === "string"
+            ? `${v.source_type}: ${valueText(v.method as MethodologyValue)}`
+            : v !== null && typeof v === "object" && !Array.isArray(v) && typeof v.option === "string"
+              ? `${v.option}${v.wording ? ` (${valueText(v.wording as MethodologyValue)})` : ""}`
+              : valueText(v as MethodologyValue)
+        )
+        .join("; ");
+    }
+    return value.join(", ");
+  }
   if (typeof value === "object" && typeof value.start === "string" && typeof value.end === "string" && Object.keys(value).length === 2) {
     return `${value.start} to ${value.end}`; // a date range
   }
@@ -122,6 +140,11 @@ export function methodologyActivityFrom(data: MethodologyReviewData): { at: stri
 const TEXT_MAX = 2000;
 const LIST_MAX_ITEMS = 20;
 const LIST_ITEM_MAX = 100;
+const ENTRY_MAX = 10;
+const OPTION_MAX = 60;
+const OPTION_WORDING_MAX = 200;
+const ENTRY_SOURCE_MAX = 60;
+const ENTRY_METHOD_MAX = 300;
 
 /** The label an allowed value shows as, where the catalog gives one. */
 const optionLabel = (def: CatalogField, key: string | null, value: string) => (key ? def.allowedLabels?.[key]?.[value] : undefined) ?? value;
@@ -149,10 +172,62 @@ function ValueEditor({
 
   const [problem, setProblem] = useState<string | null>(null);
   const range = def.kind === "date_range";
+  const listed = def.kind === "entry_list";
+  const multi = def.kind === "multiselect" && Array.isArray(def.allowed);
+  const listedOptions = multi ? (def.allowed as string[]) : [];
+  const [picks, setPicks] = useState<{ option: string; wording: string }[]>(() =>
+    Array.isArray(start)
+      ? start.map((e) => {
+          const o = e !== null && typeof e === "object" && !Array.isArray(e) ? e : {};
+          return { option: valueText(o.option as MethodologyValue), wording: valueText(o.wording as MethodologyValue) };
+        })
+      : []
+  );
+  const [ownOption, setOwnOption] = useState("");
+  const toggle = (option: string) =>
+    setPicks((all) => {
+      if (all.some((p) => p.option === option)) return all.filter((p) => p.option !== option);
+      // "None" stands alone: choosing it clears the others, and choosing another clears it.
+      return option === "None" ? [{ option, wording: "" }] : [...all.filter((p) => p.option !== "None"), { option, wording: "" }];
+    });
+  const addOwn = () => {
+    const text = ownOption.trim();
+    const folded = foldOption(text);
+    if (!folded) return;
+    setProblem(null);
+    if (folded === "none") return setProblem("None can't be added as an option of your own.");
+    const listed = listedOptions.find((o) => foldOption(o) === folded);
+    if (listed) {
+      // an own option that is a listed one selects the listed one
+      if (!picks.some((p) => p.option === listed)) toggle(listed);
+    } else if (!picks.some((p) => foldOption(p.option) === folded)) {
+      setPicks((all) => [...all.filter((p) => p.option !== "None"), { option: text, wording: "" }]);
+    }
+    setOwnOption("");
+  };
+  const [entries, setEntries] = useState<{ source_type: string; method: string }[]>(() =>
+    Array.isArray(start)
+      ? start.map((e) => {
+          const o = e !== null && typeof e === "object" && !Array.isArray(e) ? e : {};
+          return { source_type: valueText(o.source_type as MethodologyValue), method: valueText(o.method as MethodologyValue) };
+        })
+      : []
+  );
   const [dates, setDates] = useState({ start: typeof current.start === "string" ? current.start : "", end: typeof current.end === "string" ? current.end : "" });
 
   function save() {
     setProblem(null);
+    if (multi) {
+      if (picks.length === 0) {
+        return setProblem(listedOptions.includes("None") ? "Choose at least one option, or None if there are none." : "Choose at least one option, or reject this row if the company has none.");
+      }
+      return onSave(picks.map((p) => ({ option: p.option, wording: p.wording.trim() })));
+    }
+    if (listed) {
+      const kept = entries.map((e) => ({ source_type: e.source_type.trim(), method: e.method.trim() })).filter((e) => e.source_type || e.method);
+      if (kept.some((e) => !e.source_type || !e.method)) return setProblem("Give every entry a source type and a method, or remove it.");
+      return onSave(kept);
+    }
     if (range) {
       if (!dates.start || !dates.end) return setProblem("Enter both a start date and an end date.");
       return onSave({ start: dates.start, end: dates.end });
@@ -194,7 +269,68 @@ function ValueEditor({
 
   return (
     <div className="s1-mb-edit">
-      {range ? (
+      {multi ? (
+        <div className="s1-mb-list-edit">
+          {[...listedOptions, ...picks.map((p) => p.option).filter((o) => !listedOptions.includes(o))].map((option) => {
+            const pick = picks.find((p) => p.option === option);
+            return (
+              <span key={option} className="s1-mr-actions">
+                <label className="s1-mb-part">
+                  <span className="s1-mr-value">
+                    <input type="checkbox" aria-label={`${option}: ${def.label}`} checked={Boolean(pick)} onChange={() => toggle(option)} /> {option}
+                  </span>
+                </label>
+                {pick && option !== "None" ? (
+                  <input
+                    className="s1-mr-input"
+                    aria-label={`Company's wording for ${option}: ${def.label}`}
+                    maxLength={OPTION_WORDING_MAX}
+                    value={pick.wording}
+                    onChange={(e) => setPicks((all) => all.map((x) => (x.option === option ? { ...x, wording: e.target.value } : x)))}
+                  />
+                ) : null}
+              </span>
+            );
+          })}
+          {def.free ? (
+            <span className="s1-mr-actions">
+              <input className="s1-mr-input" aria-label={`Add another option: ${def.label}`} maxLength={OPTION_MAX} value={ownOption} onChange={(e) => setOwnOption(e.target.value)} />
+              <button type="button" className="s1-button s1-button--compact" onClick={addOwn}>
+                Add option
+              </button>
+            </span>
+          ) : null}
+        </div>
+      ) : listed ? (
+        <div className="s1-mb-list-edit">
+          {entries.map((entry, index) => (
+            <span key={index} className="s1-mr-actions">
+              <input
+                className="s1-mr-input"
+                aria-label={`Source type ${index + 1}: ${def.label}`}
+                maxLength={ENTRY_SOURCE_MAX}
+                value={entry.source_type}
+                onChange={(e) => setEntries((all) => all.map((x, i) => (i === index ? { ...x, source_type: e.target.value } : x)))}
+              />
+              <input
+                className="s1-mr-input"
+                aria-label={`Method ${index + 1}: ${def.label}`}
+                maxLength={ENTRY_METHOD_MAX}
+                value={entry.method}
+                onChange={(e) => setEntries((all) => all.map((x, i) => (i === index ? { ...x, method: e.target.value } : x)))}
+              />
+              <button type="button" className="s1-mr-link" aria-label={`Remove entry ${index + 1}: ${def.label}`} onClick={() => setEntries((all) => all.filter((_, i) => i !== index))}>
+                Remove
+              </button>
+            </span>
+          ))}
+          {entries.length < ENTRY_MAX ? (
+            <button type="button" className="s1-button s1-button--compact" onClick={() => setEntries((all) => [...all, { source_type: "", method: "" }])}>
+              Add entry
+            </button>
+          ) : null}
+        </div>
+      ) : range ? (
         <>
           <label className="s1-mb-part">
             <span className="s1-mr-muted">Start date</span>
@@ -250,7 +386,7 @@ function FieldRow({
   const status = decision?.status ?? "pending";
   const pendingStatus = status === "pending";
   const decided = status === "accepted" || status === "edited";
-  const current = decided ? valueText(decision?.value) : "";
+  const current = decided ? (Array.isArray(decision?.value) && decision.value.length === 0 ? "No entries" : valueText(decision?.value)) : "";
   // A period saved before it became two dates is kept as the text it was; the reviewer re-enters it as dates.
   const oldText = def.kind === "date_range" && typeof decision?.value === "string" && decision.value ? decision.value : null;
   const suggestionIsOldText = def.kind === "date_range" && typeof suggestion?.value === "string";
@@ -272,6 +408,7 @@ function FieldRow({
           </span>
         ) : null}
         {oldText ? <span className="s1-mr-muted">Enter the start and end dates with Edit.</span> : null}
+        {record.shownNote ? <span className="s1-mr-muted">{record.shownNote}</span> : null}
         {status === "rejected" && decision?.reason ? <span className="s1-mr-muted">Reason: {decision.reason}</span> : null}
       </div>
 
@@ -279,12 +416,35 @@ function FieldRow({
         <div className="s1-mb-suggest">
           <span className="s1-chip s1-mb-chip">Suggested by Claude</span>
           <span className="s1-mr-value">{valueText(suggestion.value)}</span>
-          <q className="s1-mb-quote">{suggestion.quote}</q>
-          {suggestion.quote_truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
-          <button type="button" className="s1-mr-link" onClick={() => onOpenDocument(suggestion.document_id)}>
-            {suggestion.file_name}
-            {sourceLocation(suggestion.source_reference) ? `, ${sourceLocation(suggestion.source_reference)}` : ""}
-          </button>
+          {suggestion.evidence?.length ? (
+            <ul className="s1-mb-evidence">
+              {suggestion.evidence.map((item, index) => (
+                <li key={index} className="s1-mb-evidence-item">
+                  <span className="s1-mr-muted">{item.label}</span>
+                  <q className="s1-mb-quote">{item.quote}</q>
+                  {item.quote_truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
+                  <button type="button" className="s1-mr-link" onClick={() => onOpenDocument(item.document_id)}>
+                    {item.file_name}
+                    {sourceLocation(item.source_reference) ? `, ${sourceLocation(item.source_reference)}` : ""}
+                  </button>
+                </li>
+              ))}
+              {suggestion.entries_omitted ? (
+                <li className="s1-mr-muted">
+                  {suggestion.entries_omitted} more {suggestion.entries_omitted === 1 ? "entry was" : "entries were"} found but not shown: their quotes were too long to keep.
+                </li>
+              ) : null}
+            </ul>
+          ) : (
+            <>
+              <q className="s1-mb-quote">{suggestion.quote}</q>
+              {suggestion.quote_truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
+              <button type="button" className="s1-mr-link" onClick={() => onOpenDocument(suggestion.document_id)}>
+                {suggestion.file_name}
+                {sourceLocation(suggestion.source_reference) ? `, ${sourceLocation(suggestion.source_reference)}` : ""}
+              </button>
+            </>
+          )}
         </div>
       ) : null}
 

@@ -47,7 +47,7 @@ const scopes = (canonicalTypeId: string | null, names: string[]) =>
 describe("where a backend value counts", () => {
   it("places an electricity or thermal quantity in both Scope 2 bases, and the bill's other fields by what they are", () => {
     for (const type of ["CT-S2-ELEC", "CT-S2-THERMAL"]) {
-      expect(scopes(type, ["activity_quantity", "activity_unit", "energy_type", "account_number", "service_period_start", "facility_name", "service_address", "supplier_name", "meter_number"])).toEqual({
+      expect(scopes(type, ["activity_quantity", "activity_unit", "energy_type", "account_number", "service_period_start", "facility_name", "service_address", "supplier_name", "meter_number", "statement_date"])).toEqual({
         activity_quantity: "scope2_both",
         activity_unit: "scope2_both",
         energy_type: "scope2_both",
@@ -56,7 +56,8 @@ describe("where a backend value counts", () => {
         facility_name: "general",
         service_address: "general",
         supplier_name: "general",
-        meter_number: "not_placed",
+        meter_number: "general", // printed on the bill, display only (EXT-027)
+        statement_date: "general", // the bill's own date, never the service period
       });
     }
   });

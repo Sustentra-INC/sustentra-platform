@@ -66,6 +66,14 @@ export interface EvidenceItem {
   /** Claude's reading of the type: it set the type (`used`, to confirm) or only disagreed with the rules. */
   aiType?: AiTypeReading;
   facilityState: FacilityState;
+  /**
+   * Claude's suggested facility for a bill that names none: shown with its quote while the bill is unplaced and the
+   * reviewer has not chosen one (utils/documentView.ts decides when). A suggestion, never a placement.
+   */
+  facilitySuggestion?: { facilityId: string; quote: string; where: string };
+  /** The account and meter number read from the bill, for the provisional placement step (utils/facilityNumbers.ts). */
+  accountNumber?: string | null;
+  meterNumber?: string | null;
   facilityId: string | null;
   facilityName: string | null;
   facilityCount: number | null;

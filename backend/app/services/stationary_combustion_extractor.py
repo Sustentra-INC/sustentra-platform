@@ -26,10 +26,13 @@ import copy
 import re
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Sequence
 
 from backend.app.domain import fuel_units
+from backend.app.services.facility_identifiers import clean_account
+from backend.app.services import bill_notes
+from backend.app.services.extraction_target_service import DISPLAY_ONLY_FIELDS
 
 CANONICAL_TYPE_ID = "CT-S1-FUELQTY"
 
@@ -37,7 +40,8 @@ HALT_UNREADABLE = "unreadable_document"
 HALT_UNSUPPORTED = "unsupported_document"
 
 RECORD_FIELDS = ("fuel_type", "activity_quantity", "activity_unit", "service_period_start", "service_period_end")
-DOCUMENT_FIELDS = ("facility_name", "service_address", "supplier_name", "account_number")
+DOCUMENT_FIELDS = ("facility_name", "service_address", "supplier_name", "account_number", "meter_number",
+                   "statement_date")
 KNOWN_FIELDS = RECORD_FIELDS + DOCUMENT_FIELDS
 
 # Confidence by how a value was located (then capped by the parser's own confidence).
@@ -45,6 +49,7 @@ CONF_SAME_CELL = 0.92
 CONF_NEXT_CELL = 0.9
 CONF_TABLE = 0.88
 CONF_NEXT_ROW = 0.8
+CONF_FOOTER_SUPPLIER = 0.45  # a name read only from a footer or a copyright line: below the review threshold
 CONF_LETTERHEAD = 0.75
 CONF_DOCUMENT_SCAN = 0.7
 CONF_INHERITED = 0.85  # record field taken from the document header (e.g. statement period)
@@ -67,6 +72,11 @@ BILL_TO_LABELS: tuple[tuple[str, ...], ...] = (
     ("customer name", "customer", "sold to", "bill to", "billed to", "invoice to", "account name",
      "account holder", "service name"),
 )
+# Who a bill asks to be paid: the organisation named there is a candidate for the supplier, after the
+# letterhead and the labelled reads. (Not a bank, a lockbox or a PO box: those are where, not who.)
+REMIT_LABELS: tuple[tuple[str, ...], ...] = (
+    ("remit payment to", "remit to", "make checks payable to", "payable to"),
+)
 # When a document names no site at all, the company on the bill is the facility, as on a utility bill to a
 # single plant (the golden set's SC-03 and SC-05). Set False to leave such a document with no facility,
 # so it waits in Unassigned supporting evidence until a reviewer picks one.
@@ -87,9 +97,84 @@ _BLOCK_COLUMN_TOLERANCE = 0.02
 
 
 ACCOUNT_LABELS: tuple[tuple[str, ...], ...] = (
-    ("account number", "account no", "account #", "acct number", "acct no", "acct #", "customer account",
-     "customer acct", "customer number", "customer no", "account id", "account"),
+    ("account number", "account no", "account no.", "account #", "acct number", "acct no", "acct no.", "acct. no.",
+     "acct #", "acct.", "acct", "customer account", "customer acct", "customer number", "customer no",
+     "customer no.", "customer #", "cust no", "cust no.", "cust. no.", "cust #", "client number", "client no",
+     "client no.", "billing account", "service account", "account id", "account"),
 )
+# A meter number is read from a labelled field only. A bare "meter" label also starts "Meter Reading", "Meter
+# Charges" and "Meter 1 - Tacoma" (a heading): none of those has a value that looks like an identifier, so they are
+# never read. The labels that name the number (without the bare word) are what the other fields' lookups treat as a
+# label when they look for their own value in the next cell.
+METER_NUMBER_LABELS: tuple[tuple[str, ...], ...] = (
+    ("meter number", "meter no", "meter no.", "meter #", "meter id", "meter serial number", "meter serial no",
+     "meter serial", "meter nbr", "meter num"),
+)
+METER_LABELS: tuple[tuple[str, ...], ...] = (METER_NUMBER_LABELS[0] + ("meter",),)
+# Only so that a due date next to a statement date is recognised as another label, never read as a value.
+DUE_DATE_LABELS: tuple[tuple[str, ...], ...] = (
+    ("due date", "payment due date", "payment due", "pay by", "due by", "due on", "amount due by"),
+)
+# A usage table's meter column ("Meter", "Steam Meter", "Meter No."): not "Hour Meter" (a run-time reading).
+_METER_HEADER = re.compile(
+    r"(?:(?:steam|gas|electric|electricity|chilled water|hot water|heat|btu|utility|service) )?meter"
+    r"(?: (?:number|no|id|#))?")
+_RANGE_AFTER_DATE = re.compile(r"\s*(?:[-\u2010-\u2015\u2212]|to\b|through\b|thru\b|until\b)", re.IGNORECASE)
+_PHONE = re.compile(r"^\+?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}$|^\+\d[\d\s().-]{8,}$|^\d{3}[\s.-]\d{4}$")
+BILL_DATE_LABELS: tuple[tuple[str, ...], ...] = (
+    ("statement date", "invoice date", "bill date", "billing date", "date issued", "issue date", "date of issue"),
+)
+# What a bill calls its own date: the labels the data quality check already knows, an abbreviation, and a report date.
+# Never a bare "Date" (a delivery ticket's date is its delivery date) and never a due date.
+STATEMENT_DATE_LABELS: tuple[tuple[str, ...], ...] = (BILL_DATE_LABELS[0] + ("stmt date", "stmt. date", "report date"),)
+BILL_NUMBER_LABELS: tuple[tuple[str, ...], ...] = (
+    ("invoice number", "invoice no", "invoice no.", "invoice #", "statement number", "statement no", "statement no.",
+     "statement #", "bill number", "bill no", "bill no.", "invoice id"),
+)
+
+
+_READING_UNITS = frozenset({"kwh", "mwh", "kw", "wh", "therm", "therms", "thm", "thms", "ccf", "mcf", "scf", "cf", "mmbtu",
+                            "btu", "kbtu", "mlb", "lb", "lbs", "kg", "gal", "gals", "gallon", "gallons", "l", "liters",
+                            "litres", "m3", "m\u00b3", "gj", "hcf"})
+
+
+def meter_value(value: str) -> str | None:
+    """The meter number at the start of ``value`` ("GM-0127764 PREV 40,211 CURR 41,447" gives "GM-0127764"), or None.
+    The same guard as an account number: at least 3 characters, a digit, not a date or an amount, and not a phone
+    number ("Meter Reader Line: (555) 123-4567")."""
+
+    tokens = value.split()
+    if not tokens:
+        return None
+    first = tokens[0].strip(".,;:()[]")
+    if len(first) < 3 or not re.search(r"\d", first) or first.startswith("$") or parse_date(first) is not None:
+        return None
+    # A reading is not a number: comma grouping, a decimal, or a unit after it ("45,210", "3,701.1", "45210 kWh").
+    if re.fullmatch(r"[\d,]*\d[,.]\d[\d,.]*", first) or (len(tokens) > 1 and tokens[1].strip(".,;:()").lower() in _READING_UNITS):
+        return None
+    if any(_PHONE.match(" ".join(tokens[:n])) for n in (1, 2, 3)):
+        return None
+    return first
+
+
+def statement_date_value(value: str) -> tuple[str, str] | None:
+    """(printed text, ISO date) when ``value`` starts with a single date. A range ("01/01/2025 - 01/31/2025", a
+    service period) is not a statement date, and neither is a date with other words in front of it."""
+
+    hit = parse_date(value)
+    if hit is None or value[:hit[1]].strip(" :#-") != "" or _RANGE_AFTER_DATE.match(value[hit[2]:]):
+        return None
+    return value[hit[1]:hit[2]], hit[0]
+
+
+def _plausible_account(value: str) -> bool:
+    """An account is an identifier: a few tokens at most, and not a phone number ("Account: call 555-123-4567")."""
+
+    text = value.strip()
+    return len(text.split()) <= 3 and _PHONE.match(text) is None
+
+
+_EMAIL_HEADING = re.compile(r"\s*(?:subject|re|fw|fwd)\s*:", re.IGNORECASE)  # an email's subject line
 SUPPLIER_LABELS: tuple[tuple[str, ...], ...] = (
     ("supplier", "utility", "provider", "vendor", "issued by", "company", "distributor"),
 )
@@ -101,10 +186,12 @@ RANGE_PERIOD_LABELS: tuple[tuple[str, ...], ...] = (
      "usage period", "read period", "statement period", "period"),
 )
 START_LABELS: tuple[tuple[str, ...], ...] = (
-    ("period start", "service start", "start date", "service from", "from date", "from"),
+    ("bill start date", "billing start date", "billing period start", "period start date", "service start date",
+     "period start", "service start", "start date", "service from", "from date", "from"),
 )
 END_LABELS: tuple[tuple[str, ...], ...] = (
-    ("period end", "service end", "end date", "service to", "through", "to date", "to"),
+    ("bill end date", "billing end date", "billing period end", "period end date", "service end date",
+     "period end", "service end", "end date", "service to", "through", "to date", "to"),
 )
 DELIVERY_DATE_LABELS: tuple[tuple[str, ...], ...] = (("delivery date", "date delivered", "delivered on", "fill date"),)
 QUANTITY_LABELS: tuple[tuple[str, ...], ...] = (
@@ -177,20 +264,56 @@ ELECTRIC_UNITS = frozenset({"kWh", "MWh"})
 
 # --- usage tables ----------------------------------------------------------------------
 _QTY_EXCLUDE = ("read", "factor", "heat value", "heat content", "price", "rate", "amount", "charge", "cost",
-                "$", "days", "multiplier", "pressure", "tax", "total amount", "balance")
+                "$", "days", "multiplier", "pressure", "tax", "total amount", "balance",
+                "capacity", "tank", "size", "level", "efficiency")
 _ID_HEADERS = ("meter number", "meter id", "meter #", "meter no", "meter", "tank", "invoice", "ticket", "delivery no")
 _UNIT_HEADERS = ("unit", "units", "uom", "unit of measure")
 _PRODUCT_HEADERS = ("product", "description", "fuel", "commodity", "item")
 _START_HEADERS = ("from", "start", "previous read date", "prev read date", "start date", "period start",
-                  "cycle start", "service start", "from date")
+                  "cycle start", "service start", "from date",
+                  # portal exports: "Bill Start Date", "Billing Period Start", "Service From"
+                  "bill start", "bill start date", "billing start", "billing start date", "bill period start",
+                  "billing period start", "billing period start date", "period start date", "service start date",
+                  "service from", "service from date", "usage start date")
 _END_HEADERS = ("to", "end", "current read date", "pres read date", "end date", "period end", "through",
-                "cycle end", "service end", "to date")
+                "cycle end", "service end", "to date",
+                "bill end", "bill end date", "billing end", "billing end date", "bill period end",
+                "billing period end", "billing period end date", "period end date", "service end date",
+                "service to", "service to date", "through date", "usage end date")
 _RANGE_HEADERS = ("service period", "period", "billing period", "service dates")
 _DATE_HEADERS = ("date", "delivery date", "read date", "invoice date", "date posted", "posting date",
                  "transaction date", "date delivered")
 # A usage table ends at its summary row: "Total", or a yearly roll-up such as "Annual quantity" /
 # "Year to date", which would double count the rows above it if read as one more record.
+_QUANTITY_WORDS = ("usage", "consumption", "consumed", "delivered", "billed", "used", "issued", "dispensed",
+                   "pumped", "added", "fuel", "quantity", "qty", "volume")
+_PER_HUNDRED_RE = re.compile(r"/\s*\d+\s*[a-z]+")
+# A "Description" column is the product column only when no column is headed by the fuel itself.
+_GENERIC_PRODUCT_HEADERS = ("description", "item")
+_FUEL_PRODUCT_HEADERS = ("fuel", "fuel type", "fuel grade", "grade", "product", "commodity")
 _TOTAL_ROW_WORDS = ("total", "totals", "subtotal", "grand total", "annual", "year to date", "ytd", "year total")
+# In a run log, a carried-forward line (no date) repeats figures already counted: it is skipped and the table
+# goes on. Whole phrases only: a meter "BAL 7" or a run called "Balance test" is a real line.
+_CARRIED_ROW_PHRASES = ("b/f", "c/f", "brought forward", "carried forward", "opening balance", "closing balance",
+                        "balance b/f", "balance c/f")
+
+# A generator run log: one line per run, with the hours it ran and the fuel added afterwards. It names no
+# fuel in its columns, so the fuel is left for the reviewer rather than guessed.
+_RUN_HOURS_RE = re.compile(r"\b(?:run(?:ning)?\s*(?:hours|hrs|time)|hours\s+run|runtime)\b")
+_FUEL_ADDED_RE = re.compile(
+    r"\b(?:gal(?:lon)?s?|lit(?:re|er)s?|fuel)\s*(?:added|refilled|filled|put in)\b"
+    r"|\b(?:added|refill(?:ed)?)\s*\(?(?:gal(?:lon)?s?|lit(?:re|er)s?)\b"
+)
+# A level, a before/after reading or a stock figure is not fuel added.
+_NOT_ADDED_RE = re.compile(r"\b(?:level|before|after|on hand|remaining|balance|capacity|start|end|opening|closing)\b")
+# What a run log is about, and what rules it out: a vehicle, a machine or a fleet is not a standby generator.
+_RUN_LOG_STATIONARY_RE = re.compile(
+    r"\b(?:generators?|gensets?|standby|day tank|boilers?|furnaces?|fire pump|emergency power|emergency gen|"
+    r"dg set)\b|\bgen(?:[- ]?\d|\s+set\b|erator)")
+_RUN_LOG_MOBILE_RE = re.compile(
+    r"\b(?:vehicles?|fleet|odometer|miles?|mileage|mpg|telematics|excavators?|loaders?|bulldozers?|backhoes?|"
+    r"forklifts?|tractors?|trucks?|cranes?|fuel card|skid steers?|dozers?|graders?|pickups?|vans?|rentals?|"
+    r"light towers?|compressors?)\b")
 
 _MONTHS = {
     m: i
@@ -205,6 +328,7 @@ _MONTHS = {
     for m in names
 }
 _MONTH_RE = "|".join(sorted(_MONTHS, key=len, reverse=True))
+_MONTHS_BUT_MAY = "|".join(name for name in sorted(_MONTHS, key=len, reverse=True) if name != "may")
 # How a line without geometry splits into parts (tabs, 2+ spaces, pipes); the source pane
 # splits lines the same way (frontend utils/sourceAnchor.ts).
 _LINE_PARTS_RE = re.compile(r"\t+|\s{2,}|\s*\|\s*")
@@ -220,6 +344,13 @@ _DATE_PATTERNS: tuple[re.Pattern[str], ...] = (
     # Jan-2025 - a month column in a monthly log: the first day of that month
     re.compile(rf"(?<![\w-])(?P<mon>{_MONTH_RE})-(?P<y>\d{{4}})(?![\w-])", re.IGNORECASE),
 )
+# "October 1 - 31, 2025", "Oct 1 \u2013 31, 2025", "September 28 - October 27, 2025", "Dec 16 - Jan 15, 2026":
+# a range whose first date has no year of its own. The year is the end date's; a first month after the
+# last month ("Dec 16 - Jan 15") is the year before. English month names only: another language's
+# names do not match, so such a range simply is not read.
+_SHORT_RANGE_RE = re.compile(
+    rf"(?<![\w])(?P<m1>{_MONTH_RE})\.?\s+(?P<d1>\d{{1,2}})\s*[-\u2013\u2014]\s*"
+    rf"(?:(?P<m2>{_MONTH_RE})\.?\s+)?(?P<d2>\d{{1,2}}),?\s+(?P<y>\d{{4}})(?!\d)", re.IGNORECASE)
 _NUMBER_RE = re.compile(
     r"(?P<open>\()?(?P<sign>-)?(?<![\w.,])"
     r"(?P<num>\d{1,3}(?:[,.]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
@@ -228,6 +359,23 @@ _NUMBER_RE = re.compile(
 _EXPORTED_FROM_RE = re.compile(
     r"\bexported (?:from|by)\s+(.+?)(?:\s+(?:business |customer |online |web )?(?:portal|account|website)\b|\s+on\s|\s+\d{1,2}/\d{1,2}/\d{2,4}|$)",
     re.IGNORECASE)
+# A footer that names the organisation behind a portal export: "Data exported 07/08/2025 from Sierra Basin Energy Co.
+# MyAccount portal." or "\u00a9 2025 Sierra Basin Energy Co. All rights reserved". A lower candidate than the letterhead.
+_FOOTER_EXPORT_RE = re.compile(
+    r"\bexported(?:\s+(?:on\s+)?\d{1,2}[/.]\d{1,2}[/.]\d{2,4})?\s+(?:from|by)\s+(.+?)"
+    r"(?:\s+(?:my\s?account|(?:business |customer |online |web )?(?:portal|account|website))\b|\s+on\s|\.\s|$)",
+    re.IGNORECASE)
+_FOOTER_COPYRIGHT_RE = re.compile(r"\u00a9\s*(?:\d{4}(?:\s*[-\u2013]\s*\d{4})?\s+)?(.+?)(?:\.?\s+all rights\b|\s*[|\u00b7]|$)",
+                                 re.IGNORECASE)
+# An email's header lines (the body that follows holds the bill's own letterhead).
+# A line that credits the software behind a portal or a bill, and the vendors known to be behind them: "Powered by Itron",
+# "\u00a9 Oracle Utilities". Never the supplier.
+_VENDOR_LINE = re.compile(
+    r"\b(?:powered by|built by|developed by|software|platform|cloud|technologies|systems)\b"
+    r"|\b(?:oracle|itron|sap|opower|bidgely|zuora|hansen|landis)\b", re.IGNORECASE)
+_FORWARDED = re.compile(r"\bfwd?:|forwarded message|original message", re.IGNORECASE)
+_GREETING = re.compile(r"\s*(?:hello|dear|hi|hey|good (?:morning|afternoon|evening))\b", re.IGNORECASE)
+_MAIL_HEADER = re.compile(r"\s*(?:from|to|cc|bcc|sent|date|subject|reply-to|return-path)\s*:", re.IGNORECASE)
 _SLASH_DATE_RE = re.compile(r"(?<!\d)(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})(?!\d)")
 
 
@@ -300,6 +448,7 @@ class Located:
     confidence: float
     label_cell: Cell | None = None
     context: str | None = None  # snippet override
+    last_resort: bool = False  # the bill's customer, taken as the facility only because nothing else was named
 
 
 @dataclass
@@ -313,6 +462,7 @@ class UsageRecord:
     fuel: Located | None = None
     extra: dict[str, Located] = field(default_factory=dict)  # subclass EXTRA_COLUMNS values
     energy: str | None = None  # thermal bills: the energy type told from this line (steam / hot_water / chilled_water)
+    quantity_header: str | None = None  # table lines: the header of the quantity's own column (not the whole header row)
 
 
 @dataclass
@@ -322,11 +472,162 @@ class ExtractionOutcome:
     records: int = 0
     notes: list[str] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        # A display-only field the bill does not print is left out, not kept as a missing placeholder.
+        self.candidates = [c for c in self.candidates if not (
+            c.get("field_name") in DISPLAY_ONLY_FIELDS and c.get("raw_value") is None
+            and c.get("normalized_value") is None)]
+
 
 def _blank_dates(text: str) -> str:
     for pattern in _DATE_PATTERNS:
         text = pattern.sub(" ", text)
     return text
+
+
+# Words in the label above or beside a date that say it is not the service period.
+_NOT_A_SERVICE_PERIOD = ("next", "due", "pay by", "statement", "bill date", "billing date", "issued")
+_RANGE_SEPARATOR = re.compile(r"^\s*(?:[-\u2013\u2014]|to|through)\s*", re.IGNORECASE)
+
+
+def _only_a_date_range(text: str) -> bool:
+    """Whether ``text`` is exactly a date, a dash (or "to", "through") and a date, 20 to 100 days long. The
+    first date may leave its year to the second ("October 1 - 31, 2025"). Anything else in it, two dates with
+    no dash between them included, is not a range."""
+
+    if _SHORT_RANGE_RE.fullmatch(text):
+        dates = parse_dates(text)
+    elif (first := parse_date(text)) is not None and first[1] == 0 and (gap := _RANGE_SEPARATOR.match(text[first[2]:])):
+        tail = text[first[2] + gap.end():]
+        second = parse_date(tail)
+        if second is None or second[1] != 0 or tail[second[2]:].strip():
+            return False
+        dates = [first[0], second[0]]
+    else:
+        return False
+    return len(dates) == 2 and 20 <= (date.fromisoformat(dates[1]) - date.fromisoformat(dates[0])).days <= 100
+
+
+def _labelled_as(rows: Sequence[Row], cell: Cell, words: Sequence[str]) -> bool:
+    """Whether the text directly above ``cell`` or just to its left contains one of ``words`` (a label such
+    as "Next scheduled meter read" or "Current reading"). Cells without geometry have no neighbours."""
+
+    box = cell.box
+    if box is None:
+        return False
+    above: tuple[float, str] | None = None
+    left: tuple[float, str] | None = None
+    for row in rows:
+        if row.page != cell.page:
+            continue
+        for other in row.cells:
+            if other is cell or other.box is None:
+                continue
+            bottom = other.box["top"] + other.box["height"]
+            rise = box["top"] - bottom
+            if -0.005 <= rise <= max(cell.height, 0.03) and other.left < cell.right and other.right > cell.left:
+                if above is None or rise < above[0]:
+                    above = (rise, other.text)
+            beside = cell.left - other.right
+            if -0.005 <= beside <= 0.15 and abs(other.center_y - cell.center_y) <= max(cell.height, other.height) / 2:
+                if left is None or beside < left[0]:
+                    left = (beside, other.text)
+    return any(_has_word(found[1], word) for found in (above, left) if found for word in words)
+
+
+def _names_a_month(text: str) -> bool:
+    """Whether ``text`` names a month. "May" counts only beside a day number or a year ("you may pay online" is
+    a sentence)."""
+
+    if re.search(rf"\b(?:{_MONTHS_BUT_MAY})\b", text, re.IGNORECASE):
+        return True
+    return re.search(r"\bmay\s+\d{1,2}\b|\b\d{1,2}\s+may\b|\bmay,?\s+(?:19|20)\d{2}\b", text, re.IGNORECASE) is not None
+
+
+def _has_word(text: str, word: str) -> bool:
+    """Whether ``word`` is in ``text`` as a whole word or phrase ("rate" is not in "Corporate"), ignoring a
+    parenthesis that holds a number: "Your usage (31 days)" is a heading about usage, "Days in period" is about
+    days. A parenthesis with only words in it ("Same month (last year)", "Tank (capacity)") says what the
+    figure is, so it counts. A word with no letter or digit in it ("$") is looked for as it is."""
+
+    low = re.sub(r"\([^)]*\d[^)]*\)", " ", text.lower())
+    if not any(char.isalnum() for char in word):
+        return word in low
+    return re.search(rf"(?<!\w){re.escape(word)}(?!\w)", low) is not None
+
+
+def _third_band_floor(heights: Sequence[float]) -> float | None:
+    """The smallest text height among the three tallest sizes on a page, where heights within 10% of the tallest
+    of their size are one size (OCR reports a size as 0.0599, 0.0601 and 0.0602)."""
+
+    bands: list[float] = []  # the smallest height of each band, tallest band first
+    top = 0.0
+    for height in sorted(set(heights), reverse=True):
+        if bands and height >= 0.9 * top:
+            bands[-1] = height
+            continue
+        bands.append(height)
+        top = height
+        if len(bands) > 3:
+            bands.pop()
+            break
+    return bands[-1] if bands else None
+
+
+_LEGAL_SUFFIXES = frozenset({"inc", "incorporated", "llc", "co", "company", "corp", "corporation", "ltd", "limited",
+                             "gmbh", "ag", "sa", "plc"})
+_UTILITY_WORDS = frozenset({"gas", "energy", "electric", "electricity", "power", "utility", "utilities", "water", "fuel",
+                            "fuels", "propane", "oil", "petroleum", "heating", "cooperative", "coop", "authority",
+                            "district", "light", "natural", "steam"})
+# What a supplier's name ends in. A name that ends in anything else on a Remit To line is a person, a bank or a
+# department, not the company.
+_ORGANISATION_WORDS = frozenset({"co", "company", "inc", "llc", "ltd", "corp", "corporation", "energy", "gas", "power",
+                                 "utilities", "utility", "electric", "district", "authority", "cooperative"})
+_NOT_A_PAYEE = re.compile(
+    r"\b(?:c/o|attn|dept|department|cent(?:er|re)|processing|payments?|lock\s?box|bank|n\.?a\.?|services?|billing|"
+    r"remittance|p\.?\s?o\.?\s*box)(?!\w)", re.IGNORECASE)
+
+
+def _company_words(name: str) -> list[str]:
+    """A company name as comparable words: lower case, no punctuation, bracketed text or branch after a spaced
+    dash ("Northgate Provisions Inc - Plant 4"), and no legal suffix (Inc, LLC, Co, Corp, Ltd...)."""
+
+    low = re.sub(r"\([^)]*\)|\[[^\]]*\]", " ", re.split(r"\s+[-\u2013\u2014]\s+", name.casefold())[0])
+    return [word for word in re.sub(r"[\W_]+", " ", low).split() if word not in _LEGAL_SUFFIXES]
+
+
+def _same_company(first: str, second: str) -> bool:
+    """Whether two names are one company: equal as words once case, punctuation, legal suffixes, brackets and a
+    branch after a dash are gone ("Northgate Provisions Inc - Plant 4" and "NORTHGATE PROVISIONS INC"). "Sierra Basin
+    Co" and "Sierra Basin Foods Inc", or "City of Lodi" and "City of Lodi Utilities", are two companies."""
+
+    a, b = _company_words(first), _company_words(second)
+    return bool(a) and a == b
+
+
+def _names_a_utility(name: str) -> bool:
+    return any(word in _UTILITY_WORDS for word in _company_words(name))
+
+
+def _is_customer(name: str, customers: Sequence[str]) -> bool:
+    """Whether ``name`` (a letterhead or a payee; a labelled supplier is only compared with ``_same_company``) is
+    one of the customers or the customer's parent: the same company, one name starting with the other (the
+    shorter has two words or more), the same first two words, or the same first word (four letters or more) in a
+    name that says nothing about being a utility."""
+
+    words = _company_words(name)
+    for customer in customers:
+        theirs = _company_words(customer)
+        if _same_company(name, customer):
+            return True
+        short, long = sorted((words, theirs), key=len)
+        if len(short) >= 2 and long[:len(short)] == short:  # "NORTHGATE ENERGY PARTNERS FRESNO CO" is the customer's
+            return True
+        if len(words) >= 2 and len(theirs) >= 2 and words[:2] == theirs[:2] and not _names_a_utility(name):
+            return True
+        if words and theirs and words[0] == theirs[0] and len(words[0]) >= 4 and not _names_a_utility(name):
+            return True
+    return False
 
 
 def _has_letters(value: str) -> bool:
@@ -391,7 +692,24 @@ def parse_date(text: str, day_first: bool | None = None) -> tuple[str, int, int]
     return best
 
 
+def _short_range(match: re.Match[str]) -> tuple[str, str] | None:
+    parts = match.groupdict()
+    try:
+        year = int(parts["y"])
+        end_month = _MONTHS[(parts["m2"] or parts["m1"]).lower().rstrip(".")]
+        start_month = _MONTHS[parts["m1"].lower().rstrip(".")]
+        start_year = year - 1 if start_month > end_month else year
+        start = date(start_year, start_month, int(parts["d1"]))
+        end = date(year, end_month, int(parts["d2"]))
+    except (KeyError, ValueError):
+        return None
+    return (start.isoformat(), end.isoformat()) if start <= end else None
+
+
 def parse_dates(text: str, day_first: bool | None = None) -> list[str]:
+    short = _SHORT_RANGE_RE.search(text)
+    if short is not None and (pair := _short_range(short)) is not None:
+        return [*parse_dates(text[:short.start()], day_first), *pair, *parse_dates(text[short.end():], day_first)]
     found: list[str] = []
     remaining = text
     while True:
@@ -400,6 +718,18 @@ def parse_dates(text: str, day_first: bool | None = None) -> list[str]:
             return found
         found.append(hit[0])
         remaining = remaining[hit[2]:]
+
+
+def _whole_month(text: str) -> list[str]:
+    """[first day, last day] when ``text`` is exactly a year and month ("2025-01"), as a report's Month
+    column writes it; nothing otherwise."""
+
+    match = re.fullmatch(r"\s*(\d{4})-(0[1-9]|1[0-2])\s*", text)
+    if match is None:
+        return []
+    year, month = int(match.group(1)), int(match.group(2))
+    last = (date(year + month // 12, month % 12 + 1, 1) - timedelta(days=1))
+    return [date(year, month, 1).isoformat(), last.isoformat()]
 
 
 def slash_dates_are_day_first(texts: Sequence[str]) -> bool:
@@ -481,14 +811,26 @@ class StationaryCombustionExtractor:
     DATE_HEADERS: tuple[str, ...] = _DATE_HEADERS
     UNIT_HEADERS: tuple[str, ...] = _UNIT_HEADERS
     QTY_EXCLUDE: tuple[str, ...] = _QTY_EXCLUDE
+    # Whether a bill that leads with its quantity in large type ("1,486" over "therms used") is read. Only the
+    # natural gas reader reads it: the others look for other units and layouts, and a number above a unit word
+    # is too weak a sign for them.
+    HEADLINE_QUANTITY = True
+    # Whether "TOTAL 1,273.1 THERMS" inside a line of a dense statement is read as the quantity (the gas reader
+    # only, like the headline read).
+    INLINE_TOTAL_QUANTITY = True
     # Additional table columns kept on each record: key -> header names (normalized).
     # A fuel log's "Site" / "Facility" column: each line's facility (a log can cover several).
     EXTRA_COLUMNS: dict[str, tuple[str, ...]] = {
+        # first, so "Site Address" and "Premises Address" are an address and not a site name ("site", "premises")
+        "address": ("service address", "service location", "site address", "premises address"),
         "site": ("site", "site name", "facility", "facility name", "plant", "building", "premises"),
         # A portal export repeats the account on every row.
         "account": ("account", "account number", "account no", "account #", "acct", "acct no", "customer account"),
     }
     ALL_LABELS: tuple[str, ...] = ()  # filled after the module-level label groups
+    # A run log that names no fuel still reads as stationary fuel use (fuel left for the reviewer). Only this
+    # type takes it: the other fuel and utility types keep their own content checks.
+    RUN_LOG_WITHOUT_FUEL: bool = True
 
     def handles(self, targets: Sequence[dict]) -> bool:
         return bool(targets) and all(t.get("canonical_type_id") == self.CANONICAL_TYPE_ID for t in targets)
@@ -506,7 +848,7 @@ class StationaryCombustionExtractor:
         rows = self._rows(parser_output)
         token = _DAY_FIRST.set(slash_dates_are_day_first([c.text for r in rows for c in r.cells]))
         try:
-            if self._document_fuel(rows) is None:
+            if self._document_fuel(rows) is None and not self._is_fuelless_run_log(rows):
                 return False
             records = self._quantity_records(rows)
             unit_hint = self._document_unit(rows)
@@ -519,6 +861,48 @@ class StationaryCombustionExtractor:
         finally:
             _DAY_FIRST.reset(token)
 
+    @staticmethod
+    def _fuel_added_index(texts: Sequence[str]) -> int | None:
+        """The column of a run log that holds the fuel added (never a level, before/after or stock column)."""
+
+        keyed = [" ".join(t.lower().replace("_", " ").split()) for t in texts]
+        for index, text in enumerate(keyed):
+            if _FUEL_ADDED_RE.search(text) and not _NOT_ADDED_RE.search(text):
+                return index
+        return None
+
+    def _is_run_log(self, rows: Sequence[Row]) -> bool:
+        """A header row with a run-hours column and a fuel-added column: a generator (or pump, or boiler)
+        run log."""
+
+        for row in rows:
+            if len(row.cells) < 3:
+                continue
+            texts = [" ".join(_norm(c.text).replace("_", " ").split()) for c in row.cells]
+            if any(_RUN_HOURS_RE.search(t) for t in texts) and self._fuel_added_index(texts) is not None:
+                return True
+        return False
+
+    def _is_fuelless_run_log(self, rows: Sequence[Row]) -> bool:
+        """A run log that reads as a stationary one: some generator-type cue, and no vehicle, fleet or
+        machine cue (an excavator's hours log is mobile equipment, not a standby generator)."""
+
+        if not (self.RUN_LOG_WITHOUT_FUEL and self._is_run_log(rows)):
+            return False
+        text = " ".join(c.text for r in rows for c in r.cells).lower().replace("_", " ")
+        # "driver" counts only as a column heading (a person called Driver is not a vehicle)
+        headings = " ".join(
+            c.text for r in rows if any(_RUN_HOURS_RE.search(_norm(x.text).replace("_", " ")) for x in r.cells)
+            for c in r.cells).lower().replace("_", " ")
+        return (bool(_RUN_LOG_STATIONARY_RE.search(text)) and not _RUN_LOG_MOBILE_RE.search(text)
+                and not re.search(r"\bdrivers?\b", headings))
+
+    def reads_as_fuelless_run_log(self, parser_output: dict) -> bool:
+        """True when the document is a run log that names no fuel (so the reviewer must pick it)."""
+
+        rows = self._rows(parser_output)
+        return self._document_fuel(rows) is None and self._is_fuelless_run_log(rows)
+
     # ---------------------------------------------------------------------------------
     def extract(self, parser_output: dict, targets: Sequence[dict], evidence_id: str) -> ExtractionOutcome:
         document_id = str(parser_output.get("document_id") or "")
@@ -528,9 +912,106 @@ class StationaryCombustionExtractor:
         rows = self._rows(parser_output)
         token = _DAY_FIRST.set(slash_dates_are_day_first([c.text for r in rows for c in r.cells]))
         try:
-            return self._extract(rows, parser_output, targets, evidence_id, document_id)
+            outcome = self._extract(rows, parser_output, targets, evidence_id, document_id)
+            if outcome.candidates:
+                self._note_estimated_reads(rows, outcome)
+                self._note_bill_ids(rows, outcome)
+                self._note_revised_bill(rows, outcome, parser_output, evidence_id, document_id)
+            return outcome
         finally:
             _DAY_FIRST.reset(token)
+
+    # -------------------------------------------------------------------------------------
+    # What the bill says about itself (bill_notes.py): an estimated read, a revised bill
+    # -------------------------------------------------------------------------------------
+    @staticmethod
+    def _note_estimated_reads(rows: Sequence[Row], outcome: ExtractionOutcome) -> None:
+        """Flag the quantity of a bill that says a read was estimated. Never changes the value.
+
+        A sentence about an estimated read covers the bill's quantities. A read-type cell marks its own row;
+        a bill with one record has its read-type cells (often on a second page) mark that record."""
+
+        found = bill_notes.estimated_reads(rows)
+        if not found.any():
+            return
+        # A parser block that is one row's alone tells which row a quantity came from; a plain-text
+        # document is one block for every line, so there the quantity is found by the number it prints.
+        block_rows: dict[str, set[int]] = {}
+        for row in rows:
+            for cell in row.cells:
+                if cell.block_id:
+                    block_rows.setdefault(cell.block_id, set()).add(id(row))
+        marked = {id(row) for row in found.marked_rows}
+        quantities = [c for c in outcome.candidates if c.get("field_name") == "activity_quantity"]
+        single = len({c.get("record_index") for c in quantities}) <= 1
+        for candidate in quantities:
+            blocks = (candidate.get("source_reference") or {}).get("parser_block_ids") or []
+            own = {next(iter(ids)) for b in blocks if len(ids := block_rows.get(b, set())) == 1}
+            if not own:
+                printed = str(candidate.get("raw_value") or "").strip()
+                own = {id(r) for r in rows if printed and printed in r.text.split()} if printed else set()
+            if found.statement or (single and marked) or (own and own <= marked):
+                flags = candidate.setdefault("validation_flags", [])
+                if bill_notes.ESTIMATED_FLAG not in flags:
+                    flags.append(bill_notes.ESTIMATED_FLAG)
+
+    def _bill_ids(self, rows: Sequence[Row]) -> list[str]:
+        """The bill's own statement date (ISO) and invoice or statement number, as the data quality check
+        needs them to tell which earlier bill a revised bill replaces. Empty when the bill prints none."""
+
+        ids: list[str] = []
+        dated = self._find_labeled(rows, BILL_DATE_LABELS, accept=lambda v: parse_date(v) is not None)
+        if dated is not None and (hit := parse_date(dated.raw)) is not None:
+            ids.append(hit[0])
+        number = self._find_labeled(
+            rows, BILL_NUMBER_LABELS, accept_bare=lambda v: bool(re.match(r"[A-Za-z0-9#-]*\d[\w-]{2,}", v)),
+            accept=lambda v: any(len(t) >= 3 and re.search(r"\d", t) for t in v.split())
+            and parse_date(v) is None and not v.startswith("$"))
+        if number is not None and number.raw.split():
+            ids.append(number.raw.split()[0].strip(".,;:").upper())
+        return ids
+
+    def _note_bill_ids(self, rows: Sequence[Row], outcome: ExtractionOutcome) -> None:
+        """Keep the bill's own identifiers on its quantity's source reference (no extra value to review)."""
+
+        ids = self._bill_ids(rows)
+        if not ids:
+            return
+        for candidate in outcome.candidates:
+            if candidate.get("field_name") == "activity_quantity":
+                candidate.setdefault("source_reference", {})["bill_ids"] = list(ids)
+
+    @staticmethod
+    def _reference_key(reference: str) -> str | None:
+        """A printed reference to an earlier bill as a key to match: a date as ISO, a number upper-cased."""
+
+        if reference == bill_notes.REVISED_WITHOUT_REFERENCE:
+            return None
+        hit = parse_date(reference)
+        return hit[0] if hit is not None and hit[1] == 0 else reference.upper()
+
+    def _note_revised_bill(self, rows: Sequence[Row], outcome: ExtractionOutcome, parser_output: dict,
+                           evidence_id: str, document_id: str) -> None:
+        """When the bill says it replaces an earlier one, keep the reference on every record, so the data
+        quality check can suggest marking the earlier bill as superseded (a suggestion only)."""
+
+        revised = bill_notes.revision(rows)
+        if revised is None:
+            return
+        located = Located(revised.reference, [revised.cell], revised.row, CONF_SAME_CELL - 0.04,
+                          context=" ".join(revised.cell.text.split()))
+        target = {"field_id": bill_notes.REVISES_FIELD, "field_label": bill_notes.REVISES_LABEL}
+        seen: dict[tuple[Any, Any], None] = {}
+        for candidate in outcome.candidates:
+            seen.setdefault((candidate.get("record_key"), candidate.get("record_index")))
+        key = self._reference_key(revised.reference)
+        for record_key, record_index in seen:
+            candidate = self._candidate(
+                target, located, revised.reference, revised.reference, None, document_id, evidence_id,
+                record_key, record_index, parser_output, [])
+            if key is not None:
+                candidate["source_reference"]["reference_key"] = key  # what to match the earlier bill's ids with
+            outcome.candidates.append(candidate)
 
     def _extract(self, rows: list[Row], parser_output: dict, targets: Sequence[dict], evidence_id: str,
                  document_id: str) -> ExtractionOutcome:
@@ -545,19 +1026,25 @@ class StationaryCombustionExtractor:
             )
 
         doc_fuel = self._document_fuel(rows)
+        notes: list[str] = []
         if doc_fuel is None:
-            return ExtractionOutcome(
-                candidates=[],
-                halt_reason={
-                    "code": HALT_UNSUPPORTED,
-                    "message": "No combusted fuel (natural gas, fuel oil, propane, diesel, coal or biomass) is "
-                    "named anywhere in the document, so it is not stationary-combustion evidence "
-                    "(for example a water or electricity bill).",
-                },
-            )
+            if not self._is_fuelless_run_log(rows):
+                return ExtractionOutcome(
+                    candidates=[],
+                    halt_reason={
+                        "code": HALT_UNSUPPORTED,
+                        "message": "No combusted fuel (natural gas, fuel oil, propane, diesel, coal or biomass) is "
+                        "named anywhere in the document, so it is not stationary-combustion evidence "
+                        "(for example a water or electricity bill).",
+                    },
+                )
+            # Run hours and fuel added, but no fuel named: leave the fuel empty for the reviewer.
+            doc_fuel = Located("", [], None, 0.0)
+            notes.append("This run log names no fuel. Choose the fuel for each line when you review it.")
 
         unit_hint = self._document_unit(rows)
-        records, notes = self._part_records(rows, unit_hint)
+        records, more_notes = self._part_records(rows, unit_hint)
+        notes.extend(more_notes)
 
         units = {self._find_unit(r.unit_raw or (unit_hint.raw if unit_hint else "")) for r in records}
         if records and units <= ELECTRIC_UNITS and any("electric" in _norm(r.text) for r in rows):
@@ -575,7 +1062,7 @@ class StationaryCombustionExtractor:
             notes.append(split_note)
         if parts is not None:  # a file of several statements: one record each, numbered in file order
             candidates: list[dict] = []
-            part_notes = [split_note] if split_note else []
+            part_notes = list(notes) + ([split_note] if split_note else [])
             first_index = 1
             for part, part_hint, part_records, more in parts:
                 candidates.extend(self._statement_candidates(
@@ -594,7 +1081,13 @@ class StationaryCombustionExtractor:
         """The usage lines of one bill or statement, with a note for anything the reviewer should check.
         The subclasses that read other things (kWh, thermal energy) override this and ``_part_energy``."""
 
-        return self._quantity_records(rows), []
+        records = self._quantity_records(rows)
+        energy = self._part_energy(rows)
+        if not records and self.HEADLINE_QUANTITY:  # extraction only: classification (confirms) never reads these
+            records = self._headline_quantity_records(rows)
+        if not records and self.INLINE_TOTAL_QUANTITY:  # the weakest read, so it runs only when nothing else found one
+            records = self._inline_total_records(rows, energy)
+        return records, []
 
     def _part_energy(self, rows: Sequence[Row]) -> Located | None:
         """What one statement says it is for (its fuel, or its energy type)."""
@@ -636,6 +1129,8 @@ class StationaryCombustionExtractor:
             "service_address": None,
             "supplier_name": self._supplier(rows),
             "account_number": self._account(rows),
+            "meter_number": self._bill_meter(rows),
+            "statement_date": self._statement_date(rows),
         }
         facility, address_from_facility = self._facility(rows)
         document_values["facility_name"] = facility
@@ -655,8 +1150,15 @@ class StationaryCombustionExtractor:
                     located = document_values.get(field_id)
                     if field_id == "facility_name" and record is not None and record.extra.get("site") is not None:
                         located = record.extra["site"]
+                    if (field_id == "facility_name" and located is not None and located.last_resort and record is not None
+                            and record.extra.get("address") is not None):
+                        located = None  # the customer is not a site: a record with its own address is placed by it
                     if field_id == "account_number" and located is None and record is not None:
                         located = record.extra.get("account")
+                    if field_id == "meter_number" and record is not None and record.extra.get("meter") is not None:
+                        located = record.extra["meter"]  # a meter's own row: each meter keeps its number
+                    if field_id == "service_address" and record is not None and record.extra.get("address") is not None:
+                        located = record.extra["address"]
                     record_candidates.append(self._candidate_for_text(
                         target, located, document_id, evidence_id, record_key,
                         record_index, parser_output, field_id))
@@ -1037,7 +1539,7 @@ class StationaryCombustionExtractor:
 
         for at, row in enumerate(rows):
             for head in row.cells:
-                if not head.box or _norm(head.text) not in SERVICE_BLOCK_HEADINGS:
+                if not head.box or _norm(head.text).rstrip(" :") not in SERVICE_BLOCK_HEADINGS:
                     continue
                 lines: list[tuple[Cell, Row]] = []
                 for below in rows[at + 1: at + 1 + _BLOCK_LINES]:
@@ -1046,7 +1548,9 @@ class StationaryCombustionExtractor:
                     if cell is None:
                         break
                     lines.append((cell, below))
-                    if _POSTAL_LINE_RE.search(cell.text) and any(_STREET_LINE_RE.match(c.text) for c, _ in lines):
+                    # the postal line ends the block, once a street line has come before it: a street line that
+                    # starts with a four-digit house number ("4410 E JENSEN AVE") also looks like "8001 Zürich"
+                    if _POSTAL_LINE_RE.search(cell.text) and any(_STREET_LINE_RE.match(c.text) for c, _ in lines[:-1]):
                         break
                 street = next((i for i, (c, _) in enumerate(lines) if _STREET_LINE_RE.match(c.text)), None)
                 if street is None:
@@ -1093,7 +1597,9 @@ class StationaryCombustionExtractor:
         if BILL_TO_NAME_IS_LAST_RESORT_FACILITY:
             billed = self._find_labeled(rows, BILL_TO_LABELS, accept=_has_letters, inline=True, inline_gap=True)
             if billed is not None:
-                return self._split_name_address(billed)
+                customer, customer_address = self._split_name_address(billed)
+                customer.last_resort = True
+                return customer, customer_address
         return None, None
 
     @staticmethod
@@ -1189,27 +1695,214 @@ class StationaryCombustionExtractor:
                                   inline_gap=True) or self._service_block(rows)[1]
 
     def _account(self, rows: Sequence[Row]) -> Located | None:
+        # An account is read from a labelled field, never from an email's subject line or its prose.
+        rows = [r for r in rows if not _EMAIL_HEADING.match(r.text)]
+
         def accept(value: str) -> bool:
-            return bool(re.search(r"\d", value)) and parse_date(value) is None and not value.startswith("$")
+            # an identifier has a token with digits in it ("Your last 6 months" is a heading, not an account)
+            return (any(len(t) >= 3 and re.search(r"\d", t) for t in value.split())
+                    and parse_date(value) is None and not value.startswith("$"))
 
         def accept_bare(value: str) -> bool:  # first token must look like an identifier
             return accept(value) and bool(re.match(r"[A-Za-z0-9#-]*\d[\w-]*", value))
 
-        return self._find_labeled(rows, ACCOUNT_LABELS, accept=accept, accept_bare=accept_bare, inline=True,
-                                  inline_gap=True)
+        found = self._find_labeled(rows, ACCOUNT_LABELS, accept=lambda v: accept(clean_account(v)) and _plausible_account(v),
+                                   accept_bare=lambda v: accept_bare(clean_account(v)) and _plausible_account(v),
+                                   inline=True, inline_gap=True)
+        if found is not None and clean_account(found.raw) != found.raw:
+            found.raw = clean_account(found.raw)  # "SERVICE FOR: 8830-1174-562" is the account 8830-1174-562
+        return found
+
+    def _meter(self, rows: Sequence[Row]) -> Located | None:
+        """A meter number from a labelled field ("Meter No.", "Meter #", "Meter: GM-0083315"), never from prose."""
+
+        rows = [r for r in rows if not _EMAIL_HEADING.match(r.text)]
+        found = self._find_labeled(rows, METER_LABELS, accept=lambda v: meter_value(v) is not None,
+                                   accept_bare=lambda v: meter_value(v) is not None, inline=True, inline_gap=True)
+        if found is None or (number := meter_value(found.raw)) is None:
+            return None
+        return Located(number, found.cells, found.row, found.confidence, label_cell=found.label_cell,
+                       context=found.context)
+
+    def _bill_meter(self, rows: Sequence[Row]) -> Located | None:
+        """The bill's one meter number. A bill that prints two different meter numbers (a bill of several meters)
+        has no single one: each of its records keeps its own, from its own row."""
+
+        first = self._meter(rows)
+        if first is None:
+            return None
+        others = {_name_key(m.raw) for row in rows if (m := self._meter([row])) is not None}
+        others |= {_name_key(raw) for raw in self._meters_below(rows, first)}
+        return first if others <= {_name_key(first.raw)} else None
+
+    def _meters_below(self, rows: Sequence[Row], first: Located) -> list[str]:
+        """The meter numbers listed further down the column of the label ``first`` was read under: "Meter" over
+        GM-111222 and GM-333444 is a bill of two meters, not of GM-111222 alone."""
+
+        label = first.label_cell
+        start = next((r for r in rows if label is not None and any(c is label for c in r.cells)), None)
+        if label is None or start is None or label.box is None or first.row is start:
+            return []  # the meter was read in the label's own row: what is below the label is something else
+        found: list[str] = []
+        row, cell = start, label
+        for _ in range(25):
+            below = self._cell_below(rows, row, cell)
+            if below is None:
+                break
+            row, cell = below
+            number = meter_value(cell.text)
+            if number is None:
+                break
+            found.append(number)
+        return found
+
+    def _statement_date(self, rows: Sequence[Row]) -> Located | None:
+        """The date the bill itself carries ("Statement Date", "Bill Date", "Invoice Date"). Only from a labelled field:
+        never the service period, and never a due date (a label that starts "Due" is not one of these labels)."""
+
+        rows = [r for r in rows if not _EMAIL_HEADING.match(r.text)]
+        found = self._find_labeled(rows, STATEMENT_DATE_LABELS, accept=lambda v: statement_date_value(v) is not None,
+                                   accept_bare=lambda v: statement_date_value(v) is not None, inline=True,
+                                   inline_gap=True)
+        if found is None or (hit := statement_date_value(found.raw)) is None:
+            return None
+        if found.label_cell is not None:  # "Due Date / Bill Date: 05/21/2025 / 05/01/2025": the first date is the due date
+            text = _norm(found.label_cell.text)
+            at = min((text.find(label) for label in STATEMENT_DATE_LABELS[0] if label in text), default=0)
+            if any(label in text[:at] for label in DUE_DATE_LABELS[0]):
+                return None
+        return Located(hit[0], found.cells, found.row, found.confidence, label_cell=found.label_cell,
+                       context=found.context)
 
     def _supplier(self, rows: Sequence[Row]) -> Located | None:
+        """The company that issued the bill. Never the customer: the name a Bill To, Sold To, Customer or Service For
+        label gives is the other party, whether the name repeats it exactly, with a suffix or branch added
+        ("Northgate Provisions Inc - Plant 4"), or is its parent. In order: a labelled supplier, an "Exported from"
+        footer, the letterhead, then the organisation on a Remit To or Payable To line."""
+
+        # A "Service For" block is the site's (``SERVICE_BLOCK_HEADINGS``), but the first line in it that is not a
+        # site is still a customer, so its name is the other party too.
+        customers = [name for name in (self._party_name(rows, BILL_TO_LABELS),
+                                       self._party_name(rows, (SERVICE_BLOCK_HEADINGS[:1],)), self._greeted(rows)) if name]
+
+        def other_party(found: Located | None) -> Located | None:
+            return None if found is not None and _is_customer(found.raw.split(",")[0], customers) else found
+
         labeled = self._find_labeled(rows, SUPPLIER_LABELS, accept=self._looks_like_org_name, allow_next_row=False,
                                      inline=True)
+        if labeled is not None and any(_same_company(labeled.raw.split(",")[0], name) for name in customers):
+            labeled = None  # a labelled supplier is out only when it is the customer itself, never a "parent"
         if labeled is None and (exported := self._exported_from(rows)) is not None:
             return exported  # an explicit "Exported from <supplier>" beats a guess at the letterhead
-        letterhead = self._letterhead(rows)
+        letterhead = other_party(self._letterhead(rows))
+        if (letterhead is not None and letterhead.confidence < CONF_LETTERHEAD  # a guess at line one, not the largest text
+                and not _names_a_utility(letterhead.raw) and self._is_addressee_block(rows, letterhead)):
+            letterhead = None  # the block a statement is addressed with, and nothing in the name says utility
         if letterhead is not None and (labeled is None or labeled.row is None or labeled.row.index > 2):
             return letterhead
         if labeled is not None:
             labeled.raw = re.split(r"\s{2,}|\s+(?:GST|HST|VAT|Tax ID|EIN)\b", labeled.raw)[0].strip()
             return labeled
-        return self._exported_from(rows)
+        return (self._exported_from(rows) or other_party(self._remit_to(rows))
+                or other_party(self._from_header(rows)) or other_party(self._footer_organisation(rows)))
+
+    @staticmethod
+    def _footer_organisation(rows: Sequence[Row]) -> Located | None:
+        """The organisation a portal export or a page footer names ("Data exported 07/08/2025 from Sierra Basin
+        Energy Co. MyAccount portal"; "\u00a9 2025 Sierra Basin Energy Co. All rights reserved"): a lower candidate
+        than the letterhead, the labels and the payee."""
+
+        for row in reversed(rows):
+            for cell in row.cells:
+                for pattern in (_FOOTER_EXPORT_RE, _FOOTER_COPYRIGHT_RE):
+                    match = pattern.search(cell.text)
+                    if match is None or _VENDOR_LINE.search(cell.text):
+                        continue
+                    name = match.group(1).strip(" ,;")
+                    words = re.sub(r"[^\w ]+", " ", name.casefold()).split()
+                    if words and words[-1] in ("co", "inc", "corp", "ltd") and cell.text[match.end(1):match.end(1) + 1] == ".":
+                        name += "."  # the abbreviation's own full stop
+                    if (name and len(words) >= 2 and words[-1] in _ORGANISATION_WORDS
+                            and StationaryCombustionExtractor._looks_like_org_name(name)):
+                        return Located(name, [cell], row, CONF_FOOTER_SUPPLIER, context=cell.text)
+        return None
+
+    @staticmethod
+    def _from_header(rows: Sequence[Row]) -> Located | None:
+        """An email's "From: Display Name <address>": the display name, never the address or its angle brackets. The
+        bill's own letterhead in the body is preferred (it is tried first); an address alone names nobody. A
+        forwarded email (Fwd:, "Forwarded message", "Original Message") has the forwarder's From, not the sender's."""
+
+        if any(_FORWARDED.search(row.text) for row in rows):
+            return None
+        for row in rows[:6]:
+            if len(row.cells) != 1:
+                continue
+            match = re.match(r"\s*from\s*:\s*(.+)$", row.cells[0].text, re.IGNORECASE)
+            if match is None:
+                continue
+            name = re.split(r"\s*<", match.group(1))[0].strip().strip("\"'").strip()
+            if ("@" in name or not re.search(r"[^\W\d_]{2}", name)
+                    or not StationaryCombustionExtractor._looks_like_org_name(name)
+                    or not set(_company_words(name) + re.sub(r"[^\w ]+", " ", name.casefold()).split())
+                    & (_LEGAL_SUFFIXES | _UTILITY_WORDS | _ORGANISATION_WORDS | {"light", "lights", "stadtwerke"})):
+                return None  # an address names nobody, and a person's name ("Maria M\u00fcller") is not an organisation
+            return Located(name, [row.cells[0]], row, CONF_LETTERHEAD - 0.15, context=row.cells[0].text)
+        return None
+
+    @staticmethod
+    def _greeted(rows: Sequence[Row]) -> str:
+        """Who a message greets ("Hello Northgate Provisions Inc.,"): the customer, whatever else it names."""
+
+        for row in rows[:20]:
+            match = re.match(r"\s*(?:hello|dear|hi)\s+(.+?)\s*[,:]?\s*$", row.text, re.IGNORECASE) if len(row.cells) == 1 else None
+            if match is not None and len(match.group(1).split()) >= 2:
+                return match.group(1).rstrip(".,")
+        return ""
+
+    def _party_name(self, rows: Sequence[Row], groups: Sequence[Sequence[str]]) -> str:
+        """The name a billing-party label gives, as written ("" when the document has none)."""
+
+        for _, _, lines in self._label_blocks(rows, groups):
+            for _, text in lines:
+                if not _is_attention_line(text) and _has_letters(text):
+                    return text.split(",")[0].strip()
+        return ""
+
+    def _remit_to(self, rows: Sequence[Row]) -> Located | None:
+        """The organisation a bill asks to be paid ("REMIT TO: SIERRA BASIN ENERGY CO, PO BOX 618"): the name
+        before the first comma or dash, or after "on behalf of". It must end in an organisation word (Co, Inc,
+        Energy, Gas, Utilities...) and must not be where or through whom to pay: a bank, lockbox, remittance or
+        payment-processing centre, a department, an "in care of" or "attention" line, a billing or services
+        company, a PO box or a street. Those name no supplier."""
+
+        for label_cell, row, lines in self._label_blocks(rows, REMIT_LABELS):
+            for cell, text in lines[:1]:
+                behalf = re.search(r"\bon behalf of\s+(.+)$", text, re.IGNORECASE)
+                name = re.split(r"\s{2,}|,|\s+[-\u2013\u2014|]\s+", behalf.group(1) if behalf else text)[0].strip()
+                name = name.rstrip(".")
+                words = re.sub(r"[^\w ]+", " ", name.casefold()).split()
+                if (name and not name[0].isdigit() and self._looks_like_org_name(name)
+                        and words and words[-1] in _ORGANISATION_WORDS
+                        and not _NOT_A_PAYEE.search(name)):
+                    return Located(name, [cell], row, CONF_LETTERHEAD - 0.1, label_cell=label_cell, context=text)
+        return None
+
+    @staticmethod
+    def _is_addressee_block(rows: Sequence[Row], found: Located) -> bool:
+        """Whether the line a name was found on opens an address block (a street or PO box line, then a city,
+        state and ZIP line) that a statement header ("ACCOUNT NO", "STMT DATE", "INVOICE") follows: the block
+        a statement is addressed with, whose first line is the customer."""
+
+        if found.row is None:
+            return False
+        following = [r.cells[0].text.strip() for r in rows[found.row.index + 1:found.row.index + 5] if len(r.cells) == 1]
+        if len(following) < 3:
+            return False
+        street, city, header = following[:3]
+        return (bool(re.match(r"^(?:\d|p\.?\s?o\.?\s*box\b)", street, re.I))
+                and bool(re.match(r"^[^\d]+?,?\s+[A-Za-z]{2}\s+\d{5}(?:-\d{4})?$", city))
+                and bool(re.match(r"^(?:account|acct|stmt|statement|invoice|bill)\b", header, re.I)))
 
     @staticmethod
     def _exported_from(rows: Sequence[Row]) -> Located | None:
@@ -1218,7 +1911,7 @@ class StationaryCombustionExtractor:
         for row in rows:
             for cell in row.cells:
                 match = _EXPORTED_FROM_RE.search(cell.text)
-                if match:
+                if match and not _VENDOR_LINE.search(match.group(1)) and not _VENDOR_LINE.search(cell.text.split("exported")[0]):
                     return Located(match.group(1).strip(), [cell], row, CONF_LETTERHEAD - 0.05, context=cell.text)
         return None
 
@@ -1228,11 +1921,15 @@ class StationaryCombustionExtractor:
         Without geometry (plain text), the first of the top lines naming a company.
         """
 
-        first_page = [r for r in rows if (r.page or 1) == (rows[0].page or 1)][:6] if rows else []
+        first_page = [r for r in rows if (r.page or 1) == (rows[0].page or 1)
+                      and not _MAIL_HEADER.match(r.text)][:6] if rows else []
         cells = [c for r in first_page for c in r.cells if c.box and c.box["top"] < 0.2]
         if not cells:
             for row in first_page[:4]:
                 text = row.cells[0].text
+                if (_GREETING.match(text) or _FOOTER_EXPORT_RE.search(text) or _FOOTER_COPYRIGHT_RE.search(text)
+                        or _VENDOR_LINE.search(text) or self._label_prefix(text, REMIT_LABELS[0]) is not None):
+                    continue  # a greeting names the customer; a footer or a Remit To line is not the sender's letterhead
                 if len(row.cells) == 1 and re.search(r"(?<!\w)(company|co\.?|inc\.?|llc|ltd\.?|corp\.?|utilities)(?!\w)", text, re.I):
                     name = re.split(r"\s+[-\u2013\u2014|]\s+", text)[0].strip()
                     if self._looks_like_org_name(name):
@@ -1247,10 +1944,58 @@ class StationaryCombustionExtractor:
         prefix = self._label_prefix(text, SUPPLIER_LABELS[0])
         if prefix is not None and prefix[1]:
             text = prefix[1]
-        if not self._looks_like_org_name(text):
+        if not self._looks_like_org_name(text) or _VENDOR_LINE.search(text):
             return None
         row = next(r for r in first_page if cell in r.cells)
-        return Located(self._trim_value(text), [cell], row, CONF_LETTERHEAD)
+        return Located(self._with_continuation(rows, row, cell, self._trim_value(text)), [cell], row, CONF_LETTERHEAD)
+
+    # What a letterhead name may run on to on a second line. Anything else under it is the customer's name block, a
+    # department, a tagline or an address, and never joins.
+    _NAME_CONTINUATIONS = frozenset({"power and light", "gas and electric", "light and power", "electric", "light",
+                                     "utilities", "utility district", "water and power"})
+    _NOT_A_NAME_CONTINUATION = re.compile(
+        r"\b(?:department|dept|service|services|billing|customer|inc|co|corp|llc)\b", re.IGNORECASE)
+
+    def _with_continuation(self, rows: Sequence[Row], row: Row, cell: Cell, text: str) -> str:
+        """A letterhead name that runs on to a second line directly under it ("RAINIER SOUND" over "POWER & LIGHT").
+        Only a known continuation phrase joins (power & light, gas & electric, light & power, electric, light,
+        utilities, utility district, water & power), never a line with department, service, billing, customer, Inc,
+        Co, Corp or LLC in it (a customer's name block, "NATURAL GAS SERVICE", "BILLING DEPARTMENT"), and only when
+        the line is no taller than the first and less than half a line below it."""
+
+        words = re.sub(r"[^\w ]+", " ", text.casefold()).split()
+        if cell.box is None or not words or words[-1] in LETTERHEAD_END_WORDS:
+            return text
+        bottom = cell.box["top"] + cell.box["height"]
+        for below in rows[row.index + 1:row.index + 3]:
+            if below.page != row.page:
+                break
+            for other in below.cells:
+                if other.box is None or abs(other.left - cell.left) > 0.02:
+                    continue
+                gap = other.box["top"] - bottom
+                line = other.text.strip()
+                phrase = " ".join(re.sub(r"[^\w ]+", " ", line.casefold().replace("&", " and ")).split())
+                if (0 <= gap <= 0.5 * cell.height and other.height <= cell.height and phrase in self._NAME_CONTINUATIONS
+                        and not self._NOT_A_NAME_CONTINUATION.search(line) and line.isupper() == text.isupper()):
+                    return f"{text} {line}"
+        return text
+        bottom = cell.box["top"] + cell.box["height"]
+        for below in rows[row.index + 1:row.index + 3]:
+            if below.page != row.page:
+                break
+            for other in below.cells:
+                if other.box is None or abs(other.left - cell.left) > 0.02:
+                    continue
+                gap = other.box["top"] - bottom
+                line = other.text.strip()
+                parts = re.sub(r"[^\w ]+", " ", line.casefold()).split()
+                if (0 <= gap <= cell.height and not re.search(r"\d", line) and 0 < len(parts) <= 4
+                        and any(part in LETTERHEAD_END_WORDS or part in ("light", "lights") for part in parts)
+                        and line.isupper() == text.isupper()  # a tagline in another case is not a name
+                        and self._label_prefix(line, self.ALL_LABELS) is None):
+                    return f"{text} {line}"
+        return text
 
     def _first_line_letterhead(self, first_page: Sequence[Row]) -> Located | None:
         """The first line of the page when it is alone on its row and its last word is an
@@ -1325,7 +2070,26 @@ class StationaryCombustionExtractor:
                 if start is None and end is not None and len(parse_dates(end.raw)) >= 2:
                     return end, end
                 return start, end
-        return None, None
+        alone = self._standalone_range(rows)
+        return (alone, alone) if alone is not None else (None, None)
+
+    @staticmethod
+    def _standalone_range(rows: Sequence[Row]) -> Located | None:
+        """A period with no label, as a consumer-style bill prints it ("October 1 - 31, 2025"): a cell that
+        is exactly a date, a dash (or "to", "through") and a date, 20 to 100 days long, and not labelled as a
+        due, statement or next-read date. Only when the document has exactly one such range (a bill that
+        also prints last year's, or a chart's, is ambiguous)."""
+
+        found: list[tuple[Row, Cell]] = []
+        for row in rows:
+            for cell in row.cells:
+                text = cell.text.strip().rstrip(".")
+                if _only_a_date_range(text) and not _labelled_as(rows, cell, _NOT_A_SERVICE_PERIOD):
+                    found.append((row, cell))
+        if len(found) != 1:
+            return None
+        row, cell = found[0]
+        return Located(cell.text.strip(), [cell], row, CONF_LETTERHEAD, context=cell.text)
 
     # =================================================================================
     # Quantities
@@ -1345,7 +2109,8 @@ class StationaryCombustionExtractor:
             return None
         texts = [_norm(c.text) for c in row.cells]
         # "Read on January 1, 2025" is a label that names a date, not a value: blank dates first.
-        undated = [_blank_dates(t) for t in texts]
+        # "L/100 km" is a rate header, not a value
+        undated = [_PER_HUNDRED_RE.sub(" ", _blank_dates(t)) for t in texts]
         if any(re.search(r"\d{3}|\d,\d|\d\.\d|\d/\d", t) for t in undated):
             return None  # header rows carry labels, not values
         scores: list[tuple[int, int]] = []
@@ -1356,10 +2121,15 @@ class StationaryCombustionExtractor:
         if not scores:
             return None
         columns: dict[str, int] = {"quantity": max(scores)[1]}
+        if self.RUN_LOG_WITHOUT_FUEL and any(_RUN_HOURS_RE.search(t.replace("_", " ")) for t in texts):
+            added = self._fuel_added_index(texts)
+            if added is not None:
+                columns["quantity"] = added  # a run log's quantity is the fuel added, not a tank level
         for index, text in enumerate(texts):
             if index == columns["quantity"]:
                 continue
             bare = text.strip(" :#")
+            spaced = " ".join(bare.replace("_", " ").split())  # "bill_start_date" as exported
             extra = next(
                 (key for key, names in self.EXTRA_COLUMNS.items()
                  if key not in columns and any(text == n or bare == n or text.startswith(n + " ") for n in names)),
@@ -1375,12 +2145,21 @@ class StationaryCombustionExtractor:
                 columns["product"] = index
             elif "range" not in columns and bare in _RANGE_HEADERS:
                 columns["range"] = index
-            elif "start" not in columns and bare in _START_HEADERS:
+            elif "start" not in columns and spaced in _START_HEADERS:
                 columns["start"] = index
-            elif "end" not in columns and bare in _END_HEADERS:
+            elif "end" not in columns and spaced in _END_HEADERS:
                 columns["end"] = index
             elif "date" not in columns and bare in self.DATE_HEADERS:
                 columns["date"] = index
+            if "meter" not in columns and _METER_HEADER.fullmatch(bare):
+                columns["meter"] = index  # the row's own meter number, for a bill of several meters
+        if columns.get("product") is not None and texts[columns["product"]].strip(" :#") in _GENERIC_PRODUCT_HEADERS:
+            taken = set(columns.values())
+            better = next((i for i, t in enumerate(texts) if i not in taken
+                           and t.strip(" :#") in _FUEL_PRODUCT_HEADERS and t.strip(" :#") in self.PRODUCT_HEADERS),
+                          None)
+            if better is not None:
+                columns["product_alt"] = better  # taken only if its cells really name a fuel (_table_records)
         return columns
 
     # Unit lookups, so a subclass can know units the others must not (the thermal
@@ -1396,8 +2175,15 @@ class StationaryCombustionExtractor:
         if any(word in text for word in self.QTY_EXCLUDE) or bare in self.UNIT_HEADERS or bare.endswith(" unit"):
             return 0
         unit = self._canonical_unit(text) or self._find_unit(text)
+        if unit is None and any(w in text for w in _QUANTITY_WORDS):
+            # "Fuel Dispensed (L)": a unit in parentheses ends a header, so even a bare "L" is the unit here,
+            # but only for a header that also names a quantity ("Tank Capacity (L)" is not one). A bare "L"
+            # in free text stays ambiguous: find_unit skips it.
+            paren = re.search(r"\(([^()]{1,20})\)\s*$", text)
+            unit = self._canonical_unit(paren.group(1)) if paren else None
         score = 0
-        if any(w in text for w in ("usage", "consumption", "consumed", "delivered", "billed", "used", "issued")):
+        if any(w in text for w in ("usage", "consumption", "consumed", "delivered", "billed", "used", "issued",
+                                   "dispensed", "pumped")):
             score += 4
         if any(w in text for w in ("qty", "quantity")):
             score += 3
@@ -1418,6 +2204,9 @@ class StationaryCombustionExtractor:
         # "Volume (L)": a unit in parentheses may be a single letter
         header_unit_text = paren.group(1) if paren and self._canonical_unit(paren.group(1)) else header_text
         header_unit = self._canonical_unit(header_unit_text) or self._find_unit(header_text)
+        columns = self._product_column(rows, header_row, columns)
+        run_log = self.RUN_LOG_WITHOUT_FUEL and any(
+            _RUN_HOURS_RE.search(_norm(c.text).replace("_", " ")) for c in header_cells)
         records: list[UsageRecord] = []
         last_top = header_row.top
         header_texts = [_norm(c.text) for c in header_cells]
@@ -1445,6 +2234,9 @@ class StationaryCombustionExtractor:
             first = _norm(row.cells[0].text)
             if any(first == w or first.startswith(w + " ") for w in _TOTAL_ROW_WORDS):
                 break
+            if (run_log and any(first == w or first.startswith(w + " ") for w in _CARRIED_ROW_PHRASES)
+                    and not any(parse_date(c.text) for c in row.cells)):
+                continue
             qty_cell = assigned.get(columns["quantity"])
             number = parse_number(qty_cell.text) if qty_cell is not None else None
             if qty_cell is None or number is None:
@@ -1477,15 +2269,53 @@ class StationaryCombustionExtractor:
                 unit_located=unit_located,
                 hint=hint_cell.text if hint_cell is not None else None,
                 fuel=fuel,
+                # A row with fewer cells than the header, placed by order only, may have shifted: its quantity
+                # column is then not certain, so the whole header row judges it (as before).
+                quantity_header=None if self._shifted_row(row, header_cells) else header_text,
             )
             for key in self.EXTRA_COLUMNS:
                 cell = assigned.get(columns[key]) if key in columns else None
                 if cell is not None and cell.text.strip():
                     record.extra[key] = Located(cell.text, [cell], row, CONF_TABLE,
                                                 context=self._row_context(header_row, row))
+            meter_cell = assigned.get(columns["meter"]) if "meter" in columns else None
+            if meter_cell is not None and (meter := meter_value(meter_cell.text)) is not None:
+                record.extra["meter"] = Located(meter, [meter_cell], row, CONF_TABLE,
+                                                context=self._row_context(header_row, row))
             self._row_dates(record, row, assigned, columns, header_row)
             records.append(record)
         return records
+
+    def _product_column(self, rows: Sequence[Row], header_row: Row, columns: dict[str, int]) -> dict[str, int]:
+        """A "Description" column is the product column unless a column headed by the fuel itself ("Fuel Type")
+        holds cells that really name a fuel; then that column is. A fuel column of "Y" or a code stays unused."""
+
+        alt = columns.get("product_alt")
+        if alt is None or "product" not in columns:
+            return columns
+        for row in rows[header_row.index + 1:header_row.index + 41]:
+            if row.page != header_row.page:
+                break
+            first = _norm(row.cells[0].text)
+            if any(first == w or first.startswith(w + " ") for w in _TOTAL_ROW_WORDS):
+                break
+            cell = self._assign_columns(row, header_row.cells).get(alt)
+            if cell is not None and self._fuel(cell.text) is not None:
+                return {**columns, "product": alt}
+        return columns
+
+    @staticmethod
+    def _shifted_row(row: Row, header_cells: Sequence[Cell]) -> bool:
+        """True when ``row`` was placed under the header by order alone and has fewer cells than the header:
+        a blank cell may have moved the others one column to the left."""
+
+        if len(row.cells) >= len(header_cells):
+            return False
+        if all(c.box for c in row.cells) and all(h.box for h in header_cells):
+            return False  # placed by geometry
+        if all(c.column for c in row.cells) and all(h.column for h in header_cells):
+            return False  # placed by spreadsheet column
+        return True
 
     def _row_dates(self, record: UsageRecord, row: Row, assigned: dict[int, Cell], columns: dict[str, int],
                    header_row: Row) -> None:
@@ -1499,7 +2329,7 @@ class StationaryCombustionExtractor:
             record.end = Located(cell.text, [cell], row, CONF_TABLE, context=context)
         if record.start is None and record.end is None and "date" in columns:
             cell = assigned.get(columns["date"])
-            if cell is not None and parse_date(cell.text):
+            if cell is not None and (parse_date(cell.text) or _whole_month(cell.text)):
                 record.start = record.end = Located(cell.text, [cell], row, CONF_TABLE, context=context)
 
     @staticmethod
@@ -1511,6 +2341,11 @@ class StationaryCombustionExtractor:
             by_column = {h.column: index for index, h in enumerate(header_cells)}
             return {by_column[c.column]: c for c in row.cells if c.column in by_column}
         if not all(c.box for c in row.cells) or not all(h.box for h in header_cells):
+            if all(c.part for c in row.cells) and all(h.part for h in header_cells):
+                # A CSV row or a delimited line keeps each cell's place, so a blank cell leaves its column
+                # empty instead of shifting the cells after it left.
+                by_part = {h.part: index for index, h in enumerate(header_cells)}
+                return {by_part[c.part]: c for c in row.cells if c.part in by_part}
             for index, cell in enumerate(row.cells[: len(header_cells)]):
                 assigned[index] = cell
             return assigned
@@ -1534,6 +2369,180 @@ class StationaryCombustionExtractor:
         """Usage table rows, else a labeled quantity (subclasses add more layouts)."""
 
         return self._usage_table_records(rows) or self._labeled_quantity_records(rows)
+
+    # "TOTAL 1,273.1 THERMS" in the middle of a line: TOTAL directly before the number, the unit directly after
+    # it. "TOTAL AMOUNT DUE $1,474.33" and "TOTAL CHARGES 1,474.33" have a word where the number should be, a
+    # "$" or no unit; "PREV 40,211 CURR 41,447" has no TOTAL.
+    _INLINE_TOTAL = re.compile(
+        r"(?<![\w$])total\s+(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s+(?P<unit>[^\W\d_]+)(?=\s|$)",
+        re.IGNORECASE)
+    # A line that is about a period other than the bill's own ("YEAR TO DATE TOTAL 14,200 THERMS", "SAME MONTH
+    # LAST YEAR TOTAL 1,190 THERMS", "AVG DAILY TOTAL 41"), a year, or a month name is not the bill's usage.
+    _NOT_THIS_PERIOD = re.compile(
+        r"\b(?:ytd|years?|annual|months?|last|prior|previous|avg|average|daily|day|budget|estimated|est|history)\b"
+        r"|\bto date\b|\b(?:19|20)\d{2}\b", re.IGNORECASE)
+
+    _LIQUID_FUELS = frozenset({"propane", "diesel", "fuel_oil", "kerosene", "biodiesel"})  # where gallons are an activity unit
+    # Words in the row above that make the row a column of another period ("Year to date", "Aug 2024"); a bare
+    # year does not count there, because the line above a total is often the bill's own period.
+    _NOT_THIS_PERIOD_ABOVE = re.compile(
+        r"\b(?:ytd|years?|annual|months?|last|prior|previous|avg|average|daily|budget|estimated|est|history)\b|\bto date\b",
+        re.IGNORECASE)
+
+    def _period_header_above(self, rows: Sequence[Row], position: int, cell: Cell) -> bool:
+        """Whether one of the three rows above holds, in the column of ``cell``, a period word or a month name
+        ("YEAR TO DATE" over a units line over "TOTAL 14,200 THERMS"). Cells with no geometry count as the same
+        column. A bare year does not count here: the line above a total is often the bill's own period."""
+
+        for above in rows[max(0, position - 3):position]:
+            if above.page != rows[position].page:
+                continue
+            for other in above.cells:
+                if other.box is not None and cell.box is not None and not (other.left < cell.right and other.right > cell.left):
+                    continue
+                if self._NOT_THIS_PERIOD_ABOVE.search(other.text) or _names_a_month(other.text):
+                    return True
+        return False
+
+    def _inline_total_records(self, rows: Sequence[Row], doc_fuel: Located | None = None) -> list[UsageRecord]:
+        """A dense statement that states its usage inside a line: "THERM FACTOR 1.030 TOTAL 1,273.1 THERMS".
+        It runs last: the labelled reads, the usage table and the headline read are tried first. Money is never
+        taken (a "$", or a TOTAL that is followed by a word), nor a line about another period (year to date,
+        last year, a daily average, a budget plan, an estimate, a month or a year). When the document says it
+        more than once with different numbers or units, nothing is guessed."""
+
+        fuel = (self._fuel(doc_fuel.raw) or (None,))[0] if doc_fuel is not None else None
+        found: dict[tuple[float, str], tuple[Row, Cell, re.Match[str]]] = {}
+        for position, row in enumerate(rows):
+            # The whole row (a PDF reader puts "Year to date" and "TOTAL 14,200 THERMS" in separate cells of one
+            # row) and the row directly above (column headers) say which period the total is for.
+            line = " ".join(cell.text for cell in row.cells)
+            if self._NOT_THIS_PERIOD.search(line) or _names_a_month(line):
+                continue
+            for cell in row.cells:
+                if not self._INLINE_TOTAL.search(cell.text) or self._period_header_above(rows, position, cell):
+                    continue
+                for match in self._INLINE_TOTAL.finditer(cell.text):
+                    unit = match.group("unit")
+                    canonical = self._canonical_unit(unit)
+                    if canonical is None or canonical in ELECTRIC_UNITS or fuel_units.is_ambiguous_in_text(unit):
+                        continue
+                    if fuel_units.dimension_of(canonical) == fuel_units.LIQUID_VOLUME and fuel not in self._LIQUID_FUELS:
+                        continue  # "TOTAL 500 GALLONS" on a natural gas bill is not its usage
+                    number = parse_number(match.group("num"))
+                    if number is None or ("," not in match.group("num") and "." not in match.group("num")
+                                          and 1990 <= number[0] <= 2100):
+                        continue  # a bare year is not a quantity
+                    found.setdefault((number[0], canonical), (row, cell, match))  # THERMS and THM are one unit
+        if len(found) != 1:
+            return []
+        row, cell, match = next(iter(found.values()))
+        quantity = Located(match.group("num"), [cell], row, CONF_NEXT_CELL - 0.1, context=cell.text)
+        return [UsageRecord(quantity=quantity, unit_raw=match.group("unit"),
+                            unit_located=Located(match.group("unit"), [cell], row, CONF_NEXT_CELL - 0.1), hint=None)]
+
+    _BARE_NUMBER = re.compile(r"^\d{1,3}(?:,\d{3})+(?:\.\d+)?$|^\d+(?:\.\d+)?$")
+    _USAGE_WORDS = frozenset({"used", "billed", "consumed", "delivered", "usage"})
+    # Words in the text above or beside a number that say it is not the quantity of the bill.
+    _NOT_A_QUANTITY = ("reading", "capacity", "days", "year", "rate", "average", "avg", "daily", "per day", "last",
+                       "previous", "prior")
+    # Words in the line right under the unit line that say the pair is not the bill's quantity ("therms" over
+    # "per day", "gallons" over "tank capacity", "CCF" over "current meter reading").
+    _NOT_UNDER_A_UNIT = ("per", "daily", "average", "avg", "tank", "capacity", "meter", "reading", "last", "previous",
+                         "prior")
+
+    def _headline_quantity_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
+        """A bill that leads with the quantity: "1,486" in large type with "therms used" directly below it.
+
+        Only a laid-out page counts (a line of plain text carries no sign of size), and only when:
+        - the number stands alone (no "$", no ID) and is at least twice as tall as the unit line under
+          it, and among the three tallest sizes of text on its page (sizes within 10% of each other are
+          one size, so OCR jitter does not push it out);
+        - the unit line has no digit, starts with a unit that is not one of the short aliases that are
+          ambiguous in free text (St, T, L, CF, Ton), and goes on with nothing or a usage word
+          ("therms used"; not "therms per day", "gallons capacity", "kWh actual" or "St. Louis, MO"), and
+          the line under the unit line is not a qualifier ("per day", "tank capacity", "current meter
+          reading") or a date ("October 2024"; the bill's own period, a lone date range, is fine);
+        - the text just above or beside the number is not a label that excludes it (a reading, a
+          capacity, days, a year, a rate, an amount).
+        When the document has two such pairs, nothing is guessed."""
+
+        sizes: dict[int | None, list[float]] = {}
+        for row in rows:
+            for cell in row.cells:
+                if cell.box is not None:
+                    sizes.setdefault(row.page, []).append(cell.height)
+        smallest_large = {page: _third_band_floor(heights) for page, heights in sizes.items()}
+        pairs: list[tuple[Row, Cell, Row, Cell]] = []
+        for position, row in enumerate(rows):
+            floor = smallest_large.get(row.page)
+            for cell in row.cells:
+                if cell.box is None or not self._BARE_NUMBER.match(cell.text.strip()):
+                    continue
+                if floor is None or cell.height < floor - 1e-9:
+                    continue
+                below = self._unit_line_below(rows, position, cell)
+                if below is not None and not _labelled_as(rows, cell, (*self.QTY_EXCLUDE, *self._NOT_A_QUANTITY)):
+                    pairs.append((row, cell, *below))
+        if len(pairs) != 1:
+            return []
+        row, number, unit_row, unit_cell = pairs[0]
+        parsed = parse_number(number.text)
+        if parsed is None:
+            return []
+        unit_word = unit_cell.text.split()[0]
+        quantity = Located(parsed[1], [number], row, CONF_DOCUMENT_SCAN, context=f"{number.text} {unit_cell.text}")
+        return [UsageRecord(quantity=quantity, unit_raw=unit_word,
+                            unit_located=Located(unit_cell.text, [unit_cell], unit_row, CONF_NEXT_CELL), hint=None)]
+
+    def _unit_line_below(self, rows: Sequence[Row], position: int, number: Cell) -> tuple[Row, Cell] | None:
+        def is_unit_line(cell: Cell) -> bool:
+            words = [word.strip(".,:;") for word in cell.text.split()]
+            if not words or re.search(r"\d", cell.text) or number.height < 2 * cell.height:
+                return False
+            first = words[0].lower()
+            return (self._canonical_unit(words[0]) is not None and not fuel_units.is_ambiguous_in_text(first)
+                    and all(word.lower() in self._USAGE_WORDS for word in words[1:]) and len(words) <= 2)
+
+        if number.box is None:
+            return None
+        bottom = number.box["top"] + number.box["height"]
+        best: tuple[float, Row, Cell] | None = None
+        for other in rows[position + 1:position + 40]:
+            if other.page != rows[position].page:
+                break
+            for cell in other.cells:
+                if cell.box is None or abs(cell.left - number.left) > 0.02:
+                    continue
+                gap = cell.box["top"] - bottom
+                if -0.005 <= gap <= max(0.5 * number.height, 0.02) and (best is None or gap < best[0]):
+                    best = (gap, other, cell)
+        if best is not None and is_unit_line(best[2]) and not self._qualified_below(rows, position, best[2]):
+            return best[1], best[2]
+        return None
+
+    def _qualified_below(self, rows: Sequence[Row], position: int, unit: Cell) -> bool:
+        """Whether the line directly under the unit line (same column, within about a line) says the pair is not
+        the bill's quantity: a qualifier word, or a date, a month and year or a year (last year's figure). A
+        date range that is exactly what ``_standalone_range`` accepts is the bill's period and does not count."""
+
+        if unit.box is None:
+            return False
+        bottom = unit.box["top"] + unit.box["height"]
+        for other in rows[position + 1:position + 40]:
+            for cell in other.cells:
+                if cell is unit or cell.box is None or abs(cell.left - unit.left) > 0.02:
+                    continue
+                gap = cell.box["top"] - bottom
+                if not -0.005 <= gap <= 1.2 * unit.height:
+                    continue
+                text = cell.text.strip().rstrip(".")
+                if _only_a_date_range(text):
+                    return False
+                return (any(_has_word(text, word) for word in self._NOT_UNDER_A_UNIT)
+                        or parse_date(text) is not None or _names_a_month(text)
+                        or re.search(r"\b(?:19|20)\d{2}\b", text) is not None)
+        return False
 
     def _labeled_quantity_records(self, rows: Sequence[Row],
                                   label_groups: tuple[tuple[str, ...], ...] | None = None) -> list[UsageRecord]:
@@ -1614,7 +2623,7 @@ class StationaryCombustionExtractor:
     def _date_value(located: Located | None, *, first: bool, inherited: bool) -> tuple[Located, str] | None:
         if located is None:
             return None
-        dates = parse_dates(located.raw)
+        dates = parse_dates(located.raw) or _whole_month(located.raw)
         if not dates:
             return None
         value = dates[0] if first else dates[-1]
@@ -1707,6 +2716,11 @@ class StationaryCombustionExtractor:
         if located is None:
             return self._missing(target, document_id, evidence_id, record_key, record_index)
         value = " ".join(located.raw.split())
+        if field_id == "statement_date":
+            hit = parse_date(located.raw)
+            if hit is None:
+                return self._missing(target, document_id, evidence_id, record_key, record_index)
+            value = hit[0]
         return self._candidate(target, located, located.raw, value, None, document_id, evidence_id, record_key,
                                record_index, parser_output, [])
 
@@ -1831,6 +2845,7 @@ class StationaryCombustionExtractor:
 ALL_LABEL_GROUPS: tuple[tuple[str, ...], ...] = (
     FACILITY_LABELS + SITE_LOCATION_LABELS + BILL_TO_LABELS + ADDRESS_LABELS + ACCOUNT_LABELS + SUPPLIER_LABELS + FUEL_LABELS + RANGE_PERIOD_LABELS
     + START_LABELS + END_LABELS + DELIVERY_DATE_LABELS + QUANTITY_LABELS
+    + METER_NUMBER_LABELS + STATEMENT_DATE_LABELS + DUE_DATE_LABELS
 )
 _ALL_LABELS: tuple[str, ...] = tuple(label for group in ALL_LABEL_GROUPS for label in group)
 StationaryCombustionExtractor.ALL_LABELS = _ALL_LABELS

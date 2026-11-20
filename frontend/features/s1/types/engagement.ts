@@ -13,6 +13,10 @@ export interface FacilityOption {
   address?: string;
   /** eGRID subregion for purchased electricity (Scope 2 location-based). */
   gridRegion?: string;
+  /** Optional account numbers on the client's bills for this facility (provisional, see utils/facilityNumbers.ts). */
+  accountNumbers?: string[];
+  /** Optional meter numbers, same pattern. */
+  meterNumbers?: string[];
 }
 
 /** The client's point of contact — one recipient for all Evidence requests. */
@@ -127,4 +131,7 @@ export interface VehicleGroupSetting {
   fuel_quantity?: number;
   fuel_unit?: "gal" | "L";
   label?: string;
+  /** Set by the server when the group is created and kept through renames, reordering and removal of other
+   *  groups. A mobile line is anchored on it. Send it back unchanged; a new group has none. */
+  group_id?: string;
 }

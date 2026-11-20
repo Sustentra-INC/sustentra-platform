@@ -202,6 +202,8 @@ class ThermalExtractor(ElectricityExtractor):
     """Builds CT-S2-THERMAL candidates: one record per usage line (or one per bill)."""
 
     CANONICAL_TYPE_ID = CANONICAL_TYPE_ID
+    HEADLINE_QUANTITY = False  # only the natural gas reader reads a number in large type over a unit
+    INLINE_TOTAL_QUANTITY = False  # ... or "TOTAL 1,273.1 THERMS" inside a line of a statement
     FUEL_LABEL_GROUPS = ENERGY_TYPE_LABELS
     QUANTITY_LABEL_GROUPS = QUANTITY_LABELS
     QTY_EXCLUDE = StationaryCombustionExtractor.QTY_EXCLUDE + (
@@ -305,7 +307,15 @@ class ThermalExtractor(ElectricityExtractor):
         return None
 
     def _is_consumption(self, record: UsageRecord) -> bool:
-        texts = [record.quantity.context or "", record.unit_raw or ""]
+        """Whether this line is energy consumed. A table line is judged by its own quantity column's header
+        and its own row, never by the other columns' headers: "Peak Demand (Mlb/hr)" beside "Steam Used (Mlb)"
+        makes the demand column demand, not the usage column."""
+
+        if record.quantity_header is not None:
+            row_text = record.quantity.row.text if record.quantity.row is not None else ""
+            texts = [record.quantity_header, row_text, record.unit_raw or ""]
+        else:
+            texts = [record.quantity.context or "", record.unit_raw or ""]
         if record.quantity.label_cell is not None:
             texts.append(record.quantity.label_cell.text)
         return not any(_NOT_CONSUMPTION_RE.search(_norm(t)) for t in texts)

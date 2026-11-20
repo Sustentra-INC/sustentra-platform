@@ -65,6 +65,7 @@ export function buildTree(facilityId: string | null): EvidenceTree {
       const row: TreeDocRow = {
         document_id: record.documentId, file_name: record.fileName, period_start: p.start, period_end: p.end,
         facility_id: fid, facility_name: fid ? facilityName.get(fid) ?? null : null,
+        facility_note: fid ? null : record.facilityNote,
         processing_status: record.processingStatus, detected_type: record.detectedType,
         also_in: slots.filter((s) => s.target !== slot.target && byKey.has(s.target)).map((s) => s.target),
         values: record.values, accepted: record.acceptedValues, flags: [...slot.flags], placement_from: slot.target,
@@ -115,7 +116,7 @@ function dateLabel(r: ModelRecord): string {
   return r.kind === "fleet" ? "Statement period" : r.kind === "propane" ? "Delivery date" : r.kind === "refrigerant" ? "Service date" : "Service period";
 }
 
-/** Same rule as the backend: Facility on every line; address, account and meter only on utility-bill lines. */
+/** Same rule as the backend: Facility and statement date on every line; address, account and meter only on utility-bill lines. */
 function isUtilityLine(line: { category: string; level2: string }): boolean {
   return line.category === "purchased_energy" || (line.category === "stationary" && line.level2 === "natural-gas");
 }
@@ -132,8 +133,10 @@ function groupsOf(model: Model, line: { category: string; level2: string }, on: 
     ["Service address", (r) => r.address],
     ["Account number", (r) => r.account],
     ["Meter number", (r) => r.meter],
+    // The bill's own date, on every line. The demo documents carry none, so the group says so (never the period).
+    ["Statement date", () => null],
   ];
-  const defs = isUtilityLine(line) ? all : all.slice(0, 1);
+  const defs = isUtilityLine(line) ? all : [all[0], all[4]];
   return defs.map(([label, get]) => {
     const groups = new Map<string, { document_id: string; file_name: string; matched_by?: string }[]>();
     const shown = new Map<string, string>();

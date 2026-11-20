@@ -44,6 +44,7 @@ export function EvidenceRequests({
   coverage,
   valuesToReview = 0,
   onReview,
+  onReviewRule,
   onSaveAsk,
   onSend,
   onResolve,
@@ -60,6 +61,8 @@ export function EvidenceRequests({
   /** Values read but not yet accepted or corrected: coverage counts only reviewed ones. */
   valuesToReview?: number;
   onReview?: () => void;
+  /** Opens the first value waiting on one check (a card that awaits review offers Review, not Request). */
+  onReviewRule?: (rule: CoverageRule) => void;
   /** Raise a request from a check that is missing its inputs. The changes below may answer at
    *  once (the demo) or after the server has: the screen waits, and says so if one fails. */
   onSaveAsk: (draft: AskDraft) => MaybePromise<unknown>;
@@ -183,7 +186,7 @@ export function EvidenceRequests({
         </button>
       ) : null}
 
-      <CoveragePanel coverage={coverage} isRequested={isRequested} onRequest={setRequestRule} />
+      <CoveragePanel coverage={coverage} isRequested={isRequested} onRequest={setRequestRule} onReview={onReviewRule} />
 
       <section className="s1-cr-reqs" aria-labelledby="s1-cr-reqs-title">
         <div className="s1-cr-sectionhead">

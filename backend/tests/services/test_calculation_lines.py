@@ -416,17 +416,22 @@ def _line(**changes: Any) -> dict:
             "label": "Propane at KC", **changes}
 
 
-def test_evidence_lines_are_an_allowed_setting_and_the_server_fills_in_the_key() -> None:
-    assert "evidenceLines" in SETTINGS_KEYS
-    update = EngagementUpdate(settings={"evidenceLines": [_line()]})
-    assert update.settings is not None
-    saved = update.settings["evidenceLines"][0]
+def test_the_server_fills_in_the_key_of_a_line_and_the_saved_form_round_trips() -> None:
+    saved = cl.normalize_evidence_lines([_line()])[0]
     assert saved["key"] == "s1:stationary:propane:fac-kc01" and saved["scope"] == "s1" and saved["level2"] == "propane"
-    # the saved form round-trips
-    assert EngagementUpdate(settings={"evidenceLines": [saved]}).settings == {"evidenceLines": [saved]}
-    company = EngagementUpdate(settings={"evidenceLines": [
-        _line(category="contractual", level2_label="PPAs", anchor_kind="company", anchor_id=None)]}).settings
-    assert company is not None and company["evidenceLines"][0]["key"] == "s2:contractual:ppas:company"
+    assert cl.normalize_evidence_lines([saved]) == [saved]
+    company = cl.normalize_evidence_lines([
+        _line(category="contractual", level2_label="PPAs", anchor_kind="company", anchor_id=None)])
+    assert company[0]["key"] == "s2:contractual:ppas:company"
+
+
+def test_a_settings_save_drops_evidence_lines_whatever_they_hold() -> None:
+    """Lines change only through the Evidence actions: a save's own copy (a stale tab's, even a broken one)
+    is ignored, never judged, so an autosave cannot fail on it."""
+
+    assert "evidenceLines" in SETTINGS_KEYS  # an old client may still send it
+    for sent in ([_line()], "nope", [{"junk": 1}], [_line(), _line()]):
+        assert EngagementUpdate(settings={"evidenceLines": sent, "dataScope": "x"}).settings == {"dataScope": "x"}
 
 
 @pytest.mark.parametrize("bad", [
@@ -442,18 +447,18 @@ def test_evidence_lines_are_an_allowed_setting_and_the_server_fills_in_the_key()
 ])
 def test_evidence_lines_reject_bad_entries(bad: dict) -> None:
     with pytest.raises(ValueError):
-        EngagementUpdate(settings={"evidenceLines": [bad]})
+        cl.normalize_evidence_lines([bad])
 
 
 def test_evidence_lines_limits_and_duplicates() -> None:
     with pytest.raises(ValueError):
-        EngagementUpdate(settings={"evidenceLines": "nope"})
+        cl.normalize_evidence_lines("nope")
     with pytest.raises(ValueError):
-        EngagementUpdate(settings={"evidenceLines": [_line(), _line()]})
+        cl.normalize_evidence_lines([_line(), _line()])
     many = [_line(level2_label=f"Fuel {i}") for i in range(201)]
     with pytest.raises(ValueError):
-        EngagementUpdate(settings={"evidenceLines": many})
-    assert len(EngagementUpdate(settings={"evidenceLines": many[:200]}).settings["evidenceLines"]) == 200  # type: ignore[index]
+        cl.normalize_evidence_lines(many)
+    assert len(cl.normalize_evidence_lines(many[:200])) == 200
 
 
 @pytest.mark.asyncio
@@ -679,7 +684,7 @@ def test_a_field_without_a_candidate_id_has_none_not_the_text_none() -> None:
     from backend.app.services.reviewed_evidence import group_reviewed_records
 
     items = [{"field_name": "fuel_type", "normalized_value": "x", "unit": None, "record_index": None}]
-    record = group_reviewed_records({"document_id": "D"}, "CT-S1-FUELQTY", items, {})[0]
+    record = group_reviewed_records({"document_id": "D"}, "CT-S1-FUELQTY", items, [])[0]
     assert record.fields["fuel_type"].candidate_id is None
 
 
@@ -746,6 +751,10 @@ def test_tree_lists_vehicle_groups_with_the_anchor_ids_lines_use() -> None:
 
 
 # --- counts at every level and the facility filter ----------------------------------------------
+# G2's values are rejected, and a rejected facility name does not place a bill: the reviewer chose its facility.
+COUNTS_DECISIONS = {"G2": {"facilityId": "fac-stl2"}}
+
+
 def _counts_store() -> FakeStore:
     store = FakeStore()
     store.add_document("BILL", "CT-S2-ELEC", [_elec(10, "Kansas City Plant"), _elec(20, "St Louis Plant")])
@@ -758,7 +767,7 @@ def _counts_store() -> FakeStore:
 
 
 def test_counts_at_every_level_never_double_count_a_document_in_two_places() -> None:
-    tree = _tree(_counts_store())
+    tree = _tree(_counts_store(), COUNTS_DECISIONS)
     blocks = tree["blocks"]
     assert blocks["summary_counts"] == {"documents": 1, "values": 1, "accepted": 0, "to_review": 1, "issues": 0,
                                         "pct_accepted": 0.0}
@@ -775,7 +784,7 @@ def test_counts_at_every_level_never_double_count_a_document_in_two_places() -> 
 
 def test_the_facility_filter_shows_one_facility_and_recomputes_counts() -> None:
     service = _tree_service(_counts_store())
-    tree = service.tree(_engagement(), _own, None, "fac-stl2")
+    tree = service.tree(_engagement(), _own, COUNTS_DECISIONS, "fac-stl2")
     assert {ln["key"] for ln in tree["lines"]} == {GAS_STL, ELEC_STL}
     assert _lines_with_docs(tree) == {GAS_STL: ["G2"], ELEC_STL: ["BILL"]}
     scopes = {s["scope"]: s for s in tree["blocks"]["supporting"]["scopes"]}
@@ -786,9 +795,9 @@ def test_the_facility_filter_shows_one_facility_and_recomputes_counts() -> None:
     assert tree["blocks"]["summary"] == [] and tree["blocks"]["unassigned"] == []
     assert tree["blocks"]["summary_counts"]["documents"] == 0
     assert [f["facility_id"] for f in tree["facilities"]] == ["fac-kc01", "fac-stl2"]  # not filtered
-    nothing = service.tree(_engagement(), _own, None, "fac-nowhere")
+    nothing = service.tree(_engagement(), _own, COUNTS_DECISIONS, "fac-nowhere")
     assert nothing["lines"] == [] and _lines_with_docs(nothing) == {}
-    unfiltered = service.tree(_engagement(), _own, None, None)
+    unfiltered = service.tree(_engagement(), _own, COUNTS_DECISIONS, None)
     assert len(unfiltered["lines"]) == 4 and len(unfiltered["blocks"]["summary"]) == 1
 
 
@@ -970,3 +979,466 @@ def test_the_tree_names_the_creator_and_copes_with_an_unknown_one() -> None:
     assert by_label["Propane at KC"]["created_at"] == NOW
     assert by_label["Diesel"]["created_by_name"] is None and by_label["Kerosene"]["created_by_name"] is None
     assert "created_by_name" not in by_label["Natural Gas, Kansas City Plant"]  # a system line has no creator
+
+
+# --- D3 fix round: the saved chain is derived from where the document is filed now ---------------
+def _doc(default: list[cl.Slot]) -> Any:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(default_slots=default, document={"file_name": "feb-bill.pdf"}, document_id="D")
+
+
+def _next(chain: list, move: dict, default: list[cl.Slot], known: set[str]) -> list:
+    from backend.app.api import evidence_actions
+
+    return evidence_actions._next_chain(chain, move, _doc(default), known)  # type: ignore[arg-type]
+
+
+def _resolved(default: list[cl.Slot], chain: list, known: set[str]) -> list:
+    return sorted((s.target, tuple(sorted(s.records)), tuple(s.flags)) for s in cl.merge_slots(
+        [cl.resolve_target(s, known) for s in cl.apply_placements(default, chain, known)]))
+
+
+def _simulate(seed: int, steps: int, churn: float):  # noqa: ANN202
+    """API-valid random moves on one document while lines vanish and come back: a move's ``from`` is a place
+    the document shows now (so a document parked on a missing line moves from "supporting:unassigned"), and
+    its ``to`` a line that exists or a fixed place. Yields (default, saved chain, move, known) per step."""
+
+    import random
+
+    rng = random.Random(seed)
+    base, others = ["D1", "D2"], ["X1", "X2", "X3"]
+    known = set(base) | set(others)
+    default = cl.merge_slots([cl.Slot(rng.choice(base), {i}) for i in range(rng.randint(1, 3))])
+    chain: list = []
+    for _ in range(steps):
+        if rng.random() < churn:
+            line = rng.choice(others)
+            known = known - {line} if line in known else known | {line}
+        shown = [t for t, _, _ in _resolved(default, chain, known)]
+        source = rng.choice(shown)
+        target = rng.choice([t for t in sorted(known) + [cl.BLOCK_SUMMARY, cl.BLOCK_UNASSIGNED, cl.SUPPORTING_UNASSIGNED]
+                             if t != source])
+        move = {"from": source, "to": target}
+        yield default, chain, move, set(known)
+        chain = _next(chain, move, default, known)
+
+
+def test_the_saved_chain_files_the_document_exactly_as_the_full_history_does_and_stays_short() -> None:
+    steps = fallbacks = 0
+    for seed in range(400):
+        longest = 0
+        for default, chain, move, known in _simulate(seed, 40, 0.15):
+            full = [*chain, move]
+            now = _next(chain, move, default, known)
+            filing = cl.apply_placements(default, full, known)
+            # exactly where every record is now: by raw place, so "parked on X1" never turns into "parked on X3"
+            assert cl.raw_filing(cl.apply_placements(default, now, known)) == cl.raw_filing(filing), (seed, full, now)
+            assert _resolved(default, now, known) == _resolved(default, full, known)
+            steps += 1
+            if len(now) > len(default) + len(default) // 2:  # the full chain was kept
+                fallbacks += 1
+            longest = max(longest, len(now))
+        assert longest <= cl.MAX_PLACEMENT_MOVES
+    assert fallbacks / steps < 0.02, (fallbacks, steps)
+
+
+def test_a_chain_never_has_more_moves_than_default_slots_plus_one_parking_move_per_swap() -> None:
+    for seed in range(300):
+        for default, chain, move, known in _simulate(seed, 60, 0.0):
+            now = _next(chain, move, default, known)
+            assert len(now) <= len(default) + len(default) // 2, (seed, now)
+
+
+def test_a_thousand_moves_between_two_lines_leave_at_most_one_saved_move() -> None:
+    default = [cl.Slot("s1:stationary:a:f1", {0})]
+    known = {"s1:stationary:a:f1", "s1:stationary:b:f1"}
+    chain: list = []
+    for i in range(1000):
+        here = "s1:stationary:a:f1" if i % 2 == 0 else "s1:stationary:b:f1"
+        there = "s1:stationary:b:f1" if i % 2 == 0 else "s1:stationary:a:f1"
+        chain = _next(chain, {"from": here, "to": there}, default, known)
+    assert chain == []  # 1000 moves ended where they began
+    assert _next(chain, {"from": "s1:stationary:a:f1", "to": "s1:stationary:b:f1"}, default, known) == [
+        {"from": "s1:stationary:a:f1", "to": "s1:stationary:b:f1"}]
+
+
+def test_seed_2178_a_record_moved_off_a_gone_line_is_not_put_back_on_another() -> None:
+    """The review's repro (seed 2178): compaction by resolved filing parked a record on a different missing
+    line than the history had, so it came back on the wrong line when that line returned."""
+
+    for default, chain, move, known in _simulate(2178, 15, 0.25):
+        now = _next(chain, move, default, known)
+        full = [*chain, move]
+        assert cl.raw_filing(cl.apply_placements(default, now, known)) == cl.raw_filing(
+            cl.apply_placements(default, full, known))
+        for line in ("X1", "X2", "X3"):  # whichever missing line returns, a parked record is where it was parked
+            back = known | {line}
+            parked = {t for t in cl.raw_filing(cl.apply_placements(default, full, known)) if t == line}
+            assert parked <= set(cl.raw_filing(cl.apply_placements(default, now, back)))
+
+
+def test_a_document_parked_on_a_line_that_is_gone_stays_parked_there_and_returns_with_the_line() -> None:
+    default = [cl.Slot("G", {0})]
+    chain = _next([], {"from": "G", "to": "X"}, default, {"G", "X"})
+    assert chain == [{"from": "G", "to": "X"}]
+    gone = {"G"}
+    # still the same one move however often it is asked about, and back on X when X returns
+    assert _next(chain, {"from": "supporting:unassigned", "to": "supporting:unassigned"}, default, gone) == chain
+    assert _resolved(default, chain, {"G", "X"}) == [("X", (0,), ())]
+
+
+def test_derive_places_every_default_slot_and_orders_out_before_in() -> None:
+    default = [cl.Slot("A", {0}), cl.Slot("B", {1})]
+    where = lambda *pairs: [cl.Slot(t, set(r)) for t, r in pairs]  # noqa: E731
+    assert cl.derive_placements(default, where(("A", {0}), ("B", {1}))) == []
+    assert cl.derive_placements(default, where(("C", {0, 1}))) == [{"from": "A", "to": "C"}, {"from": "B", "to": "C"}]
+    # A -> B and B -> C: B moves out first, or A's records would arrive in B and move on with it
+    assert cl.derive_placements(default, where(("B", {0}), ("C", {1}))) == [
+        {"from": "B", "to": "C"}, {"from": "A", "to": "B"}]
+    # two slots swapping places go through a free fixed place; a default slot split across places is not derivable
+    assert cl.derive_placements(default, where(("B", {0}), ("A", {1}))) == [
+        {"from": "A", "to": cl.BLOCK_SUMMARY}, {"from": "B", "to": "A"}, {"from": cl.BLOCK_SUMMARY, "to": "B"}]
+    taken = [cl.Slot("A", {0}), cl.Slot("B", {1}), cl.Slot(cl.BLOCK_SUMMARY, {2}), cl.Slot(cl.BLOCK_UNASSIGNED, {3}),
+             cl.Slot(cl.SUPPORTING_UNASSIGNED, {4})]
+    swapped = where(("B", {0}), ("A", {1}), (cl.BLOCK_SUMMARY, {2}), (cl.BLOCK_UNASSIGNED, {3}), (cl.SUPPORTING_UNASSIGNED, {4}))
+    assert cl.derive_placements(taken, swapped) is None
+    assert cl.derive_placements([cl.Slot("A", {0, 1})], where(("B", {0}), ("C", {1}))) is None
+
+
+def test_a_chain_that_cannot_be_shortened_is_capped_with_a_plain_sentence_naming_the_document() -> None:
+    from fastapi import HTTPException
+
+    chain = [{"from": f"x{i}", "to": f"y{i}"} for i in range(cl.MAX_PLACEMENT_MOVES)]
+    # a swap with every fixed place taken has no safe order, so the long chain is kept and the cap is reached
+    full_default = [cl.Slot("A", {0}), cl.Slot("B", {1}), cl.Slot(cl.BLOCK_SUMMARY, {2}), cl.Slot(cl.BLOCK_UNASSIGNED, {3}),
+                    cl.Slot(cl.SUPPORTING_UNASSIGNED, {4})]
+    swapped = [{"from": "A", "to": "T"}, {"from": "B", "to": "A"}, {"from": "T", "to": "B"}]
+    with pytest.raises(HTTPException) as caught:
+        _next([*chain, *swapped[:2]], swapped[2], full_default, {"A", "B", "T"})
+    assert caught.value.status_code == 409 and "feb-bill.pdf" in caught.value.detail
+    assert "moved too many times" in caught.value.detail
+
+
+# --- vehicle groups carry a stable group_id (S1-BE-012) ---------------------------------------------------------
+def _ids(groups: list[dict]) -> list[str]:
+    return [g["group_id"] for g in groups]
+
+
+def _with_ids(groups: list[dict], stored: list[dict] | None = None) -> list[dict]:
+    return cl.assign_group_ids(groups, stored)
+
+
+def test_a_new_group_gets_an_opaque_id_and_names_do_not_matter() -> None:
+    names = ["配送トラック", "配送トラック", "Lieferwagen – Zürich", "Zürich", "z-rich", "", "x" * 200]
+    groups = _with_ids([_group("Diesel Fuel", n) for n in names])
+    ids = _ids(groups)
+    assert len(set(ids)) == len(names)  # distinct, even for the same name and for names that slug alike
+    assert all(cl.GROUP_ID.match(i) and i.startswith("vgid-") for i in ids)
+    # a new id is its own slug (the line key keeps it) and can never be an old ``vg-<slug>`` anchor
+    assert all(cl.slug(i) == i and not i.startswith("vg-") for i in ids)
+    assert all(a == i for (a, _), i in zip(cl.vehicle_group_anchors(groups), ids, strict=True))
+    assert not any("none" in i or "z-rich" in i for i in ids)  # no longer built from the name
+
+
+def test_rename_reorder_and_removal_never_change_another_groups_id() -> None:
+    stored = _with_ids([_group("Diesel Fuel", "Trucks"), _group("Diesel Fuel", "Trucks"), _group("Motor Gasoline", "Pickups")])
+    a, b, c = _ids(stored)
+    renamed = _with_ids([{**stored[0], "label": "Delivery 配送"}, stored[1], stored[2]], stored)
+    assert _ids(renamed) == [a, b, c] and renamed[0]["label"] == "Delivery 配送"
+    assert _ids(_with_ids([stored[2], stored[0], stored[1]], stored)) == [c, a, b]  # reordered
+    assert _ids(_with_ids([stored[1], stored[2]], stored)) == [b, c]  # the first removed
+    assert _ids(_with_ids([stored[0], stored[2]], stored)) == [a, c]  # the second removed
+    assert _ids(_with_ids([stored[0], stored[1]], stored)) == [a, b]  # the last removed
+
+
+def test_an_added_group_never_takes_the_id_of_a_removed_one() -> None:
+    stored = _with_ids([_group("Diesel Fuel", "A"), _group("Diesel Fuel", "B")])
+    after_removal = _with_ids([stored[1]], stored)
+    again = _with_ids([stored[1], _group("Diesel Fuel", "A")], after_removal)  # "A" is added again
+    assert again[1]["group_id"] not in _ids(stored)
+    assert again[0]["group_id"] == stored[1]["group_id"]
+
+
+def test_an_id_the_engagement_never_had_is_not_trusted() -> None:
+    stored = _with_ids([_group("Diesel Fuel", "A")])
+    forged = {**_group("Diesel Fuel", "B"), "group_id": "vg-forgedforged"}
+    out = _with_ids([stored[0], forged], stored)
+    assert out[0]["group_id"] == stored[0]["group_id"] and out[1]["group_id"] != "vg-forgedforged"
+    twice = _with_ids([stored[0], {**_group("Diesel Fuel", "C"), "group_id": stored[0]["group_id"]}], stored)
+    assert len(set(_ids(twice))) == 2  # one id, one group
+
+
+def test_a_client_that_sends_no_ids_keeps_the_groups_it_did_not_change() -> None:
+    stored = _with_ids([_group("Diesel Fuel", "Trucks"), _group("Diesel Fuel", "Trucks"), _group("Motor Gasoline", "Pickups")])
+    bare = [{k: v for k, v in g.items() if k != "group_id"} for g in stored]
+    assert _ids(_with_ids(bare, stored)) == _ids(stored)  # duplicates matched in order
+    assert _ids(_with_ids(bare[::-1], stored))[0] == stored[2]["group_id"]  # a reordered unchanged group too
+    changed = [{**bare[0], "label": "Renamed"}, *bare[1:]]
+    out = _with_ids(changed, stored)
+    assert out[1]["group_id"] in _ids(stored) and out[0]["group_id"] not in _ids(stored)  # a rename it cannot tell: new
+
+
+def test_groups_saved_before_ids_are_known_by_their_old_anchor() -> None:
+    old = [_group("Diesel Fuel", "配送トラック"), _group("Diesel Fuel", "配送トラック")]
+    assert [a for a, _ in cl.vehicle_group_anchors(old)] == ["vg-none", "vg-none-2"]
+    out = _with_ids(old, old)
+    assert _ids(out) == ["vg-none", "vg-none-2"]  # the lines they already have
+    # the page sends each group's id back, so removing the first no longer renumbers the second
+    assert _ids(_with_ids([{**old[1], "group_id": "vg-none-2"}], out)) == ["vg-none-2"]
+    mixed = [{**old[0], "group_id": "vg-abcdef012345"}, old[1]]
+    assert [a for a, _ in cl.vehicle_group_anchors(mixed)] == ["vg-abcdef012345", "vg-none-2"]
+
+
+def test_a_group_with_no_id_never_takes_an_anchor_another_group_has_as_its_id() -> None:
+    groups = [{**_group("Diesel Fuel", "Trucks"), "group_id": "vg-trucks"}, _group("Diesel Fuel", "Trucks")]
+    anchors = [a for a, _ in cl.vehicle_group_anchors(groups)]
+    assert anchors[0] == "vg-trucks" and anchors[1] != "vg-trucks" and len(set(anchors)) == 2
+
+
+def _on_line(settings_groups: list[dict], line: str, store: FakeStore | None = None) -> tuple[dict, list[str]]:
+    store = store or FakeStore()
+    if not store.documents:
+        store.add_document("M2", "CT-S1-MOBFUEL", [_mobile()])
+    tree = _tree(store, {"M2": {"placements": [{"from": cl.SUPPORTING_UNASSIGNED, "to": line}]}},
+                 recalculation={"vehicle_groups": settings_groups})
+    return tree, _lines_with_docs(tree).get(line, [])
+
+
+@pytest.mark.parametrize("names", [["Trucks", "Trucks"], ["配送トラック", "配送トラック"], ["Zürich", "Zürich", "Zürich"]],
+                         ids=["duplicate names", "CJK only", "accented"])
+def test_a_document_placed_by_hand_stays_on_its_groups_line_through_every_change(names: list[str]) -> None:
+    stored = _with_ids([_group("Diesel Fuel", n) for n in names])
+    target = stored[-1]  # the last group: removing or reordering an earlier one used to renumber it
+    line = f"s1:mobile:diesel-fuel:{target['group_id']}"
+    tree, docs = _on_line(stored, line)
+    assert docs == ["M2"]
+    changes = {
+        "renamed": [*stored[:-1], {**target, "label": "Brand new name"}],
+        "first removed": stored[1:],
+        "all others removed": [target],
+        "reordered": [target, *stored[:-1]],
+        "other groups edited": [{**g, "model_year": 2020} for g in stored[:-1]] + [target],
+    }
+    for name, groups in changes.items():
+        after, docs = _on_line(_with_ids(groups, stored), line)
+        assert docs == ["M2"], name
+        assert line in {ln["key"] for ln in after["lines"]}, name
+    renamed_tree, _ = _on_line(_with_ids(changes["renamed"], stored), line)
+    assert {ln["key"]: ln["label"] for ln in renamed_tree["lines"]}[line].endswith("Brand new name")  # the label follows
+
+
+def test_a_document_parked_on_a_removed_group_returns_only_with_that_group() -> None:
+    stored = _with_ids([_group("Diesel Fuel", "Trucks"), _group("Diesel Fuel", "Yard"), _group("Diesel Fuel", "Vans")])
+    line = f"s1:mobile:diesel-fuel:{stored[0]['group_id']}"
+    store = FakeStore()
+    store.add_document("M2", "CT-S1-MOBFUEL", [_mobile()])
+    gone, docs = _on_line(_with_ids(stored[1:], stored), line, store)
+    assert docs == [] and [r["document_id"] for r in gone["blocks"]["supporting"]["unassigned"]] == ["M2"]
+    # the group is added again: a new group, a new line: the document does not land on it
+    back = _with_ids([*stored[1:], _group("Diesel Fuel", "Trucks")], _with_ids(stored[1:], stored))
+    again, docs = _on_line(back, line, store)
+    assert docs == []
+    # while a rename of the removed group's neighbour, or the group's own id, brings nothing back by name
+    same_id = [*stored[1:], {**_group("Diesel Fuel", "Trucks"), "group_id": stored[0]["group_id"]}]
+    assert _on_line(same_id, line, store)[1] == ["M2"]  # the stored id is what a line is: the data, not the name
+
+
+def test_every_vehicle_group_line_label_and_key_follows_the_id() -> None:
+    groups = _with_ids([_group("Diesel Fuel", "Trucks")])
+    tree = _tree(FakeStore(), recalculation={"vehicle_groups": groups})
+    assert tree["vehicle_groups"] == [{"anchor_id": groups[0]["group_id"], "label": "Trucks", "fuel": "Diesel Fuel"}]
+    key = cl.line_key("s1", "mobile", "diesel-fuel", "vehicle_group", groups[0]["group_id"])
+    assert key == f"s1:mobile:diesel-fuel:{groups[0]['group_id']}"
+    entry = {"category": "mobile", "level2_label": "Diesel Fuel", "anchor_kind": "vehicle_group",
+             "anchor_id": groups[0]["group_id"], "label": "Trucks, diesel"}
+    assert cl.normalize_evidence_lines([entry])[0]["key"] == key
+    cl.check_new_lines(cl.normalize_evidence_lines([entry]), stored_keys=set(), facilities=[KC], vehicle_groups=groups)
+
+
+# --- an existing engagement migrates with identical filing and recalculation ---------------------------------------
+def _migration_module() -> Any:
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "migrations" / "versions" / "0021_vehicle_group_ids.py"
+    spec = importlib.util.spec_from_file_location("migration_0021", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+LEGACY_GROUPS = [  # what stored engagements hold today: no ids, anchors from the label and the order
+    _group("Diesel Fuel", "配送トラック"), _group("Diesel Fuel", "配送トラック"), _group("Diesel Fuel", "Lieferwagen – Zürich"),
+    _group("Diesel Fuel", "Lieferwagen – Zürich"), _group("Motor Gasoline", "Pickups"),
+]
+
+
+def test_the_migration_gives_each_group_the_anchor_it_has_today_and_is_safe_to_run_twice() -> None:
+    migration = _migration_module()
+    migrated = migration._add_ids(LEGACY_GROUPS)
+    assert [g["group_id"] for g in migrated] == [a for a, _ in cl.vehicle_group_anchors(LEGACY_GROUPS)]
+    assert [g["group_id"] for g in migrated] == ["vg-none", "vg-none-2", "vg-lieferwagen-z-rich",
+                                                  "vg-lieferwagen-z-rich-2", "vg-pickups"]
+    assert [{k: v for k, v in g.items() if k != "group_id"} for g in migrated] == LEGACY_GROUPS  # nothing else changed
+    assert migration._add_ids(migrated) is None  # already done: left alone
+    assert migration._remove_ids(migrated) == LEGACY_GROUPS and migration._remove_ids(LEGACY_GROUPS) is None
+    # the migration's own copy of the old numbering is the code's old numbering
+    assert migration._legacy_anchors(LEGACY_GROUPS) == cl.legacy_group_anchors(LEGACY_GROUPS)
+    for label in ["", "x" * 200, "Zürich", "配送", "a--b", "  spaced  out  "]:
+        group = _group("Diesel Fuel", label)
+        assert migration._legacy_anchors([group, group]) == cl.legacy_group_anchors([group, group])
+        assert all(cl.GROUP_ID.match(a) for a in cl.legacy_group_anchors([group, group]))  # valid ids as they are
+
+
+def test_an_existing_engagement_files_and_recalculates_exactly_the_same_after_the_migration() -> None:
+    from backend.tests.services.test_engagement_recalculation_service import _service as recalculation_service
+
+    migration = _migration_module()
+    migrated = migration._add_ids(LEGACY_GROUPS)
+    by_anchor = {a: g for a, g in cl.vehicle_group_anchors(LEGACY_GROUPS)}
+    user_line = cl.normalize_evidence_lines([{"category": "mobile", "level2_label": "Diesel Fuel",
+                                              "anchor_kind": "vehicle_group", "anchor_id": "vg-none-2",
+                                              "label": "Night trucks"}])
+    store = FakeStore()
+    for i in range(1, 6):
+        store.add_document(f"M{i}", "CT-S1-MOBFUEL", [_mobile()])
+    store.add_document("P1", "CT-S1-MOBFUEL", [_mobile(fuel="gasoline")])
+    # #260 chains and a document parked on a line that is gone, written in the old keys
+    decisions = {
+        "M1": {"placements": [{"from": cl.SUPPORTING_UNASSIGNED, "to": "s1:mobile:diesel-fuel:vg-none"}]},
+        "M2": {"placements": [{"from": cl.SUPPORTING_UNASSIGNED, "to": "s1:mobile:diesel-fuel:vg-none-2"}]},
+        "M3": {"placements": [{"from": cl.SUPPORTING_UNASSIGNED, "to": "s1:mobile:diesel-fuel:vg-lieferwagen-z-rich-2"},
+                              {"from": "s1:mobile:diesel-fuel:vg-lieferwagen-z-rich-2", "to": "block:unassigned"}]},
+        "M4": {"placements": [{"from": cl.SUPPORTING_UNASSIGNED, "to": "s1:mobile:diesel-fuel:vg-gone-group"}]},
+    }
+    assert set(by_anchor) >= {"vg-none", "vg-none-2"}
+
+    def view(groups: list[dict]) -> tuple[Any, Any]:
+        tree = _tree(store, decisions, recalculation={"vehicle_groups": groups}, evidenceLines=user_line)
+        filing = _lines_with_docs(tree)
+        parked = sorted(row["document_id"] for row in tree["blocks"]["supporting"]["unassigned"])
+        keys = sorted(line["key"] for line in tree["lines"])
+        return (filing, parked, keys, [(g["anchor_id"], g["label"]) for g in tree["vehicle_groups"]],
+                tree["blocks"]["unassigned"] == [], tree["set_aside"])
+
+    assert view(LEGACY_GROUPS) == view(migrated)
+    legacy_result = recalculation_service(store).recalculate(
+        {"id": "ENG-1", "reporting_period_start": "2025-01-01", "reporting_period_end": "2025-12-31",
+         "settings": {"facilities": [KC], "recalculation": {"vehicle_groups": LEGACY_GROUPS}}}, _own)
+    migrated_result = recalculation_service(store).recalculate(
+        {"id": "ENG-1", "reporting_period_start": "2025-01-01", "reporting_period_end": "2025-12-31",
+         "settings": {"facilities": [KC], "recalculation": {"vehicle_groups": migrated}}}, _own)
+    assert legacy_result == migrated_result
+    assert legacy_result["categories"]["mobile_combustion"] is not None
+
+
+# --- fix round 1: groups with the same name, and a rename plus a reorder, with no ids sent -----------------------
+def _bare(groups: list[dict]) -> list[dict]:
+    return [{k: v for k, v in g.items() if k != "group_id"} for g in groups]
+
+
+def _g(label: str, **more: Any) -> dict:
+    return {**_group("Diesel Fuel", label), "distance": 1000, "distance_unit": "mi", **more}
+
+
+def test_two_groups_with_one_name_and_different_figures_keep_their_own_ids_when_reordered_without_ids() -> None:
+    stored = _with_ids([_g("Trucks", distance=1000), _g("Trucks", distance=5000)])
+    out = _with_ids(_bare(stored)[::-1], stored)
+    assert [(g["distance"], g["group_id"]) for g in out] == [(5000, stored[1]["group_id"]), (1000, stored[0]["group_id"])]
+
+
+def test_a_rename_plus_a_reorder_without_ids_never_hands_a_group_the_id_of_the_group_whose_name_it_took() -> None:
+    stored = _with_ids([_g("Trucks", distance=1), _g("Vans", distance=2)])
+    trucks, vans = stored
+    b = _bare(stored)
+    out = _with_ids([{**b[1], "label": "Lorries"}, {**b[0], "label": "Vans"}], stored)
+    lorries, new_vans = out
+    assert new_vans["group_id"] == trucks["group_id"]  # the group with Trucks' figures, now named Vans
+    assert lorries["group_id"] not in (trucks["group_id"], vans["group_id"])  # Vans' id is not given to a rival
+    assert len({g["group_id"] for g in out}) == 2
+
+
+def test_a_rename_without_ids_keeps_the_id_only_when_one_group_fits() -> None:
+    stored = _with_ids([_g("Trucks", distance=1), _g("Vans", distance=2)])
+    b = _bare(stored)
+    renamed = _with_ids([{**b[0], "label": "Haulers"}, b[1]], stored)
+    assert _ids(renamed) == _ids(stored)  # unique figures: the same group, renamed
+    twins = _with_ids([_g("Trucks"), _g("Trucks")], None)
+    both = _with_ids([{**g, "label": "Haulers"} for g in _bare(twins)], twins)
+    assert set(_ids(both)).isdisjoint(_ids(twins))  # two groups equally good: neither claims an id
+
+
+def test_a_group_whose_figures_changed_keeps_its_id_when_it_is_the_only_one_with_that_name() -> None:
+    stored = _with_ids([_g("Trucks", distance=1), _g("Vans", distance=2)])
+    b = _bare(stored)
+    out = _with_ids([{**b[0], "distance": 99}, b[1]], stored)
+    assert _ids(out) == _ids(stored)
+    same_name = _with_ids([_g("Trucks", distance=1), _g("Trucks", distance=2)])
+    ambiguous = _with_ids([{**g, "distance": g["distance"] + 100} for g in _bare(same_name)], same_name)
+    assert set(_ids(ambiguous)).isdisjoint(_ids(same_name))  # which is which: not guessed
+
+
+def test_an_old_anchor_and_a_new_id_are_never_equal_even_for_a_label_that_looks_like_an_id() -> None:
+    old = [_group("Diesel Fuel", "id 0123456789ab")]  # legacy anchor: vg-id-0123456789ab
+    assert cl.legacy_group_anchors(old) == ["vg-id-0123456789ab"]
+    fresh = cl.new_group_id({"vg-id-0123456789ab"})
+    assert fresh.startswith("vgid-") and fresh != "vg-id-0123456789ab" and cl.slug(fresh) == fresh
+
+
+@pytest.mark.parametrize("reverse", [False, True], ids=["in order", "reordered too"])
+def test_two_groups_that_swap_names_without_ids_do_not_trade_ids(reverse: bool) -> None:
+    stored = _with_ids([_g("Trucks", distance=1), _g("Vans", distance=2)])
+    trucks, vans = stored
+    b = _bare(stored)
+    swapped = [{**b[0], "label": "Vans"}, {**b[1], "label": "Trucks"}]  # the 1 mi group is now Vans, the 2 mi one Trucks
+    out = _with_ids(swapped[::-1] if reverse else swapped, stored)
+    assert not {g["group_id"] for g in out} & {trucks["group_id"], vans["group_id"]}  # neither takes an old id
+    assert len({g["group_id"] for g in out}) == 2  # and they differ
+
+
+def test_a_name_swap_where_the_client_sends_ids_still_keeps_them() -> None:
+    stored = _with_ids([_g("Trucks", distance=1), _g("Vans", distance=2)])
+    swapped = [{**stored[0], "label": "Vans"}, {**stored[1], "label": "Trucks"}]
+    assert _ids(_with_ids(swapped, stored)) == _ids(stored)  # the ids sent are what a rename keeps
+
+
+def test_a_group_whose_figures_are_another_unmatched_groups_does_not_take_its_neighbours_id() -> None:
+    stored = _with_ids([_g("Trucks", distance=1), _g("Vans", distance=2), _g("Pickups", distance=3)])
+    b = _bare(stored)
+    # Trucks (1 mi) is renamed Pickups and Pickups (3 mi) kept: the 1 mi group has the figures of stored Trucks
+    out = _with_ids([{**b[0], "label": "Vans"}, b[1], b[2]], stored)
+    assert out[2]["group_id"] == stored[2]["group_id"]  # Pickups, unchanged, keeps its id
+    assert out[0]["group_id"] != stored[1]["group_id"]  # the group named Vans with Trucks' figures does not take Vans'
+
+
+def test_two_swaps_at_once_each_park_on_a_free_place_of_their_own() -> None:
+    default = [cl.Slot("A", {0}), cl.Slot("B", {1}), cl.Slot("C", {2}), cl.Slot("D", {3})]
+    where = lambda *pairs: [cl.Slot(t, set(r)) for t, r in pairs]  # noqa: E731
+    swapped = where(("B", {0}), ("A", {1}), ("D", {2}), ("C", {3}))  # A and B swap, and so do C and D
+    chain = cl.derive_placements(default, swapped)
+    assert chain is not None  # two cycles, and fixed places to park them on: no fall-back to the full chain
+    known = {"A", "B", "C", "D"}
+    assert _resolved(default, chain, known) == sorted((t, tuple(sorted(r)), ()) for t, r in (("B", {0}), ("A", {1}), ("D", {2}), ("C", {3})))
+    assert len(chain) <= 2 * len(default)
+
+
+def test_every_filing_of_three_default_slots_over_three_places_is_derived_when_a_free_place_exists() -> None:
+    """Every way three default slots (two records each) can be filed on three lines plus the three fixed
+    places: the chain is derived (never the full-chain fall-back) and puts every record where it is filed."""
+
+    import itertools
+
+    default = [cl.Slot("A", {0, 1}), cl.Slot("B", {2, 3}), cl.Slot("C", {4, 5})]
+    places = ["A", "B", "C", cl.BLOCK_SUMMARY, cl.BLOCK_UNASSIGNED, cl.SUPPORTING_UNASSIGNED]
+    known = {"A", "B", "C"}
+    for filing in itertools.product(places, repeat=3):
+        used = set(filing) | {"A", "B", "C"}
+        wanted = [cl.Slot(place, set(slot.records)) for slot, place in zip(default, filing, strict=True)]
+        chain = cl.derive_placements(default, wanted)
+        if len(used) < len(places):  # a free fixed place exists: the chain must be derived
+            assert chain is not None, filing
+        if chain is not None:
+            assert _resolved(default, chain, known) == sorted(
+                (s.target, tuple(sorted(s.records)), ()) for s in cl.merge_slots(wanted)), filing

@@ -19,6 +19,7 @@ Where a document is filed
 from __future__ import annotations
 
 import re
+import uuid
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
@@ -36,9 +37,8 @@ from backend.app.services.reviewed_evidence import (
     STATIONARY,
     THERMAL,
     ReviewedRecord,
-    match_facility,
+    place_on_facility,
     resolve_fuel_name,
-    resolve_setup_facility,
     to_date,
 )
 from backend.app.services.refrigerant_extractor import DISPOSAL, service_type_of
@@ -171,16 +171,131 @@ def vehicle_group_label(group: dict[str, Any]) -> str:
     return str(group.get("label") or f"{group.get('vehicle_type')} ({group.get('factor_fuel_type')})")
 
 
-def vehicle_group_anchors(groups: list[dict[str, Any]]) -> list[tuple[str, dict[str, Any]]]:
-    """(anchor id, group) for each vehicle group in settings: ``vg-<label slug>``, numbered
-    when two groups share a label."""
+# A vehicle group's id, which is also its line anchor. A new id is ``vgid-`` and 12 hex digits: the old anchors
+# (``vg-<slug>``) always have a hyphen right after "vg", so a new id can never equal one of them, and it is its own
+# slug, so the line key keeps it as it is. Groups migrated from the old anchors keep those as their ids.
+GROUP_ID = re.compile(r"^vg(?:id)?-[a-z0-9](?:[a-z0-9-]{0,66}[a-z0-9])?$")
+
+
+def new_group_id(taken: set[str]) -> str:
+    """A fresh, opaque id for a vehicle group (``vgid-`` and 12 hex digits), unlike every id in ``taken``."""
+
+    while True:
+        candidate = f"vgid-{uuid.uuid4().hex[:12]}"
+        if candidate not in taken:
+            return candidate
+
+
+def legacy_group_anchors(groups: list[dict[str, Any]]) -> list[str]:
+    """The anchor a group had before groups carried an id: ``vg-<label slug>``, numbered by order among
+    the groups whose labels give the same slug. Kept for groups with no ``group_id`` (older data, a demo)
+    and by the migration that gave existing groups their ids (so no key, line or placement changed)."""
 
     seen: dict[str, int] = {}
-    out: list[tuple[str, dict[str, Any]]] = []
+    out: list[str] = []
     for group in groups:
         base = f"vg-{slug(vehicle_group_label(group))}"
         seen[base] = seen.get(base, 0) + 1
-        out.append((base if seen[base] == 1 else f"{base}-{seen[base]}", group))
+        out.append(base if seen[base] == 1 else f"{base}-{seen[base]}")
+    return out
+
+
+def vehicle_group_anchors(groups: list[dict[str, Any]]) -> list[tuple[str, dict[str, Any]]]:
+    """(anchor id, group) for each vehicle group in settings: the group's own ``group_id``, which the
+    server gave it when it was created and keeps through renames, removals and reordering. A group with no
+    ``group_id`` (data from before ids) takes its legacy anchor, moved on if an id already uses it."""
+
+    taken = {str(g["group_id"]) for g in groups if isinstance(g.get("group_id"), str) and GROUP_ID.match(g["group_id"])}
+    legacy = legacy_group_anchors(groups)
+    out: list[tuple[str, dict[str, Any]]] = []
+    for group, old in zip(groups, legacy, strict=True):
+        own = group.get("group_id")
+        if isinstance(own, str) and GROUP_ID.match(own):
+            out.append((own, group))
+            continue
+        anchor, n = old, 1
+        while anchor in taken:
+            n += 1
+            anchor = f"{old}-x{n}"
+        taken.add(anchor)
+        out.append((anchor, group))
+    return out
+
+
+def assign_group_ids(groups: list[dict[str, Any]], stored: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """The vehicle groups of a save, each with a ``group_id`` the server chose or kept.
+
+    A group keeps the id it already has when that id belongs to one of the engagement's stored groups
+    (so a rename, a reorder or a removal of another group changes nothing). A group that sends no id is
+    matched to a stored group that is the same in every field first, then (a changed name, or changed figures)
+    to the one stored group that differs only there, and otherwise is new; a match is never made when another
+    group of the save is as good a match, so a rename plus a reorder cannot swap ids. A group that sends an id the
+    engagement never had is new too, whatever the id says. A new group gets a fresh id, never the id of
+    a group that was removed.
+    """
+
+    stored = [g for g in stored or [] if isinstance(g, dict)]
+    stored_anchors = vehicle_group_anchors(stored)  # a group saved before ids is known by its legacy anchor
+    known = {anchor for anchor, _ in stored_anchors}
+    used: set[str] = set()
+    out: list[dict[str, Any]] = []
+    waiting: list[int] = []  # groups that sent no id: matched below (a group that sent an unknown id is new)
+    for group in groups:
+        given = group.get("group_id")
+        if isinstance(given, str) and given in known and given not in used:
+            used.add(given)
+            out.append(dict(group))
+        else:
+            out.append({k: v for k, v in group.items() if k != "group_id"})
+            if "group_id" not in group:
+                waiting.append(len(out) - 1)
+
+    def free() -> list[tuple[str, dict[str, Any]]]:
+        return [(a, g) for a, g in stored_anchors if a not in used]
+
+    def body(g: dict[str, Any], *drop: str) -> dict[str, Any]:
+        return {k: v for k, v in g.items() if k not in ("group_id", *drop)}
+
+    def claim(i: int, anchor: str) -> None:
+        used.add(anchor)
+        out[i]["group_id"] = anchor
+        waiting.remove(i)
+
+    # 1. a group the client sent back unchanged: the same in every field. Equal groups take their ids in order.
+    for i in list(waiting):
+        match = next((a for a, g in free() if body(g) == body(out[i])), None)
+        if match is not None:
+            claim(i, match)
+    # 2. a group whose name changed: the same in every other field as exactly one stored group, and no other group
+    #    of this save has that stored group's name now (a rename plus a reorder must not hand one group the id of the
+    #    group whose name it took).
+    refused: set[int] = set()  # turned down in step 2 because another group of the save has the stored group's name
+    for i in list(waiting):
+        same = [(a, g) for a, g in free() if body(g, "label") == body(out[i], "label")]
+        rivals = [j for j in waiting if body(out[j], "label") == body(out[i], "label")]
+        if len(same) == 1 and rivals == [i]:
+            anchor, stored_group = same[0]
+            if any(j != i and out[j].get("label") == stored_group.get("label") for j in range(len(out))):
+                refused.add(i)
+            else:
+                claim(i, anchor)
+    # 3. a group whose figures changed (distance, model year): the same fuel, vehicle type, fuel type and name as
+    #    exactly one stored group
+    key = ("fuel", "vehicle_type", "factor_fuel_type", "on_road", "label")
+    #    Not for a group step 2 refused, and not when the group's figures are another unmatched stored group's: two
+    #    groups that swapped names would otherwise trade ids, and their documents would land on each other's lines.
+    for i in list(waiting):
+        same = [(a, g) for a, g in free() if all(g.get(k) == out[i].get(k) for k in key)]
+        rivals = [j for j in waiting if all(out[j].get(k) == out[i].get(k) for k in key)]
+        figures_of_another = any(body(g, "label") == body(out[i], "label") and a not in {x for x, _ in same}
+                                 for a, g in free())
+        if len(same) == 1 and rivals == [i] and i not in refused and not figures_of_another:
+            claim(i, same[0][0])
+    taken = known | used
+    for group in out:
+        if "group_id" not in group:
+            group["group_id"] = new_group_id(taken)
+            taken.add(group["group_id"])
     return out
 
 
@@ -226,6 +341,12 @@ def _normalize_entry(entry: Any) -> dict[str, Any]:
         if isinstance(entry.get(name), str) and entry[name]:
             normal[name] = entry[name][:64]
     return normal
+
+
+def normalize_line(entry: Any) -> dict[str, Any]:
+    """One line entry checked and completed (``normalize_evidence_lines`` for a single line)."""
+
+    return _normalize_entry(entry)
 
 
 def normalize_evidence_lines(value: Any) -> list[dict[str, Any]]:
@@ -335,7 +456,7 @@ class RecordPlacement:
 
 def place_record(record: ReviewedRecord, *, ref: EmissionFactorReference, facilities: list[dict[str, Any]],
                  decisions: dict[str, dict[str, Any]], vehicle_groups: list[dict[str, Any]],
-                 fuel_choices: dict[str, str]) -> RecordPlacement:
+                 fuel_choices: dict[str, str], company: str | None = None) -> RecordPlacement:
     """The line a record belongs on, from what the backend already knows of it.
 
     The fuel is the EPA name the recalculation resolves (``fuel_choices`` included); a biomass
@@ -344,8 +465,7 @@ def place_record(record: ReviewedRecord, *, ref: EmissionFactorReference, facili
     """
 
     kind = record.canonical_type_id
-    facility = resolve_setup_facility(facilities, decisions, record.document_id,
-                                      record.best("facility_name"), record.best("service_address"))
+    facility = place_on_facility(facilities, decisions, record.document_id, record, company).facility
     facility_anchor = facility_anchor_id(facility) if facility else None
     if kind in (STATIONARY, MOBILE):
         source = "stationary" if kind == STATIONARY else "mobile"
@@ -486,6 +606,68 @@ def apply_placements(slots: list[Slot], overrides: Any, known_lines: set[str] | 
     return out
 
 
+MAX_PLACEMENT_MOVES = 200  # a document's saved chain of moves never grows past this
+
+
+def raw_filing(slots: list[Slot]) -> dict[str, frozenset[int]]:
+    """Where each place's records are, one entry per place, with no unknown line resolved to unassigned."""
+
+    return {s.target: frozenset(s.records) for s in merge_slots(slots)}
+
+
+def derive_placements(default: list[Slot], filing: list[Slot]) -> list[dict[str, str]] | None:
+    """The saved chain for a document, derived from where it is filed now, not from its history.
+
+    ``default`` is where the document's records go before any reviewer move, ``filing`` where they are
+    now (``apply_placements`` over the full chain, nothing resolved: a record parked on a line that no
+    longer exists is still on that line's key, so it returns there if the line comes back).
+    Records of one default slot always travel together, so the filing is a map from each default slot
+    to its current place. The chain is one move for each default slot that is not where it started, so
+    it never has more moves than the document has default slots, however many times it was moved.
+
+    The moves are ordered so a move out of a place runs before a move into it (``apply_placements``
+    moves everything that is in a place). Slots that swap places (A to B and B to A, which a reviewer
+    reaches through a third place) go through a free fixed place: A to the free place, B to A, the free
+    place to B. ``None`` when a default slot's records ended up in different places, or when a swap needs
+    a free place and all three fixed ones are taken: the caller then keeps the full chain.
+    """
+
+    where: dict[int, str] = {}
+    for slot in filing:
+        for record in slot.records:
+            where[record] = slot.target
+    pairs: list[tuple[str, str]] = []
+    for slot in default:
+        places = {where.get(record) for record in slot.records}
+        if len(places) != 1 or None in places:
+            return None
+        (place,) = places
+        if place != slot.target:
+            pairs.append((slot.target, str(place)))
+    used = {t for pair in pairs for t in pair} | {slot.target for slot in default} | set(where.values())
+    available = [t for t in (BLOCK_SUMMARY, BLOCK_UNASSIGNED, SUPPORTING_UNASSIGNED) if t not in used]
+    parked: set[str] = set()  # free places holding a parked slot until its last move runs
+    ordered: list[dict[str, str]] = []
+    while pairs:
+        ready = next((p for p in pairs if not any(q is not p and q[0] == p[1] for q in pairs)), None)
+        if ready is None:  # every pair waits on another: a cycle. Park one slot on a free place, finish it last.
+            if not available:  # each cycle needs a place of its own while it is parked
+                return None
+            free = available.pop(0)
+            parked.add(free)
+            ready = pairs[0]
+            pairs.remove(ready)
+            ordered.append({"from": ready[0], "to": free})
+            pairs.append((free, ready[1]))
+            continue
+        pairs.remove(ready)
+        ordered.append({"from": ready[0], "to": ready[1]})
+        if ready[0] in parked:  # the parked slot has landed: its place is free for the next cycle
+            parked.discard(ready[0])
+            available.append(ready[0])
+    return ordered
+
+
 def resolve_target(slot: Slot, known_lines: set[str]) -> Slot:
     """A slot that names a line that does not exist (deleted after documents moved to it, or
     never there) is filed under unassigned supporting evidence, flagged ``unknown_line``."""
@@ -562,20 +744,22 @@ def date_label(canonical_type_id: str | None) -> str:
 
 
 def facility_match(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]], document_id: str,
-                   record: ReviewedRecord) -> tuple[dict[str, Any], str] | None:
-    """The Setup facility of a record and how it was matched: the reviewer's choice, the
-    facility name, or the service address; None when nothing matches. Same order as
-    ``resolve_setup_facility`` (reviewer's choice, then name, then address), plus the reason."""
+                   record: ReviewedRecord, company: str | None = None) -> tuple[dict[str, Any], str] | None:
+    """The Setup facility of a record and how it was matched: the reviewer's choice, the facility name, the
+    service address, or (provisional) the account or meter number; None when nothing matches. It is the
+    same decision ``place_record`` makes (``place_on_facility``), with the reason."""
 
-    chosen = (decisions.get(document_id) or {}).get("facilityId")
-    for facility in facilities:
-        if chosen and facility.get("facilityId") == chosen:
-            return facility, "Chosen by the reviewer"
-    if (found := match_facility(record.best("facility_name"), None, facilities)) is not None:
-        return found, "Facility name in Setup"
-    if (found := match_facility(None, record.best("service_address"), facilities)) is not None:
-        return found, "Service address in Setup"
-    return None
+    placement = place_on_facility(facilities, decisions, document_id, record, company)
+    return (placement.facility, str(placement.how)) if placement.facility is not None else None
+
+
+def unplaced_note(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]], document_id: str,
+                  record: ReviewedRecord, company: str | None = None) -> str | None:
+    """Why a record with no Setup facility was not placed by its account or meter number, in a plain
+    sentence; None when it has a facility or its numbers say nothing."""
+
+    placement = place_on_facility(facilities, decisions, document_id, record, company)
+    return placement.note if placement.facility is None else None
 
 
 def quantity_field(record: ReviewedRecord) -> str | None:

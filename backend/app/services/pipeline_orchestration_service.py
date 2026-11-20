@@ -19,9 +19,15 @@ from backend.app.domain.pipeline import (
 from backend.app.repositories import s1_stores
 from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
 from backend.app.services.ai_extraction import AiExtraction
+from backend.app.services.ai_facility import AiFacility
 from backend.app.services.ai_routing import AiRouting, RoutingResult
 from backend.app.services.calculation_lines import SUMMARY_TYPES
-from backend.app.services.document_shape import NOT_EVIDENCE_MESSAGE, looks_like_a_note
+from backend.app.services.document_shape import (
+    CONTRACT_MESSAGE,
+    NOT_EVIDENCE_MESSAGE,
+    looks_like_a_contract,
+    looks_like_a_note,
+)
 from backend.app.services.approved_evidence_service import ApprovedEvidenceService
 from backend.app.services.classification_service import ClassificationService
 from backend.app.services.electricity_extractor import (
@@ -33,7 +39,7 @@ from backend.app.services.electricity_extractor import (
 from backend.app.services.extraction_service import ExtractionService
 from backend.app.services.thermal_extractor import CANONICAL_TYPE_ID as THERMAL_TYPE_ID
 from backend.app.services.thermal_extractor import ThermalExtractor
-from backend.app.services.extraction_target_service import ExtractionTargetService
+from backend.app.services.extraction_target_service import DISPLAY_ONLY_FIELDS, ExtractionTargetService
 from backend.app.adapters.parsers.email_parser import PARSER_NAME as EMAIL_PARSER_NAME
 from backend.app.adapters.parsers.email_reader import ENCRYPTED_EMAIL
 from backend.app.adapters.parsers.xls_parser import PASSWORD_PROTECTED
@@ -105,11 +111,14 @@ class PipelineOrchestrationService:
         id_factory: Callable[[str, str], str] | None = None,
         ai_routing: Any | None = None,
         ai_extraction: Any | None = None,
+        ai_facility: Any | None = None,
     ) -> None:
         # Claude routing (system 1): a no-op unless AI_SUGGESTIONS_ENABLED and the gate allow it.
         self._ai_routing = ai_routing or AiRouting()
         # Claude reading (system 2): fills what the rule extractors missed; a no-op unless the gate allows it.
         self._ai_extraction = ai_extraction or AiExtraction()
+        # Claude's facility suggestion for a bill that names none (EXT-026): a suggestion only, never a placement.
+        self._ai_facility = ai_facility or AiFacility()
         self._parser_service = parser_service or ParserService()
         self._classification_service = classification_service or ClassificationService()
 
@@ -443,6 +452,11 @@ class PipelineOrchestrationService:
                         reason = "names steam, hot water or chilled water and a thermal quantity."
                     elif confirmed == MOBFUEL_TYPE_ID:
                         reason = "names a combusted fuel and a quantity in a fuel unit with vehicle/fleet details."
+                    elif confirmed == FUELQTY_TYPE_ID and StationaryCombustionExtractor().reads_as_fuelless_run_log(
+                        parser_output
+                    ):
+                        reason = ("is a run log (run hours and fuel added) with a quantity in a fuel unit; "
+                                  "the fuel is left for the reviewer.")
                     else:
                         reason = "names a combusted fuel and a quantity in a fuel unit."
                     warnings.append(
@@ -493,6 +507,19 @@ class PipelineOrchestrationService:
                         warnings[:] = [w for w in warnings if w != halt_reason["message"]]
                     halt_reason = {"code": HALT_UNSUPPORTED, "message": NOT_EVIDENCE_MESSAGE}
                     warnings.append(NOT_EVIDENCE_MESSAGE)
+
+                # A contract or agreement (an electric service agreement, a supply contract) is not a bill either:
+                # it states terms, not quantities used. It is never typed as a fuel or electricity record.
+                if ((canonical_type_id is None or canonical_type_id in LAYOUT_EXTRACTOR_TYPE_IDS)
+                        and looks_like_a_contract(parser_output)):
+                    canonical_type_id = None
+                    canonical_type_source = "none"
+                    extraction_targets = []
+                    ai_routing = None
+                    if halt_reason is not None:
+                        warnings[:] = [w for w in warnings if w != halt_reason["message"]]
+                    halt_reason = {"code": HALT_UNSUPPORTED, "message": CONTRACT_MESSAGE}
+                    warnings.append(CONTRACT_MESSAGE)
 
                 if canonical_type_source in ("classifier", "content_check") and self._ai_routing.shadow:
                     # Shadow mode: Claude reads the document too, and may only disagree in a warning.
@@ -579,6 +606,12 @@ class PipelineOrchestrationService:
                     extraction_result = assist.result
                     warnings.extend(assist.warnings)
                     warnings.extend(str(note) for note in extraction_result.get("notes") or [])
+                    suggestion = self._ai_facility.suggest(
+                        parser_output=parser_output, extraction_result=extraction_result,
+                        canonical_type_id=canonical_type_id, file_name=resolved_file_name, org_id=org_id,
+                        engagement_id=engagement_id, document_id=resolved_document_id)
+                    if suggestion is not None:
+                        extraction_result = {**extraction_result, "facility_suggestion": suggestion.as_record()}
             else:
                 stage_statuses.candidate_generation = "skipped"
                 overall_status = "partial"
@@ -664,6 +697,9 @@ class PipelineOrchestrationService:
         return self._pipeline_repository.get_latest_by_evidence(evidence_id)
 
     def get_evidence_status(self, evidence_id: str) -> dict:
+        """Status of an evidence id. ``review_decision_count`` counts the stored decisions (the history,
+        including any a re-read made void); the approved fields come from the guarded projection."""
+
         latest_pipeline_run = self._pipeline_repository.get_latest_by_evidence(evidence_id)
         review_decisions = self._review_service.list_by_evidence(evidence_id)
         latest_approved_evidence = self._approved_evidence_service.get_latest_by_evidence(
@@ -719,7 +755,14 @@ class PipelineOrchestrationService:
         else:
             fuel_type = str(next(iter(fuel_leaders)))
         if PipelineOrchestrationService._fuel_cues_conflict(fuel_type, mobile, stationary):
-            return None
+            # A run log (run hours plus fuel added) is a generator's, whatever the classifier guessed: read it
+            # as stationary fuel use, as a confident classification already does. Any other mixed-cue document
+            # (for example a bulk diesel statement for a standby generator) stays untyped for the reviewer.
+            if fuel_type != MOBFUEL_TYPE_ID or not StationaryCombustionExtractor().reads_as_fuelless_run_log(
+                parser_output
+            ):
+                return None
+            fuel_type = FUELQTY_TYPE_ID
         extractor = StationaryCombustionExtractor() if fuel_type == FUELQTY_TYPE_ID else MobileCombustionExtractor()
         return fuel_type if extractor.confirms(parser_output) else None
 
@@ -909,6 +952,8 @@ class PipelineOrchestrationService:
                     "status": run.get("status"),
                     "candidate_count": int(extraction_result.get("candidate_count") or 0),
                     "items": copy.deepcopy(extraction_result.get("items") or []),
+                    **({"facility_suggestion": copy.deepcopy(extraction_result["facility_suggestion"])}
+                       if extraction_result.get("facility_suggestion") else {}),
                     "org_id": run.get("org_id"),
                     "created_at": run.get("completed_at") or run.get("created_at"),
                 }
@@ -918,6 +963,10 @@ class PipelineOrchestrationService:
     def list_extraction_results_by_document(self, document_id: str) -> list[dict]:
         """Every persisted extraction result for a document, oldest first."""
         return self._extraction_result_repository.list_by_document(document_id)
+
+    def list_extraction_results_by_evidence(self, evidence_id: str) -> list[dict]:
+        """Every persisted extraction result for an evidence id, oldest first."""
+        return self._extraction_result_repository.list_by_evidence(evidence_id)
 
     def _build_pipeline_run(
         self,
@@ -967,7 +1016,7 @@ class PipelineOrchestrationService:
             canonical_type_source=cast(CanonicalTypeSource, canonical_type_source),
             classification_status=classification_status,
             parser_status=parser_status,
-            target_count=len(extraction_targets),
+            target_count=len(self._expected_targets(extraction_targets, items)),
             candidate_count=candidate_count,
             found_candidate_count=found_candidate_count,
             missing_candidate_count=missing_candidate_count,
@@ -1008,6 +1057,16 @@ class PipelineOrchestrationService:
         if result.status == "ignored":
             return [f"ai_routing_ignored: {result.ignored_reason}"]
         return []
+
+    @staticmethod
+    def _expected_targets(extraction_targets: list[dict], items: list[Any]) -> list[dict]:
+        """The targets that count in "n of m fields": every one, except a display-only optional field (meter number,
+        statement date) the bill did not print."""
+
+        read = {str(i.get("field_name")) for i in items
+                if isinstance(i, dict) and i.get("normalized_value") is not None}
+        return [t for t in extraction_targets
+                if str(t.get("field_id")) not in DISPLAY_ONLY_FIELDS or str(t.get("field_id")) in read]
 
     @staticmethod
     def _candidate_has_value(candidate: Any) -> bool:

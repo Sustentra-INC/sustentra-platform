@@ -24,7 +24,7 @@ def field(field_id: str) -> dict:
 
 def test_catalog_has_every_field_with_a_valid_unique_key() -> None:
     ids = [f["field_id"] for f in m.CATALOG]
-    assert len(ids) == len(set(ids)) == 24
+    assert len(ids) == len(set(ids)) == 34
     assert all(ITEM_KEY.match(i) for i in ids)
     for expected in ("reporting_period", "consolidation_approach", "category:scope1:fugitive",
                      "category:location:cooling", "category:market:steam", "category:biogenic:indirect",
@@ -34,7 +34,7 @@ def test_catalog_has_every_field_with_a_valid_unique_key() -> None:
     assert {f["group"] for f in m.CATALOG} <= groups
     assert field("consolidation_approach")["allowed"] == ["Equity Share", "Financial Control", "Operational Control"]
     assert field("category:scope1:process")["allowed"] == ["Yes", "No", "Not detected"]
-    assert field("gwp")["allowed"] == {"set": ["AR4", "AR5", "AR6"], "horizon": ["100-year", "20-year"]}
+    assert field("gwp")["allowed"] == {"set": ["AR4", "AR5", "AR6"], "horizon": ["100-year", "20-year", "500-year"]}
     assert m.catalog_field("entity:abcd1234") is None
 
 
@@ -221,3 +221,198 @@ def test_an_old_text_value_has_a_value_and_survives_other_actions() -> None:
     assert m.public(old)["decision"]["value"] == "FY2024 (1 janvier – 31 décembre)"
     edited = m.edit(old, field("reporting_period"), {"start": "2024-01-01", "end": "2024-12-31"}, ACTOR, NOW)
     assert edited["decision"]["value"] == {"start": "2024-01-01", "end": "2024-12-31"}
+
+
+# --- GWP: the 500-year horizon, and one row per extra set --------------------------------------
+
+def test_the_500_year_horizon_is_allowed_and_nothing_else_is() -> None:
+    f = field("gwp")
+    assert m.validate_value(f, {"set": "AR6", "horizon": "500-year"}) == {"set": "AR6", "horizon": "500-year"}
+    for bad in ({"set": "AR6", "horizon": "50-year"}, {"set": "AR6", "horizon": "500"}, {"set": "AR7", "horizon": "500-year"}):
+        with pytest.raises(m.MethodologyInvalid):
+            m.validate_value(f, bad)
+
+
+def test_a_gwp_row_has_its_own_definition_and_a_blank_value() -> None:
+    row_id = m.new_row_id("gwp")
+    assert ITEM_KEY.match(row_id) and row_id.startswith("gwp:") and row_id != "gwp"
+    row = m.row_field(row_id)
+    assert row is not None and row["kind"] == "gwp" and row["group"] == "gwp" and row["user_added"] is True
+    assert row["allowed"]["horizon"] == ["100-year", "20-year", "500-year"] and row["allowed_labels"]["set"]["AR5"]
+    assert m.row_field("gwp") is None  # the fixed field is not a row
+    assert m.blank_value(row_id) == {"set": "", "horizon": ""}
+    with pytest.raises(m.MethodologyInvalid):
+        m.validate_value(row, m.blank_value(row_id))  # a blank set cannot be accepted as it is
+# --- estimation method: one entry per source type ---------------------------------------------
+
+def entry(source: str, method: str) -> dict[str, str]:
+    return {"source_type": source, "method": method}
+
+
+def test_the_estimation_method_is_an_optional_list_of_entries() -> None:
+    f = field("calculation:estimation")
+    assert f["kind"] == "entry_list" and f["required"] is False and f["group"] == "calculation"
+    assert [p["key"] for p in f["parts"]] == ["source_type", "method"]
+    good = [entry("  Utility invoices ", "Average of the other months"), entry("Fuel cards", "Prior-year use × 1,02")]
+    assert m.validate_value(f, good) == [entry("Utility invoices", "Average of the other months"),
+                                         entry("Fuel cards", "Prior-year use × 1,02")]
+    assert m.validate_value(f, []) == []  # removing every entry is allowed
+
+
+@pytest.mark.parametrize("bad", [
+    "text", None, {"a": 1},
+    [entry("Utility invoices", "a"), entry("  utility   INVOICES ", "b")],  # one entry per source type
+    [entry("", "a")], [entry("Fuel", "  ")],  # blank
+    [entry("x" * 61, "a")], [entry("Fuel", "x" * 301)],  # too long
+    [entry(f"Source {i}", "a") for i in range(11)],  # too many
+    [{"source_type": "Fuel"}], [{"source_type": "Fuel", "method": "a", "extra": "b"}], ["Fuel: average"],
+    [entry("Fuel", "a\x00b")], [entry("Fuel", 5)],
+])
+def test_a_bad_entry_list_is_refused_with_a_sentence(bad: object) -> None:
+    with pytest.raises(m.MethodologyInvalid) as error:
+        m.validate_value(field("calculation:estimation"), bad)
+    assert error.value.args[0].startswith("'Estimation method for missing data': ")
+
+
+def test_a_suggestion_keeps_the_quote_of_each_entry_bounded() -> None:
+    f = field("calculation:estimation")
+    ref = {"page_number": 3, "sheet_name": "S" * 300, "cell_or_range": "B12", "text_snippet": "s" * 500,
+           "bounding_box": {"x": 1}}
+    evidence = [{"label": f"Source {i}", "quote": "q" * 1500, "document_id": "d1", "file_name": "r.pdf",
+                 "source_reference": ref} for i in range(10)]
+    value = [entry(f"Source {i}", "Average") for i in range(10)]
+    bounded = m.bound_suggestion(f, {**SUGGESTION, "value": value, "evidence": evidence})
+    assert len(bounded["value"]) == len(bounded["evidence"]) and bounded["value"] == value[:len(bounded["value"])]
+    assert all(len(e["quote"]) == m.MAX_EVIDENCE_QUOTE and e["quote_truncated"] is True for e in bounded["evidence"])
+    assert all(set(e["source_reference"]) == {"page_number", "sheet_name", "cell_or_range"}
+               and len(e["source_reference"]["sheet_name"]) == 100 for e in bounded["evidence"])  # no snippet or box
+    assert m.payload_size({"e": bounded["evidence"]}) <= m.MAX_EVIDENCE_BYTES
+    assert bounded.get("entries_omitted", 0) == 10 - len(bounded["value"])
+    # a value entry whose quote did not come with it is never kept
+    short = m.bound_suggestion(f, {**SUGGESTION, "value": value[:3], "evidence": evidence[:1]})
+    assert short["value"] == value[:1] and short["entries_omitted"] == 2
+    with pytest.raises(m.MethodologyInvalid):
+        m.bound_suggestion(f, {**SUGGESTION, "value": value[:2], "evidence": ["junk", 5, None]})
+
+
+def test_ten_cjk_entries_with_long_quotes_never_leave_an_entry_without_its_quote() -> None:
+    f = field("calculation:estimation")
+    cjk = "\u71c3\u6599\u8bb0\u5f55" * 250  # 1,000 characters, three bytes each
+    value = [entry(f"\u71c3\u6599 {i}", "\u5e73\u5747" * 75) for i in range(10)]
+    evidence = [{"label": v["source_type"], "quote": cjk, "document_id": "d1", "file_name": "r.pdf",
+                 "source_reference": {"page_number": 1}} for v in value]
+    bounded = m.bound_suggestion(f, {**SUGGESTION, "value": value, "evidence": evidence})
+    kept = len(bounded["value"])
+    assert 1 <= kept < 10 and kept == len(bounded["evidence"]) and bounded["entries_omitted"] == 10 - kept
+    assert [v["source_type"] for v in bounded["value"]] == [e["label"] for e in bounded["evidence"]]
+    assert all(e["quote"] for e in bounded["evidence"])
+    # the record still fits with a decision of the same size on the same field
+    record = {**m.new_record(f["field_id"]), "suggestion": bounded,
+              "decision": {"status": "edited", "value": value, "by": {"name": "A", "login": "a"}, "at": "x"}}
+    assert m.payload_size(record) < 32 * 1024
+    ascii_value = [entry(f"Source {i}", "m" * 300) for i in range(10)]
+    ascii_ev = [{"label": v["source_type"], "quote": "q" * 1000, "document_id": "d1", "file_name": "r.pdf"} for v in ascii_value]
+    assert len(m.bound_suggestion(f, {**SUGGESTION, "value": ascii_value, "evidence": ascii_ev})["value"]) == 10
+
+
+# --- multi-select rows: Scope 2 instrument types, source records ------------------------------
+
+def pick(option: str, wording: str = "") -> dict[str, str]:
+    return {"option": option, "wording": wording}
+
+
+def test_the_two_multiselect_fields_have_their_options_and_are_optional() -> None:
+    instruments = field("scope2:instruments")
+    assert instruments["kind"] == "multiselect" and instruments["required"] is False and instruments["group"] == "scope2"
+    assert instruments["allowed"] == ["RECs or other energy attribute certificates", "PPA or VPPA",
+                                      "Green tariff or utility program", "Supplier-specific rate", "Residual mix", "None"]
+    assert instruments["shown_if_yes"] == [f"category:market:{k}" for k in ("electricity", "heating", "steam", "cooling")]
+    records = field("calculation:source_records")
+    assert records["free"] is True and records["required"] is False and "None" not in records["allowed"]
+
+
+def test_options_are_checked_against_the_list_and_keep_the_companys_wording() -> None:
+    f = field("scope2:instruments")
+    good = [pick("ppa or vppa", "  our PPA with W\u00e4rmewerke K\u00e4serei "), pick("Residual mix")]
+    assert m.validate_value(f, good) == [pick("PPA or VPPA", "our PPA with W\u00e4rmewerke K\u00e4serei"), pick("Residual mix")]
+    assert m.validate_value(f, [pick("None")]) == [pick("None")]
+    for bad in ([], [pick("Carbon offsets")], [pick("PPA or VPPA"), pick(" ppa  OR vppa ")], [pick("None"), pick("PPA or VPPA")],
+                [pick("PPA or VPPA", "x" * 201)], [pick("")], [{"option": "PPA or VPPA"}], ["PPA or VPPA"], "PPA or VPPA", None,
+                [pick("PPA or VPPA", "a\x00b")]):
+        with pytest.raises(m.MethodologyInvalid) as error:
+            m.validate_value(f, bad)
+        assert error.value.args[0].startswith("'Scope 2 instrument types (market-based)': ")
+
+
+def test_source_records_take_free_additions_up_to_a_limit() -> None:
+    f = field("calculation:source_records")
+    value = [pick("utility invoices"), pick("Lieferscheine \u2013 \u7eb8\u8d28\u8bb0\u5f55", "Papier-Belege"), pick("Meter readings")]
+    assert [e["option"] for e in m.validate_value(f, value)] == ["Utility invoices", "Lieferscheine \u2013 \u7eb8\u8d28\u8bb0\u5f55", "Meter readings"]
+    ten = [pick(f"Other {i}") for i in range(m.MAX_FREE_OPTIONS)]
+    assert len(m.validate_value(f, ten)) == 10
+    with pytest.raises(m.MethodologyInvalid):
+        m.validate_value(f, [*ten, pick("Other 10")])
+    with pytest.raises(m.MethodologyInvalid):
+        m.validate_value(f, [pick("Other"), pick("OTHER")])  # a free option twice
+    with pytest.raises(m.MethodologyInvalid):
+        m.validate_value(f, [pick("o" * 61)])
+
+
+def rec(field_id: str, value: object, status: str = "accepted") -> dict:
+    return {"field_id": field_id, "suggestion": None, "history": [],
+            "decision": {"status": status, "value": value, "by": {}, "at": "x"}}
+
+
+def test_market_based_scope2_is_reported_when_a_market_category_is_yes() -> None:
+    market = m.MARKET_CATEGORY_IDS
+    sugg = {"field_id": market[1], "decision": None, "history": [], "suggestion": {"value": "Yes"}}
+    assert not m.market_based_reported({})
+    assert m.market_based_reported({market[0]: rec(market[0], "Yes")})
+    assert m.market_based_reported({market[2]: rec(market[2], "Yes", "edited")})
+    assert m.market_based_reported({market[1]: sugg})  # undecided, Claude said Yes
+    assert not m.market_based_reported({market[0]: rec(market[0], "No")})
+    assert not m.market_based_reported({market[0]: rec(market[0], "Not detected")})
+    assert not m.market_based_reported({market[0]: rec(market[0], None, "rejected")})
+    assert not m.market_based_reported({market[1]: {**sugg, "decision": rec(market[1], "No")["decision"]}})  # decided No beats a Yes suggestion
+    assert not m.market_based_reported({market[1]: {**sugg, "decision": rec(market[1], None, "rejected")["decision"]}})
+
+
+def test_the_instrument_row_shows_on_a_market_yes_and_a_value_or_add_an_item_overrides_it() -> None:
+    f = field("scope2:instruments")
+    blank = m.new_record(f["field_id"])
+    meta = m.new_meta()
+    market = m.MARKET_CATEGORY_IDS
+    assert not m.is_shown(f, blank, meta, {})
+    assert m.is_shown(f, blank, meta, {market[0]: rec(market[0], "Yes")})
+    assert m.is_shown(f, rec(f["field_id"], [pick("None")]), meta, {})  # it has a value
+    assert m.is_shown(f, blank, {**meta, "revealed": [f["field_id"]]}, {})  # the reviewer added it
+    assert not m.is_shown(field("calculation:source_records"), blank, meta, {market[0]: rec(market[0], "Yes")})
+
+
+def test_an_empty_selection_is_refused_and_none_is_not_a_free_option() -> None:
+    instruments = field("scope2:instruments")
+    with pytest.raises(m.MethodologyInvalid, match="or None if there are none"):
+        m.validate_value(instruments, [])
+    records = field("calculation:source_records")
+    with pytest.raises(m.MethodologyInvalid, match="reject this row"):
+        m.validate_value(records, [])
+    for text in ("none", "NONE", "  None ", "no\u006ee"):
+        with pytest.raises(m.MethodologyInvalid, match="'None' can't be added"):
+            m.validate_value(records, [pick(text)])
+    # a free option that is a listed option, in any case or spacing, selects the listed one
+    assert m.validate_value(records, [pick(" METER   readings ")]) == [pick("Meter readings")]
+    with pytest.raises(m.MethodologyInvalid, match="chosen twice"):
+        m.validate_value(records, [pick("Meter readings"), pick("meter READINGS")])
+
+
+def test_a_conditional_row_shown_only_by_claudes_suggestion_says_so() -> None:
+    f = field("scope2:instruments")
+    meta = m.new_meta()
+    market = m.MARKET_CATEGORY_IDS
+    claude_only = {**m.new_record(f["field_id"]), "suggestion": {"value": [pick("PPA or VPPA")]}}
+    note = m.shown_note(f, claude_only, meta, {})
+    assert note == "Shown because Claude found it, although no market-based category is Yes."
+    assert m.shown_note(f, claude_only, meta, {market[0]: rec(market[0], "Yes")}) is None  # the condition holds
+    assert m.shown_note(f, {**claude_only, "decision": rec(f["field_id"], [pick("None")])["decision"]}, meta, {}) is None
+    assert m.shown_note(f, claude_only, {**meta, "revealed": [f["field_id"]]}, {}) is None  # the reviewer added it
+    assert m.shown_note(field("calculation:source_records"), claude_only, meta, {}) is None

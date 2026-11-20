@@ -28,7 +28,7 @@ def doc(lines: list[tuple[int, str]] = REPORT, alias: str = "D1", document_id: s
 
 
 def answer(**lists: Any) -> mp.PrefillOutput:
-    empty: dict[str, Any] = {"choices": [], "texts": [], "periods": [], "gwp": [], "entities": [], "factors": []}
+    empty: dict[str, Any] = {"choices": [], "gases": [], "texts": [], "estimations": [], "selections": [], "periods": [], "gwp": [], "entities": [], "factors": []}
     return mp.PrefillOutput.model_validate({**empty, **lists})
 
 
@@ -105,7 +105,7 @@ def test_the_schema_refuses_a_field_outside_the_catalog() -> None:
 def test_a_factor_source_and_gwp_are_kept_and_an_unprinted_edition_is_dropped() -> None:
     factor = {"scope": "scope1", "database": "U.S. EPA GHG Emission Factors Hub", **cite("L6", "EPA GHG Emission Factors Hub, 2024 edition")}
     kept, dropped = check(answer(factors=[{**factor, "edition": "2024"}],
-                                 gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "IPCC Fifth Assessment Report (AR5)")}]))
+                                 gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "IPCC Fifth Assessment Report (AR5) 100-year")}]))
     assert not dropped
     assert {(k.row_group, k.field_id) for k in kept} == {("factor:scope1", None), (None, "gwp")}
     kept, dropped = check(answer(factors=[{**factor, "edition": "2019"}]))
@@ -244,8 +244,10 @@ def test_a_quote_must_name_the_choice_and_be_long_enough() -> None:
     assert kept == [] and dict(dropped) == {"value_not_in_quote": 2}
     kept, dropped = check(answer(texts=[{"field_id": "exclusion:boundary", "value": "2024", **cite("L3", "2024.")}]))
     assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}  # under 8 characters
-    kept, _ = check(answer(gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "Fifth Assessment Report")}]))
-    assert len(kept) == 1  # a synonym of the set is enough
+    kept, dropped = check(answer(gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "Fifth Assessment Report")}]))
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # the set is named, the horizon is not
+    kept, _ = check(answer(gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "Fifth Assessment Report (AR5) 100-year")}]))
+    assert len(kept) == 1
 
 
 def test_set_aside_documents_are_not_candidates() -> None:
@@ -324,3 +326,270 @@ def test_ambiguous_numeric_dates_are_read_month_first() -> None:
     assert mp.dates_in("13/4/2025") == {date(2025, 4, 13)}
     assert mp.dates_in("31 April 2025") == set()  # no such day
     assert mp.dates_in("٢٠٢٥-01-01 CO₂ 2025-01-01") == {date(2025, 1, 1)}
+
+
+# --- GWP: every set the report names, the 500-year horizon ------------------------------------
+
+GWP_REPORT = [
+    (1, "Scope 1 uses the IPCC Fifth Assessment Report (AR5) 100-year GWP values."),
+    (1, "Scope 2 uses AR6 with a 20-year horizon; a 500-year horizon (AR4) is shown for comparison."),
+    (1, "AR5 results are shown for 20-year and 100-year horizons; AR50 and a 120-year horizon are not used."),
+]
+
+
+def gwp_item(set_: str, horizon: str, quote: str, line: str) -> dict[str, str]:
+    return {"set": set_, "horizon": horizon, **cite(line, quote)}
+
+
+def test_the_first_set_is_the_fixed_field_and_every_other_set_is_a_row() -> None:
+    kept, dropped = check(answer(gwp=[
+        gwp_item("AR5", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),
+        gwp_item("AR6", "20-year", "AR6 with a 20-year horizon", "L2"),
+        gwp_item("AR4", "500-year", "a 500-year horizon (AR4)", "L2")]), [doc(GWP_REPORT)])
+    assert dict(dropped) == {}
+    assert [(k.field_id, k.row_group) for k in kept] == [("gwp", None), (None, "gwp"), (None, "gwp")]
+    assert [k.suggestion["value"] for k in kept] == [
+        {"set": "AR5", "horizon": "100-year"}, {"set": "AR6", "horizon": "20-year"}, {"set": "AR4", "horizon": "500-year"}]
+
+
+def test_a_repeated_set_and_horizon_is_dropped_but_the_same_set_with_another_horizon_is_kept() -> None:
+    kept, dropped = check(answer(gwp=[
+        gwp_item("AR5", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),
+        gwp_item("AR5", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),
+        gwp_item("AR5", "20-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),  # the quote says 100-year
+        gwp_item("AR5", "20-year", "AR5 results are shown for 20-year", "L3")]), [doc(GWP_REPORT)])
+    assert [k.suggestion["value"]["horizon"] for k in kept] == ["100-year", "20-year"]
+    assert dict(dropped) == {"duplicate_entry": 1, "value_not_in_quote": 1}
+
+
+def test_a_set_the_quote_does_not_name_is_dropped_and_the_next_one_becomes_the_fixed_field() -> None:
+    kept, dropped = check(answer(gwp=[
+        gwp_item("AR6", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),  # names AR5, not AR6
+        gwp_item("AR5", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1")]), [doc(GWP_REPORT)])
+    assert dict(dropped) == {"value_not_in_quote": 1} and [(k.field_id, k.row_group) for k in kept] == [("gwp", None)]
+
+
+def test_the_schema_takes_the_500_year_horizon_and_no_other() -> None:
+    answer(gwp=[gwp_item("AR6", "500-year", "a 500-year horizon (AR4)", "L2")])
+    with pytest.raises(ValueError):
+        answer(gwp=[gwp_item("AR6", "50-year", "a 500-year horizon (AR4)", "L2")])
+
+
+def test_the_set_and_the_horizon_are_whole_tokens_in_the_quote() -> None:
+    for set_, horizon, quote in (("AR5", "100-year", "AR50 results use a 100-year horizon"),  # AR50 is not AR5
+                                 ("AR5", "20-year", "AR5 results are shown for 120-year horizons"),  # 120 is not 20
+                                 ("AR5", "100-year", "AR5 uses a 1100-year horizon")):
+        kept, dropped = check(answer(gwp=[gwp_item(set_, horizon, quote, "L1")]), [doc([(1, quote)])])
+        assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}, quote
+    for horizon, quote in (("20-year", "AR5 with a 20 year horizon"), ("20-year", "AR5, 20-yr GWP"), ("500-year", "AR5 over 500 years"),
+                           ("100-year", "AR5 hundred-year values")):
+        kept, dropped = check(answer(gwp=[gwp_item("AR5", horizon, quote, "L1")]), [doc([(1, quote)])])
+        assert len(kept) == 1 and not dropped, quote
+# --- estimation method: a list suggestion with a quote per entry -------------------------------
+
+def entry(source: str, method: str) -> dict[str, str]:
+    return {"source_type": source, "method": method}
+
+
+EST_REPORT = [
+    (1, "Missing utility invoices are estimated from the average of the adjacent months."),
+    (1, "Where Käserei fuel cards have gaps, prior-year consumption is used (燃料)."),
+    (1, "Meter readings are never estimated."),
+]
+
+
+def estimate(source: str, method: str, quote: str, line: str) -> dict[str, str]:
+    return {"source_type": source, "method": method, **cite(line, quote)}
+
+
+def test_each_estimation_entry_keeps_its_own_quote_in_one_suggestion() -> None:
+    kept, dropped = check(answer(estimations=[
+        estimate("Utility invoices", "Average of adjacent months", "Missing utility invoices are estimated", "L1"),
+        estimate("Fuel cards", "Prior-year consumption", "fuel cards have gaps, prior-year consumption is used (燃料)", "L2")]), [doc(EST_REPORT)])
+    assert dict(dropped) == {} and [k.field_id for k in kept] == ["calculation:estimation"]
+    [item] = kept
+    assert item.suggestion["value"] == [entry("Utility invoices", "Average of adjacent months"),
+                                        entry("Fuel cards", "Prior-year consumption")]
+    assert [e["label"] for e in item.suggestion["evidence"]] == ["Utility invoices", "Fuel cards"]
+    assert "燃料" in item.suggestion["evidence"][1]["quote"] and item.suggestion["document_id"] == "DOC-1"
+
+
+def test_one_bad_entry_is_dropped_and_the_others_stand() -> None:
+    kept, dropped = check(answer(estimations=[
+        estimate("Utility invoices", "Average", "Missing utility invoices are estimated", "L1"),
+        estimate("Fuel cards", "Average", "this sentence is not in the document at all", "L2"),  # not on the page
+        estimate("Meter readings", "x" * 301, "Meter readings are never estimated", "L3"),  # too long
+        estimate("Fuel cards", "Use zero", "Missing utility invoices are estimated", "L1"),  # the quote is about something else
+        estimate("utility INVOICES", "Other", "Missing utility invoices are estimated", "L1")]), [doc(EST_REPORT)])
+    assert [e["label"] for e in kept[0].suggestion["evidence"]] == ["Utility invoices"]
+    assert dict(dropped) == {"quote_not_on_document": 1, "invalid_value": 1, "value_not_in_quote": 1, "duplicate_entry": 1}
+
+
+def test_no_entry_that_holds_up_means_no_suggestion_and_more_than_ten_are_capped() -> None:
+    kept, dropped = check(answer(estimations=[estimate("Fuel", "a", "not on the page anywhere", "L1")]), [doc(EST_REPORT)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
+    line = "Gaps for " + ", ".join(f"source type {i}" for i in range(12)) + " are filled the same way."
+    many = [estimate(f"source type {i}", "Average", line, "L1") for i in range(12)]
+    kept, dropped = check(answer(estimations=many), [doc([(1, line)])])
+    assert len(kept[0].suggestion["value"]) == 10 and dict(dropped) == {"too_many_entries": 2}
+
+
+# --- multi-select: a quote per selected option -------------------------------------------------
+
+SEL_REPORT = [
+    (1, "We buy RECs for our Tualatin Plant and have a PPA with W\u00e4rmewerke K\u00e4serei for steam."),
+    (1, "Figures come from utility invoices and fuel card statements."),
+    (1, "Our residual mix factor is used for the rest."),
+]
+
+
+def selection(field_id: str, option: str, quote: str, line: str, wording: str = "") -> dict[str, str]:
+    return {"field_id": field_id, "option": option, "wording": wording, **cite(line, quote)}
+
+
+def test_each_selected_option_keeps_its_own_quote_and_wording() -> None:
+    kept, dropped = check(answer(selections=[
+        selection("scope2:instruments", "RECs or other energy attribute certificates", "We buy RECs", "L1", "We buy RECs"),
+        selection("scope2:instruments", "PPA or VPPA", "a PPA with W\u00e4rmewerke K\u00e4serei", "L1", "a PPA with W\u00e4rmewerke K\u00e4serei"),
+        selection("scope2:instruments", "Residual mix", "residual mix factor is used", "L3", "invented words")]), [doc(SEL_REPORT)])
+    assert dict(dropped) == {} and [k.field_id for k in kept] == ["scope2:instruments"]
+    [item] = kept
+    assert item.suggestion["value"] == [
+        {"option": "RECs or other energy attribute certificates", "wording": "We buy RECs"},
+        {"option": "PPA or VPPA", "wording": "a PPA with W\u00e4rmewerke K\u00e4serei"},
+        {"option": "Residual mix", "wording": ""}]  # wording that is not in the quote is not kept
+    assert [e["label"] for e in item.suggestion["evidence"]] == [v["option"] for v in item.suggestion["value"]]
+
+
+def test_an_option_the_quote_does_not_name_or_that_is_not_listed_is_dropped_alone() -> None:
+    kept, dropped = check(answer(selections=[
+        selection("calculation:source_records", "Utility invoices", "utility invoices and fuel card statements", "L2"),
+        selection("calculation:source_records", "Meter readings", "utility invoices and fuel card statements", "L2"),  # not named
+        selection("calculation:source_records", "Fuel cards", "this sentence is not in the document", "L2"),  # not on the page
+        selection("calculation:source_records", "Carbon offsets", "utility invoices and fuel card statements", "L2"),  # not listed
+        selection("scope2:instruments", "None", "residual mix factor is used", "L3")]), [doc(SEL_REPORT)])
+    assert [v["option"] for v in kept[0].suggestion["value"]] == ["Utility invoices"]
+    assert dict(dropped) == {"value_not_in_quote": 1, "quote_not_on_document": 1, "invalid_value": 2}
+
+
+def test_the_selection_schema_only_knows_the_multiselect_fields() -> None:
+    with pytest.raises(ValueError):
+        answer(selections=[selection("exclusion:boundary", "Utility invoices", "utility invoices", "L2")])
+    with pytest.raises(ValueError):
+        answer(choices=[{"field_id": "scope2:instruments", "value": "Yes", **cite("L1", "We buy RECs")}])
+
+
+# --- option names are whole words or phrases, and a negated mention is not a selection ------------
+
+def test_an_option_is_named_by_whole_words_not_by_a_piece_of_another_word() -> None:
+    for option, field_id, line in (
+            ("RECs or other energy attribute certificates", "scope2:instruments", "Our records are reconciled each quarter."),
+            ("RECs or other energy attribute certificates", "scope2:instruments", "We check each site every month."),  # "each" holds "eac"
+            ("RECs or other energy attribute certificates", "scope2:instruments", "The directory records the receipts."),
+            ("Lease agreements", "calculation:source_records", "Please release the report after the review."),
+            ("Lease agreements", "calculation:source_records", "The leaseholder is named in the file."),
+            ("PPA or VPPA", "scope2:instruments", "The happa festival is held in May."),
+            ("Fuel cards", "calculation:source_records", "Our fuel cardholders are listed.")):
+        kept, dropped = check(answer(selections=[selection(field_id, option, line.rstrip("."), "L1")]), [doc([(1, line)])])
+        assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}, line
+
+
+def test_whole_terms_and_their_plurals_are_still_named() -> None:
+    for option, field_id, line in (
+            ("RECs or other energy attribute certificates", "scope2:instruments", "We buy RECs for the plant."),
+            ("RECs or other energy attribute certificates", "scope2:instruments", "Each REC is retired in the registry."),
+            ("RECs or other energy attribute certificates", "scope2:instruments", "Renewable energy certificates (EACs) are used."),
+            ("RECs or other energy attribute certificates", "scope2:instruments", "We retire renewable energy credits each year."),
+            ("RECs or other energy attribute certificates", "scope2:instruments", "A Renewable Energy Credit is bought per MWh."),
+            ("PPA or VPPA", "scope2:instruments", "The plant has a virtual power purchase agreement (VPPA)."),
+            ("Lease agreements", "calculation:source_records", "Figures come from lease agreements."),
+            ("Fuel cards", "calculation:source_records", "Fuel cards are the source of fuel use."),
+            ("Landlord reports", "calculation:source_records", "Landlord reports give the shared energy use.")):
+        kept, dropped = check(answer(selections=[selection(field_id, option, line.rstrip("."), "L1")]), [doc([(1, line)])])
+        assert len(kept) == 1 and not dropped, line
+
+
+def test_a_negated_mention_is_dropped_and_counted_but_a_far_away_negation_is_not() -> None:
+    for line in ("We do not buy RECs for any site.", "No PPA is in place.", "The company has never used RECs.",
+                 "Sites without a PPA use the grid mix.", "We don't hold any RECs."):
+        kept, dropped = check(answer(selections=[selection(
+            "scope2:instruments", "PPA or VPPA" if "PPA" in line else "RECs or other energy attribute certificates",
+            line.rstrip("."), "L1")]), [doc([(1, line)])])
+        assert kept == [] and dict(dropped) == {"negated": 1}, line
+    far = "Not all of our many sites are covered, but the Tualatin plant does buy RECs."  # "not" is more than 5 words back
+    kept, dropped = check(answer(selections=[selection(
+        "scope2:instruments", "RECs or other energy attribute certificates", far.rstrip("."), "L1")]), [doc([(1, far)])])
+    assert len(kept) == 1 and not dropped
+    both = "We do not buy PPAs, but we do buy RECs."  # the RECs mention is far enough from "not"
+    kept, dropped = check(answer(selections=[
+        selection("scope2:instruments", "PPA or VPPA", both.rstrip("."), "L1"),
+        selection("scope2:instruments", "RECs or other energy attribute certificates", both.rstrip("."), "L1")]), [doc([(1, both)])])
+    assert [v["option"] for v in kept[0].suggestion["value"]] == ["RECs or other energy attribute certificates"]
+    assert dict(dropped) == {"negated": 1}
+# --- gases: their own value set, the gas named in the quote ----------------------------------
+
+def gas(field_id: str, value: str, quote: str, line: str = "L1") -> dict[str, str]:
+    return {"field_id": field_id, "value": value, **cite(line, quote)}
+
+
+GAS_REPORT = [
+    (1, "The inventory covers CO₂, CH₄ and N₂O."),
+    (1, "HFCs, PFCs and sulfur hexafluoride (SF6) are not emitted at our sites."),
+    (1, "Nitrogen trifluoride is not applicable to a cannery."),
+]
+
+
+def test_a_gas_is_kept_with_its_own_values_when_the_quote_names_it() -> None:
+    kept, dropped = check(answer(gases=[
+        gas("gas:co2", "Included", "covers CO₂, CH₄"),
+        gas("gas:ch4", "Included", "covers CO₂, CH₄"),
+        gas("gas:hfcs", "Declared absent", "HFCs, PFCs and sulfur hexafluoride (SF6) are not emitted", "L2"),
+        gas("gas:nf3", "Declared absent", "Nitrogen trifluoride is not applicable", "L3")]), [doc(GAS_REPORT)])
+    assert dict(dropped) == {} and [k.field_id for k in kept] == ["gas:co2", "gas:ch4", "gas:hfcs", "gas:nf3"]
+    assert {k.suggestion["value"] for k in kept} == {"Included", "Declared absent"}
+
+
+def test_a_gas_not_named_in_the_quote_is_dropped() -> None:
+    kept, dropped = check(answer(gases=[gas("gas:sf6", "Included", "covers CO₂, CH₄")]), [doc(GAS_REPORT)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+def test_the_gas_values_are_separate_from_the_category_values() -> None:
+    for bad in ("Yes", "Not detected", "Not mentioned"):  # Claude may only say Included or Declared absent
+        with pytest.raises(ValueError):
+            answer(gases=[gas("gas:co2", bad, "covers CO₂, CH₄")])
+    with pytest.raises(ValueError):  # a gas is not a choice field
+        answer(choices=[{"field_id": "gas:co2", "value": "Yes", **cite("L1", "covers CO₂, CH₄")}])
+    with pytest.raises(ValueError):  # and a category does not take a gas value
+        answer(choices=[{"field_id": "category:scope1:mobile", "value": "Included", **cite("L1", "covers CO₂")}])
+
+
+def test_gwp_horizon_shorthand_is_read_as_a_whole_token() -> None:
+    for horizon, quote in (("100-year", "AR5 GWP100 values"), ("100-year", "AR5 GWP-100 values"), ("100-year", "AR5 GWP 100 values"),
+                           ("20-year", "AR6 GWP20"), ("500-year", "AR6 gwp-500 for comparison")):
+        set_ = "AR5" if "AR5" in quote else "AR6"
+        kept, dropped = check(answer(gwp=[gwp_item(set_, horizon, quote, "L1")]), [doc([(1, quote)])])
+        assert len(kept) == 1 and not dropped, quote
+    kept, dropped = check(answer(gwp=[gwp_item("AR5", "100-year", "AR5 GWP 1000 values", "L1")]), [doc([(1, "AR5 GWP 1000 values")])])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+def test_a_quote_with_two_sets_and_two_horizons_pairs_each_set_with_the_horizon_next_to_it() -> None:
+    line = "We report AR5 over 100-year and AR6 over 20-year horizons."
+    right = [gwp_item("AR5", "100-year", line.rstrip("."), "L1"), gwp_item("AR6", "20-year", line.rstrip("."), "L1")]
+    kept, dropped = check(answer(gwp=right), [doc([(1, line)])])
+    assert [k.suggestion["value"] for k in kept] == [{"set": "AR5", "horizon": "100-year"}, {"set": "AR6", "horizon": "20-year"}]
+    assert not dropped
+    swapped = [gwp_item("AR5", "20-year", line.rstrip("."), "L1"), gwp_item("AR6", "100-year", line.rstrip("."), "L1")]
+    kept, dropped = check(answer(gwp=swapped), [doc([(1, line)])])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 2}  # the horizon belongs to the other set
+    # one set in the quote: any horizon in it belongs to that set
+    kept, _ = check(answer(gwp=[gwp_item("AR5", "20-year", "AR5 results are shown for 20-year", "L3")]), [doc(GWP_REPORT)])
+    assert len(kept) == 1
+
+
+def test_a_negated_renewable_energy_credit_is_dropped() -> None:
+    line = "We do not buy renewable energy credits."
+    kept, dropped = check(answer(selections=[selection(
+        "scope2:instruments", "RECs or other energy attribute certificates", line.rstrip("."), "L1")]), [doc([(1, line)])])
+    assert kept == [] and dict(dropped) == {"negated": 1}

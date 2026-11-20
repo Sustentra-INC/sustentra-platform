@@ -72,6 +72,35 @@ then), `ai_disagrees` (the rules read the value; Claude read another, in the opt
 `ai_alternative {value, unit, source_reference}`; the value is unchanged) and `ai_conflict`
 (Claude read two different values for the field; each is a candidate). `warnings` may carry
 `ai_extraction: ...` (counts, dropped reasons, cost), `ai_pages_skipped` and `ai_time_budget`.
+
+What a bill says about itself (EXT-025, `services/bill_notes.py`; the rule readers for fuel, electricity and steam
+bills). Neither changes a value:
+
+- `estimated_read`: a `validation_flags` entry on the `activity_quantity` candidate when the bill says a read was
+  estimated: a sentence ("This bill is based on an ESTIMATED read", "usage was estimated"), an "ESTIMATED READ"
+  heading, or a read-type column ("Read Type: Estimated / Estimate / EST"; "E", "E" in a "Read" or "Reading"
+  column, or "853,925 (E)", each only with a legend "E = Estimated read"). A legend alone, "not estimated", fees
+  ("Estimated Read Fee: $5.00"), conditions ("if we estimate your read"), dates and "not applicable" do not
+  flag. In a multi-meter bill only the estimated meter's quantity is flagged. The review screen words it
+  "Estimated read".
+- `supersedes_reference`: an extra candidate (label "Replaces an earlier bill") on each record of a bill that is
+  headed "REVISED STATEMENT" / "CORRECTED BILL" or has a sentence that starts "This bill/statement replaces,
+  corrects or supersedes ..." Boilerplate that only mentions a correction does not count. Its value is the earlier
+  bill's number or date as printed ("04/04/2025", "INV-2025-889"), or `revised` when it gives none; its
+  `source_reference.reference_key` is that reference as a key (a date as ISO, a number upper-cased). Every bill
+  also keeps its own statement date (ISO) and invoice or statement number in
+  `source_reference.bill_ids` of its `activity_quantity` candidate (no extra value to review).
+- Data quality (`quality_checks`, Q-003) then carries a `revised_bill_replaces_earlier` finding (severity `review`)
+  when an earlier bill (the same source, account or facility, the same days, and not itself a revision) is also in
+  the engagement. When the revised bill printed a date or number, only the bill whose `bill_ids` hold it counts;
+  no match, no finding. One candidate gives `detail {suggestion: "mark_superseded", original_document_id,
+  reference}`; several give `{suggestion: "mark_which", candidates, reference}` and name none. It is a suggestion:
+  nothing is marked superseded until the reviewer does it on the Evidence screen. A pair matched by a printed
+  reference is not also reported as an overlap (Q-004); a `revised` bill with no reference keeps the overlap
+  finding.
+- Account labels read for `account_number` now include "Customer No.", "Cust. No.", "Acct:" (also inline after
+  other text) and similar. "Client ID" and "Customer ID" (CRM references) are not read. An account is never read
+  from an email subject line or prose, and a value that is a phone number or longer than three words is rejected.
 Extraction config rows may set `ai_only` (read by Claude only).
 
 ### GET /v1/processing-runs/{run_id}
@@ -121,9 +150,17 @@ engagement's. Answers:
   and the `POST` answers): for a halt `error_code` it is the plain sentence, not the pipeline's text. The 422
   from the older `POST /v1/pipeline/process` says the plain sentence too; `password_protected` and
   `document_too_long` keep their own sentence there (it says what to ask the client for, or the page counts).
-- Still returned raw, as the pipeline run record: `pipeline_run.halt_reason.message` and `warnings` on the
-  `/v1/pipeline/...` run endpoints and `halt_reason` in `GET .../extraction-result/latest`. They can name an
-  internal type id or a score; clients use `halt_reason.code` there and must not show the message.
+- Every other answer that carries a pipeline run is plain too: `GET /v1/pipeline/runs/{id}`,
+  `GET /v1/pipeline/evidence/{evidence_id}/latest-run`, `latest_pipeline_run` in
+  `GET /v1/pipeline/evidence/{evidence_id}/status`, and `pipeline_run` (and `extraction_result.halt_reason`) in the
+  answers of `POST /v1/documents/{id}/pipeline/process` and the local dev tool. `halt_reason` is
+  `{code, message}` with the plain sentence for the code (an unmapped code gets "Reading stopped. Try uploading the
+  file again."). Each entry of `warnings` and `errors` keeps its code as a prefix (`pages_unread:`,
+  `ai_type_disagrees:`, `type_corrected:`, `no_type:`, `pipeline_failed:` ...) and says a plain sentence: no type
+  id, classifier score, parser output, exception text or Claude cost. The stored run record keeps the pipeline's own
+  text. `GET .../extraction-result/latest` never carried the halt (its answer is the candidates and `status`).
+  Still in the debug payloads of `POST .../pipeline/process` (not sentences): `classification_result` (scores, matched
+  type ids) and `parser_output`; clients must not show them.
 - `totals`: `{queued, reading, done, partial, failed, not_started}`.
 - `complete`: `true` when nothing is queued or reading. Clients poll (every 3 s) until it is `true`.
 
@@ -151,10 +188,10 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     value, reason?, by: {name, login}, at}`; a rejected decision has `value: null`. `history` is
     `[{at, by, action, to?}]` (the newest 50 events, fewer if the record would pass 32 KB; the audit log keeps the
     full trail), `action` one of accept, edit, reject, revert, add_row, remove_row.
-  - `catalog`: `{field_id, group, group_label, label, kind: text|enum|entity|factor|gwp|date_range, allowed?, parts?, user_added}`, in page order: the fixed
+  - `catalog`: `{field_id, group, group_label, label, kind: text|enum|entity|factor|gwp|date_range|entry_list|multiselect, allowed?, free?, shown_if_yes?, parts?, user_added}`, in page order: the fixed
     fields (reporting_period, consolidation_approach, `category:{scope1|location|market|biogenic}:...`,
-    `boundary:{acquisitions|leased_space}` (text, `required: false`: hidden until a value or "Add an item"), `exclusion:{boundary|inventory|materiality}`, gwp, `calculation:{approach|process}`), then the rows the
-    reviewer added. `allowed` is a list for an enum, `{set, horizon}` for gwp (with `allowed_labels.set`),
+    `boundary:{acquisitions|leased_space}` (text, `required: false`: hidden until a value or "Add an item"), `gas:{co2|ch4|n2o|hfcs|pfcs|sf6|nf3}` (group `gases`, enum Included / Declared absent / Not mentioned, `required: false`; kept apart from the Yes / No / Not detected category values; Claude may suggest only Included or Declared absent, with a quote that names the gas), `exclusion:{boundary|inventory|materiality}`, gwp, `calculation:{approach|process}`, `calculation:estimation` (entry_list, `required: false`), `calculation:source_records` (multiselect with free additions, `required: false`), `scope2:instruments` (multiselect, `required: false`, `shown_if_yes`)), then the rows the
+    reviewer added. `allowed` is a list for an enum, `{set, horizon}` for gwp (horizon one of 100-year, 20-year, 500-year; with `allowed_labels.set`),
     `{operational_control}` for an entity. `parts` (entity, factor, gwp only) lists the value's editors,
     `[{key, label, kind: text|list|percent|enum, allowed?}]`, so a blank new row can be drawn.
   - Row states. The GET also answers `prefill_ran_at` (the time the last Claude prefill finished and stored its
@@ -162,10 +199,12 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     `required` (boolean). `display_state` is `has_value` (a suggestion, or a decision that is not a bare pending
     one), `not_detected` (a prefill finished, and there is no suggestion or decision) or `not_checked` (no prefill has
     finished). `required` true is "Must appear": always `shown`. `required` false is "Only if the company has a
-    value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Only `boundary:acquisitions` and `boundary:leased_space` are optional
-    today; every other field is `required`. A refused prefill (no documents, off, over the limit) does not set the marker. The marker and the
+    value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Only `boundary:acquisitions`, `boundary:leased_space`, the seven `gas:*` fields and `calculation:estimation` are optional
+    today; every other field is `required`. A refused prefill (no documents, off, over the limit) does not set the marker. The marker also records which fields the run covered (`prefill_covered`); a field the last run did not cover reads `not_checked`, and a run recorded before this list existed is taken to have covered only the fields the page had then, so a row added since reads "Not checked yet" instead of "Not detected". The marker and the
     added optional rows are kept in one extra `workpaper_items` row (`item_key` `meta:state`), never listed as a field.
-  - Values by kind: date_range (`reporting_period`) is `{start, end}`, each a real calendar date written `YYYY-MM-DD` (ASCII digits), with end not before start (otherwise 422 with a sentence). A record saved before this change may still hold the text it was; the GET returns it unchanged and the screen shows "Recorded as: <text>" until the reviewer enters two dates. Claude's reporting-period suggestion carries both dates in ISO form, and is kept only if both are printed in its quote (English month names, `1/1/2025` read month first, `2025-01-01`); otherwise it is dropped and counted as `value_not_in_quote`. text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
+  - GWP sets. The report may name more than one GWP set. The first set Claude finds fills the fixed `gwp` field; every other distinct set and horizon becomes a row (`gwp:<id>`, group `gwp`, label "GWP set", `user_added: false`) instead of being dropped; the reviewer can add rows (`POST .../rows` `{group: "gwp"}`, blank value `{set: "", horizon: ""}`) and remove the ones they added. Each set needs both the set (AR4, AR5, AR6 or the report's wording) and its horizon (20-year, 100-year or 500-year, with "year", "yr" and "GWP100" variants) named in its own quote, as whole tokens; when a quote names two sets, each set is paired with the horizon nearest to it. On a later run a pending suggestion on the fixed field keeps its set if the run still finds it, and a set already on a row is never also put in the fixed field. A set the fixed field already holds (suggested or decided), or one the reviewer rejected there, is not added again, and a reviewer's decision is never overwritten. "Identified by" and mismatch flags are not built yet.
+  - Multi-select rows. `multiselect` (`scope2:instruments`, `calculation:source_records`) holds a list of `{option, wording}`: `option` is one of the catalog's `allowed` (matched ignoring case and spacing; a field with `free: true` also takes up to 10 options of the reviewer's own, at most 60 characters), `wording` is the company's own words beside it (at most 200, may be ""), no option twice, and "None" (instrument types only) stands alone. A decision needs at least one option: an empty list is refused ("None" is the explicit empty answer on the instrument types; source records can be rejected instead), and "None" in any case or spacing is refused as a free option. A free option that is a listed option selects that option. Claude suggests only listed options, never "None"; each option must be named in its own quote as a whole word or phrase ("records" is not REC, "release" is not a lease agreement), and a mention with a negation (not, no, never, without, none) within five words before it is dropped and counted as `negated`; and the suggestion carries `evidence` with one quote per option (the company's wording is kept only if it is in the quote). An option that fails is dropped and counted, and the others stand. Scope 2 instrument types (spec: "only if the company reports a market-based Scope 2 number") are `shown` while at least one market-based category (`shown_if_yes`) is Yes, meaning the reviewer accepted or edited it to Yes or, while it is undecided, Claude suggested Yes; No, Not detected and a rejected category do not count. A value, or "Add an item", keeps the row shown whatever the categories say. A pending Claude suggestion also keeps it shown, so nothing Claude claims is hidden; the field then carries `shown_note`, "Shown because Claude found it, although no market-based category is Yes."
+  - Values by kind: entry_list (`calculation:estimation`, one entry per source type) is a list of at most 10 `{source_type, method}`, each text required (source type at most 60 characters and unique ignoring case and spacing, method at most 300); an empty list is allowed (every entry removed). A list suggestion also carries `evidence`: `[{label, quote, document_id, file_name, source_reference}]`, the quote behind each entry in the value's order (quotes up to 1,000 characters, `quote_truncated: true` when cut; the location keeps only page, sheet and cell; the top-level quote is the first entry's). The quotes of one suggestion share 12 KB: when they do not fit, the suggestion carries fewer entries, the first ones, and `entries_omitted` says how many were left out, so an entry is never shown without its quote. Claude's entries are each checked for their own quote on the page, and the source type must be named in its own quote as a whole token: one that fails is dropped and counted, the others stand; more than 10 are cut (`too_many_entries`). date_range (`reporting_period`) is `{start, end}`, each a real calendar date written `YYYY-MM-DD` (ASCII digits), with end not before start (otherwise 422 with a sentence). A record saved before this change may still hold the text it was; the GET returns it unchanged and the screen shows "Recorded as: <text>" until the reviewer enters two dates. Claude's reporting-period suggestion carries both dates in ISO form, and is kept only if both are printed in its quote (English month names, `1/1/2025` read month first, `2025-01-01`); otherwise it is dropped and counted as `value_not_in_quote`. text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
     operational_control}` (percents 0 to 100).
   - `ai`: `{enabled, reason_code, reason, provider, model, month_spend_usd, cap_usd}`. `enabled` is true when
@@ -180,7 +219,7 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
 - `POST .../{field_id}/reveal` ("Add an item", no body) shows a hidden optional field and keeps it shown
   (answers `{field_id, shown: true}`; repeating it is fine). A field that is always shown answers 422, an unknown field or a row 404. It
   writes a `methodology_decision` audit event with action `reveal`.
-- `POST .../rows` `{group: "entities"|"factor:scope1"|"factor:scope2"}` adds a row under a server-made id (201, the new record plus `field`, its catalog def). `DELETE .../{field_id}` removes a row the reviewer added (answers the record with `removed: true`); the
+- `POST .../rows` `{group: "entities"|"factor:scope1"|"factor:scope2"|"gwp"}` adds a row under a server-made id (201, the new record plus `field`, its catalog def). `DELETE .../{field_id}` removes a row the reviewer added (answers the record with `removed: true`); the
   row is marked removed, not deleted. A field from the report answers 409 "Reject it instead".
 - Writes are s1_writer on an open engagement: another org 404, provider_admin 403, archived 409. A move the
   state does not allow is 409 and bad input 422, both with a sentence in `detail`; an unknown field is 404.
@@ -227,6 +266,40 @@ Get one evidence record including candidate and review summary.
 ### PUT /v1/evidence/{evidence_id}/fields/{field_name}/review
 Persist reviewer decision for a candidate field.
 
+#### A re-read and earlier decisions (S1-BE-014)
+A decision is stored under a candidate id that holds the record's index, and a re-read can renumber
+records. `services/reviewed_evidence.effective_decision` is the one place that decides whether a
+stored decision applies to an item of the latest read; every reader uses it (recalculation, the
+evidence tree and schedule, the workpaper export, approved evidence, the methodology run, the review
+screen). A decision applies only when its snapshot is the same field and the same record (record key
+without the leading `r{index}`; the service period when a key is missing). An accept also needs the
+same value and unit. An edit, reject or needs-more-evidence carries over when the record is the same,
+and a changed extracted value adds the validation flag `extracted_value_changed_since_review`.
+A decision that does not apply leaves the item unreviewed for every purpose; it is never deleted.
+
+- `GET /v1/documents/{document_id}/extraction-result/latest` also carries `facility_suggestion`
+  (`{facility_id, quote, source: "file_name" | "line", page_number}`) when Claude suggested a facility for a bill that names
+  none; absent otherwise. A suggestion, never a placement.
+- `GET /v1/documents/{document_id}/extraction-result/latest`: an item whose earlier decision no longer
+  applies carries `review_reread_changed: true` (the screen says "The document was re-read and this value
+  changed. Review it again."). Absent otherwise.
+- `GET /v1/documents/{document_id}/reviews`: every decision, as before. After a re-read, one that applies to
+  a value under another candidate id carries `applies_to_candidate_id`; one that applies to no value carries
+  it as `null`. Absent when it applies to its own candidate.
+- Schedule rows (`.../schedule`): `reread_changed` and `value_changed_since_review`, present only when true.
+- `POST /v1/evidence/{evidence_id}/approved-evidence/project` projects only decisions that still apply.
+  Each document of the evidence slot is judged by its own latest read, and a decision is matched only
+  within its own document.
+- `POST /v1/methodology/s2/run` drops approved fields whose review decision no longer applies (both the
+  persisted and the non-persisted path); a field whose decision the server does not know is kept.
+- Schedule history entries carry `superseded_by_reread: true` for a decision a re-read made void; it stays listed.
+- Raw history by design: `GET /v1/evidence/{evidence_id}/reviews` and
+  `GET /v1/candidates/{candidate_id}/reviews/latest` return the stored decisions as recorded (an audit
+  trail of what each reviewer did, per evidence id or candidate id, with no read to judge them by).
+  The screens that act on a decision use the guarded reads above. `review_decision_count` in the evidence
+  status counts stored decisions.
+- A decision with no candidate snapshot applies by candidate id only on a single-record document.
+
 ### GET /v1/engagements/{engagement_id}/approved-evidence
 Return evidence records and approved fields only.
 
@@ -245,11 +318,14 @@ engagement is 404). Nothing is stored by this route.
   facilities: [{facility_id, name, address}],        // the engagement's Setup facilities
   lines: [CalculationLine],                          // system lines, then reviewers' own
   vehicle_groups: [{anchor_id, label, fuel}],        // settings.recalculation.vehicle_groups, with the
-                                                     // anchor_id a mobile line (anchor_kind "vehicle_group") uses
+                                                     // anchor_id a mobile line (anchor_kind "vehicle_group") uses:
+                                                     // the group's own group_id
   anchors_for_contractual: "company",                // a contractual line uses anchor_kind "company", this anchor_id
   set_aside: [{document_id, file_name, reason}] }    // withdrawn / duplicate / superseded: not filed
 counts  = {documents, values, accepted, to_review, issues, pct_accepted}
 DocRow  = {document_id, file_name, period_start, period_end, facility_id, facility_name,
+           facility_note,    // when facility_id is null: why an account or meter number placed nothing, or null
+           facility_suggestion, // Claude's suggestion while it awaits a decision (see "Claude's facility suggestion"), or null
            processing_status, detected_type, also_in: [lineKey], values, accepted,
            placement_from,   // send this as a move's "from" to move this row
            value_family,     // "stationary" | "mobile" | "electricity" | null: the calculation this row's
@@ -296,29 +372,138 @@ applied in order to the default placements, one placement at a time. Send the ro
 `placement_from` as `from`: a document filed under "Unassigned supporting evidence" because its
 line was deleted has `placement_from: "supporting:unassigned"`, and a move from that moves every
 placement shown there. A move whose `from` the document no longer has is ignored. A move to a line that does not exist files the document under
-"Unassigned supporting evidence" with the flag `unknown_line`. The PUT replaces the whole payload:
-**read the item, merge `placements` into it, keep every other key** (`facilityId`, `disposition`,
+"Unassigned supporting evidence" with the flag `unknown_line`. Placements are written only by the
+Evidence actions below (a PUT of the item keeps the stored `placements`); the PUT replaces every other key
+of the payload, so **read the item and keep the keys you do not change** (`facilityId`, `disposition`,
 `relationships`, ...).
 
-**Settings are replaced whole.** PATCH `/v1/engagements/{id}` replaces `settings` as a whole, so a
-client that changes any setting must send `evidenceLines` back too (read it, change it, send it all),
-or the reviewers' lines are lost.
+**Settings are replaced whole, except the reviewers' lines.** PATCH `/v1/engagements/{id}` replaces
+`settings` as a whole. `settings.evidenceLines` (the lines reviewers added in Evidence) is the exception:
+it changes only through the Evidence actions below, which lock the engagement, check the line and write an
+audit event. A save takes the stored value under the engagement's row lock and ignores whatever the body
+sends for `evidenceLines` (no error, so an autosave never fails on it). A stale tab's save can therefore
+never delete, rename or bring back a line. POST `/v1/engagements` ignores it too. `GET` still returns the
+lines in `settings.evidenceLines`.
 
-**Reviewers' own lines** are saved in `settings.evidenceLines` through PATCH
-`/v1/engagements/{id}`: `[{key?, scope?, category, level2?, level2_label, anchor_kind,
-anchor_id?, label}]` (at most 200; labels at most 120 characters; `category` one of the fixed
-list). The server fills in `key` (and `level2`, the slug of `level2_label`); a `key` that is
-given must equal `line_key(...)`. A line the system already creates is refused with 422 (the
-system's lines are not stored here and cannot be deleted).
+**Reviewers' own lines** are stored in `settings.evidenceLines`: `[{key, scope, category, level2,
+level2_label, anchor_kind, anchor_id, label, created_by, created_at}]` (at most 200; labels at most 120
+characters; `category` one of the fixed list). The server builds `key` (and `level2`, the slug of
+`level2_label`). A line the system already creates is refused with 422 (the system's lines are not stored
+here and cannot be deleted).
 
-**Anchors are checked (422, a plain sentence in `detail`).** On POST and PATCH of an engagement, a
-line the request adds (a key not already stored) must sit on a facility of the same `settings.facilities`
+**Anchors are checked (422, a plain sentence in `detail`).** When an Evidence action adds a line, it must sit on a facility of the same `settings.facilities`
 (`facilityId`, or `name-<slug>` when it has none), a vehicle group of the same
-`settings.recalculation.vehicle_groups` (`vg-<label slug>`), or the company (`company`, contractual
+`settings.recalculation.vehicle_groups` (its `group_id`), or the company (`company`, contractual
 instruments only; a contractual line may also sit on a facility). A facility line on an engagement with no facilities is refused: "Add a facility in Setup first". A fuel or energy name with no letters or
-numbers is refused: "Use letters or numbers in the name". Lines already stored are not re-checked, so a
-facility removed from Setup later never blocks a save, and the Evidence tree still shows that line with
-its documents.
+numbers is refused: "Use letters or numbers in the name". A facility removed from Setup later never
+blocks anything: the Evidence tree still shows the line with its documents.
+
+### Evidence actions: lines and placements, each with an audit event
+Line and placement changes are server actions. Each changes one thing, in one transaction, under the
+engagement's row lock (so two simultaneous requests run one after the other and neither loses the
+other's change), and writes one audit event with the actor from the session. Writers only
+(`org_admin`, `org_member`): a provider admin gets 403, an archived engagement 409, another org's
+engagement 404. Bodies reject unknown fields (422). Audit rows hold ids and labels, never a document's
+text or file name.
+
+| Request | Body | Answer |
+|---|---|---|
+| `POST /v1/engagements/{id}/evidence-lines` | `{category, level2_label, anchor_kind, anchor_id?, label, scope?}` | 201 `{line, evidenceLines}` |
+| `PATCH /v1/engagements/{id}/evidence-lines/{line_key}` | `{label}` | 200 `{line, evidenceLines}` |
+| `DELETE /v1/engagements/{id}/evidence-lines/{line_key}` | none | 200 `{documents_moved, documents, evidenceLines}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to}` | 200 `{document_id, payload}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/facility` | `{facility_id, expected_facility_id?}` | 200 `{document_id, payload}` |
+
+* **Create** checks the same as saving the setting (anchor on a Setup facility, vehicle group or the
+  company; letters or numbers in the name; at most 200 lines; not a line the system creates), 422 with a
+  sentence otherwise; a line that already exists is 409. The server builds the key and stamps
+  `created_by` and `created_at`; a client cannot send them.
+* **Rename** changes the label only (the key and the creator stay). A line another tab already deleted is
+  404 "This line was already deleted. Reload to see the current lines."; a line the system creates is 422;
+  a reviewer's line whose key the system now creates too (documents arrived for it) is 409. Renaming to the
+  same label changes and logs nothing.
+* **Delete** removes a line the reviewers added. Each document filed on it gets an explicit move to
+  `supporting:unassigned` saved first, so adding the same line again later does not pull the documents
+  back, and a document also on another line loses only this placement. All of it is one transaction: the
+  documents move and the line goes, or nothing changes. `documents_moved` is how many documents moved;
+  `documents` is `{document_id: payload}` for every document the delete changed (set-aside ones too, which
+  keep a move out of the line for if they come back and are not counted), so a client can take them as saved.
+  A document that cannot take the move fails the whole delete with 409 naming it. The same 404, 422 and 409
+  as rename apply.
+* **Move** needs `from` to be a place the document is in now (a line key, `block:summary`,
+  `block:unassigned` or `supporting:unassigned`, as the row's `placement_from`); otherwise 409 "This
+  document was already moved from there", nothing is saved and nothing is logged. `to` must be a line that
+  exists or one of the three fixed places (422 otherwise); moving to where it is, 422; a document that is
+  not on the Evidence page, 404. The saved `placements` chain is derived from where the document is filed
+  after the move, not from its history: one move per default place of the document that is no longer where it
+  started, in an order where a move out of a place runs before a move into it (two places swapping go through
+  a free fixed place). It never has more moves than the document has default places, plus one per swap,
+  however many times it was moved (history lives in the audit log). A document parked on a line that no
+  longer exists stays on that line's key, so it returns there if the line comes back. The full chain is kept
+  only when the derived one would not file the document in exactly the same places; a chain past 200 moves is
+  409 naming the document. Other keys of the document's payload (`facilityId`, `disposition`, notes) are kept.
+* **The old paths no longer change lines or placements.** PATCH `/v1/engagements/{id}` keeps the stored
+  `evidenceLines` (see above). PUT `/v1/engagements/{id}/workpaper-items/document/{key}` takes the engagement
+  lock, saves every other key of the payload, and keeps the stored `placements` (a first save has none): a
+  stale tab's save cannot put a document back. Other kinds of workpaper item are unchanged. A client keeps its
+  own copy of `evidenceLines` and of a document's payload from the action answers.
+
+Audit events (`target_type` "engagement", `target_id` the engagement):
+
+| `event_type` | `metadata` |
+|---|---|
+| `evidence_line_created` | `line_key, label, level2_label, category` |
+| `evidence_line_renamed` | `line_key, old_label, new_label` |
+| `evidence_line_deleted` | `line_key, label, documents_moved` |
+| `evidence_document_moved` | `document_id, from, to, from_label, to_label` |
+| `evidence_document_facility_set` | `document_id, facility_id, facility_name, suggested` |
+
+`POST .../documents/{document_id}/facility` places a document on a Setup facility: it saves the reviewer's own facility
+decision (`payload.facilityId`, which wins over every rule), under the engagement's row lock, and writes
+`evidence_document_facility_set` (`suggested` is true when the facility is the one Claude suggested for the document). The
+actor is the session's. Safe to repeat: when the document is already on that facility the answer is 200 with the saved
+payload and nothing is written or logged. `expected_facility_id` (null for none) is the facility the page believes the
+document is on; when it is sent and is not what is saved, 409 ("Another reviewer already chose a facility for this document.
+Reload Evidence to see it.") and nothing is written. A document with saved moves (`placements`) is 409 ("This document was
+moved by hand. Move it back to Unassigned first, or place it from the Evidence tree."). 422 for a facility that is not in Setup,
+for any other key in the body, and for a kind of document that is not placed on a facility (vehicle fuel, summaries); 404 for
+a document that is not on the Evidence page or an engagement of another org; writers only (a provider admin is 403).
+
+#### Claude's facility suggestion (EXT-026)
+For a bill that names no facility, Claude may suggest one. It is asked only when `place_on_facility` would place nothing for
+every record with nothing to go on: no usable name, no usable address, and no account or meter number matched a Setup
+facility (a bill whose own name or address matched nothing, or matched ambiguously, is never sent: "Choose the facility").
+Vehicle fuel is not asked. Claude gets the Setup facilities (id, name, address), the file name and a bounded sample of the
+text (pages 1 to 3, at most 150 lines and 8,000 characters) and answers a facility id or none, with a quote. The suggestion
+is kept only when the id is in Setup, the quote is found in the file name or on a line of the sample as whole words, and the
+quote holds a word that points at the chosen facility and no other: a word of its name or address that is in no other
+facility, not in the company's name, not generic (plant, warehouse, road, a street suffix, a shared city) and not only digits.
+A quote, or a quoted line, that names a facility id or talks to the assistant (AI, Claude, instructions, prompt, ignore) gives
+none, and so does a facility with no such word. A document the reviewer already placed (on a facility still in Setup) is not
+asked about. The prompt carries at most 50 facilities (name and address cut short) and a file name cut to 200 characters.
+A file name or sample that also holds a word that points at another facility gives none (the document points two ways).
+It is shown again when a saved choice's facility has left Setup.
+
+Known limit: a single site's real word used for an unrelated reason (an instruction or a vendor address that names one site,
+with none of the wording above) cannot be told from a bill that mentions the site, so it can still be suggested. That is why
+it stays a suggestion with its quote, never a placement: a reviewer has to confirm it. It is stored with the
+extraction result as `facility_suggestion` and shown, while the bill is unplaced and the reviewer has not chosen, on the
+Evidence tree row as `facility_suggestion: {facility_id, facility_name, quote, where, label: "Suggested by Claude"}` and on
+the review screen, each with one click, "Place on <facility>". Until that click the bill is unplaced, in the Evidence tree and
+in the recalculation. It needs `AI_SUGGESTIONS_ENABLED`, a configured client and room under the organization's monthly cap
+(feature `facility` on the usage ledger); with AI off there is no suggestion and no error.
+
+### GET /v1/engagements/{engagement_id}/evidence-activity[?limit=50&cursor=]
+The five events above for this engagement, newest first, 1 to 100 per page (an index on `audit_logs (org_id, target_type, target_id, created_at, id)` serves it) (`next_cursor` is null on the
+last page; a cursor that does not decode is 400). Any reader of the engagement (`org_admin`,
+`org_member`, `provider_admin`); another org's engagement is 404.
+
+```
+{ items: [{id, event_type, at, actor_name,   // the person's name, else their login; null when unknown
+           line_key?, label?, level2_label?, old_label?, new_label?, documents_moved?,
+           document_id?, from?, to?, from_label?, to_label?}],
+  next_cursor: string | null }
+```
 
 ### GET /v1/engagements/{engagement_id}/calculation-lines/{line_key}/schedule
 One calculation line's schedule (reader; 404 with a plain message for an unknown line key, and
@@ -330,7 +515,7 @@ for another org's engagement).
   coverage: [{month: "YYYY-MM", status: "counted" | "counted_in_part" | "not_reviewed" | "no_document",
               quantity, unit, document_ids, flags: [],     // flags: "unconverted"
               waiting_on: [string]}],                      // field labels the recalculation still awaits
-  identifiers: [{label, value, documents_with, documents_total}],   // facility, service address, account, meter
+  identifiers: [{label, value, documents_with, documents_total}],   // facility, service address, account, meter, statement date
   values: [{service_period_start, service_period_end, days, quantity, unit, document_id, file_name,
             page, candidate_id, decided_by, decided_at, decision, waiting_on: [string]}],
   history: [{action, actor_name, at, field, value, unit, file_name, page, count, documents?}],
@@ -374,11 +559,11 @@ fields `heat_content`, `carbon_content`, `vehicle_type`, `model_year`, `on_or_no
 no extractor produces them yet, so today a line shows only Date and Activity quantity. Every value in a row (the quantity and each extra cell) says where it was read: `candidate_id` (to open the review at that value), and `page` (PDF or image) or `sheet` and `cell` (workbook or CSV); missing parts are null, and the page then opens the document at page 1 and says so. `identifier_groups`
 group the line's documents by identifier value; `not_found` holds documents without the identifier.
 Facility is the Setup facility, and `matched_by` says how: "Chosen by the reviewer", "Facility name in
-Setup" or "Service address in Setup". Facility is listed for every line; Service address, Account number
+Setup" or "Service address in Setup". Facility and Statement date are listed for every line; Service address, Account number
 and Meter number only for utility-bill lines (stationary natural gas, electricity, steam, heating, cooling).
 Values that differ only by case, spacing or Unicode form (NFKC, so full-width digits match ASCII) fall in one group, shown in the first
 spelling seen; a whitespace-only value counts as not found. `identifiers` (one entry per value) is kept for older clients.
-Identifiers never feed a number, so a meter number, account number or service address that Claude read counts here before a reviewer has decided it, and its document says `read_by_claude: true` (a value a rule also read is not marked; a rejected reading does not count). Everything that feeds a calculation still ignores a reading until a reviewer accepts it.
+Identifiers never feed a number, so a meter number, account number, statement date or service address that Claude read counts here before a reviewer has decided it, and its document says `read_by_claude: true` (a value a rule also read is not marked; a rejected reading does not count). Everything that feeds a calculation still ignores a reading until a reviewer accepts it.
 
 A row counts (`accepted` true) only when its record is not in the recalculation's `awaiting_review`. When
 the quantity is reviewed but another required field is not (for example `fuel_type`), the row has
@@ -458,7 +643,8 @@ calculation_lines: [{
   no company side), never dropped. `reason` is one of: `unknown_line` (filed on a line that no longer
   exists), `moved_to_another_place` (a reviewer filed it elsewhere), `fuel_shared_by_vehicle_groups`
   (mobile fuel used by two or more groups), `no_vehicle_group` (mobile fuel no group uses),
-  `no_facility_match` (no Setup facility matches), `no_calculation_line`. Lines plus unplaced add up to the
+  `no_facility_match` (no Setup facility matches), `identifier_on_two_facilities` (the bill's account or
+  meter number is listed on two or more Setup facilities, so it is not placed), `no_calculation_line`. Lines plus unplaced add up to the
   category on `sum_co2e_t`; a consolidated share below 100% scales `total_co2e_t` only.
 - `calculation_line_inputs`: `{consolidated_shares, unknown_line_keys: [{setting, key}],
   unknown_facility_ids}`. A key that matches no line and names no facility or vehicle group is allowed
@@ -496,6 +682,30 @@ consolidated_shares:  {<facility id>: 0..100}                        // default 
 gwp_set:              "AR4" | "AR5" (default) | "AR6"                // one set per engagement; the response says which
 ```
 
+**Vehicle group ids.** Every group in `settings.recalculation.vehicle_groups` carries a `group_id`
+(`vgid-` and 12 hex digits for a new group) that is also its line anchor: a mobile line is
+`<scope>:mobile:<fuel>:<group_id>`. The server makes the id when the group is first saved (POST or PATCH of an
+engagement) and keeps it through a rename, a reorder and the removal of other groups, so a document placed by hand
+on a group's line stays on it. The id is not built from the name any more (`vg-none` and `z-rich` came from names
+with no ASCII letters). Rules of a save:
+- a group that sends the `group_id` of one of the engagement's stored groups keeps it. A client that sends no ids
+  back is matched to the stored groups: first a group the same in every field (equal groups in order), then a
+  renamed group (the same in every other field as exactly one stored group, and no other group of the save has
+  that stored group's name), then a group with changed figures (the same fuel, vehicle type, fuel type and name as
+  exactly one stored group). Anything less certain is a new group, so a rename plus a reorder never hands a group
+  the id of another;
+- a group with an id the engagement never had is a new group and gets a new id (the id sent is not trusted);
+- a new group never takes the id of a group that was removed, so adding a removed group again gives a new line;
+- an id that is not `vg-` or `vgid-` followed by lower-case letters, digits and hyphens (at most 70) is 422, and so
+  is the same id twice. New ids use `vgid-`, which an old `vg-<slug>` anchor can never equal. Send `group_id` back unchanged, or leave it out for a new group.
+
+Migration 0021 gave every stored group the anchor it had as its id (`vg-<label slug>`, numbered by order among equal
+slugs), so every line key, user line, document placement (chains and documents parked on a removed line) and
+recalculation reads exactly as before. Groups without an id (data written by older code) are read as if they had that
+anchor. The downgrade removes the ids again only when that moves nothing: if any group's id is not the anchor the
+older code would give it (a group was deleted or reordered, or added, since the upgrade) it refuses with an error
+naming the engagement, and rewrites nothing.
+
 AR4 (IPCC AR4 WG1 Table 2.14: CO2 1, CH4 25, N2O 298) has no HFC, PFC, SF6 or NF3 values, like AR6:
 a refrigerant gas needs `refrigerant_gwps` under AR4 (an open `needs_input` item says so).
 
@@ -517,3 +727,56 @@ admin may call for any org; it answers 409 when the user is not waiting for an i
 ## Contract Source
 
 JSON schema contracts are versioned in `contracts/` and should be treated as API truth for request/response payload shape.
+
+### Facility account and meter numbers (PROVISIONAL)
+
+Approved by the product owner on 18 Nov 2026 as provisional: the ops lead may change the format of the client's
+facility list. Each facility in `settings.facilities` may carry `accountNumbers: string[]` and, optionally,
+`meterNumbers: string[]` (at most 50 each, at most 64 characters each, at least one digit, stored as typed). A
+facility without them behaves exactly as before. A bad list is refused on save (422, a plain sentence). The same number
+on two facilities saves; Setup shows "Account 4417-2290-31 is on two facilities. Bills with it won't be placed
+automatically."
+
+Placement uses them as the last step. The reviewer's choice, the facility name and the service address come first (the
+name and address step answers match, ambiguous or none; the numbers are used only on none, never on ambiguous);
+the bill's account number (then its meter number) is used **only when the bill gives no usable name and no usable
+address**. A bill whose name or address matched nothing is never placed by its number: the Evidence tree row carries
+`facility_note` ("Account 2001-7788 is listed on Tacoma Plant, but this bill's address (2210 Port of Tacoma Rd) is not
+in Setup. Choose the facility.") and the reviewer chooses. A value a reviewer rejected or marked "needs more evidence",
+and a value only Claude read, is never read for placement (name, address, account and meter number alike), on the
+backend and on the screen.
+
+A number matches only as a whole, never a partial one. NFKC and case folding apply, and invisible characters (a BOM)
+are dropped. Spaces, dashes and dots separate groups: two numbers are the same when their groups are the same ("4417
+2290 31" = "4417-2290-31"), or when one is written without separators and the characters are the same; "12-345" is not
+"1234-5". A number needs at least 4 digits, on the bill and in Setup, to match. A number listed on two facilities, or an
+account and a meter number that point at different facilities, place nothing: `facility_note` says why ("Account
+7700-1234 is listed on two facilities. Choose the facility.") and the recalculation lists the record in
+`calculation_unplaced` with `reason: "identifier_on_two_facilities"`. A bill placed this way is described as "Account
+or meter number in Setup". Each record of a bill is placed on its own.
+
+Not built yet, because the format is provisional and waits on the ops lead: a supplier per number (two utilities can
+issue the same account number). The code is in `backend/app/services/facility_identifiers.py` (one matching function)
+and `reviewed_evidence.place_on_facility` (the one placement decision); the frontend twin is
+`frontend/features/s1/utils/facilityNumbers.ts` and `placeRecord` in `utils/documentView.ts`. Both sides run the shared
+cases in `backend/tests/fixtures/facility_placement_cases.json` and the name and address probes in
+`facility_match_probes.json`.
+
+### Meter number and statement date (EXT-027)
+
+Both are extraction targets (optional, display only) on every bill type: `meter_number` on stationary fuel
+(`CT-S1-FUELQTY`), electricity and steam/heat/cooling bills, and `statement_date` (ISO date) on those and on mobile
+fuel statements and refrigerant service invoices. The rule readers fill them; Claude fills one the rules missed, like
+any other optional field. Neither ever feeds a calculation, and neither decides which facility a bill belongs to,
+except that a meter number a Setup facility lists can place a bill (the provisional step above).
+
+- **Statement date:** read only from a labelled field ("Statement Date", "Bill Date", "Invoice Date", "Billing Date",
+  "Date Issued", "Stmt Date", "Report Date"). Never the service period (a range after the label is refused) and never
+  a due date. A bare "Date" is not one.
+- **Meter number:** read from "Meter No.", "Meter Number", "Meter #", "Meter ID", "Meter: ..." or a Meter column
+  (also "Steam Meter"), with the account number's guard: at least 3 characters, a digit, not a date, an amount or a
+  phone number ("Meter Reader Line: (555) 123-4567" is never read). On a bill of several meters each record keeps the
+  meter of its own row; a bill that prints two different meters in prose has no single meter.
+- They show on the review screen with the bill's other identifiers, and in the schedule's identifier groups ("Meter
+  number" on utility lines, "Statement date" on every line). The workpaper export's Reviewed values sheet lists them
+  like any extracted value.

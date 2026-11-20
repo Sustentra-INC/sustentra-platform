@@ -92,7 +92,7 @@ describe("the demo backend's methodology review", () => {
     await open();
     expect(within(row("Indirect Biogenic")).getByText("Not checked yet")).toBeTruthy();
     expect(document.body.textContent).not.toContain("Not set");
-    expect((await get()).fields.filter((f) => !(f as unknown as { shown: boolean }).shown).map((f) => (f as unknown as { field_id: string }).field_id).sort()).toEqual(["boundary:acquisitions", "boundary:leased_space"]);
+    expect((await get()).fields.filter((f) => !(f as unknown as { shown: boolean }).shown).map((f) => (f as unknown as { field_id: string }).field_id).sort()).toEqual(["boundary:acquisitions", "boundary:leased_space", "calculation:estimation", "calculation:source_records", "gas:ch4", "gas:co2", "gas:hfcs", "gas:n2o", "gas:nf3", "gas:pfcs", "gas:sf6", "scope2:instruments"]);
     await prefillViaUi();
     expect(within(row("Indirect Biogenic")).getByText("Not detected")).toBeTruthy();
     expect(within(row("Consolidation approach")).getByText("Suggested by Claude")).toBeTruthy();
@@ -173,6 +173,242 @@ describe("the demo backend's methodology review", () => {
       cleanup();
       await open();
       expect(within(row("Acquisitions and divestitures")).getByText("Acquired M\u00fcller K\u00e4serei \u2013 Z\u00fcrich (\u745e\u58eb) in March 2025.")).toBeTruthy();
+    });
+  });
+  describe("GWP sets: the 500-year horizon and one row per extra set", () => {
+    type WireField = { field_id: string; suggestion: { value: unknown } | null; decision: { value: unknown } | null; user_added: boolean };
+    const gwpRows = async () => ((await get()).fields as unknown as WireField[]).filter((f) => f.field_id.startsWith("gwp:"));
+
+    it("a prefill keeps the decided GWP field and adds the report's other set as its own row, once", async () => {
+      await open();
+      await prefillViaUi();
+      const fixed = screen.getAllByText("GWP factors source").map((e) => e.closest("li")).find(Boolean) as HTMLElement; // the heading has the same words
+      expect(within(fixed).getByText("Accepted")).toBeTruthy();
+      expect(within(row("GWP set")).getByText("Suggested by Claude")).toBeTruthy();
+      expect((await gwpRows()).map((r) => r.suggestion?.value)).toEqual([{ set: "AR6", horizon: "500-year" }]);
+      fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+      fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
+      await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/suggested/));
+      expect(await gwpRows()).toHaveLength(1); // a second run adds no second copy
+    });
+
+    it("Add GWP set adds a blank row that takes the 500-year horizon and refuses an unknown one", async () => {
+      await open();
+      fireEvent.click(screen.getByRole("button", { name: "Add GWP set" }));
+      await waitFor(() => expect(screen.getByText("GWP set")).toBeTruthy());
+      const [added] = await gwpRows();
+      expect(added.user_added).toBe(true);
+      const edit = (value: unknown) => demoApi(`${BASE}/${encodeURIComponent(added.field_id)}/edit`, { method: "POST", body: { value } });
+      await expect(edit({ set: "AR6", horizon: "50-year" })).rejects.toMatchObject({ status: 422 });
+      await edit({ set: "AR6", horizon: "500-year" });
+      expect((await gwpRows())[0].decision?.value).toEqual({ set: "AR6", horizon: "500-year" });
+      await demoApi(`${BASE}/gwp/edit`, { method: "POST", body: { value: { set: "AR5", horizon: "500-year" } } });
+    });
+  });
+
+  describe("estimation method for missing data (a list, only if the company has a value)", () => {
+    const LABEL = "Estimation method for missing data";
+    const EST = "calculation:estimation";
+    const edit = (value: unknown) => demoApi(`${BASE}/${EST}/edit`, { method: "POST", body: { value } });
+
+    it("is hidden on a fresh engagement and offered under Add an item", async () => {
+      await open();
+      expect(screen.queryByText(LABEL, { selector: "span" })).toBeNull();
+      expect(within(screen.getByRole("combobox", { name: "Add an item" })).getByRole("option", { name: LABEL })).toBeTruthy();
+    });
+
+    it("a prefill shows the entries with a quote and a link each", async () => {
+      const onOpenDocument = await open();
+      await prefillViaUi();
+      const entries = row(LABEL);
+      expect(within(entries).getByText("Utility invoices: Average of the adjacent months; Fuel cards: Prior-year consumption")).toBeTruthy();
+      expect(within(entries).getByText(/Where fuel card data has gaps/)).toBeTruthy();
+      expect(within(entries).getAllByRole("button", { name: /cascade_org_boundary_statement/ })).toHaveLength(2);
+      fireEvent.click(within(entries).getAllByRole("button", { name: /cascade_org_boundary_statement/ })[1]);
+      expect(onOpenDocument).toHaveBeenCalled();
+    });
+
+    it("adds, edits and removes entries in the editor, with non-ASCII text, and can empty the list", async () => {
+      await open();
+      fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: EST } });
+      await waitFor(() => expect(within(row(LABEL)).getByText("Not checked yet")).toBeTruthy());
+      fireEvent.click(within(row(LABEL)).getByRole("button", { name: `Edit: ${LABEL}` }));
+      fireEvent.click(screen.getByRole("button", { name: "Add entry" }));
+      fireEvent.change(screen.getByLabelText(`Source type 1: ${LABEL}`), { target: { value: "Br\u00e4ndstoff \u71c3\u6599" } });
+      fireEvent.change(screen.getByLabelText(`Method 1: ${LABEL}`), { target: { value: "Vorjahr \u00d7 1,02" } });
+      fireEvent.click(screen.getByRole("button", { name: "Add entry" }));
+      fireEvent.change(screen.getByLabelText(`Source type 2: ${LABEL}`), { target: { value: "Meter readings" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" })); // the second entry has no method
+      expect((await screen.findByRole("alert")).textContent).toContain("Give every entry a source type and a method");
+      fireEvent.click(screen.getByRole("button", { name: `Remove entry 2: ${LABEL}` }));
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(within(row(LABEL)).getByText("Br\u00e4ndstoff \u71c3\u6599: Vorjahr \u00d7 1,02")).toBeTruthy());
+      fireEvent.click(within(row(LABEL)).getByRole("button", { name: `Edit: ${LABEL}` }));
+      fireEvent.click(screen.getByRole("button", { name: `Remove entry 1: ${LABEL}` }));
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(within(row(LABEL)).getByText("No entries")).toBeTruthy());
+    });
+
+    it("folds case like the server: Stra\u00dfe and STRASSE are one source type", async () => {
+      await open();
+      await expect(edit([{ source_type: "Stra\u00dfe", method: "a" }, { source_type: "  STRASSE ", method: "b" }])).rejects.toMatchObject({ status: 422 });
+    });
+
+    it("refuses a repeated source type, a blank part and an eleventh entry", async () => {
+      await open();
+      await expect(edit([{ source_type: "Fuel", method: "a" }, { source_type: " fuel ", method: "b" }])).rejects.toMatchObject({ status: 422 });
+      await expect(edit([{ source_type: "Fuel", method: "" }])).rejects.toMatchObject({ status: 422 });
+      await expect(edit(Array.from({ length: 11 }, (_, i) => ({ source_type: `S${i}`, method: "a" })))).rejects.toMatchObject({ status: 422 });
+      await expect(edit("average")).rejects.toMatchObject({ status: 422 });
+    });
+  });
+  describe("multi-select rows: Scope 2 instrument types and source records", () => {
+    const INSTR = "Scope 2 instrument types (market-based)";
+    const RECORDS = "Source records";
+    const edit = (id: string, value: unknown) => demoApi(`${BASE}/${encodeURIComponent(id)}/edit`, { method: "POST", body: { value } });
+
+    it("instrument types stay hidden until a market-based category is Yes; source records until a value", async () => {
+      await open();
+      expect(screen.queryByText(INSTR, { selector: "span" })).toBeNull();
+      expect(screen.queryByText(RECORDS, { selector: "span" })).toBeNull();
+      await edit("category:market:steam", "No");
+      cleanup();
+      await open();
+      expect(screen.queryByText(INSTR, { selector: "span" })).toBeNull(); // a No is not a market-based number
+      await edit("category:market:steam", "Yes");
+      cleanup();
+      await open();
+      expect(within(row(INSTR)).getByText("Not checked yet")).toBeTruthy();
+      expect(screen.queryByText(RECORDS, { selector: "span" })).toBeNull();
+    });
+
+    it("a prefill shows both rows with a quote and a link for each option", async () => {
+      await open();
+      await prefillViaUi();
+      expect(within(row(INSTR)).getByText("PPA or VPPA (the Tualatin Plant PPA); Residual mix")).toBeTruthy();
+      expect(within(row(INSTR)).getByText(/Remaining market-based electricity uses the residual mix factor/)).toBeTruthy();
+      expect(within(row(RECORDS)).getByText("Utility invoices; Fuel cards (fuel card statements)")).toBeTruthy();
+      expect(within(row(RECORDS)).getAllByRole("button", { name: /cascade_org_boundary_statement/ })).toHaveLength(2);
+    });
+
+    it("selects and deselects options with the company's wording, None stands alone, and free additions work", async () => {
+      await open();
+      fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: "calculation:source_records" } });
+      await waitFor(() => expect(within(row(RECORDS)).getByText("Not checked yet")).toBeTruthy());
+      fireEvent.click(within(row(RECORDS)).getByRole("button", { name: `Edit: ${RECORDS}` }));
+      fireEvent.click(screen.getByRole("checkbox", { name: `Meter readings: ${RECORDS}` }));
+      fireEvent.change(screen.getByLabelText(`Company's wording for Meter readings: ${RECORDS}`), { target: { value: "Z\u00e4hlerst\u00e4nde \u8868\u8bfb\u6570" } });
+      fireEvent.change(screen.getByLabelText(`Add another option: ${RECORDS}`), { target: { value: "Lieferscheine \u7eb8\u8d28" } });
+      fireEvent.click(screen.getByRole("button", { name: "Add option" }));
+      expect(screen.getByRole("checkbox", { name: `Lieferscheine \u7eb8\u8d28: ${RECORDS}` })).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(within(row(RECORDS)).getByText("Meter readings (Z\u00e4hlerst\u00e4nde \u8868\u8bfb\u6570); Lieferscheine \u7eb8\u8d28")).toBeTruthy());
+      fireEvent.click(within(row(RECORDS)).getByRole("button", { name: `Edit: ${RECORDS}` }));
+      fireEvent.click(screen.getByRole("checkbox", { name: `Meter readings: ${RECORDS}` })); // deselect
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(within(row(RECORDS)).getByText("Lieferscheine \u7eb8\u8d28")).toBeTruthy());
+    });
+
+    it("None clears the other instrument types and choosing another clears None", async () => {
+      await open();
+      await edit("category:market:electricity", "Yes");
+      cleanup();
+      await open();
+      fireEvent.click(within(row(INSTR)).getByRole("button", { name: `Edit: ${INSTR}` }));
+      fireEvent.click(screen.getByRole("checkbox", { name: `PPA or VPPA: ${INSTR}` }));
+      fireEvent.click(screen.getByRole("checkbox", { name: `None: ${INSTR}` }));
+      expect((screen.getByRole("checkbox", { name: `PPA or VPPA: ${INSTR}` }) as HTMLInputElement).checked).toBe(false);
+      fireEvent.click(screen.getByRole("checkbox", { name: `Residual mix: ${INSTR}` }));
+      expect((screen.getByRole("checkbox", { name: `None: ${INSTR}` }) as HTMLInputElement).checked).toBe(false);
+      expect(screen.queryByLabelText(`Add another option: ${INSTR}`)).toBeNull(); // no free additions here
+    });
+
+    it("refuses an empty selection, and None as a free option in any case", async () => {
+      await open();
+      await expect(edit("calculation:source_records", [])).rejects.toMatchObject({ status: 422 });
+      await expect(edit("scope2:instruments", [])).rejects.toMatchObject({ status: 422 });
+      for (const none of ["none", "NONE", "  None "]) {
+        await expect(edit("calculation:source_records", [{ option: none, wording: "" }])).rejects.toMatchObject({ status: 422 });
+      }
+      await edit("scope2:instruments", [{ option: "None", wording: "" }]); // the explicit empty answer
+    });
+
+    it("the editor refuses to save nothing, refuses a free None, and a free option that is a listed one selects it", async () => {
+      await open();
+      fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: "calculation:source_records" } });
+      await waitFor(() => expect(within(row(RECORDS)).getByText("Not checked yet")).toBeTruthy());
+      fireEvent.click(within(row(RECORDS)).getByRole("button", { name: `Edit: ${RECORDS}` }));
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      expect((await screen.findByRole("alert")).textContent).toContain("Choose at least one option, or reject this row");
+      fireEvent.change(screen.getByLabelText(`Add another option: ${RECORDS}`), { target: { value: " NONE " } });
+      fireEvent.click(screen.getByRole("button", { name: "Add option" }));
+      expect((await screen.findByRole("alert")).textContent).toContain("None can't be added");
+      fireEvent.change(screen.getByLabelText(`Add another option: ${RECORDS}`), { target: { value: "  METER   readings " } });
+      fireEvent.click(screen.getByRole("button", { name: "Add option" }));
+      expect((screen.getByRole("checkbox", { name: `Meter readings: ${RECORDS}` }) as HTMLInputElement).checked).toBe(true);
+      expect(screen.getAllByRole("checkbox", { name: /meter readings/i })).toHaveLength(1); // no second box for the same option
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(within(row(RECORDS)).getByText("Meter readings")).toBeTruthy());
+    });
+
+    it("says why the instrument row is shown when only Claude's suggestion put it there", async () => {
+      await open();
+      await prefillViaUi(); // the canned run says market categories are Yes, so the row shows without a note
+      expect(within(row(INSTR)).queryByText(/Shown because Claude found it/)).toBeNull();
+      for (const id of ["electricity", "heating", "steam", "cooling"]) {
+        await demoApi(`${BASE}/category:market:${id}/reject`, { method: "POST", body: { reason: "Not stated" } });
+      }
+      cleanup();
+      await open();
+      expect(within(row(INSTR)).getByText("Shown because Claude found it, although no market-based category is Yes.")).toBeTruthy();
+      await edit("scope2:instruments", [{ option: "PPA or VPPA", wording: "" }]); // a decision: the note goes
+      cleanup();
+      await open();
+      expect(within(row(INSTR)).queryByText(/Shown because Claude found it/)).toBeNull();
+    });
+
+    it("refuses an option outside the list, a repeat, None with others, and an eleventh free option", async () => {
+      await open();
+      await expect(edit("scope2:instruments", [{ option: "Carbon offsets", wording: "" }])).rejects.toMatchObject({ status: 422 });
+      await expect(edit("scope2:instruments", [{ option: "PPA or VPPA", wording: "" }, { option: " ppa or vppa", wording: "" }])).rejects.toMatchObject({ status: 422 });
+      await expect(edit("scope2:instruments", [{ option: "None", wording: "" }, { option: "PPA or VPPA", wording: "" }])).rejects.toMatchObject({ status: 422 });
+      await expect(edit("calculation:source_records", Array.from({ length: 11 }, (_, i) => ({ option: `Other ${i}`, wording: "" })))).rejects.toMatchObject({ status: 422 });
+      await edit("calculation:source_records", [{ option: "utility invoices", wording: "" }]);
+    });
+  });
+
+  describe("gases covered (one row per gas, only if the company has a value)", () => {
+    const GAS_LABELS = ["Gas: CO2", "Gas: CH4", "Gas: N2O", "Gas: HFCs", "Gas: PFCs", "Gas: SF6", "Gas: NF3"];
+
+    it("are hidden on a fresh engagement and all seven are offered under Add an item", async () => {
+      await open();
+      for (const label of GAS_LABELS) expect(screen.queryByText(label, { selector: "span" })).toBeNull();
+      const add = screen.getByRole("combobox", { name: "Add an item" });
+      for (const label of GAS_LABELS) expect(within(add).getByRole("option", { name: label })).toBeTruthy();
+    });
+
+    it("Add an item shows a gas row with its own three choices, and it saves Not mentioned", async () => {
+      await open();
+      fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: "gas:pfcs" } });
+      await waitFor(() => expect(within(row("Gas: PFCs")).getByText("Not checked yet")).toBeTruthy());
+      fireEvent.click(within(row("Gas: PFCs")).getByRole("button", { name: "Edit: Gas: PFCs" }));
+      const choices = within(screen.getByLabelText("Value: Gas: PFCs")).getAllByRole("option").map((o) => o.textContent);
+      expect(choices).toEqual(["Choose", "Included", "Declared absent", "Not mentioned"]);
+      fireEvent.change(screen.getByLabelText("Value: Gas: PFCs"), { target: { value: "Not mentioned" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(within(row("Gas: PFCs")).getByText("Not mentioned")).toBeTruthy());
+    });
+
+    it("a prefill shows only the gases it found, and the category values are refused for a gas", async () => {
+      await open();
+      await prefillViaUi();
+      expect(within(row("Gas: CO2")).getByText("Suggested by Claude")).toBeTruthy();
+      expect(within(row("Gas: NF3")).getByText("Suggested by Claude")).toBeTruthy();
+      expect(screen.queryByText("Gas: CH4", { selector: "span" })).toBeNull();
+      const edit = (id: string, value: unknown) => demoApi(`${BASE}/${id}/edit`, { method: "POST", body: { value } });
+      await expect(edit("gas:co2", "Yes")).rejects.toMatchObject({ status: 422 });
+      await expect(edit("gas:co2", "Not detected")).rejects.toMatchObject({ status: 422 });
+      await expect(edit("category:scope1:mobile", "Included")).rejects.toMatchObject({ status: 422 });
     });
   });
 });

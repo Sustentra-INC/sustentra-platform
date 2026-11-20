@@ -38,7 +38,11 @@ class FakeStore:
                               "unit": unit, "record_index": index if multi else None,
                               "source_reference": {"document_id": document_id, "page_number": 1}})
                 if decision:
+                    # A real decision always carries the snapshot of the candidate it was made on.
+                    snapshot = {k: v for k, v in items[-1].items() if k != "record_index"}
                     reviews.append({"candidate_id": candidate_id, "decision": decision, "org_id": org_id,
+                                    "document_id": document_id, "field_name": field_name,
+                                    "candidate_snapshot": snapshot,
                                     "reviewed_value": value if decision == "accepted" else None,
                                     "reviewed_unit": unit if decision == "accepted" else None})
         self.results[document_id] = [{"document_id": document_id, "org_id": org_id,
@@ -354,7 +358,7 @@ def test_bills_take_their_setup_facility_and_its_grid_region() -> None:
 
 
 def test_match_facility_needs_a_clear_name_or_address() -> None:
-    from backend.app.services.engagement_recalculation_service import match_facility
+    from backend.app.services.reviewed_evidence import match_facility
 
     facilities = [{"facilityId": "F1", "name": "Kent Cannery", "address": "88 Mill Road, Kent, WA"}]
     assert match_facility("KENT CANNERY", None, facilities)["facilityId"] == "F1"
@@ -708,3 +712,22 @@ def test_reviewed_count_agrees_with_its_noun():
     assert _reviewed_count(2, "bill") == "2 reviewed bills"
     assert _reviewed_count(1, "record") == "1 reviewed record"
     assert _reviewed_count(3, "record") == "3 reviewed records"
+
+
+def test_refrigerant_amounts_in_kilograms_and_pounds_add_up_exactly() -> None:
+    """A log in lb and an invoice or log in kg for the same gas are one balance: the amounts are converted with
+    the exact factor (1 lb = 0.45359237 kg), never rounded first."""
+
+    def co2e(records: list[dict]) -> float:
+        store = FakeStore()
+        for i, record in enumerate(records):
+            store.add_document(f"R{i}", "CT-S1-REFRSVC", [record])
+        fugitive = _service(store).recalculate(_engagement(), _own)["categories"]["fugitive_refrigerants"]
+        return fugitive["total_co2e"]
+
+    kg_as_lb = 10 / 0.45359237
+    all_lb = co2e([_refrigerant("R-410A", "2025-04-09", added=12.5), _refrigerant("R-410A", "2025-05-09", added=kg_as_lb)])
+    mixed = co2e([_refrigerant("R-410A", "2025-04-09", added=12.5),
+                  _refrigerant("R-410A", "2025-05-09", added=10, unit="kg")])
+    assert mixed == pytest.approx(all_lb, rel=1e-12)
+    assert mixed == pytest.approx((12.5 * LB + 10 / 1000) * 1924)

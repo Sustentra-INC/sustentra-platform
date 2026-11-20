@@ -13,7 +13,7 @@ No ``from __future__ import annotations``: FastAPI resolves these at runtime.
 
 import json
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -24,7 +24,7 @@ from backend.app.api.s1_access import s1_reader, s1_writer
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
 from backend.app.services import engagement_service
-from backend.app.services.calculation_lines import check_new_lines, normalize_evidence_lines, stamp_new_lines
+from backend.app.services.calculation_lines import assign_group_ids, check_new_lines
 from backend.app.services.engagement_recalculation_service import (
     setup_facilities,
     validate_facilities,
@@ -71,6 +71,10 @@ def _clean_name(value: str) -> str:
 
 
 def _check_settings(value: dict[str, Any]) -> dict[str, Any]:
+    # The reviewers' lines change only through the Evidence actions (api/evidence_actions.py), which
+    # lock the engagement, check the line and write an audit event. Whatever a save sends for them is
+    # dropped here, so a stale Setup autosave can never delete, rename or bring back a line.
+    value = {k: v for k, v in value.items() if k != "evidenceLines"}
     unknown = sorted(set(value) - SETTINGS_KEYS)
     if unknown:
         raise ValueError(f"unknown settings: {', '.join(unknown)}")
@@ -82,8 +86,6 @@ def _check_settings(value: dict[str, Any]) -> dict[str, Any]:
         validate_facilities(value["facilities"])
     if "outOfScopeDataPoints" in value:
         validate_out_of_scope(value["outOfScopeDataPoints"])
-    if "evidenceLines" in value:
-        value["evidenceLines"] = normalize_evidence_lines(value["evidenceLines"])  # fills in each line's key
     return value
 
 
@@ -194,6 +196,18 @@ async def require_open_engagement(
     return row
 
 
+def _give_group_ids(settings: dict[str, Any] | None, stored: dict[str, Any] | None) -> None:
+    """Every vehicle group of a save has a ``group_id``: the one it has, or a new one the server makes."""
+
+    recalculation = (settings or {}).get("recalculation")
+    if isinstance(recalculation, dict) and isinstance(recalculation.get("vehicle_groups"), list):
+        before = (stored or {}).get("recalculation")
+        settings["recalculation"] = {  # type: ignore[index]
+            **recalculation,
+            "vehicle_groups": assign_group_ids(recalculation["vehicle_groups"],
+                                               before.get("vehicle_groups") if isinstance(before, dict) else None)}
+
+
 def _check_line_anchors(settings: dict[str, Any] | None, current: dict[str, Any] | None) -> None:
     """New reviewer lines must sit on a facility or vehicle group in the same settings (422 otherwise)."""
 
@@ -209,17 +223,6 @@ def _check_line_anchors(settings: dict[str, Any] | None, current: dict[str, Any]
                         vehicle_groups=[g for g in groups or [] if isinstance(g, dict)])
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-def _stamp_lines(settings: dict[str, Any] | None, current: dict[str, Any] | None, user: CurrentUser) -> None:
-    """The server records who added each new reviewer line and when (never the client)."""
-
-    if not settings or not settings.get("evidenceLines"):
-        return
-    stored = ((current or {}).get("settings") or {}).get("evidenceLines")
-    settings["evidenceLines"] = stamp_new_lines(
-        settings["evidenceLines"], stored, user_id=str(user.id),
-        now=datetime.now(timezone.utc).isoformat(timespec="seconds"))
 
 
 async def _reject_system_lines(db: AsyncSession, current: dict[str, Any], settings: dict[str, Any] | None,
@@ -266,8 +269,7 @@ async def create_engagement(
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> EngagementResponse:
     assert user.org_id is not None  # s1_writer excludes provider_admin
-    _check_line_anchors(payload.settings, None)
-    _stamp_lines(payload.settings, None, user)
+    _give_group_ids(payload.settings, None)
     row = await engagement_service.create_engagement(
         db,
         org_id=user.org_id,
@@ -301,6 +303,12 @@ async def update_engagement(
 ) -> EngagementResponse:
     current = await _visible(db, engagement_id, user)
     changes = payload.model_dump(exclude_unset=True)
+    if "settings" in changes:  # the evidence actions change lines too: take turns, and keep the lines they saved
+        current = await engagement_service.lock_engagement(db, engagement_id) or current
+        kept = ((current.get("settings") or {}).get("evidenceLines"))
+        changes["settings"] = {k: v for k, v in changes["settings"].items() if k != "evidenceLines"}
+        if kept is not None:
+            changes["settings"]["evidenceLines"] = kept
     start = changes.get("reporting_period_start", current["reporting_period_start"])
     end = changes.get("reporting_period_end", current["reporting_period_end"])
     try:
@@ -309,9 +317,7 @@ async def update_engagement(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not changes:
         return EngagementResponse(**current)
-    _check_line_anchors(changes.get("settings"), current)
-    _stamp_lines(changes.get("settings"), current, user)
-    await _reject_system_lines(db, current, changes.get("settings"), user)
+    _give_group_ids(changes.get("settings"), current.get("settings"))
     row = await engagement_service.update_engagement(db, current["id"], changes)
     event = "engagement_archived" if changes.get("status") == "archived" else "engagement_updated"
     await _audit(db, request, user, event, row, sorted(changes))

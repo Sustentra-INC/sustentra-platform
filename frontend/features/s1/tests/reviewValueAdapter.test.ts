@@ -84,6 +84,23 @@ describe("extracted fields as review cards", () => {
     expect(cards[0].record[0].action).toBe("did not find this on the document");
   });
 
+  it("shows an estimated read on the quantity and the earlier bill a revised bill replaces, as general", () => {
+    const cards = reviewValuesFromFields(
+      [
+        field("activity_quantity", "103.2", { valueProperties: ["estimated_read"] }),
+        field("supersedes_reference", "04/04/2025", { fieldLabel: "Replaces an earlier bill" }),
+        field("facility_name", "Müller Käserei – Zürich 電気"),
+      ],
+      [DOC]
+    );
+    const byName = Object.fromEntries(cards.map((c) => [c.methodologyFieldId, c]));
+    expect(byName.activity_quantity.estimatedRead).toBe(true);
+    expect(byName.activity_quantity.value).toBe("103.2"); // the value is as printed
+    expect(byName.facility_name.estimatedRead).toBeUndefined();
+    expect(byName.supersedes_reference.value).toBe("04/04/2025");
+    expect(byName.supersedes_reference.scope).toEqual(byName.facility_name.scope); // whose, where, when: every scope
+  });
+
   it("never gives two cards the same id", () => {
     const cards = reviewValuesFromFields([field("account_number", "A"), field("account_number", "A")], [DOC]);
     expect(new Set(cards.map((c) => c.id)).size).toBe(2);

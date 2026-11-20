@@ -2,6 +2,7 @@ import { METHOD_CHECK_RULE_IDS } from "../api/recalculation";
 import type { EvidenceItem, ReviewValue } from "../types";
 import type { Ask } from "../types/requests";
 import type { CoverageRule, Examination, Finding } from "../types/verification";
+import type { EvidenceActivityItem } from "../api/evidenceTree";
 import type { SessionAuditEntry } from "./auditIntent";
 
 /** One line of the engagement's activity log: who did what, when, to which document. */
@@ -21,6 +22,8 @@ export function engagementActivity(input: {
   asks: Ask[];
   findings: Finding[];
   intents?: SessionAuditEntry[];
+  /** Line and placement changes on the Evidence page, as the server recorded them. */
+  evidenceEvents?: EvidenceActivityItem[];
   /** Methodology review changes, oldest first. */
   methodology?: { at: string; who: string; what: string }[];
 }): ActivityEntry[] {
@@ -75,7 +78,7 @@ export function engagementActivity(input: {
     }
   }
   for (const intent of input.intents ?? []) {
-    const name = intent.lineLabel ?? filename.get(intent.documentId) ?? intent.documentId;
+    const name = filename.get(intent.documentId) ?? intent.documentId;
     const change = intent.newValue ? `: ${intent.newValue}` : "";
     log.push({
       at: intent.timestamp,
@@ -85,10 +88,39 @@ export function engagementActivity(input: {
       kind: "document",
     });
   }
+  for (const event of input.evidenceEvents ?? []) {
+    log.push({
+      at: event.at,
+      who: event.actor_name ?? "A team member",
+      what: evidenceEventText(event, filename),
+      documentId: event.document_id,
+      kind: "document",
+    });
+  }
   for (const change of input.methodology ?? []) {
     log.push({ at: change.at, who: change.who, what: change.what, kind: "methodology" });
   }
   return log.sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/** One Evidence change as a sentence: "moved a.pdf from Natural gas · Kent to Unassigned supporting evidence". */
+function evidenceEventText(event: EvidenceActivityItem, filename: Map<string, string>): string {
+  const line = (label: string | undefined, level2?: string) => (level2 && label ? `${level2} · ${label}` : label ?? "a line");
+  switch (event.event_type) {
+    case "evidence_line_created":
+      return `added the line ${line(event.label, event.level2_label)}`;
+    case "evidence_line_renamed":
+      return `renamed the line ${event.old_label ?? ""} to ${event.new_label ?? ""}`.replace("  ", " ");
+    case "evidence_line_deleted": {
+      const n = event.documents_moved ?? 0;
+      const moved = n === 0 ? "" : n === 1 ? ", moving 1 document to Unassigned supporting evidence" : `, moving ${n} documents to Unassigned supporting evidence`;
+      return `deleted the line ${event.label ?? ""}${moved}`;
+    }
+    case "evidence_document_moved":
+      return `moved ${(event.document_id && filename.get(event.document_id)) || "a document"} from ${event.from_label ?? "its place"} to ${event.to_label ?? "another place"}`;
+    case "evidence_document_facility_set":
+      return `placed ${(event.document_id && filename.get(event.document_id)) || "a document"} on ${event.facility_name ?? "a facility"}${event.suggested ? ", as Claude suggested" : ""}`;
+  }
 }
 
 /** The figures the dashboard shows, from the engagement's state (either data mode). */
@@ -139,6 +171,33 @@ export interface DashboardFigures {
   findings: number;
 }
 
+/** What a coverage check is, in the words both the dashboard and Coverage & requests use. */
+export type CoverageView = "awaiting_review" | "needs_choice" | "missing" | "present" | "not_applicable" | "out_of_scope" | "method_open" | "method_done";
+
+/**
+ * Sorts a check into one view. An evidence check that is not ready is awaiting review (the documents are in,
+ * the values wait for a reviewer), needs a choice (grid region, fuel, vehicle groups, a GWP) or is missing (no
+ * evidence at all). Method checks (reporting period, GWP basis, reported totals, decisions) are not evidence.
+ */
+export function coverageView(rule: CoverageRule): CoverageView {
+  if (METHOD_CHECK_RULE_IDS.includes(rule.ruleId)) return rule.status === "inputs_missing" ? "method_open" : "method_done";
+  if (rule.status === "inputs_missing") {
+    return rule.missingBecause === "awaiting_review" ? "awaiting_review" : rule.missingBecause === "needs_input" ? "needs_choice" : "missing";
+  }
+  return rule.status === "inputs_present" ? "present" : rule.status;
+}
+
+/**
+ * Where "Review" opens: the first value still to review (of the given documents, when a Coverage card names
+ * them), else the first of those documents, else nothing (the caller opens Evidence).
+ */
+export function firstValueToReview(values: ReviewValue[], documentIds?: string[]): { documentId: string; valueId?: string } | null {
+  const waiting = values.filter((v) => !v.withdrawn && v.reviewState === "to_review");
+  if (!documentIds?.length) return waiting[0] ? { documentId: waiting[0].documentId, valueId: waiting[0].id } : null;
+  const own = waiting.find((v) => documentIds.includes(v.documentId));
+  return own ? { documentId: own.documentId, valueId: own.id } : { documentId: documentIds[0] };
+}
+
 export function dashboardFigures(input: {
   evidence: EvidenceItem[];
   values: ReviewValue[];
@@ -153,11 +212,13 @@ export function dashboardFigures(input: {
   const values = input.values.filter((v) => !v.withdrawn);
   const rules = input.coverage?.filter((r) => !METHOD_CHECK_RULE_IDS.includes(r.ruleId)) ?? null;
   const calculated = input.calculatedIds ?? [];
-  const notReady = rules?.filter((r) => r.status === "inputs_missing") ?? [];
-  const waiting = notReady.filter((r) => r.missingBecause === "awaiting_review").length;
-  const choice = notReady.filter((r) => r.missingBecause === "needs_input").length;
-  const absent = notReady.length - waiting - choice;
-  const present = rules?.filter((r) => r.status === "inputs_present").length ?? 0;
+  const views = rules?.map(coverageView) ?? [];
+  const count = (view: CoverageView) => views.filter((v) => v === view).length;
+  const waiting = count("awaiting_review");
+  const choice = count("needs_choice");
+  const absent = count("missing");
+  const notReady = waiting + choice + absent;
+  const present = count("present");
   return {
     documents: documents.length,
     documentsReadable: documents.filter((e) => e.processingState === "extracted").length,
@@ -178,9 +239,9 @@ export function dashboardFigures(input: {
           needsChoice: choice,
           missing: absent,
           obtained: present + waiting + choice,
-          inScope: present + notReady.length,
-          notApplicable: rules.filter((r) => r.status === "not_applicable").length,
-          outOfScope: rules.filter((r) => r.status === "out_of_scope").length,
+          inScope: present + notReady,
+          notApplicable: count("not_applicable"),
+          outOfScope: count("out_of_scope"),
         }
       : null,
     dataPointsCalculated: calculated.length,

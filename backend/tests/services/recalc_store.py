@@ -36,8 +36,12 @@ class RecalcStore:
                                                    "page_number": pages[index - 1] if pages else index,
                                                    **({"record_key": keys[index - 1]} if keys
                                                       else self._key(index, meters, record))}})
+                # a decision carries the snapshot of what it was made on, or it cannot apply to a multi-record read
                 reviews.append({"candidate_id": candidate_id, "decision": "accepted", "org_id": ORG,
-                                "reviewed_value": value, "reviewed_unit": unit})
+                                "reviewed_value": value, "reviewed_unit": unit,
+                                "candidate_snapshot": {"field_name": name, "normalized_value": value, "unit": unit,
+                                                       "record_index": items[-1]["record_index"],
+                                                       **items[-1]["source_reference"]}})
         self.results[document_id] = [{"document_id": document_id, "org_id": ORG,
                                       "canonical_type_id": canonical_type_id, "items": items}]
         self.reviews[document_id] = reviews

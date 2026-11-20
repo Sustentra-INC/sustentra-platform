@@ -24,6 +24,7 @@ from backend.app.repositories.document_chunk_repository import DocumentChunkRepo
 from backend.app.repositories.processing_run_repository import ProcessingRunRepository
 from backend.app.services.document_content_service import UnreadableContent, UnsupportedContent, document_content
 from backend.app.services.document_file_types import served_type
+from backend.app.services.reviewed_evidence import mark_reread_items
 from backend.app.services.document_processing_service import (
     STILL_READING_MESSAGE,
     DocumentProcessingService,
@@ -32,7 +33,7 @@ from backend.app.services.document_processing_service import (
     RunParams,
 )
 from backend.app.services.document_upload_service import DocumentUploadService
-from backend.app.services.halt_text import plain_halt
+from backend.app.services.halt_text import plain_halt, plain_note, plain_pipeline_result
 from backend.app.services.local_storage_service import LocalStorageService
 from backend.app.services.parser_service import IMAGE_EXTENSIONS, ParserService
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
@@ -292,6 +293,10 @@ def latest_extraction_result(document_id: str, user: CurrentUser = Depends(s1_re
     if not results:
         raise HTTPException(status_code=404, detail="Extraction result not found.")
     latest = results[-1]
+    from backend.app.api.reviews import current_service as review_service
+
+    # A re-read can leave an earlier decision on a value it no longer fits: those items say so.
+    items = mark_reread_items(latest.get("items") or [], visible(review_service().list_by_document(document_id), user))
     return {
         "evidence_id": latest.get("evidence_id"),
         "document_id": latest.get("document_id"),
@@ -299,8 +304,10 @@ def latest_extraction_result(document_id: str, user: CurrentUser = Depends(s1_re
         "canonical_type_id": latest.get("canonical_type_id"),
         "status": latest.get("status"),
         "candidate_count": latest.get("candidate_count", 0),
-        "items": latest.get("items") or [],
+        "items": items,
         "created_at": latest.get("created_at"),
+        # Claude's facility suggestion for a bill that names none (a suggestion, not a placement); absent otherwise
+        **({"facility_suggestion": latest["facility_suggestion"]} if latest.get("facility_suggestion") else {}),
     }
 
 
@@ -468,7 +475,9 @@ def failed_run_error(run: dict) -> HTTPException:
             # encrypted workbook each say what to ask the client for; a long file says its page counts).
             return HTTPException(status_code=422, detail=str(halt["message"]))
         return HTTPException(status_code=422, detail=plain_halt(code, str(halt["message"])) or READ_FAILED_DETAIL)
-    return HTTPException(status_code=500, detail=run.get("errors") or ["Pipeline run failed."])
+    # The raw error text (an exception's words) stays in the stored run and the logs.
+    errors = [plain_note(item) for item in run.get("errors") or []]
+    return HTTPException(status_code=500, detail=errors or ["Pipeline run failed."])
 
 
 def processable_document(document_id: str, user: CurrentUser) -> dict:
@@ -487,7 +496,7 @@ def outcome_response(outcome: Outcome) -> dict:
     or 400 (refused input), 404 (document gone), 422 (a halt) and 500 (anything else)."""
 
     if outcome.status == "completed":
-        return outcome.result
+        return plain_pipeline_result(outcome.result)
     if outcome.error_code == "invalid_request":
         raise HTTPException(status_code=400, detail=outcome.detail or outcome.error)
     if outcome.error_code == "document_missing":

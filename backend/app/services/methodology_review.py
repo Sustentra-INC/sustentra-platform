@@ -29,7 +29,7 @@ from __future__ import annotations
 import copy
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from typing import Any
 
@@ -44,13 +44,18 @@ KIND = "methodology"
 CONSOLIDATION_APPROACHES = ("Equity Share", "Financial Control", "Operational Control")
 INCLUSIONS = ("Yes", "No", "Not detected")
 GWP_SETS = ("AR4", "AR5", "AR6")
-GWP_HORIZONS = ("100-year", "20-year")
+GWP_HORIZONS = ("100-year", "20-year", "500-year")
 GWP_SET_LABELS = {
     "AR4": "IPCC Fourth Assessment Report (AR4)",
     "AR5": "IPCC Fifth Assessment Report (AR5)",
     "AR6": "IPCC Sixth Assessment Report (AR6)",
 }
 YES_NO = ("Yes", "No")
+# The gas rows have their own value set; it is kept apart from the category Yes / No / Not detected.
+GAS_STATUSES = ("Included", "Declared absent", "Not mentioned")
+GASES = (("co2", "CO2"), ("ch4", "CH4"), ("n2o", "N2O"), ("hfcs", "HFCs"), ("pfcs", "PFCs"), ("sf6", "SF6"),
+         ("nf3", "NF3"))
+GAS_IDS = tuple(f"gas:{key}" for key, _ in GASES)
 
 PENDING, ACCEPTED, EDITED, REJECTED = "pending", "accepted", "edited", "rejected"
 STATUSES = (PENDING, ACCEPTED, EDITED, REJECTED)
@@ -61,7 +66,23 @@ MAX_FACILITIES = 20
 MAX_FACILITY = 100
 MAX_HISTORY = 50
 MAX_ADDED_ROWS = 200
-MAX_SUGGESTION_BYTES = 8 * 1024
+MAX_SUGGESTION_BYTES = 8 * 1024  # the value and its quote; the per-entry quotes have their own room
+MAX_ENTRIES = 10  # entries in an entry_list value
+MAX_SOURCE_TYPE = 60
+MAX_METHOD = 300
+MAX_EVIDENCE = 20  # per-entry quotes on one suggestion
+MAX_OPTION = 60
+MAX_WORDING = 200  # the company's own wording beside a selected option
+MAX_FREE_OPTIONS = 10  # free additions beside the listed options
+INSTRUMENT_OPTIONS = ("RECs or other energy attribute certificates", "PPA or VPPA",
+                      "Green tariff or utility program", "Supplier-specific rate", "Residual mix", "None")
+SOURCE_RECORD_OPTIONS = ("Utility invoices", "Meter readings", "Fuel cards", "Fuel receipts or logs",
+                         "Landlord reports", "Lease agreements")
+MARKET_CATEGORY_IDS = tuple(f"category:market:{key}" for key in ("electricity", "heating", "steam", "cooling"))
+MAX_EVIDENCE_QUOTE = 1000  # as long as the quote Claude is checked against
+# The quotes of one list suggestion. Sized so the record always fits MAX_PAYLOAD_BYTES with a decision of the
+# same field: when the quotes do not fit, the suggestion carries fewer entries, never an entry without its quote.
+MAX_EVIDENCE_BYTES = 12 * 1024
 MAX_QUOTE = 1000
 # What a suggestion may carry: key -> longest text. Anything else is dropped.
 _SUGGESTION_TEXT = {"quote": MAX_QUOTE, "document_id": 100, "file_name": 255, "model": 100, "request_id": 100,
@@ -77,6 +98,7 @@ MAX_SOURCE_REFERENCE_TEXT = 200
 
 GROUPS = (
     ("boundary", "Organizational boundary"),
+    ("gases", "Gases covered"),
     ("scope1", "Scope 1 emission categories"),
     ("scope2", "Scope 2 emission categories"),
     ("biogenic", "Biogenic emissions"),
@@ -91,8 +113,10 @@ ROW_GROUPS: dict[str, tuple[str, str, str, str]] = {
     "entities": ("entity", "entity", "boundary", "Entity"),
     "factor:scope1": ("factor:scope1", "factor", "factors", "Scope 1 emission factor source"),
     "factor:scope2": ("factor:scope2", "factor", "factors", "Scope 2 emission factor source"),
+    # A report may name more than one GWP set: the first is the fixed "gwp" field, each other is a row.
+    "gwp": ("gwp", "gwp", "gwp", "GWP set"),
 }
-_ROW_ID = re.compile(r"^(entity|factor:scope1|factor:scope2):[a-z0-9]{4,32}$")
+_ROW_ID = re.compile(r"^(entity|factor:scope1|factor:scope2|gwp):[a-z0-9]{4,32}$")
 
 
 class MethodologyConflict(Exception):
@@ -117,6 +141,14 @@ _PARTS: dict[str, list[dict[str, Any]]] = {
     "factor": [
         {"key": "database", "label": "Database", "kind": "text"},
         {"key": "edition", "label": "Edition", "kind": "text"},
+    ],
+    "multiselect": [
+        {"key": "option", "label": "Option", "kind": "text"},
+        {"key": "wording", "label": "The company's wording", "kind": "text"},
+    ],
+    "entry_list": [
+        {"key": "source_type", "label": "Source type", "kind": "text"},
+        {"key": "method", "label": "Estimation method", "kind": "text"},
     ],
     "gwp": [
         {"key": "set", "label": "GWP set", "kind": "enum", "allowed": list(GWP_SETS)},
@@ -150,6 +182,15 @@ def _static_fields() -> list[dict[str, Any]]:
         _field("boundary:acquisitions", "boundary", "Acquisitions and divestitures", "text", required=False),
         _field("boundary:leased_space", "boundary", "Treatment of leased space", "text", required=False),
     ]
+    # Spec row 11: only if the company reports a market-based Scope 2 number, which this page reads
+    # as at least one market-based category that is Yes (see ``market_based_reported``).
+    instruments = _field("scope2:instruments", "scope2", "Scope 2 instrument types (market-based)", "multiselect",
+                         list(INSTRUMENT_OPTIONS), required=False)
+    instruments["shown_if_yes"] = list(MARKET_CATEGORY_IDS)
+    fields.append(instruments)
+    # One row per gas, "Only if the company has a value" (spec row 7).
+    fields += [_field(f"gas:{key}", "gases", f"Gas: {name}", "enum", list(GAS_STATUSES), required=False)
+               for key, name in GASES]
     scope1 = {"stationary": "Stationary Combustion", "mobile": "Mobile Combustion",
               "process": "Process Emissions", "fugitive": "Fugitive Emissions"}
     for key, name in scope1.items():
@@ -172,7 +213,15 @@ def _static_fields() -> list[dict[str, Any]]:
     fields += [
         _field("calculation:approach", "calculation", "Calculation approach", "text"),
         _field("calculation:process", "calculation", "Process-specific calculations", "text"),
+        # "Only if the company has a value" (spec row 19): one entry per source type.
+        _field("calculation:estimation", "calculation", "Estimation method for missing data", "entry_list",
+               required=False),
     ]
+    # Spec row 20: the listed records, and any the company names beyond them.
+    records = _field("calculation:source_records", "calculation", "Source records", "multiselect",
+                     list(SOURCE_RECORD_OPTIONS), required=False)
+    records["free"] = True
+    fields.append(records)
     return fields
 
 
@@ -194,7 +243,14 @@ def row_field(field_id: str) -> dict[str, Any] | None:
     if not match:
         return None
     prefix, kind, group, label = next(g for g in ROW_GROUPS.values() if g[0] == match.group(1))
-    field = _field(field_id, group, label, kind, {"operational_control": list(YES_NO)} if kind == "entity" else None)
+    allowed: Any = None
+    if kind == "entity":
+        allowed = {"operational_control": list(YES_NO)}
+    elif kind == "gwp":
+        allowed = {"set": list(GWP_SETS), "horizon": list(GWP_HORIZONS)}
+    field = _field(field_id, group, label, kind, allowed)
+    if kind == "gwp":
+        field["allowed_labels"] = {"set": dict(GWP_SET_LABELS)}
     field["user_added"] = True
     return field
 
@@ -203,7 +259,7 @@ def new_row_id(group: str) -> str:
     """A fresh id for a row in ``group`` (entities, factor:scope1, factor:scope2)."""
 
     if group not in ROW_GROUPS:
-        raise MethodologyInvalid("Rows can be added to the entities and to the Scope 1 or Scope 2 emission factor sources.")
+        raise MethodologyInvalid("Rows can be added to the entities, the emission factor sources and the GWP sets.")
     return f"{ROW_GROUPS[group][0]}:{uuid.uuid4().hex[:12]}"
 
 
@@ -213,6 +269,8 @@ def blank_value(field_id: str) -> Any:
     if field_id.startswith("entity:"):
         return {"name": "", "facilities": [], "equity_share_pct": 0, "financial_control": 0,
                 "operational_control": "No"}
+    if field_id.startswith("gwp:"):
+        return {"set": "", "horizon": ""}
     return {"database": "", "edition": ""}
 
 
@@ -279,10 +337,72 @@ def _date_range(field: Mapping[str, Any], value: Any) -> dict[str, str]:
     return {"start": start.isoformat(), "end": end.isoformat()}
 
 
+def _entry_list(field: Mapping[str, Any], value: Any) -> list[dict[str, str]]:
+    """Entries of {source_type, method}: one per source type (compared ignoring case and spacing)."""
+
+    if not isinstance(value, list) or len(value) > MAX_ENTRIES:
+        raise _fail(field, f"enter a list of at most {MAX_ENTRIES} entries.")
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for entry in value:
+        data = _only(field, entry, ("source_type", "method"))
+        source = _text(field, data["source_type"], required=True, limit=MAX_SOURCE_TYPE, name="the source type")
+        key = " ".join(source.casefold().split())
+        if key in seen:
+            raise _fail(field, f"'{source}' appears twice. Keep one entry per source type.")
+        seen.add(key)
+        out.append({"source_type": source,
+                    "method": _text(field, data["method"], required=True, limit=MAX_METHOD, name="the method")})
+    return out
+
+
+def _multiselect(field: Mapping[str, Any], value: Any) -> list[dict[str, str]]:
+    """Selected options, each with the company's own wording (may be blank). A field with free
+    additions also takes options that are not in its list. "None" stands alone."""
+
+    allowed: list[str] = field["allowed"]
+    free = bool(field.get("free"))
+    if not isinstance(value, list) or len(value) > len(allowed) + (MAX_FREE_OPTIONS if free else 0):
+        raise _fail(field, "choose from the listed options" + (f", and add at most {MAX_FREE_OPTIONS} of your own." if free else "."))
+    by_key = {" ".join(a.casefold().split()): a for a in allowed}
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    extra = 0
+    for entry in value:
+        data = _only(field, entry, ("option", "wording"))
+        option = _text(field, data["option"], required=True, limit=MAX_OPTION, name="the option")
+        key = " ".join(option.casefold().split())
+        if key in by_key:
+            option = by_key[key]
+        elif free:
+            if key == "none":  # "None" is a listed answer on the fields that have it, never a free option
+                raise _fail(field, "'None' can't be added as an option of your own.")
+            extra += 1
+            if extra > MAX_FREE_OPTIONS:
+                raise _fail(field, f"add at most {MAX_FREE_OPTIONS} options of your own.")
+        else:
+            raise _fail(field, "choose options from the list: " + ", ".join(allowed) + ".")
+        if key in seen:
+            raise _fail(field, f"'{option}' is chosen twice.")
+        seen.add(key)
+        out.append({"option": option, "wording": _text(field, data["wording"], limit=MAX_WORDING,
+                                                          name="the company's wording")})
+    if not out:  # a decision needs an option: "None" is the explicit empty answer where the field has it
+        raise _fail(field, "choose at least one option" + (", or None if there are none." if "None" in allowed else
+                                                              ", or reject this row if the company has none."))
+    if len(out) > 1 and any(o["option"] == "None" for o in out):
+        raise _fail(field, "'None' can't be chosen together with other options.")
+    return out
+
+
 def validate_value(field: Mapping[str, Any], value: Any) -> Any:
     """The value cleaned for its field, or MethodologyInvalid with a sentence."""
 
     kind = field["kind"]
+    if kind == "multiselect":
+        return _multiselect(field, value)
+    if kind == "entry_list":
+        return _entry_list(field, value)
     if kind == "date_range":
         return _date_range(field, value)
     if kind == "text":
@@ -446,6 +566,45 @@ def _clip(value: Any, limit: int) -> str | None:
     return value.replace("\x00", "").encode("utf-8", "replace").decode("utf-8")[:limit]
 
 
+def _bound_reference(reference: Any) -> Any:
+    if isinstance(reference, Mapping):
+        kept: dict[str, Any] = {k: _clip(reference[k], MAX_SOURCE_REFERENCE_TEXT)
+                                for k in _SOURCE_REFERENCE_TEXT if isinstance(reference.get(k), str)}
+        page = reference.get("page_number")
+        if isinstance(page, int) and not isinstance(page, bool):
+            kept["page_number"] = page
+        return kept
+    return _clip(reference, MAX_SOURCE_REFERENCE_TEXT)
+
+
+def _bound_evidence(items: list[Any]) -> list[dict[str, Any]]:
+    """The quote behind each entry or option of a list suggestion: label, quote and where it was read."""
+
+    out: list[dict[str, Any]] = []
+    for item in items[:MAX_EVIDENCE]:
+        if not isinstance(item, Mapping):
+            continue
+        raw_quote = item.get("quote")
+        entry: dict[str, Any] = {"label": _clip(item.get("label"), 100) or "",
+                                 "quote": _clip(raw_quote, MAX_EVIDENCE_QUOTE) or "",
+                                 "document_id": _clip(item.get("document_id"), 100) or "",
+                                 "file_name": _clip(item.get("file_name"), 255) or ""}
+        if isinstance(raw_quote, str) and len(raw_quote) > MAX_EVIDENCE_QUOTE:
+            entry["quote_truncated"] = True
+        reference = item.get("source_reference")
+        if isinstance(reference, Mapping):  # only where it was read: page, sheet, cell (no snippet or box)
+            kept: dict[str, Any] = {k: _clip(reference[k], 100) for k in ("sheet_name", "cell_or_range")
+                                    if isinstance(reference.get(k), str)}
+            page = reference.get("page_number")
+            if isinstance(page, int) and not isinstance(page, bool):
+                kept["page_number"] = page
+            entry["source_reference"] = kept
+        elif isinstance(reference, str):
+            entry["source_reference"] = _clip(reference, 100)
+        out.append(entry)
+    return out
+
+
 def bound_suggestion(field: Mapping[str, Any], suggestion: Mapping[str, Any]) -> dict[str, Any]:
     """The suggestion with a validated value and every other part bounded: the quote is cut to
     MAX_QUOTE characters (``quote_truncated: true``), the other texts to their limits, the
@@ -459,17 +618,24 @@ def bound_suggestion(field: Mapping[str, Any], suggestion: Mapping[str, Any]) ->
             out[key] = _clip(raw, limit)
             if key == "quote" and isinstance(raw, str) and len(raw) > limit:
                 out["quote_truncated"] = True
-    reference = suggestion.get("source_reference")
-    if isinstance(reference, Mapping):
-        kept: dict[str, Any] = {k: _clip(reference[k], MAX_SOURCE_REFERENCE_TEXT)
-                                for k in _SOURCE_REFERENCE_TEXT if isinstance(reference.get(k), str)}
-        page = reference.get("page_number")
-        if isinstance(page, int) and not isinstance(page, bool):
-            kept["page_number"] = page
-        out["source_reference"] = kept
-    elif "source_reference" in suggestion:
-        out["source_reference"] = _clip(reference, MAX_SOURCE_REFERENCE_TEXT)
-    if payload_size(out) > MAX_SUGGESTION_BYTES:
+    if "source_reference" in suggestion:
+        out["source_reference"] = _bound_reference(suggestion["source_reference"])
+    evidence = suggestion.get("evidence")
+    if isinstance(evidence, list) and isinstance(out["value"], list):
+        kept_evidence = _bound_evidence(evidence)
+        entries: list[Any] = out["value"]
+        total = len(entries)
+        del entries[len(kept_evidence):]  # an entry without a quote is never kept
+        del kept_evidence[len(entries):]
+        while kept_evidence and payload_size({"e": kept_evidence}) > MAX_EVIDENCE_BYTES:
+            kept_evidence.pop()  # the last entry goes with its quote
+            entries.pop()
+        if not entries and total:
+            raise MethodologyInvalid(f"The suggestion for '{field['label']}' is too long to record.")
+        out["evidence"] = kept_evidence
+        if len(entries) < total:
+            out["entries_omitted"] = total - len(entries)
+    if payload_size({k: v for k, v in out.items() if k != "evidence"}) > MAX_SUGGESTION_BYTES:
         raise MethodologyInvalid(f"The suggestion for '{field['label']}' is too long to record.")
     return out
 
@@ -504,8 +670,20 @@ META_KEY = "meta:state"  # one extra item per engagement, never a field: {prefil
 NOT_CHECKED, NOT_DETECTED, HAS_VALUE = "not_checked", "not_detected", "has_value"
 
 
+# The fields the page had when prefill first shipped. A prefill recorded before it stored which fields
+# it covered is taken to have covered these and no others, so a row added later reads "Not checked yet".
+LEGACY_PREFILL_COVERED = frozenset({
+    "reporting_period", "consolidation_approach",
+    *(f"category:scope1:{k}" for k in ("stationary", "mobile", "process", "fugitive")),
+    *(f"category:{b}:{k}" for b in ("location", "market") for k in ("electricity", "heating", "steam", "cooling")),
+    "category:biogenic:direct", "category:biogenic:indirect",
+    "exclusion:boundary", "exclusion:inventory", "exclusion:materiality",
+    "gwp", "calculation:approach", "calculation:process",
+})
+
+
 def new_meta() -> dict[str, Any]:
-    return {"prefill_ran_at": None, "revealed": []}
+    return {"prefill_ran_at": None, "prefill_covered": [], "revealed": []}
 
 
 def has_value(record: Mapping[str, Any]) -> bool:
@@ -526,14 +704,54 @@ def display_state(record: Mapping[str, Any], meta: Mapping[str, Any]) -> str:
 
     if has_value(record):
         return HAS_VALUE
-    return NOT_DETECTED if meta.get("prefill_ran_at") else NOT_CHECKED
+    if not meta.get("prefill_ran_at"):
+        return NOT_CHECKED
+    covered = meta.get("prefill_covered")
+    covered_ids = set(covered) if covered else LEGACY_PREFILL_COVERED  # a run that did not look at this field says nothing
+    return NOT_DETECTED if record.get("field_id") in covered_ids else NOT_CHECKED
 
 
-def is_shown(field: Mapping[str, Any], record: Mapping[str, Any], meta: Mapping[str, Any]) -> bool:
-    """Must-appear rows always show; an optional one shows once it has a value or the reviewer
-    revealed it with "Add an item"."""
+def market_based_reported(records: Mapping[str, Mapping[str, Any]], ids: Sequence[str] = MARKET_CATEGORY_IDS) -> bool:
+    """Whether the company reports a market-based Scope 2 number, read from the page: at least one
+    of the market-based categories is Yes. A category counts when the reviewer accepted or edited
+    it to Yes, or, while still undecided, when Claude suggested Yes. A rejected category, or one
+    that is No or Not detected, does not."""
 
-    return bool(field.get("required", True)) or has_value(record) or field["field_id"] in meta.get("revealed", [])
+    for field_id in ids:
+        record = records.get(field_id)
+        if not record:
+            continue
+        decision = record.get("decision")
+        if decision and decision.get("status") in (ACCEPTED, EDITED):
+            if decision.get("value") == "Yes":
+                return True
+        elif (not decision or decision.get("status") == PENDING) and (record.get("suggestion") or {}).get("value") == "Yes":
+            return True
+    return False
+
+
+def is_shown(field: Mapping[str, Any], record: Mapping[str, Any], meta: Mapping[str, Any],
+             records: Mapping[str, Mapping[str, Any]] | None = None) -> bool:
+    """Must-appear rows always show. An optional one shows once it has a value or the reviewer
+    revealed it with "Add an item"; a conditional one (``shown_if_yes``) also shows while one of
+    the categories it depends on is Yes."""
+
+    if bool(field.get("required", True)) or has_value(record) or field["field_id"] in meta.get("revealed", []):
+        return True
+    depends: list[str] = field.get("shown_if_yes") or []
+    return bool(depends) and market_based_reported(records or {}, depends)
+
+
+def shown_note(field: Mapping[str, Any], record: Mapping[str, Any], meta: Mapping[str, Any],
+               records: Mapping[str, Mapping[str, Any]] | None = None) -> str | None:
+    """Why a conditional row is on the page when its condition is not met: only Claude's suggestion
+    is there (no decision, not added by the reviewer), so it is shown rather than hidden."""
+
+    depends: list[str] = field.get("shown_if_yes") or []
+    if (depends and record.get("suggestion") and not record.get("decision")
+            and field["field_id"] not in meta.get("revealed", []) and not market_based_reported(records or {}, depends)):
+        return "Shown because Claude found it, although no market-based category is Yes."
+    return None
 
 
 def public(record: Mapping[str, Any]) -> dict[str, Any]:

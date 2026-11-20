@@ -27,6 +27,10 @@ from typing import Any
 
 from backend.app.domain import fuel_units
 from backend.app.services.stationary_combustion_extractor import (
+    _GREETING,
+    _MAIL_HEADER,
+)
+from backend.app.services.stationary_combustion_extractor import (
     _ALL_LABELS as _BASE_LABELS,
 )
 from backend.app.services.stationary_combustion_extractor import (
@@ -73,6 +77,7 @@ QUANTITY_LABELS: tuple[tuple[str, ...], ...] = (
 
 # Words that name an electric utility in a plain-text letterhead ("Riverside Electric Utility",
 # "Valley Power and Light", "Southern California Edison", "Pedernales Electric Cooperative").
+_SENTENCE = re.compile(r"^\s*(?:your|thank|please|this|here|we|you)\b|\b(?:is|are|was|were)\b", re.IGNORECASE)
 _UTILITY_NAME_RE = re.compile(
     r"\b(company|co\.|inc\.?|llc|ltd\.?|corp\.?|utility|utilities|power|light|electric|energy|edison"
     r"|cooperative|co-op|authority)\b",
@@ -150,6 +155,9 @@ class ElectricityExtractor(StationaryCombustionExtractor):
     """Builds CT-S2-ELEC candidates: one record per metered usage line (or one per bill)."""
 
     CANONICAL_TYPE_ID = CANONICAL_TYPE_ID
+    RUN_LOG_WITHOUT_FUEL = False  # a run log with no fuel named is stationary fuel use only
+    HEADLINE_QUANTITY = False  # only the natural gas reader reads a number in large type over a unit
+    INLINE_TOTAL_QUANTITY = False  # ... or "TOTAL 1,273.1 THERMS" inside a line of a statement
     FUEL_LABEL_GROUPS = ENERGY_TYPE_LABELS
     QUANTITY_LABEL_GROUPS = QUANTITY_LABELS
     QTY_EXCLUDE = StationaryCombustionExtractor.QTY_EXCLUDE + (
@@ -179,7 +187,8 @@ class ElectricityExtractor(StationaryCombustionExtractor):
         found = super()._letterhead(rows)
         if found is not None or not rows:
             return found
-        first_page = [r for r in rows if (r.page or 1) == (rows[0].page or 1)][:4]
+        first_page = [r for r in rows if (r.page or 1) == (rows[0].page or 1)
+                      and not _MAIL_HEADER.match(r.text)][:4]  # an email's header lines are not its letterhead
         if any(c.box for r in first_page for c in r.cells):
             return None
         for row in first_page:
@@ -189,6 +198,8 @@ class ElectricityExtractor(StationaryCombustionExtractor):
             name = re.split(r"\s+[-–—|]\s+", text)[0].strip()
             if _norm(name).startswith(DOCUMENT_TITLE_WORDS) or "electricity" in _norm(name):
                 continue  # "Electricity Bill", "Statement of Account" are titles, not names
+            if _SENTENCE.search(name) or _GREETING.match(name):
+                continue  # "Your April 2025 electric statement is ready" is a sentence, not a name
             if _UTILITY_NAME_RE.search(name) and self._looks_like_org_name(name):
                 return Located(name, [row.cells[0]], row, CONF_LETTERHEAD - 0.05, context=text)
         return None
@@ -351,6 +362,8 @@ class ElectricityExtractor(StationaryCombustionExtractor):
             "service_address": self._address(rows) or address_from_facility,
             "supplier_name": self._supplier(rows),
             "account_number": self._account(rows),
+            "meter_number": self._bill_meter(rows),
+            "statement_date": self._statement_date(rows),
         }
         period = self._document_period(rows)
 
@@ -364,9 +377,17 @@ class ElectricityExtractor(StationaryCombustionExtractor):
             for target in targets:
                 field_id = str(target.get("field_id") or "")
                 if field_id in DOCUMENT_FIELDS:
+                    located = document_values.get(field_id)
+                    if field_id == "service_address" and record.extra.get("address") is not None:
+                        located = record.extra["address"]  # a meter's own row: each meter keeps its address
+                    if (field_id == "facility_name" and located is not None and located.last_resort
+                            and record.extra.get("address") is not None):
+                        located = None  # the customer is not a site: a meter with its own address is placed by it
+                    if field_id == "meter_number" and record.extra.get("meter") is not None:
+                        located = record.extra["meter"]  # and its own meter number
                     record_candidates.append(self._candidate_for_text(
-                        target, document_values.get(field_id), document_id, evidence_id, record_key,
-                        record_index, parser_output, field_id))
+                        target, located, document_id, evidence_id, record_key, record_index, parser_output,
+                        field_id))
                 elif field_id == "energy_type" or field_id in RECORD_FIELDS:
                     record_candidates.append(self._record_candidate(
                         target, values, document_id, evidence_id, record_key, record_index, parser_output))

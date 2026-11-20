@@ -325,6 +325,7 @@ export type CalcUnplacedReason =
   | "fuel_shared_by_vehicle_groups"
   | "no_vehicle_group"
   | "no_facility_match"
+  | "identifier_on_two_facilities"
   | "no_calculation_line";
 
 /** Records on no calculation line: reported on their own, never dropped. */
@@ -1022,6 +1023,11 @@ function awaitingFor(result: Recalculation, typeId: string): string[] {
   return result.awaiting_review.filter((a) => a.canonical_type_id === typeId).map((a) => a.record);
 }
 
+/** The documents with records of this type awaiting review, once each. */
+function awaitingDocuments(result: Recalculation, typeId: string): string[] {
+  return [...new Set(result.awaiting_review.filter((a) => a.canonical_type_id === typeId).map((a) => a.document_id))];
+}
+
 function listed(items: string[], max = 3): string {
   const unique = Array.from(new Set(items));
   return unique.length <= max ? unique.join(", ") : `${unique.slice(0, max).join(", ")} and ${unique.length - max} more`;
@@ -1136,6 +1142,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
         status: "inputs_missing",
         reason: parts.join(". "),
         missingBecause: waiting.length ? "awaiting_review" : "needs_input",
+        awaitingDocumentIds: awaitingDocuments(result, typeId),
       });
     } else if (category) {
       const docs = (category.details.inputs ?? []).reduce((n, i) => n + i.documents.length, 0);
@@ -1188,6 +1195,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
       appliesTo: elecAppliesTo,
       status: "inputs_missing",
       missingBecause: elecWaiting.length ? "awaiting_review" : "needs_input",
+      awaitingDocumentIds: awaitingDocuments(result, "CT-S2-ELEC"),
       reason: [
         regions.length ? `Grid region not chosen for ${listed(regions.map((r) => r.key ?? ""))}` : "",
         elecWaiting.length ? `${count(elecWaiting.length, "bill")} awaiting review (${listed(elecWaiting)})` : "",
@@ -1313,6 +1321,7 @@ function refrigerantRule(result: Recalculation): CoverageRule {
       ...base,
       status: "inputs_missing",
       missingBecause: waiting.length ? "awaiting_review" : "needs_input",
+      awaitingDocumentIds: awaitingDocuments(result, "CT-S1-REFRSVC"),
       reason: [
         category ? `Recalculated so far: ${category.lines.map((l) => l.key).join(", ")}` : "",
         waiting.length ? `${count(waiting.length, "record")} awaiting review (${listed(waiting)})` : "",
