@@ -8,6 +8,7 @@ import {
   coverageFromRecalculation,
   documentsBasis,
   getRecalculation,
+  gwpLabel,
   type Recalculation,
 } from "../api/recalculation";
 import { userFacingApiError } from "../api/s1Backend";
@@ -122,7 +123,8 @@ export function liveOutputFrom(
         process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture"
           ? "/demo/cascade-provisions-2025-workpaper.xlsx"
           : apiPath(`/engagements/${encodeURIComponent(result.engagement_id)}/export`),
-      gwpBasis: `${result.gwp_set}${result.gwp_set === "AR5" ? " (EPA Hub Table 11)" : ""}`,
+      gwpBasis: gwpLabel(result),
+      blocked: result.gwp_blocked ?? null,
       findings,
       basisLines: [
         `${reviewed[0].toUpperCase()}${reviewed.slice(1)}`,

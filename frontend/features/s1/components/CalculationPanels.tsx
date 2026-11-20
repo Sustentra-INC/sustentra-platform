@@ -73,7 +73,6 @@ function energyPanel(level2: string): PanelDef {
 
 const GAS_LABEL: Record<CalcGas, string> = { CO2: "CO₂", CH4: "CH₄", N2O: "N₂O" };
 const GASES: CalcGas[] = ["CO2", "CH4", "N2O"];
-const GWP_SETS = ["AR4", "AR5", "AR6"];
 
 /** The units the backend converts, by dimension: a company's activity unit is picked from its line's. */
 const UNIT_GROUPS: string[][] = [
@@ -504,11 +503,9 @@ function Step2Block({ line }: { line: CalculationLine }) {
 function Step3Block({
   line,
   gwpLabel,
-  gwpControl,
 }: {
   line: CalculationLine;
   gwpLabel: string;
-  gwpControl?: ReactNode;
 }) {
   const equations = line.method.equations;
   const company = line.company?.step3.gases;
@@ -545,7 +542,9 @@ function Step3Block({
       <div className="s1-cp-gwp">
         <span>GWP</span>
         <strong>{gwpLabel}</strong>
-        {gwpControl}
+        <InfoTip label="GWP set">
+          One set applies to the whole engagement: the one chosen in Methodology review. Change it there and Results recalculates every line.
+        </InfoTip>
       </div>
       {line.step3.gases.map((g, index) => {
         // Pair by occurrence: the nth run of a gas on our side with the nth on theirs. A different count can't be paired.
@@ -743,7 +742,6 @@ function LineDetail({
   line,
   settings,
   gwpSet,
-  gwpLabel,
   onSave,
   store,
   team,
@@ -755,9 +753,8 @@ function LineDetail({
   line: CalculationLine;
   inputs?: CalcLineInputs;
   settings: RecalculationSettings;
+  /** The backend's GWP wording (Methodology review's choice), shown as given. */
   gwpSet: string;
-  /** The backend's GWP wording, shown as given. */
-  gwpLabel: string;
   onSave: (next: RecalculationSettings) => Promise<string | null>;
   store: VerificationStore;
   team: TeamMember[];
@@ -766,42 +763,11 @@ function LineDetail({
   onOpenEvidence?: (lineKey: string) => void;
 }) {
   const [box, setBox] = useState<"examination" | "note" | "company" | null>(null);
-  const [gwpSaving, setGwpSaving] = useState(false);
-  const [gwpError, setGwpError] = useState<string | null>(null);
   const key = examinationKey("calc", line.key);
   const examination = store.examinations[key];
   const examined = Boolean(examination?.examinedBy);
   const title = `${line.label} · ${line.level2}`;
-  const ids = `s1-cp-${line.key}`;
   const flags = line.flags.map((f) => FLAG_TEXT[f]).filter(Boolean);
-
-  async function changeGwp(value: string) {
-    setGwpSaving(true);
-    setGwpError(null);
-    setGwpError(await onSave({ ...settings, gwp_set: value }));
-    setGwpSaving(false);
-  }
-
-  const gwpControl = (
-    <>
-      <label htmlFor={`${ids}-gwp`} className="s1-cp-sr">
-        GWP set
-      </label>
-      <select id={`${ids}-gwp`} value={gwpSet} disabled={gwpSaving} onChange={(e) => void changeGwp(e.target.value)}>
-        {GWP_SETS.map((g) => (
-          <option key={g} value={g}>
-            {g}
-          </option>
-        ))}
-      </select>
-      <InfoTip label="GWP set">One set applies to the whole engagement. Changing it recalculates every line.</InfoTip>
-      {gwpError ? (
-        <span className="s1-vw-red" role="alert">
-          {gwpError}
-        </span>
-      ) : null}
-    </>
-  );
 
   return (
     <div className="s1-cp-detail">
@@ -810,7 +776,7 @@ function LineDetail({
       <MethodBlock line={line} />
       <Step1Block line={line} onOpenDocument={onOpenDocument} />
       <Step2Block line={line} />
-      <Step3Block line={line} gwpLabel={gwpLabel} gwpControl={gwpControl} />
+      <Step3Block line={line} gwpLabel={gwpSet} />
       <ResultsBlock line={line} />
       <div className="s1-vw-actions">
         {examined ? (
@@ -907,7 +873,6 @@ export function CalculationPanels({
   lines,
   comparisons,
   gwpSet,
-  gwpLabel,
   settings,
   onSave,
   store,
@@ -927,8 +892,6 @@ export function CalculationPanels({
   /** The recalculation's comparisons: each panel's Reported, Recomputed, Difference and status. */
   comparisons: RecalcComparison[];
   gwpSet: string;
-  /** The backend's GWP label when it sends one (`gwp_label`); the set's name until then. */
-  gwpLabel?: string;
   settings: RecalculationSettings;
   /** Saves settings.recalculation through the existing save path (which refetches); resolves to an error message or null. */
   onSave: (next: RecalculationSettings) => Promise<string | null>;
@@ -1064,7 +1027,6 @@ export function CalculationPanels({
                                     line={line}
                                     settings={settings}
                                     gwpSet={gwpSet}
-                                    gwpLabel={gwpLabel ?? gwpSet}
                                     onSave={onSave}
                                     store={store}
                                     team={team}

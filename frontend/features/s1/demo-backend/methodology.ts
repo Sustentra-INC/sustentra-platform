@@ -215,6 +215,64 @@ function stateFor(engagementId: string): State {
   return state;
 }
 
+/** The GWP choice of the demo's Methodology review, by the server's rule (services/methodology_gwp.py): the
+ *  general set drives; a set limited to refrigerants drives only those; one embedded in third-party factors is
+ *  information; two different general sets block; "Not stated" is taken as 100-year and labelled assumed. */
+export interface DemoGwpChoice {
+  set: string | null;
+  refrigerantSet: string | null;
+  label: string;
+  blocked: string | null;
+  row: string | null;
+  refrigerantRow: string | null;
+  info: string[];
+}
+
+const useOf = (note: unknown): "general" | "refrigerants" | "embedded" =>
+  /\b(embedded|third[- ]party|built[- ]in|supplier|vendor)\b/i.test(String(note ?? ""))
+    ? "embedded"
+    : /\b(refrigerants?|hfcs?|pfcs?|f-?gas(es)?|hydrofluorocarbons?|fugitive)\b/i.test(String(note ?? ""))
+      ? "refrigerants"
+      : "general";
+
+export function demoGwpChoice(engagementId: string): DemoGwpChoice {
+  const DEFAULT = "AR5 (default — not set in Methodology review)";
+  const base: DemoGwpChoice = { set: "AR5", refrigerantSet: "AR5", label: DEFAULT, blocked: null, row: null, refrigerantRow: null, info: [] };
+  const block = (message: string, label = message): DemoGwpChoice => ({ ...base, set: null, refrigerantSet: null, label, blocked: message });
+  const state = stateFor(engagementId);
+  const order = state.records.filter((r) => r.fieldId === "gwp" || r.fieldId.startsWith("gwp:"));
+  const confirmed = order
+    .map((r, i) => ({ id: r.fieldId, position: i + 1, v: r.decision?.value as Record<string, string> | null, ok: r.decision?.status === "accepted" || r.decision?.status === "edited" }))
+    .filter((c) => c.ok && c.v && typeof c.v === "object") as { id: string; position: number; v: Record<string, string> }[];
+  if (!confirmed.length) return base;
+  const general = confirmed.filter((c) => useOf(c.v.applies_to) === "general");
+  const fridge = confirmed.filter((c) => useOf(c.v.applies_to) === "refrigerants");
+  const info = confirmed.filter((c) => useOf(c.v.applies_to) === "embedded").map((c) => `${c.v.set} (${c.v.applies_to}): information only, it drives no calculation.`);
+  for (const c of [...general, ...fridge]) {
+    if (c.v.horizon !== "100-year" && c.v.horizon !== "Not stated") {
+      const message = `The ${c.v.horizon} horizon chosen in Methodology review is not supported for calculation: the reference data holds 100-year GWPs only. Nothing is calculated until the horizon there is 100-year.`;
+      return block(message, `${c.v.set} ${c.v.horizon} — not supported for calculation`);
+    }
+  }
+  const one = (rows: typeof confirmed) => (new Set(rows.map((c) => c.v.set)).size > 1 ? null : (rows.find((c) => c.v.horizon !== "Not stated") ?? rows[0]));
+  const label = (c: (typeof confirmed)[number]) =>
+    c.v.horizon === "Not stated"
+      ? `${c.v.set} · 100-year (assumed — horizon not stated${c.position > 1 ? `; GWP set row ${c.position}` : ""})`
+      : `${c.v.set} · 100-year (Methodology review${c.position > 1 ? `, GWP set row ${c.position}` : ""})`;
+  const main = general.length ? one(general) : undefined;
+  if (general.length && !main) return block("Two GWP sets confirmed in Methodology review — keep one");
+  const sub = fridge.length ? one(fridge) : undefined;
+  if (fridge.length && !sub) return block("Two GWP sets confirmed for refrigerants in Methodology review — keep one", "Two GWP sets confirmed for refrigerants — keep one");
+  const out: DemoGwpChoice = { ...base, info };
+  if (main) Object.assign(out, { set: main.v.set, refrigerantSet: main.v.set, row: main.id, refrigerantRow: main.id, label: label(main) });
+  if (sub) {
+    Object.assign(out, { refrigerantSet: sub.v.set, refrigerantRow: sub.id });
+    if (!main) out.label = `${DEFAULT} for fuels and electricity; ${label(sub)} for refrigerants`;
+    else if (sub.v.set !== main.v.set) out.label = `${out.label} for fuels and electricity; ${label(sub)} for refrigerants`;
+  }
+  return out;
+}
+
 /** Back to the opening state (the demo's Reset, and tests). */
 export function resetDemoMethodology(): void {
   states.clear();

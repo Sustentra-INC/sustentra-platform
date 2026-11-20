@@ -416,9 +416,21 @@ export { plural as pluralCount };
 
 export interface Recalculation {
   engagement_id: string;
-  gwp_set: string;
-  /** How the GWP basis is worded (set, horizon, and whether Methodology review chose it); absent until the backend sends it. */
+  /** The set the numbers use: the one chosen in Methodology review (AR5 when none is confirmed). */
+  gwp_set: string | null;
+  /** The Methodology review row that drove the choice (null: the default). */
+  gwp_row?: string | null;
+  /** The set the refrigerant GWPs use: another one when a use note limits a set to refrigerants. */
+  gwp_refrigerant_set?: string | null;
+  gwp_refrigerant_row?: string | null;
+  /** Confirmed sets that drive nothing (embedded in third-party factors), as sentences. */
+  gwp_info?: string[];
+  gwp_horizon?: string;
+  /** What Results and the workpaper print: the set, and where it came from. */
   gwp_label?: string;
+  gwp_source?: "methodology" | "default" | "settings";
+  /** Set when the Methodology choice cannot be calculated (e.g. a 500-year horizon); nothing is calculated then. */
+  gwp_blocked?: string | null;
   reporting_period: { start: string | null; end: string | null };
   tolerance_pct: number;
   /** Later categories (refrigerants, steam, heating) are missing from results computed before them. */
@@ -612,6 +624,11 @@ export interface RollupStep {
   /** Steps that must finish first. */
   after: RollupStep["key"][];
   node_keys: string[];
+}
+
+/** The GWP set as Results and the workpaper name it (the server's wording, else the set alone). */
+export function gwpLabel(result: Pick<Recalculation, "gwp_set" | "gwp_label">): string {
+  return result.gwp_label ?? result.gwp_set ?? "not set";
 }
 
 export interface Rollup {
@@ -1076,7 +1093,7 @@ export function recalculationMateriality(result: Recalculation): MaterialityFigu
     uncorrected,
     note:
       `Misstatement is the difference between reported and recalculated Scope 1 and Scope 2 (location-based) ` +
-      `totals, from ${documentsBasis(result)}, at ${result.gwp_set} GWPs. ` +
+      `totals, from ${documentsBasis(result)}, GWP set ${gwpLabel(result)}. ` +
       (open
         ? `${open} item(s) still need an input or a review, so the conclusion stays provisional.`
         : allReported
@@ -1359,7 +1376,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
     assertion: "CH4, N2O and other gases are converted to CO2e on one documented GWP basis",
     appliesTo: ["All CO2e data points"],
     status: "inputs_present",
-    reason: `${result.gwp_set} (${result.gwp_set === "AR5" ? "EPA Hub Table 11" : "IPCC AR6"}).`,
+    reason: `${gwpLabel(result)}.`,
   });
 
   rules.push(refrigerantRule(result));

@@ -46,7 +46,6 @@ const ENGAGEMENT: EngagementConfig = {
   signedInName: "Dana",
 };
 
-const recalcCalls = () => vi.mocked(api).mock.calls.filter(([path]) => path === "/engagements/ENG-1/recalculation").length;
 
 function renderScreen(props: Partial<React.ComponentProps<typeof BackendVerificationResults>> = {}, engagement = ENGAGEMENT) {
   responses.byPath["/engagements/ENG-1/recalculation"] = RESULT;
@@ -203,15 +202,13 @@ describe("calculation panels in Verification results", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("saves a GWP set change through the existing save path and refetches", async () => {
-    const saved: unknown[] = [];
-    renderScreen({ onSaveInputs: async (next) => void saved.push(next) });
+  it("names the GWP set chosen in Methodology review and offers no picker of its own", async () => {
+    renderScreen({});
     await panel(/Scope 1 › Stationary combustion/);
     fireEvent.click(screen.getByRole("button", { name: "Kent Cannery · MMBtu" }));
-    const before = recalcCalls();
-    fireEvent.change(within(screen.getByRole("region", { name: "Step 3 · Emissions by gas" })).getByRole("combobox", { name: "GWP set" }), { target: { value: "AR6" } });
-    await waitFor(() => expect(saved).toEqual([expect.objectContaining({ gwp_set: "AR6" })]));
-    await waitFor(() => expect(recalcCalls()).toBe(before + 1));
+    const step = within(block("Step 3 · Emissions by gas"));
+    expect(step.queryByRole("combobox", { name: "GWP set" })).toBeNull();
+    expect(step.getByText("AR5")).toBeTruthy();
   });
 
   it("saves company figures for the line, and says in words what is wrong", async () => {
