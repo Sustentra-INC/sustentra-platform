@@ -3039,7 +3039,7 @@ html, body { margin: 0; padding: 0; }
 .s1-cr-filter:hover { border-color: var(--line-strong); color: var(--ink); }
 .s1-cr-filter:active { transform: scale(0.97); }
 .s1-cr-filter:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-.s1-cr-filter__n { font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; color: var(--ink); }
+.s1-cr-filter__n { font-weight: var(--weight-regular); font-variant-numeric: tabular-nums; color: var(--ink); }
 .s1-cr-filter__icon { display: inline-flex; }
 .s1-cr-filter__icon svg { width: 0.95rem; height: 0.95rem; }
 .s1-cr-filter--open .s1-cr-filter__icon { color: var(--state-open-fg); }

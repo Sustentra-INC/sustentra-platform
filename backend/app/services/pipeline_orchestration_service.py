@@ -34,7 +34,7 @@ from backend.app.services.electricity_extractor import (
 from backend.app.services.extraction_service import ExtractionService
 from backend.app.services.thermal_extractor import CANONICAL_TYPE_ID as THERMAL_TYPE_ID
 from backend.app.services.thermal_extractor import ThermalExtractor
-from backend.app.services.extraction_target_service import ExtractionTargetService
+from backend.app.services.extraction_target_service import DISPLAY_ONLY_FIELDS, ExtractionTargetService
 from backend.app.adapters.parsers.email_parser import PARSER_NAME as EMAIL_PARSER_NAME
 from backend.app.adapters.parsers.email_reader import ENCRYPTED_EMAIL
 from backend.app.adapters.parsers.xls_parser import PASSWORD_PROTECTED
@@ -986,7 +986,7 @@ class PipelineOrchestrationService:
             canonical_type_source=cast(CanonicalTypeSource, canonical_type_source),
             classification_status=classification_status,
             parser_status=parser_status,
-            target_count=len(extraction_targets),
+            target_count=len(self._expected_targets(extraction_targets, items)),
             candidate_count=candidate_count,
             found_candidate_count=found_candidate_count,
             missing_candidate_count=missing_candidate_count,
@@ -1027,6 +1027,16 @@ class PipelineOrchestrationService:
         if result.status == "ignored":
             return [f"ai_routing_ignored: {result.ignored_reason}"]
         return []
+
+    @staticmethod
+    def _expected_targets(extraction_targets: list[dict], items: list[Any]) -> list[dict]:
+        """The targets that count in "n of m fields": every one, except a display-only optional field (meter number,
+        statement date) the bill did not print."""
+
+        read = {str(i.get("field_name")) for i in items
+                if isinstance(i, dict) and i.get("normalized_value") is not None}
+        return [t for t in extraction_targets
+                if str(t.get("field_id")) not in DISPLAY_ONLY_FIELDS or str(t.get("field_id")) in read]
 
     @staticmethod
     def _candidate_has_value(candidate: Any) -> bool:

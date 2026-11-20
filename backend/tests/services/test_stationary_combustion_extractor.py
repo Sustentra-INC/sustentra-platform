@@ -273,7 +273,7 @@ def test_extraction_service_routes_fuelqty_and_reports_halts(targets: list[dict]
     ok = service.extract({"parser_output": _text_output("Fuel: Propane\nGallons Delivered: 90\n"),
                           "extraction_targets": targets, "evidence_id": "EV-1"})
     assert ok["record_count"] == 1 and "halt_reason" not in ok
-    assert ok["candidate_count"] == len(targets)
+    assert ok["candidate_count"] == len([t for t in targets if t["field_id"] not in ("meter_number", "statement_date")])
     halted = service.extract({"parser_output": _text_output("Water bill\nUsage: 3 CCF\n"),
                               "extraction_targets": targets, "evidence_id": "EV-1"})
     assert halted["halt_reason"]["code"] == HALT_UNSUPPORTED and halted["items"] == []

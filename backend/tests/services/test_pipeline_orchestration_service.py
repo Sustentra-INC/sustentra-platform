@@ -145,7 +145,9 @@ def test_process_local_document_with_override_generates_targets_and_candidates(t
     assert run["canonical_type_id"] == "CT-S1-FUELQTY"
     assert run["canonical_type_source"] == "override"
     assert run["stage_statuses"]["candidate_generation"] == "completed"
-    assert run["target_count"] == len(result["extraction_targets"])
+    # a display-only field the document does not print (meter number, statement date) is not counted
+    assert run["target_count"] == len([t for t in result["extraction_targets"]
+                                       if t["field_id"] not in ("meter_number", "statement_date")])
     assert run["candidate_count"] == result["extraction_result"]["candidate_count"]
 
 

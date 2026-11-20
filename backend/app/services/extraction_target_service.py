@@ -19,6 +19,11 @@ from backend.app.reference.extraction_config_loader import (
     load_default_extraction_configs,
 )
 
+# Optional fields that are only shown, never used by a calculation (EXT-027). A bill that does not print one has no
+# placeholder for it: it is not counted in "n of m fields" and is not a missing or low-confidence candidate. Claude is
+# asked for it only when it is already reading the document for something else.
+DISPLAY_ONLY_FIELDS = frozenset({"meter_number", "statement_date"})
+
 # Deterministic ordering for required_status.
 _REQUIRED_STATUS_ORDER = {"core": 0, "conditional": 1, "optional": 2, "derived": 3}
 
