@@ -94,7 +94,7 @@ function fixture(ai: Record<string, unknown> = {}): Record<string, unknown> {
 }
 
 const calls = () => vi.mocked(api).mock.calls.filter(([, o]) => o && (o as { method?: string }).method);
-const row = (label: string) => screen.getByText(label).closest("li") as HTMLElement;
+const row = (label: string) => screen.getAllByText(label).map((e) => e.closest("li, tbody")).find(Boolean) as HTMLElement;
 
 async function open(onOpenDocument = vi.fn(), data: unknown = fixture()) {
   mock.data = data;
@@ -311,7 +311,7 @@ describe("Methodology review on real data", () => {
     expect((await screen.findByRole("alert")).textContent).toBe("The engagement is archived.");
   });
 
-  it("asks before reading the reports, then shows what was suggested, dropped, read and spent", async () => {
+  it("asks before reading the reports, then summarises what was found and what was set aside", async () => {
     await open();
     mock.fail.prefillResult = {
       suggested: 4,
@@ -325,13 +325,13 @@ describe("Methodology review on real data", () => {
     expect(calls().some(([p]) => String(p).endsWith("/prefill"))).toBe(false);
     expect(screen.getByRole("alertdialog").textContent).toMatch(/Suggestions need your review/);
     fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
-    const summary = await screen.findByRole("status");
-    await waitFor(() => expect(summary.textContent).toMatch(/4 suggested, dropped: 2: /));
-    expect(summary.textContent).toContain("2: Quote not found in the document, or shorter than 8 characters");
-    expect(summary.textContent).toContain("1 field kept your decision");
-    expect(summary.textContent).toContain("1: some new reason");
-    expect(summary.textContent).toContain("GHG report.pdf (only the start was read)");
-    expect(summary.textContent).toContain("Cost $0.03 (m)");
+    const summary = await screen.findByRole("region", { name: "Summary of the read" });
+    // 3 set aside (2 + 1), listed by reason in plain words under Details; no cost, no model, no codes.
+    await waitFor(() => expect(summary.textContent).toContain("3 set aside"));
+    expect(summary.textContent).not.toMatch(/Cost|\$0|quote_not_on_document|some_new_reason/);
+    fireEvent.click(within(summary).getByRole("button", { name: /Details/ }));
+    expect(summary.textContent).toContain("2 · Quote not found in the document, or shorter than 8 characters");
+    expect(summary.textContent).toContain("1 · some new reason");
     expect(calls()).toContainEqual([`${BASE}/prefill`, expect.objectContaining({ method: "POST" })]);
   });
 
@@ -1162,5 +1162,98 @@ describe("the two cards", () => {
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("Reporting period")).toBeNull();
+  });
+});
+
+describe("the summary of the read and the tables", () => {
+  const sug = (value: unknown) => ({ value, quote: "A quote that is long enough.", document_id: "d1", file_name: "GHG report.pdf", source_reference: { page_number: 4 }, origin: "ai", model: "claude-x", request_id: "r", suggested_at: "2026-11-01T10:00:00Z" });
+  const def = { group_label: "x", user_added: false };
+  const rec = (id: string, extra: Record<string, unknown>) => ({ field_id: id, user_added: false, suggestion: null, decision: null, history: [], ...extra });
+  function summaryFixture() {
+    return {
+      ai: { enabled: true, reason_code: null, reason: null },
+      groups: [
+        { group: "boundary", label: "Organizational boundary" },
+        { group: "gases", label: "Gases covered" },
+        { group: "scope1", label: "Scope 1 emission categories" },
+        { group: "gwp", label: "GWP factors source" },
+      ],
+      row_groups: [],
+      catalog: [
+        { ...def, field_id: "consolidation_approach", group: "boundary", label: "Consolidation approach", kind: "enum", allowed: ["Operational Control"] },
+        { ...def, field_id: "reporting_period", group: "boundary", label: "Reporting period", kind: "date_range" },
+        { ...def, field_id: "gas:co2", group: "gases", label: "Gas: CO2", kind: "enum", allowed: ["Included"] },
+        { ...def, field_id: "gas:n2o", group: "gases", label: "Gas: N2O", kind: "enum", allowed: ["Included"] },
+        { ...def, field_id: "category:scope1:stationary", group: "scope1", label: "Scope 1 Stationary Combustion", kind: "enum", allowed: ["Yes", "No"] },
+        { ...def, field_id: "category:scope1:mobile", group: "scope1", label: "Scope 1 Mobile Combustion", kind: "enum", allowed: ["Yes", "No"] },
+        { ...def, field_id: "gwp", group: "gwp", label: "GWP factors source", kind: "gwp", allowed: { set: ["AR5"], horizon: ["100-year"] } },
+      ],
+      fields: [
+        rec("consolidation_approach", { suggestion: sug("Operational Control") }),
+        rec("reporting_period", { display_state: "not_detected" }),
+        rec("gas:co2", { suggestion: sug("Included") }),
+        rec("gas:n2o", { display_state: "not_detected" }),
+        rec("category:scope1:stationary", { suggestion: sug("Yes") }),
+        rec("category:scope1:mobile", { display_state: "not_detected" }),
+        rec("gwp", { suggestion: sug({ set: "AR5", horizon: null }) }),
+      ],
+    };
+  }
+  beforeEach(() => window.localStorage.clear());
+
+  it("summarises only what the suggestions hold, and lists what was not found as chips", async () => {
+    await open(vi.fn(), summaryFixture());
+    const s = screen.getByRole("region", { name: "Summary of the read" });
+    expect(s.textContent).toContain("Summary of GHG report.pdf · read by Sustentra's AI · Nov 1, 2026");
+    expect(s.textContent).toContain("Boundary: Operational Control. Reporting period: not found.");
+    expect(s.textContent).toContain("Gases: CO₂ included; N₂O not found.");
+    expect(s.textContent).toContain("Scope 1: stationary combustion.");
+    expect(s.textContent).toContain("GWP: AR5 (horizon not stated).");
+    expect(s.textContent).toContain("3 items:");
+    for (const name of ["Reporting period", "N₂O", "Scope 1 Mobile Combustion"]) expect(within(s).getByRole("button", { name })).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Claude|claude/);
+  });
+
+  it("uses one count for the header and the summary: suggestions waiting for review", async () => {
+    await open(vi.fn(), summaryFixture());
+    expect(screen.getByText("4 suggested, waiting for review")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Summary of the read" }).textContent).toContain("4 values suggested, waiting for review");
+  });
+
+  it("remembers per engagement that the summary is collapsed, and works when storage is blocked", async () => {
+    await open(vi.fn(), summaryFixture());
+    fireEvent.click(screen.getByRole("button", { name: "Hide summary" }));
+    expect(window.localStorage.getItem("s1.methodologySummary.collapsed.e1")).toBe("1");
+    expect(screen.queryByText("What it found")).toBeNull();
+    cleanup();
+    await open(vi.fn(), summaryFixture());
+    expect(screen.getByRole("button", { name: "Show summary" })).toBeTruthy();
+    cleanup();
+    window.localStorage.clear();
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    try {
+      await open(vi.fn(), summaryFixture());
+      fireEvent.click(screen.getByRole("button", { name: "Hide summary" }));
+      expect(screen.getByRole("button", { name: "Show summary" })).toBeTruthy();
+    } finally {
+      get.mockRestore();
+      set.mockRestore();
+    }
+  });
+
+  it("draws each section as a table: left-aligned header row, one body per field, gases by chemical name", async () => {
+    await open(vi.fn(), summaryFixture());
+    const gases = screen.getByRole("heading", { name: "Gases covered" }).closest(".s1-mr-group") as HTMLElement;
+    const table = within(gases).getByRole("table");
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Gas", "Value", "Source", "Status", "Actions"]);
+    expect(within(table).getByRole("rowheader", { name: "CO₂" })).toBeTruthy();
+    expect(within(table).getByRole("rowheader", { name: "N₂O" })).toBeTruthy();
+    const scope1 = screen.getByRole("heading", { name: "Scope 1 emission categories" }).closest(".s1-mr-group") as HTMLElement;
+    expect(within(within(scope1).getByRole("table")).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Category", "Included", "Source", "Status", "Actions"]);
   });
 });

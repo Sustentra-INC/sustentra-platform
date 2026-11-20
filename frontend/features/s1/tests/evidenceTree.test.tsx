@@ -1716,3 +1716,56 @@ describe("Block 1 folders", () => {
     expect(screen.getByText("GHG workbook.xlsx")).toBeInTheDocument();
   });
 });
+
+describe("a summary document's row label", () => {
+  const METHODOLOGY_PATH = `/engagements/${ENG}/methodology-review`;
+  const field = (field_id: string, documentId: string | null, evidence: string[] = []) => ({
+    field_id,
+    suggestion: documentId ? { value: "Yes", quote: "q", document_id: documentId, file_name: "x", source_reference: null, evidence: evidence.map((d) => ({ label: "l", quote: "q", document_id: d, file_name: "x" })), origin: "ai", model: "m", request_id: "r", suggested_at: "t" } : null,
+    decision: null,
+    history: [],
+  });
+  const workbookRow = async () => {
+    await expandAll();
+    return (await screen.findByText("GHG workbook.xlsx")).closest(".s1-et-doc") as HTMLElement;
+  };
+  const methodology = (fields: unknown[]) => ({ fields, catalog: [], groups: [], row_groups: [], ai: { enabled: true, reason_code: null, reason: null } });
+
+  it("says how many facts were read, and opens Methodology review", async () => {
+    mocks.byPath[METHODOLOGY_PATH] = methodology([
+      field("a", "workbook"),
+      field("b", "other", ["workbook", "workbook"]),
+      field("c", "other"),
+      field("d", null),
+    ]);
+    const open = vi.fn();
+    render(<Harness onOpenMethodology={open} />);
+    const row = await workbookRow();
+    await waitFor(() => expect(row).toHaveTextContent("2 facts read · Open Methodology review"));
+    fireEvent.click(within(row).getByRole("button", { name: "Open Methodology review" }));
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it("says 1 fact for one, and Not read yet with the way to read it when there are none", async () => {
+    mocks.byPath[METHODOLOGY_PATH] = methodology([field("a", "workbook")]);
+    const { unmount } = render(<Harness onOpenMethodology={vi.fn()} />);
+    const row = await workbookRow();
+    await waitFor(() => expect(row).toHaveTextContent("1 fact read · Open Methodology review"));
+    unmount();
+    cleanup();
+    mocks.byPath[METHODOLOGY_PATH] = methodology([field("a", "another-doc")]);
+    render(<Harness onOpenMethodology={vi.fn()} />);
+    const again = await workbookRow();
+    await waitFor(() => expect(again).toHaveTextContent("Not read yet · Read with Sustentra's AI"));
+    expect(within(again).getByRole("button", { name: "Read with Sustentra's AI" })).toBeInTheDocument();
+  });
+
+  it("keeps the old wording when the read facts cannot be loaded, and never for a document with values", async () => {
+    mocks.byPath[METHODOLOGY_PATH] = new ApiError(500, "down", null, null);
+    render(<Harness onOpenMethodology={vi.fn()} />);
+    const row = await workbookRow();
+    await waitFor(() => expect(mocks.calls.some((c) => c.path === METHODOLOGY_PATH)).toBe(true));
+    expect(row).toHaveTextContent("No values yet");
+    expect(row).not.toHaveTextContent("Not read yet");
+  });
+});
