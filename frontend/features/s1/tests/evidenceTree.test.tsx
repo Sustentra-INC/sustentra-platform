@@ -1071,7 +1071,7 @@ describe("the data point review", () => {
     expect(props.onOpenCalculationLine).not.toHaveBeenCalled();
   });
 
-  it("uses neutral copy for an empty line that is not calculated, and says Rejected for a rejected field", async () => {
+  it("uses neutral copy for an empty line that is not calculated, and when every field is decided", async () => {
     mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, calculated: false, rows: [], coverage: [], values: [] } };
     const { unmount } = render(<SupportingSchedule engagementId={ENG} lineKey={KENT.key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={vi.fn()} />);
     expect(await screen.findByText("No calculation for this line yet.")).toBeInTheDocument();
@@ -1082,10 +1082,51 @@ describe("the data point review", () => {
       [SCHEDULE_PATH]: { ...SCHEDULE, calculated: false, rows: [{ ...first, accepted: false, decision: "awaiting_other_fields", rejected_fields: ["Fuel type"], waiting_on: [] }] },
     };
     renderSchedule();
-    // The record is not accepted, so no row is listed; the line says its values are waiting.
-    expect(await screen.findByText("Not calculated yet: values on this line are waiting for review.")).toBeInTheDocument();
-    expect(screen.queryByText(/Rejected: Fuel type/)).toBeNull();
+    // Every field is decided, so nothing is waiting: neutral copy, and the accepted values still show, flagged as not counted.
+    expect(await screen.findByText("No calculation for this line yet.")).toBeInTheDocument();
+    expect(screen.queryByText(/waiting for review/)).toBeNull();
     expect(screen.queryByText(/Waiting on/)).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(within(screen.getByRole("table")).getAllByRole("row")[1]).toHaveTextContent("Not counted — Fuel type rejected");
+  });
+
+  it("shows a row with a rejected sibling field as not counted, and does not hide its accepted values", async () => {
+    const [a, b] = SCHEDULE.rows;
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, rows: [a, { ...b, accepted: false, decision: "awaiting_other_fields", rejected_fields: ["Heat content"], waiting_on: [] }] } };
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const rows = within(screen.getByRole("table")).getAllByRole("row");
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).not.toHaveTextContent("Not counted");
+    expect(rows[2]).toHaveTextContent("99 therm");
+    expect(rows[2]).toHaveTextContent("Not counted — Heat content rejected");
+  });
+
+  it("labels coverage as counting accepted values only, reads Rejected for a month with only rejected values, and drops Waiting on for decided fields", async () => {
+    const [, b, c] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        coverage: [
+          { month: "2025-02", status: "not_reviewed", quantity: null, unit: null, document_ids: ["feb"], waiting_on: ["Heat content"] },
+          { month: "2025-03", status: "not_reviewed", quantity: null, unit: null, document_ids: ["mar"] },
+        ],
+        rows: [
+          { ...b, decision: "awaiting_other_fields", rejected_fields: ["Heat content"], waiting_on: [] },
+          { ...c, decision: "rejected" },
+        ],
+      },
+    };
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const cov = screen.getByRole("region", { name: "Coverage by month" });
+    expect(within(cov).getByText("Counts accepted values only.")).toBeInTheDocument();
+    const march = within(cov).getByText("Mar 2025").closest("li") as HTMLElement;
+    expect(march).toHaveTextContent("Rejected");
+    expect(march).not.toHaveTextContent("Not reviewed");
+    const feb = within(cov).getByText("Feb 2025").closest("li") as HTMLElement;
+    expect(feb).toHaveTextContent("Not reviewed");
+    expect(feb).not.toHaveTextContent("Waiting on");
   });
 
   it("stacks the sections in the spec's order: header, coverage, identifiers, values, history", async () => {

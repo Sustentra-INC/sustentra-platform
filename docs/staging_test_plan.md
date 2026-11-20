@@ -187,10 +187,10 @@ Needs the evidence-tree API (feat/evidence-tree-api) deployed.
 
 1. Open Evidence: Summary documents, Unassigned documents and Supporting evidence (Scope 1,
    Scope 2) show with document counts and % accepted. What you open stays open after a visit
-   to a document or a schedule and back.
+   to a document or the data point review and back.
 2. Choose a facility: only its documents remain, in every category. Switch to "By document
    type": today's table (set type, facility, notes) is still there.
-3. Open a line's schedule icon: coverage by month, source identifiers, accepted values and the
+3. Open a line's data point review icon: coverage by month, source identifiers, accepted values and the
    line history show. Click a month: its document opens. Click a value's document icon: the
    review opens at that value. Back returns to the tree as you left it.
    Schedule v2 (needs feat/schedule-v2-api): the values table has one row per record, with the
