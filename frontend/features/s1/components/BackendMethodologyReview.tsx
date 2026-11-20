@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+
+import { ChevronRight, SquareDashed, TextAlignJustify } from "lucide-react";
 
 import { userFacingApiError } from "../api/s1Backend";
 import {
@@ -19,6 +21,7 @@ import {
   type AiStatus,
   type CatalogField,
   type MethodologyRecord,
+  type MethodologySuggestion,
   type MethodologyReviewData,
   type MethodologyValue,
   type PrefillResult,
@@ -29,6 +32,7 @@ import type { Ask } from "../types/requests";
 import type { MaybePromise } from "../requests/maybePromise";
 import { andThen } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
+import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { InfoTip } from "./InfoTip";
 
@@ -63,6 +67,13 @@ const ACTION_WORD: Record<string, string> = {
   add_row: "Row added",
   remove_row: "Row removed",
 };
+
+/** The page is two cards. The API's groups under Methods; every other group sits in Inventory Boundary. */
+const METHODS_GROUPS = ["factors", "gwp", "calculation"];
+const CARDS = [
+  { key: "boundary", title: "Inventory Boundary" },
+  { key: "methods", title: "Methods" },
+] as const;
 
 /** Button words for the row groups the API lists (it gives codes only); any other code gets a general label. */
 const ADD_ROW_LABEL: Record<string, string> = {
@@ -425,6 +436,54 @@ function ValueEditor({
   );
 }
 
+/** The short source label: "p. 4" for a page; a sheet and cell as they are; "" when the location is unknown. */
+export function sourceShort(ref: MethodologySuggestion["source_reference"] | undefined): string {
+  const place = sourceLocation(ref);
+  const page = /^page\s+(\d+)$/i.exec(place);
+  return page ? `p. ${page[1]}` : place;
+}
+
+/** A suggestion Accept can take: pending, and not a period saved before it became two dates. */
+export function acceptable(def: CatalogField, record: MethodologyRecord): boolean {
+  const pendingStatus = (record.decision?.status ?? "pending") === "pending";
+  const oldText = def.kind === "date_range" && typeof record.suggestion?.value === "string";
+  return Boolean(record.suggestion) && pendingStatus && !oldText;
+}
+
+/** The small "p. N" link that opens the document where the quote is. */
+function SourceLink({ fileName, reference, documentId, at, onOpen }: { fileName: string; reference: MethodologySuggestion["source_reference"] | undefined; documentId: string; at: SourceAt; onOpen: (documentId: string, at?: SourceAt) => void }) {
+  const place = sourceLocation(reference);
+  return (
+    <button type="button" className="s1-mr-link s1-mb-source" aria-label={place ? `${fileName}, ${place}` : fileName} title={place ? `${fileName}, ${place}` : fileName} onClick={() => onOpen(documentId, at)}>
+      {sourceShort(reference) || fileName}
+    </button>
+  );
+}
+
+/** A quote in a muted style, clamped to two lines, with Show more when it is longer. */
+function Quote({ text, truncated }: { text: string; truncated?: boolean }) {
+  const ref = useRef<HTMLQuoteElement>(null);
+  const [open, setOpen] = useState(false);
+  const [clipped, setClipped] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && !open) setClipped(el.scrollHeight > el.clientHeight + 1);
+  }, [text, open]);
+  return (
+    <span className="s1-mb-quote-wrap">
+      <q ref={ref} className={`s1-mb-quote${open ? "" : " is-clamped"}`}>
+        {text}
+      </q>
+      {truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
+      {clipped || open ? (
+        <button type="button" className="s1-mr-link" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? "Show less" : "Show more"}
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
 export function FieldRow({
   engagementId,
   def,
@@ -457,6 +516,7 @@ export function FieldRow({
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "reject">("view");
   const [reason, setReason] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
   const assign = useAssignTask();
   const { suggestion, decision } = record;
   const status = decision?.status ?? "pending";
@@ -466,79 +526,141 @@ export function FieldRow({
   // A period saved before it became two dates is kept as the text it was; the reviewer re-enters it as dates.
   const oldText = def.kind === "date_range" && typeof decision?.value === "string" && decision.value ? decision.value : null;
   const suggestionIsOldText = def.kind === "date_range" && typeof suggestion?.value === "string";
+  // No suggestion and no value: the row offers "Add value" (nothing to reject).
+  const noValue = !suggestion && !current && !oldText;
   const asked = followUp ? openFollowUp(followUp.asks, def.fieldId) : undefined;
   const finish = (run: () => Promise<unknown>) => {
     setMode("view");
     setReason("");
     onAct(run);
   };
+  const entries: ActionMenuEntry[] = [
+    ...(noValue ? [] : [{ label: "Edit", disabled: busy, action: () => setMode("edit") }]),
+    ...(pendingStatus && suggestion ? [{ label: "Reject", disabled: busy, action: () => setMode("reject") }] : []),
+    ...(assign
+      ? [
+          {
+            label: "Assign to…",
+            action: () =>
+              assign({
+                kind: "Methodology row",
+                label: def.label,
+                target: { kind: "methodology_row", item_id: def.fieldId },
+                title: `Review methodology: ${def.label}`,
+              }),
+          },
+        ]
+      : []),
+    ...(followUp && !asked ? [{ label: "Mark for client follow-up", disabled: busy, action: () => onMarkFollowUp(def) }] : []),
+    ...(!pendingStatus ? [{ label: "Revert", disabled: busy, action: () => finish(() => revertField(engagementId, def.fieldId)) }] : []),
+    ...(record.userAdded ? [{ label: "Remove row", disabled: busy, action: () => finish(() => removeRow(engagementId, def.fieldId)) }] : []),
+  ];
+  const chip = status === "accepted" ? "accepted" : status === "edited" ? "corrected" : status === "rejected" ? "rejected" : null;
+  // With a suggestion showing, "Not decided yet" would only repeat it.
+  const showEmpty = !(suggestion && pendingStatus);
 
   return (
     <li className="s1-mb-row" data-status={status} data-field-id={def.fieldId} data-selected={selected || undefined} onClick={onSelect}>
-      <div className="s1-mb-main">
-        <span className="s1-mr-label">{def.label}</span>
-        <span className="s1-mr-value">{oldText ? <span>Recorded as: {oldText}</span> : current || <span className="s1-mr-none">{emptyWords(status, record.displayState)}</span>}</span>
-        {def.value_note && !entitiesNamed && current ? <span className="s1-mr-muted">{def.value_note}</span> : null}
-        <span className="s1-mb-status">{statusWord(status)}</span>
-        {decision && status !== "pending" ? (
-          <span className="s1-mr-muted">
-            {decision.by.name} · {when(decision.at)}
-          </span>
+      <div className="s1-mb-body">
+        <div className="s1-mb-main">
+          <span className="s1-mr-label">{def.label}</span>
+          {oldText || current || showEmpty ? (
+            <span className="s1-mr-value">{oldText ? <span>Recorded as: {oldText}</span> : current || <span className="s1-mr-none">{emptyWords(status, record.displayState)}</span>}</span>
+          ) : null}
+          {def.value_note && !entitiesNamed && current ? <span className="s1-mr-muted">{def.value_note}</span> : null}
+          {chip ? (
+            <span className={`s1-mr-chip s1-mr-chip--${chip}`}>{statusWord(status)}</span>
+          ) : !pendingStatus ? (
+            <span className="s1-chip">{statusWord(status)}</span>
+          ) : null}
+          {decision && status !== "pending" ? (
+            <span className="s1-mr-muted">
+              {decision.by.name} · {when(decision.at)}
+            </span>
+          ) : null}
+          {oldText ? <span className="s1-mr-muted">Enter the start and end dates with Edit.</span> : null}
+          {record.shownNote ? <span className="s1-mr-muted">{record.shownNote}</span> : null}
+          {status === "rejected" && decision?.reason ? <span className="s1-mr-muted">Reason: {decision.reason}</span> : null}
+        </div>
+
+        {suggestion ? (
+          <div className="s1-mb-suggest">
+            <div className="s1-mb-suggest__head">
+              <span className="s1-mr-value">{valueText(suggestion.value)}</span>
+              <span className="s1-chip s1-mb-chip">Suggested by Sustentra&apos;s AI</span>
+              {def.value_note && !entitiesNamed ? <span className="s1-mr-muted">{def.value_note}</span> : null}
+            </div>
+            {suggestion.evidence?.length ? (
+              <ul className="s1-mb-evidence">
+                {suggestion.evidence.map((item, index) => (
+                  <li key={index} className="s1-mb-evidence-item">
+                    <span className="s1-mr-muted">{item.label}</span>
+                    <Quote text={item.quote} truncated={item.quote_truncated} />
+                    {quoteNote?.(index) ? <span className="s1-mb-notlocated">{quoteNote(index)}</span> : null}
+                    <SourceLink fileName={item.file_name} reference={item.source_reference} documentId={item.document_id} at={{ fieldId: def.fieldId, entry: index, page: pageOf(item.source_reference) }} onOpen={onOpenDocument} />
+                  </li>
+                ))}
+                {suggestion.entries_omitted ? (
+                  <li className="s1-mr-muted">
+                    {suggestion.entries_omitted} more {suggestion.entries_omitted === 1 ? "entry was" : "entries were"} found but not shown: their quotes were too long to keep.
+                  </li>
+                ) : null}
+              </ul>
+            ) : (
+              <>
+                <Quote text={suggestion.quote} truncated={suggestion.quote_truncated} />
+                {quoteNote?.(null) ? <span className="s1-mb-notlocated">{quoteNote(null)}</span> : null}
+                <SourceLink fileName={suggestion.file_name} reference={suggestion.source_reference} documentId={suggestion.document_id} at={{ fieldId: def.fieldId, entry: null, page: pageOf(suggestion.source_reference) }} onOpen={onOpenDocument} />
+              </>
+            )}
+          </div>
         ) : null}
-        {oldText ? <span className="s1-mr-muted">Enter the start and end dates with Edit.</span> : null}
-        {record.shownNote ? <span className="s1-mr-muted">{record.shownNote}</span> : null}
-        {status === "rejected" && decision?.reason ? <span className="s1-mr-muted">Reason: {decision.reason}</span> : null}
       </div>
 
-      {suggestion ? (
-        <div className="s1-mb-suggest">
-          <span className="s1-chip s1-mb-chip">Suggested by Sustentra&apos;s AI</span>
-          <span className="s1-mr-value">{valueText(suggestion.value)}</span>
-          {def.value_note && !entitiesNamed ? <span className="s1-mr-muted">{def.value_note}</span> : null}
-          {suggestion.evidence?.length ? (
-            <ul className="s1-mb-evidence">
-              {suggestion.evidence.map((item, index) => (
-                <li key={index} className="s1-mb-evidence-item">
-                  <span className="s1-mr-muted">{item.label}</span>
-                  <q className="s1-mb-quote">{item.quote}</q>
-                  {item.quote_truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
-                  {quoteNote?.(index) ? <span className="s1-mb-notlocated">{quoteNote(index)}</span> : null}
-                  <button type="button" className="s1-mr-link" onClick={() => onOpenDocument(item.document_id, { fieldId: def.fieldId, entry: index, page: pageOf(item.source_reference) })}>
-                    {item.file_name}
-                    {sourceLocation(item.source_reference) ? `, ${sourceLocation(item.source_reference)}` : ""}
-                  </button>
-                </li>
-              ))}
-              {suggestion.entries_omitted ? (
-                <li className="s1-mr-muted">
-                  {suggestion.entries_omitted} more {suggestion.entries_omitted === 1 ? "entry was" : "entries were"} found but not shown: their quotes were too long to keep.
-                </li>
-              ) : null}
-            </ul>
-          ) : (
+      {mode === "view" ? (
+        <span className="s1-mr-actions s1-mb-actions">
+          {pendingStatus && suggestion && !suggestionIsOldText ? (
+            <button
+              type="button"
+              className="s1-button s1-button--compact"
+              disabled={busy}
+              aria-label={`Accept: ${def.label}`}
+              onClick={() => finish(() => acceptField(engagementId, def.fieldId))}
+            >
+              Accept
+            </button>
+          ) : null}
+          {noValue ? (
+            <button type="button" className="s1-button s1-button--compact" disabled={busy} aria-label={`Add value: ${def.label}`} onClick={() => setMode("edit")}>
+              Add value
+            </button>
+          ) : null}
+          {asked ? (
             <>
-              <q className="s1-mb-quote">{suggestion.quote}</q>
-              {suggestion.quote_truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
-              {quoteNote?.(null) ? <span className="s1-mb-notlocated">{quoteNote(null)}</span> : null}
-              <button type="button" className="s1-mr-link" onClick={() => onOpenDocument(suggestion.document_id, { fieldId: def.fieldId, entry: null, page: pageOf(suggestion.source_reference) })}>
-                {suggestion.file_name}
-                {sourceLocation(suggestion.source_reference) ? `, ${sourceLocation(suggestion.source_reference)}` : ""}
-              </button>
+              <span className="s1-chip s1-mb-chip">Requested · {requestedOn(asked.raisedAt)}</span>
+              {followUp?.onOpenRequests ? (
+                <button type="button" className="s1-mr-link" aria-label={`View in requests: ${def.label}`} onClick={followUp.onOpenRequests}>
+                  View in requests
+                </button>
+              ) : null}
             </>
-          )}
-        </div>
+          ) : null}
+          {entries.length ? <ActionMenu label={`More actions: ${def.label}`} entries={entries} isOpen={menuOpen} onOpenChange={setMenuOpen} /> : null}
+        </span>
       ) : null}
 
       {mode === "edit" ? (
-        <ValueEditor
-          def={def}
-          start={(oldText || suggestionIsOldText ? {} : decided ? decision?.value : suggestion?.value) ?? {}}
-          busy={busy}
-          onCancel={() => setMode("view")}
-          onSave={(value) => finish(() => editField(engagementId, def.fieldId, value))}
-        />
+        <div className="s1-mb-wide">
+          <ValueEditor
+            def={def}
+            start={(oldText || suggestionIsOldText ? {} : decided ? decision?.value : suggestion?.value) ?? {}}
+            busy={busy}
+            onCancel={() => setMode("view")}
+            onSave={(value) => finish(() => editField(engagementId, def.fieldId, value))}
+          />
+        </div>
       ) : mode === "reject" ? (
-        <div className="s1-mb-edit">
+        <div className="s1-mb-edit s1-mb-wide">
           <input
             className="s1-mr-input"
             aria-label={`Reason: ${def.label}`}
@@ -561,72 +683,7 @@ export function FieldRow({
             </button>
           </span>
         </div>
-      ) : (
-        <span className="s1-mr-actions">
-          {pendingStatus && suggestion && !suggestionIsOldText ? (
-            <button
-              type="button"
-              className="s1-button s1-button--compact"
-              disabled={busy}
-              aria-label={`Accept: ${def.label}`}
-              onClick={() => finish(() => acceptField(engagementId, def.fieldId))}
-            >
-              Accept
-            </button>
-          ) : null}
-          <button type="button" className="s1-button s1-button--compact" disabled={busy} aria-label={`Edit: ${def.label}`} onClick={() => setMode("edit")}>
-            Edit
-          </button>
-          {pendingStatus ? (
-            <button type="button" className="s1-button s1-button--compact" disabled={busy} aria-label={`Reject: ${def.label}`} onClick={() => setMode("reject")}>
-              Reject
-            </button>
-          ) : null}
-          {!pendingStatus ? (
-            <button type="button" className="s1-mr-link" disabled={busy} aria-label={`Revert: ${def.label}`} onClick={() => finish(() => revertField(engagementId, def.fieldId))}>
-              Revert
-            </button>
-          ) : null}
-          {assign ? (
-            <button
-              type="button"
-              className="s1-mr-link"
-              aria-label={`Assign to…: ${def.label}`}
-              onClick={() =>
-                assign({
-                  kind: "Methodology row",
-                  label: def.label,
-                  target: { kind: "methodology_row", item_id: def.fieldId },
-                  title: `Review methodology: ${def.label}`,
-                })
-              }
-            >
-              Assign to…
-            </button>
-          ) : null}
-          {followUp ? (
-            asked ? (
-              <>
-                <span className="s1-chip s1-mb-chip">Requested · {requestedOn(asked.raisedAt)}</span>
-                {followUp.onOpenRequests ? (
-                  <button type="button" className="s1-mr-link" aria-label={`View in requests: ${def.label}`} onClick={followUp.onOpenRequests}>
-                    View in requests
-                  </button>
-                ) : null}
-              </>
-            ) : (
-              <button type="button" className="s1-button s1-button--compact" disabled={busy} aria-label={`Mark for client follow-up: ${def.label}`} onClick={() => onMarkFollowUp(def)}>
-                Mark for client follow-up
-              </button>
-            )
-          ) : null}
-          {record.userAdded ? (
-            <button type="button" className="s1-mr-link" disabled={busy} aria-label={`Remove row: ${def.label}`} onClick={() => finish(() => removeRow(engagementId, def.fieldId))}>
-              Remove row
-            </button>
-          ) : null}
-        </span>
-      )}
+      ) : null}
     </li>
   );
 }
@@ -653,6 +710,9 @@ export function BackendMethodologyReview({
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [prefilling, setPrefilling] = useState(false);
+  const [show, setShow] = useState<"all" | "review">("all");
+  const [acceptingAll, setAcceptingAll] = useState<string | null>(null);
+  const [folded, setFolded] = useState<Set<string>>(new Set());
   const prefillRunning = useRef(false);
   const [result, setResult] = useState<PrefillResult | null>(null);
 
@@ -733,9 +793,15 @@ export function BackendMethodologyReview({
   const groups = useMemo(
     () =>
       (data?.groups ?? [])
-        .map((g) => ({ ...g, defs: (data?.catalog ?? []).filter((d) => d.group === g.group && records.get(d.fieldId)?.shown !== false && records.has(d.fieldId)) }))
+        .map((g) => {
+          const all = (data?.catalog ?? []).filter((d) => d.group === g.group && records.get(d.fieldId)?.shown !== false && records.has(d.fieldId));
+          const toAccept = all.filter((d) => acceptable(d, records.get(d.fieldId)!));
+          // "Needs review": a suggestion still waiting for the reviewer.
+          const defs = show === "review" ? all.filter((d) => records.get(d.fieldId)?.suggestion && (records.get(d.fieldId)?.decision?.status ?? "pending") === "pending") : all;
+          return { ...g, defs, toAccept };
+        })
         .filter((g) => g.defs.length > 0),
-    [data, records]
+    [data, records, show]
   );
 
   // Optional rows with nothing on them stay off the page until "Add an item" brings one on.
@@ -771,6 +837,14 @@ export function BackendMethodologyReview({
           </InfoTip>
         </h2>
         <span className="s1-mr-muted">{pending} suggested, waiting for review</span>
+        <div className="s1-actlog__kinds" role="group" aria-label="Show">
+          <span className="s1-mr-muted">Show:</span>
+          {(["all", "review"] as const).map((key) => (
+            <button key={key} type="button" className={`s1-actlog__kind${show === key ? " is-on" : ""}`} aria-pressed={show === key} onClick={() => setShow(key)}>
+              {key === "all" ? "All" : "Needs review"}
+            </button>
+          ))}
+        </div>
         <span className="s1-mr-actions">
           <button type="button" className="s1-button s1-button--pri" disabled={busy || prefilling || aiOff !== null} onClick={() => setConfirming(true)}>
             {prefilling ? "Reading the reports…" : "Read the client's reports with Sustentra's AI"}
@@ -845,18 +919,76 @@ export function BackendMethodologyReview({
         </select>
       ) : null}
 
-      {groups.map(({ group, label, defs }) => (
-        <section key={group} className="s1-mr-card">
-          <div className="s1-mr-card__head">
-            <h3 className="s1-mr-card__title">{label}</h3>
-          </div>
-          <ul className="s1-mb-list">
-            {defs.map((def) => (
-              <FieldRow key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} entitiesNamed={entitiesNamed} followUp={followUp} onMarkFollowUp={setRequestFor} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
-            ))}
-          </ul>
-        </section>
-      ))}
+      {show === "review" && groups.length === 0 ? <p className="s1-mr-muted">Nothing is waiting for review.</p> : null}
+
+      {CARDS.map((card) => {
+        const inCard = groups.filter((g) => (METHODS_GROUPS.includes(g.group) ? "methods" : "boundary") === card.key);
+        if (inCard.length === 0) return null;
+        return (
+          <section key={card.key} className="s1-mr-card" aria-labelledby={`s1-mb-card-${card.key}`}>
+            <div className="s1-mr-card__head">
+              <span className={`s1-mr-card__icon s1-mr-card__icon--${card.key}`}>{card.key === "boundary" ? <SquareDashed aria-hidden /> : <TextAlignJustify aria-hidden />}</span>
+              <h2 id={`s1-mb-card-${card.key}`} className="s1-mr-card__title">
+                {card.title}
+              </h2>
+            </div>
+            <div className="s1-mr-card__body">
+              {inCard.map(({ group, label, defs, toAccept }) => {
+                const open = show === "review" || !folded.has(group);
+                return (
+                  <div key={group} className={`s1-mr-group${open ? " is-open" : ""}`}>
+                    <div className="s1-mb-groupbar">
+                      <h3 className="s1-mb-grouph">
+                        <button className="s1-mr-group__head" type="button" aria-expanded={open} onClick={() => setFolded((f) => { const n = new Set(f); if (n.has(group)) n.delete(group); else n.add(group); return n; })}>
+                          <ChevronRight className="s1-mr-chev" aria-hidden />
+                          <span className="s1-mr-group__title">{label}</span>
+                        </button>
+                      </h3>
+                      {toAccept.length ? (
+                        <button type="button" className="s1-button s1-button--compact" disabled={busy} onClick={() => setAcceptingAll(group)}>
+                          Accept all suggestions in this section
+                        </button>
+                      ) : null}
+                    </div>
+                    {acceptingAll === group && toAccept.length ? (
+                      <div className="s1-mb-confirm s1-mb-confirm--section" role="alertdialog" aria-label={`Accept all suggestions in ${label}`}>
+                        <p>
+                          Accept {toAccept.length} {toAccept.length === 1 ? "suggestion" : "suggestions"} in {label}? Each is recorded as accepted by you.
+                        </p>
+                        <span className="s1-mr-actions">
+                          <button
+                            type="button"
+                            className="s1-button s1-button--pri"
+                            disabled={busy}
+                            onClick={() => {
+                              setAcceptingAll(null);
+                              void act(async () => {
+                                for (const d of toAccept) await acceptField(engagementId, d.fieldId);
+                              });
+                            }}
+                          >
+                            Accept {toAccept.length}
+                          </button>
+                          <button type="button" className="s1-button" onClick={() => setAcceptingAll(null)}>
+                            Cancel
+                          </button>
+                        </span>
+                      </div>
+                    ) : null}
+                    {open ? (
+                      <ul className="s1-mb-list">
+                        {defs.map((def) => (
+                          <FieldRow key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} entitiesNamed={entitiesNamed} followUp={followUp} onMarkFollowUp={setRequestFor} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
 
       {added ? (
         <p className="s1-mb-result" role="status">

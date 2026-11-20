@@ -19,6 +19,7 @@ import { AssignTaskProvider } from "../../tasks/AssignTaskContext";
 import type { EngagementConfig } from "../types";
 import type { Ask } from "../types/requests";
 import type { AskDraft } from "../requests/requestsStore";
+import { menuItems, rowAction } from "./methodologyMenu";
 import { BackendMethodologyReview, aiStatusWords, dropReasonWords, statusWord } from "../components/BackendMethodologyReview";
 
 const BASE = "/engagements/e1/methodology-review";
@@ -125,7 +126,7 @@ describe("Methodology review on real data", () => {
   it("does not send a non-numeric percent", async () => {
     await open();
     const r = row("Entity row");
-    fireEvent.click(within(r).getByRole("button", { name: "Edit: Entity row" }));
+    rowAction(r, "Edit", "Entity row");
     fireEvent.change(within(r).getByLabelText("Entity row: Equity share"), { target: { value: "abc" } });
     fireEvent.click(within(r).getByRole("button", { name: "Save" }));
     expect(within(r).getByRole("alert").textContent).toMatch(/enter a number/);
@@ -155,7 +156,7 @@ describe("Methodology review on real data", () => {
     const approach = row("Consolidation approach");
     expect(within(approach).getByText("Suggested by Sustentra's AI")).toBeTruthy();
     expect(within(approach).getByText("We use the operational control approach.")).toBeTruthy();
-    expect(within(approach).getByText("Pending")).toBeTruthy();
+    expect(within(approach).queryByText("Pending")).toBeNull(); // no Pending chip: a status chip only for Accepted, Edited, Rejected
     fireEvent.click(within(approach).getByRole("button", { name: "GHG report.pdf, page 4" }));
     expect(onOpenDocument).toHaveBeenCalledWith("d1", expect.objectContaining({ fieldId: expect.any(String) }));
 
@@ -169,19 +170,35 @@ describe("Methodology review on real data", () => {
     expect(onActivity).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ who: "M. Osei", what: expect.stringContaining("Reporting period") })]));
   });
 
-  it("shows Accept and Reject only on a pending field, Revert only on a decided one, Edit always", async () => {
+  it("shows Accept as the only visible action on a suggestion; Edit, Reject and the rest sit in the ⋯ menu, Revert only on a decided one", async () => {
     await open();
     const pending = row("Consolidation approach");
     expect(within(pending).getByRole("button", { name: /^Accept:/ })).toBeTruthy();
-    expect(within(pending).getByRole("button", { name: /^Reject:/ })).toBeTruthy();
-    expect(within(pending).queryByRole("button", { name: /^Revert:/ })).toBeNull();
-    for (const label of ["Reporting period", "GWP"]) {
-      const decided = row(label);
-      expect(within(decided).queryByRole("button", { name: /^Accept:/ })).toBeNull();
-      expect(within(decided).queryByRole("button", { name: /^Reject:/ })).toBeNull();
-      expect(within(decided).getByRole("button", { name: /^Revert:/ })).toBeTruthy();
-      expect(within(decided).getByRole("button", { name: /^Edit:/ })).toBeTruthy();
-    }
+    expect(within(pending).queryByRole("button", { name: /^(Edit|Reject|Revert|Assign)/ })).toBeNull();
+    expect(menuItems(pending, "Consolidation approach")).toEqual(["Edit", "Reject"]);
+    const period = row("Reporting period");
+    expect(within(period).queryByRole("button", { name: /^Accept:/ })).toBeNull();
+    expect(menuItems(period, "Reporting period")).toEqual(["Edit", "Revert"]);
+    // A rejected row has no value: it offers Add value, and Revert in the menu.
+    const gwp = row("GWP");
+    expect(within(gwp).getByRole("button", { name: "Add value: GWP" })).toBeTruthy();
+    expect(menuItems(gwp, "GWP")).toEqual(["Revert"]);
+  });
+
+  it("opens the ⋯ menu from the keyboard: focus lands on the first item, arrows move, Escape closes and returns to the button", async () => {
+    await open();
+    const trigger = within(row("Consolidation approach")).getByRole("button", { name: "More actions: Consolidation approach" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const items = screen.getAllByRole("menuitem");
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(items[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(items[1], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(items[0], { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("accepts, rejects with a reason, edits with an allowed value and reverts, sending no actor", async () => {
@@ -189,27 +206,27 @@ describe("Methodology review on real data", () => {
     fireEvent.click(within(row("Consolidation approach")).getByRole("button", { name: "Accept: Consolidation approach" }));
     await waitFor(() => expect(calls()).toContainEqual([`${BASE}/consolidation_approach/accept`, expect.objectContaining({ method: "POST", body: {} })]));
 
-    fireEvent.click(within(row("Consolidation approach")).getByRole("button", { name: "Reject: Consolidation approach" }));
+    rowAction(row("Consolidation approach"), "Reject", "Consolidation approach");
     const reject = screen.getByRole("button", { name: "Reject" });
     expect((reject as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Reason: Consolidation approach"), { target: { value: "Report says equity share" } });
     fireEvent.click(reject);
     await waitFor(() => expect(calls()).toContainEqual([`${BASE}/consolidation_approach/reject`, expect.objectContaining({ body: { reason: "Report says equity share" } })]));
 
-    fireEvent.click(within(row("Consolidation approach")).getByRole("button", { name: "Edit: Consolidation approach" }));
+    rowAction(row("Consolidation approach"), "Edit", "Consolidation approach");
     const select = screen.getByLabelText("Value: Consolidation approach") as HTMLSelectElement;
     expect(Array.from(select.options).map((o) => o.value)).toEqual(["", "Equity Share", "Financial Control", "Operational Control"]);
     fireEvent.change(select, { target: { value: "Financial Control" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls()).toContainEqual([`${BASE}/consolidation_approach/edit`, expect.objectContaining({ body: { value: "Financial Control" } })]));
 
-    fireEvent.click(within(row("Reporting period")).getByRole("button", { name: "Revert: Reporting period" }));
+    rowAction(row("Reporting period"), "Revert", "Reporting period");
     await waitFor(() => expect(calls()).toContainEqual([`${BASE}/reporting_period/revert`, expect.objectContaining({ method: "POST" })]));
   });
 
   it("builds a multi-part editor from the catalog's parts, with display names for allowed values", async () => {
     await open();
-    fireEvent.click(within(row("GWP")).getByRole("button", { name: "Edit: GWP" }));
+    rowAction(row("GWP"), "Edit", "GWP");
     const set = screen.getByLabelText("GWP: Set") as HTMLSelectElement;
     expect(Array.from(set.options).map((o) => o.textContent)).toEqual(["Choose", "AR4", "AR5 (IPCC Fifth Assessment)", "AR6"]);
     fireEvent.change(set, { target: { value: "AR6" } });
@@ -220,7 +237,7 @@ describe("Methodology review on real data", () => {
 
   it("edits a blank new entity row from its parts, typing the list and the percent", async () => {
     await open();
-    fireEvent.click(within(row("Entity row")).getByRole("button", { name: "Edit: Entity row" }));
+    rowAction(row("Entity row"), "Edit", "Entity row");
     fireEvent.change(screen.getByLabelText("Entity row: Name"), { target: { value: "Acme Ltd" } });
     fireEvent.change(screen.getByLabelText("Entity row: Facilities"), { target: { value: "North plant, South plant" } });
     fireEvent.change(screen.getByLabelText("Entity row: Equity share"), { target: { value: "60" } });
@@ -237,18 +254,18 @@ describe("Methodology review on real data", () => {
     await open();
     fireEvent.click(screen.getByRole("button", { name: "Add Scope 1 factor row" }));
     await waitFor(() => expect(calls()).toContainEqual([`${BASE}/rows`, expect.objectContaining({ body: { group: "factor:scope1" } })]));
-    expect(within(row("Consolidation approach")).queryByRole("button", { name: /Remove row/ })).toBeNull();
-    fireEvent.click(within(row("Scope 1 factor row 1")).getByRole("button", { name: /Remove row/ }));
+    expect(menuItems(row("Consolidation approach"), "Consolidation approach")).not.toContain("Remove row");
+    rowAction(row("Scope 1 factor row 1"), "Remove row", "Scope 1 factor row 1");
     await waitFor(() => expect(calls()).toContainEqual([`${BASE}/factor%3Ascope1%3Ar1`, expect.objectContaining({ method: "DELETE" })]));
   });
 
   it("limits what can be typed as the server does: text length, 20 facility names of 100 characters", async () => {
     await open();
-    fireEvent.click(within(row("Excluded from boundary")).getByRole("button", { name: "Edit: Excluded from boundary" }));
+    rowAction(row("Excluded from boundary"), "Edit", "Excluded from boundary");
     expect((screen.getByLabelText("Value: Excluded from boundary") as HTMLInputElement).maxLength).toBe(2000);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-    fireEvent.click(within(row("Entity row")).getByRole("button", { name: "Edit: Entity row" }));
+    rowAction(row("Entity row"), "Edit", "Entity row");
     expect((screen.getByLabelText("Entity row: Name") as HTMLInputElement).maxLength).toBe(2000);
     const many = Array.from({ length: 21 }, (_, i) => `Plant ${i}`).join(", ");
     fireEvent.change(screen.getByLabelText("Entity row: Facilities"), { target: { value: many } });
@@ -382,7 +399,8 @@ describe("Methodology review on real data", () => {
     const weird = row("Brand new field");
     expect(within(weird).getByText("Status unknown")).toBeTruthy();
     // The row still offers Edit and Revert; the server decides what is allowed.
-    expect(within(weird).getByRole("button", { name: "Edit: Brand new field" })).toBeTruthy();
+    expect(within(weird).getByRole("button", { name: "Add value: Brand new field" })).toBeTruthy();
+    expect(menuItems(weird, "Brand new field")).toContain("Revert");
   });
   describe("source location after the file name", () => {
     const withRef = (source_reference: unknown, file_name = "GHG report.pdf") => {
@@ -485,14 +503,14 @@ describe("Methodology review on real data", () => {
       expect(screen.queryByRole("combobox", { name: "Add an item" })).toBeNull();
     });
 
-    it("offers Accept only where there is a suggestion; an empty row keeps Edit and Reject", async () => {
+    it("offers Accept only where there is a suggestion; an empty row shows Add value and no Reject", async () => {
       const d = withStates({ reporting_period: "not_detected" });
       (d.fields[1] as { decision: unknown }).decision = null;
       await open(vi.fn(), d);
       const empty = row("Reporting period");
       expect(within(empty).queryByRole("button", { name: /^Accept:/ })).toBeNull();
-      expect(within(empty).getByRole("button", { name: /^Edit:/ })).toBeTruthy();
-      expect(within(empty).getByRole("button", { name: /^Reject:/ })).toBeTruthy();
+      expect(within(empty).getByRole("button", { name: "Add value: Reporting period" })).toBeTruthy();
+      expect(menuItems(empty, "Reporting period")).not.toContain("Reject");
       expect(within(row("Consolidation approach")).getByRole("button", { name: /^Accept:/ })).toBeTruthy();
     });
 
@@ -502,7 +520,7 @@ describe("Methodology review on real data", () => {
     });
   });
   describe("reporting period as two dates", () => {
-    const edit = () => fireEvent.click(within(row("Reporting period")).getByRole("button", { name: "Edit: Reporting period" }));
+    const edit = () => rowAction(row("Reporting period"), "Edit", "Reporting period");
     const withPeriod = (decision: unknown) => {
       const d = fixture() as unknown as { fields: Record<string, unknown>[] };
       (d.fields[1] as { decision: unknown }).decision = decision;
@@ -637,7 +655,7 @@ describe("the Scopes covered row", () => {
   it("Not stated stands alone: choosing it clears the scopes and choosing a scope clears it; it can't be a free option", async () => {
     await open(vi.fn(), withScopes());
     const r = row(SCOPES);
-    fireEvent.click(within(r).getByRole("button", { name: `Edit: ${SCOPES}` }));
+    rowAction(r, "Edit", `${SCOPES}`);
     fireEvent.click(screen.getByRole("checkbox", { name: `Scope 1: ${SCOPES}` }));
     fireEvent.click(screen.getByRole("checkbox", { name: `Scope 2: ${SCOPES}` }));
     fireEvent.click(screen.getByRole("checkbox", { name: `Not stated: ${SCOPES}` }));
@@ -651,7 +669,7 @@ describe("the Scopes covered row", () => {
   it("refuses to save nothing, naming Not stated, and saves the chosen scopes", async () => {
     await open(vi.fn(), withScopes());
     const r = row(SCOPES);
-    fireEvent.click(within(r).getByRole("button", { name: `Edit: ${SCOPES}` }));
+    rowAction(r, "Edit", `${SCOPES}`);
     fireEvent.click(within(r).getByRole("button", { name: "Save" }));
     expect(within(r).getByRole("alert").textContent).toBe("Choose at least one option, or Not stated if the document does not say.");
     expect(calls()).toHaveLength(0);
@@ -698,7 +716,7 @@ describe("a GWP set with no stated horizon and a use note", () => {
 
   it("offers Not stated as a horizon and sends the use note with the edit", async () => {
     await open(vi.fn(), gwpFixture());
-    fireEvent.click(within(row("GWP")).getByRole("button", { name: "Edit: GWP" }));
+    rowAction(row("GWP"), "Edit", "GWP");
     const horizon = screen.getByLabelText("GWP: Horizon") as HTMLSelectElement;
     expect(Array.from(horizon.options).map((o) => o.textContent)).toEqual(["Choose", "100-year", "20-year", "500-year", "Not stated"]);
     expect(horizon.value).toBe("Not stated");
@@ -767,7 +785,7 @@ describe("a reporting period with an implied start", () => {
   it("edits as two dates only, so a typed start is never sent as implied", async () => {
     await open(vi.fn(), impliedFixture({ start: "2024-01-01", end: "2024-12-31", start_implied: true, basis: "Calendar year" }));
     const period = row("Reporting period");
-    fireEvent.click(within(period).getByRole("button", { name: "Edit: Reporting period" }));
+    rowAction(period, "Edit", "Reporting period");
     fireEvent.change(within(period).getByLabelText("Start date: Reporting period"), { target: { value: "2024-02-01" } });
     fireEvent.click(within(period).getByRole("button", { name: "Save" }));
     await waitFor(() =>
@@ -853,7 +871,7 @@ describe("entities and the boundary sentence", () => {
     await open(vi.fn(), withBoundary(null, entity));
     const r = row("Entity row");
     expect(within(r).getByText("Zürich Büro AG · equity share 51%")).toBeTruthy();
-    fireEvent.click(within(r).getByRole("button", { name: "Edit: Entity row" }));
+    rowAction(r, "Edit", "Entity row");
     const control = screen.getByLabelText("Entity row: Included") as HTMLSelectElement;
     expect(Array.from(control.options).map((o) => o.textContent)).toEqual(["Not stated", "Yes", "No"]);
     expect(control.value).toBe("");
@@ -866,7 +884,7 @@ describe("entities and the boundary sentence", () => {
     );
     cleanup();
     await open(vi.fn(), withBoundary(null, entity));
-    fireEvent.click(within(row("Entity row")).getByRole("button", { name: "Edit: Entity row" }));
+    rowAction(row("Entity row"), "Edit", "Entity row");
     fireEvent.change(screen.getByLabelText("Entity row: Included"), { target: { value: "No" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls().some(([, o]) => JSON.stringify(o).includes('"included":"No"'))).toBe(true));
@@ -877,7 +895,7 @@ describe("entities and the boundary sentence", () => {
     await open(vi.fn(), withBoundary(null, quoted));
     const r = row("Entity row");
     expect(within(r).getByText("Stockton Cold Storage JV · equity share 50% · included: Yes · operational control (as quoted): No")).toBeTruthy();
-    fireEvent.click(within(r).getByRole("button", { name: "Edit: Entity row" }));
+    rowAction(r, "Edit", "Entity row");
     expect(screen.queryByLabelText("Entity row: Operational control")).toBeNull(); // the old label is gone
     const asQuoted = screen.getByLabelText("Entity row: Operational control (as quoted)") as HTMLSelectElement;
     expect(asQuoted.value).toBe("No");
@@ -891,7 +909,7 @@ describe("entities and the boundary sentence", () => {
     cleanup();
     const plain = { name: "Zürich Büro AG", facilities: [], equity_share_pct: null, financial_control: null, included: "Yes" };
     await open(vi.fn(), withBoundary(null, plain));
-    fireEvent.click(within(row("Entity row")).getByRole("button", { name: "Edit: Entity row" }));
+    rowAction(row("Entity row"), "Edit", "Entity row");
     expect(screen.queryByLabelText("Entity row: Operational control (as quoted)")).toBeNull(); // not quoted: not shown
     expect(screen.getByLabelText("Entity row: Included")).toBeTruthy();
   });
@@ -913,7 +931,7 @@ describe("entities and the boundary sentence", () => {
     const entity = { name: "Café Québec Holdings", facilities: [], equity_share_pct: null, financial_control: null, included: "Yes" };
     await open(vi.fn(), withBoundary(null, entity));
     const r = row("Entity row");
-    fireEvent.click(within(r).getByRole("button", { name: "Edit: Entity row" }));
+    rowAction(r, "Edit", "Entity row");
     expect((screen.getByLabelText("Entity row: Equity share (%, if stated)") as HTMLInputElement).value).toBe("");
     fireEvent.change(screen.getByLabelText("Entity row: Entity name"), { target: { value: "Café Québec Holdings, Inc." } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -938,7 +956,7 @@ describe("Assign to… on a methodology row", () => {
       </AssignTaskProvider>,
     );
     await screen.findByText("Consolidation approach");
-    fireEvent.click(screen.getByRole("button", { name: "Assign to…: Consolidation approach" }));
+    rowAction(row("Consolidation approach"), "Assign to…", "Consolidation approach");
     const dialog = await screen.findByRole("dialog", { name: "Assign to…" });
     expect(dialog).toHaveTextContent("Methodology row");
     expect(dialog).toHaveTextContent("Consolidation approach");
@@ -977,7 +995,7 @@ describe("Mark for client follow-up", () => {
   it("offers the action on a row, opens the same Add to requests window and raises a methodology request", async () => {
     const { onSaveAsk } = await mount([]);
     const r = row("Consolidation approach");
-    fireEvent.click(within(r).getByRole("button", { name: "Mark for client follow-up: Consolidation approach" }));
+    rowAction(r, "Mark for client follow-up", "Consolidation approach");
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: "Add to requests" })).toBeTruthy();
     expect(within(dialog).getByText("Consolidation approach")).toBeTruthy(); // the Item line
@@ -993,7 +1011,7 @@ describe("Mark for client follow-up", () => {
     const { onSaveAsk, onOpenRequests } = await mount([ask()]);
     const r = row("Consolidation approach");
     expect(within(r).getByText("Requested · Nov 20, 2026")).toBeTruthy();
-    expect(within(r).queryByRole("button", { name: /Mark for client follow-up/ })).toBeNull(); // so it cannot be raised twice
+    expect(menuItems(r, "Consolidation approach")).not.toContain("Mark for client follow-up"); // so it cannot be raised twice
     fireEvent.click(within(r).getByRole("button", { name: "View in requests: Consolidation approach" }));
     expect(onOpenRequests).toHaveBeenCalledTimes(1);
     expect(onSaveAsk).not.toHaveBeenCalled();
@@ -1004,17 +1022,17 @@ describe("Mark for client follow-up", () => {
 
   it("offers the action again when the earlier request is closed, and ignores other rows' and other pages' requests", async () => {
     await mount([ask({ state: "resolved" })]);
-    expect(within(row("Consolidation approach")).getByRole("button", { name: /Mark for client follow-up/ })).toBeTruthy();
+    expect(menuItems(row("Consolidation approach"), "Consolidation approach")).toContain("Mark for client follow-up");
     cleanup();
     await mount([ask({ state: "withdrawn" }), ask({ fieldKey: "reporting_period" }), ask({ origin: "data_point" })]);
-    expect(within(row("Consolidation approach")).getByRole("button", { name: /Mark for client follow-up/ })).toBeTruthy();
+    expect(menuItems(row("Consolidation approach"), "Consolidation approach")).toContain("Mark for client follow-up");
     expect(within(row("Reporting period")).getByText(/^Requested · /)).toBeTruthy(); // the period row's own request
   });
 
   it("keeps the window open with the server's sentence when the request fails, and sends one request per click", async () => {
     const onSaveAsk = vi.fn(() => Promise.reject(new Error("The request could not be saved. Try again.")));
     await mount([], onSaveAsk);
-    fireEvent.click(within(row("Consolidation approach")).getByRole("button", { name: /Mark for client follow-up/ }));
+    rowAction(row("Consolidation approach"), "Mark for client follow-up", "Consolidation approach");
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: /^Add to requests$/ }));
     await waitFor(() => expect(within(screen.getByRole("dialog")).getByText(/could not be saved/)).toBeTruthy());
@@ -1029,7 +1047,7 @@ describe("Mark for client follow-up", () => {
     const r = d.fields.find((f) => f.field_id === "exclusion:boundary")!;
     r.decision = { status: "edited", value: "Käserei <b>bold</b> 燃料", by, at: "2026-11-02T10:00:00Z" };
     const { onSaveAsk } = await mount([], vi.fn(() => Promise.resolve({})), d);
-    fireEvent.click(within(row(hostile)).getByRole("button", { name: `Mark for client follow-up: ${hostile}` }));
+    rowAction(row(hostile), "Mark for client follow-up", `${hostile}`);
     expect(document.querySelector("img")).toBeNull(); // nothing was parsed as markup
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Add to requests$/ }));
     await waitFor(() => expect(onSaveAsk).toHaveBeenCalled());
@@ -1040,6 +1058,86 @@ describe("Mark for client follow-up", () => {
 
   it("shows no action where the page cannot raise requests", async () => {
     await open();
-    expect(screen.queryByRole("button", { name: /Mark for client follow-up/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /Mark for client follow-up/ })).toBeNull();
+  });
+});
+
+describe("row declutter: quote, source link, filter and accept all", () => {
+  type Rec = { field_id: string; suggestion: unknown };
+  const twoSuggestions = () => {
+    const d = fixture() as { fields: Rec[] };
+    const sug = (value: string, quote: string, ref: unknown) => ({ value, quote, document_id: "d1", file_name: "GHG report.pdf", source_reference: ref, origin: "ai", model: "m", request_id: "r", suggested_at: "2026-11-01T10:00:00Z" });
+    d.fields.find((f) => f.field_id === "exclusion:boundary")!.suggestion = sug("Stockton JV", "Stockton cold storage joint venture is excluded.", { page_number: 5 });
+    return d;
+  };
+
+  it("shows the value, then the quote, then a small p. N link that opens the same document", async () => {
+    const d = twoSuggestions();
+    const { onOpenDocument } = await open(vi.fn(), d);
+    const r = row("Excluded from boundary");
+    const link = within(r).getByRole("button", { name: "GHG report.pdf, page 5" });
+    expect(link.textContent).toBe("p. 5");
+    fireEvent.click(link);
+    expect(onOpenDocument).toHaveBeenCalledWith("d1", { fieldId: "exclusion:boundary", entry: null, page: 5 });
+    const text = r.textContent ?? "";
+    expect(text.indexOf("Stockton JV")).toBeLessThan(text.indexOf("Stockton cold storage joint venture"));
+    expect(within(r).queryByText("Not decided yet")).toBeNull();
+  });
+
+  it("clamps a long quote to two lines and expands it on request", async () => {
+    const sh = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(60);
+    const ch = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(30);
+    try {
+      await open(vi.fn(), twoSuggestions());
+      const r = row("Excluded from boundary");
+      const quote = r.querySelector("q") as HTMLElement;
+      expect(quote.className).toContain("is-clamped");
+      fireEvent.click(within(r).getByRole("button", { name: "Show more" }));
+      expect(quote.className).not.toContain("is-clamped");
+      expect(within(r).getByRole("button", { name: "Show less" })).toBeTruthy();
+    } finally {
+      sh.mockRestore();
+      ch.mockRestore();
+    }
+  });
+
+  it("filters to the rows that need review", async () => {
+    await open(vi.fn(), twoSuggestions());
+    expect(screen.getByText("Reporting period")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Needs review" }));
+    expect(screen.queryByText("Reporting period")).toBeNull();
+    expect(screen.getByText("Consolidation approach")).toBeTruthy();
+    expect(screen.getByText("Excluded from boundary")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(screen.getByText("Reporting period")).toBeTruthy();
+  });
+
+  it("accepts every suggestion in a section only after a confirm that says how many", async () => {
+    await open(vi.fn(), twoSuggestions());
+    fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions in this section" }));
+    const dialog = screen.getByRole("alertdialog", { name: /Accept all suggestions in/ });
+    expect(dialog.textContent).toMatch(/Accept 2 suggestions in/);
+    expect(calls()).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(calls()).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Accept all suggestions in this section" }));
+    fireEvent.click(screen.getByRole("button", { name: "Accept 2" }));
+    await waitFor(() => expect(calls().map(([p]) => p)).toEqual([`${BASE}/consolidation_approach/accept`, `${BASE}/exclusion%3Aboundary/accept`]));
+  });
+});
+
+describe("the two cards", () => {
+  it("sets the groups under Inventory Boundary and Methods, and folds a section from its header", async () => {
+    await open();
+    const h2 = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(h2).toEqual(expect.arrayContaining(["Inventory Boundary", "Methods"]));
+    const methods = screen.getByRole("heading", { name: "Methods" }).closest("section") as HTMLElement;
+    expect(within(methods).getByRole("heading", { name: "GWP factors source" })).toBeTruthy();
+    expect(within(methods).queryByRole("heading", { name: "Organizational boundary" })).toBeNull();
+    const toggle = screen.getByRole("button", { name: "Organizational boundary" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Reporting period")).toBeNull();
   });
 });
