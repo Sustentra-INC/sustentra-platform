@@ -60,6 +60,9 @@ const ADD_ROW_LABEL: Record<string, string> = {
   "factor:scope2": "Add Scope 2 factor row",
 };
 
+/** One folding rule for option names, like the server's: case-folded, single spaces. */
+const foldOption = (text: string) => text.toLowerCase().replaceAll("\u00df", "ss").split(/\s+/).filter(Boolean).join(" ");
+
 /** What an empty row reads, by the server's display state. Never "Not set". */
 export function emptyWords(status: string, displayState: string | undefined): string {
   if (status === "rejected") return "Rejected, no value";
@@ -92,7 +95,9 @@ function valueText(value: MethodologyValue | undefined): string {
         .map((v) =>
           v !== null && typeof v === "object" && !Array.isArray(v) && typeof v.source_type === "string"
             ? `${v.source_type}: ${valueText(v.method as MethodologyValue)}`
-            : valueText(v as MethodologyValue)
+            : v !== null && typeof v === "object" && !Array.isArray(v) && typeof v.option === "string"
+              ? `${v.option}${v.wording ? ` (${valueText(v.wording as MethodologyValue)})` : ""}`
+              : valueText(v as MethodologyValue)
         )
         .join("; ");
     }
@@ -135,6 +140,8 @@ const TEXT_MAX = 2000;
 const LIST_MAX_ITEMS = 20;
 const LIST_ITEM_MAX = 100;
 const ENTRY_MAX = 10;
+const OPTION_MAX = 60;
+const OPTION_WORDING_MAX = 200;
 const ENTRY_SOURCE_MAX = 60;
 const ENTRY_METHOD_MAX = 300;
 
@@ -165,6 +172,38 @@ function ValueEditor({
   const [problem, setProblem] = useState<string | null>(null);
   const range = def.kind === "date_range";
   const listed = def.kind === "entry_list";
+  const multi = def.kind === "multiselect" && Array.isArray(def.allowed);
+  const listedOptions = multi ? (def.allowed as string[]) : [];
+  const [picks, setPicks] = useState<{ option: string; wording: string }[]>(() =>
+    Array.isArray(start)
+      ? start.map((e) => {
+          const o = e !== null && typeof e === "object" && !Array.isArray(e) ? e : {};
+          return { option: valueText(o.option as MethodologyValue), wording: valueText(o.wording as MethodologyValue) };
+        })
+      : []
+  );
+  const [ownOption, setOwnOption] = useState("");
+  const toggle = (option: string) =>
+    setPicks((all) => {
+      if (all.some((p) => p.option === option)) return all.filter((p) => p.option !== option);
+      // "None" stands alone: choosing it clears the others, and choosing another clears it.
+      return option === "None" ? [{ option, wording: "" }] : [...all.filter((p) => p.option !== "None"), { option, wording: "" }];
+    });
+  const addOwn = () => {
+    const text = ownOption.trim();
+    const folded = foldOption(text);
+    if (!folded) return;
+    setProblem(null);
+    if (folded === "none") return setProblem("None can't be added as an option of your own.");
+    const listed = listedOptions.find((o) => foldOption(o) === folded);
+    if (listed) {
+      // an own option that is a listed one selects the listed one
+      if (!picks.some((p) => p.option === listed)) toggle(listed);
+    } else if (!picks.some((p) => foldOption(p.option) === folded)) {
+      setPicks((all) => [...all.filter((p) => p.option !== "None"), { option: text, wording: "" }]);
+    }
+    setOwnOption("");
+  };
   const [entries, setEntries] = useState<{ source_type: string; method: string }[]>(() =>
     Array.isArray(start)
       ? start.map((e) => {
@@ -177,6 +216,12 @@ function ValueEditor({
 
   function save() {
     setProblem(null);
+    if (multi) {
+      if (picks.length === 0) {
+        return setProblem(listedOptions.includes("None") ? "Choose at least one option, or None if there are none." : "Choose at least one option, or reject this row if the company has none.");
+      }
+      return onSave(picks.map((p) => ({ option: p.option, wording: p.wording.trim() })));
+    }
     if (listed) {
       const kept = entries.map((e) => ({ source_type: e.source_type.trim(), method: e.method.trim() })).filter((e) => e.source_type || e.method);
       if (kept.some((e) => !e.source_type || !e.method)) return setProblem("Give every entry a source type and a method, or remove it.");
@@ -223,7 +268,39 @@ function ValueEditor({
 
   return (
     <div className="s1-mb-edit">
-      {listed ? (
+      {multi ? (
+        <div className="s1-mb-list-edit">
+          {[...listedOptions, ...picks.map((p) => p.option).filter((o) => !listedOptions.includes(o))].map((option) => {
+            const pick = picks.find((p) => p.option === option);
+            return (
+              <span key={option} className="s1-mr-actions">
+                <label className="s1-mb-part">
+                  <span className="s1-mr-value">
+                    <input type="checkbox" aria-label={`${option}: ${def.label}`} checked={Boolean(pick)} onChange={() => toggle(option)} /> {option}
+                  </span>
+                </label>
+                {pick && option !== "None" ? (
+                  <input
+                    className="s1-mr-input"
+                    aria-label={`Company's wording for ${option}: ${def.label}`}
+                    maxLength={OPTION_WORDING_MAX}
+                    value={pick.wording}
+                    onChange={(e) => setPicks((all) => all.map((x) => (x.option === option ? { ...x, wording: e.target.value } : x)))}
+                  />
+                ) : null}
+              </span>
+            );
+          })}
+          {def.free ? (
+            <span className="s1-mr-actions">
+              <input className="s1-mr-input" aria-label={`Add another option: ${def.label}`} maxLength={OPTION_MAX} value={ownOption} onChange={(e) => setOwnOption(e.target.value)} />
+              <button type="button" className="s1-button s1-button--compact" onClick={addOwn}>
+                Add option
+              </button>
+            </span>
+          ) : null}
+        </div>
+      ) : listed ? (
         <div className="s1-mb-list-edit">
           {entries.map((entry, index) => (
             <span key={index} className="s1-mr-actions">
@@ -330,6 +407,7 @@ function FieldRow({
           </span>
         ) : null}
         {oldText ? <span className="s1-mr-muted">Enter the start and end dates with Edit.</span> : null}
+        {record.shownNote ? <span className="s1-mr-muted">{record.shownNote}</span> : null}
         {status === "rejected" && decision?.reason ? <span className="s1-mr-muted">Reason: {decision.reason}</span> : null}
       </div>
 

@@ -40,7 +40,13 @@ type Def = {
   allowed?: Json;
   allowed_labels?: Json;
   parts?: Json;
+  free?: boolean;
+  shown_if_yes?: string[];
 };
+const INSTRUMENT_OPTIONS = ["RECs or other energy attribute certificates", "PPA or VPPA", "Green tariff or utility program", "Supplier-specific rate", "Residual mix", "None"];
+const SOURCE_RECORD_OPTIONS = ["Utility invoices", "Meter readings", "Fuel cards", "Fuel receipts or logs", "Landlord reports", "Lease agreements"];
+const MARKET_CATEGORIES = ["electricity", "heating", "steam", "cooling"].map((k) => `category:market:${k}`);
+const MAX_FREE_OPTIONS = 10;
 const ENTRY_PARTS = [
   { key: "source_type", label: "Source type", kind: "text" },
   { key: "method", label: "Estimation method", kind: "text" },
@@ -108,6 +114,10 @@ function staticCatalog(): Def[] {
     def("boundary:acquisitions", "boundary", "Acquisitions and divestitures", "text", undefined, false),
     def("boundary:leased_space", "boundary", "Treatment of leased space", "text", undefined, false),
   ];
+  // Only if the company reports a market-based Scope 2 number: a market-based category that is Yes.
+  const instruments = def("scope2:instruments", "scope2", "Scope 2 instrument types (market-based)", "multiselect", INSTRUMENT_OPTIONS, false);
+  instruments.shown_if_yes = MARKET_CATEGORIES;
+  fields.push(instruments);
   // One row per gas, "only if the company has a value".
   for (const [key, name] of GASES) fields.push(def(`gas:${key}`, "gases", `Gas: ${name}`, "enum", GAS_STATUSES, false));
   const scope1 = { stationary: "Stationary Combustion", mobile: "Mobile Combustion", process: "Process Emissions", fugitive: "Fugitive Emissions" };
@@ -130,6 +140,9 @@ function staticCatalog(): Def[] {
   fields.push(def("calculation:process", "calculation", "Process-specific calculations", "text"));
   // "Only if the company has a value": one entry per source type.
   fields.push(def("calculation:estimation", "calculation", "Estimation method for missing data", "entry_list", undefined, false));
+  const records = def("calculation:source_records", "calculation", "Source records", "multiselect", SOURCE_RECORD_OPTIONS, false);
+  records.free = true;
+  fields.push(records);
   return fields;
 }
 
@@ -239,6 +252,32 @@ const fold = (text: string) => text.toLowerCase().replaceAll("\u00df", "ss").spl
 
 function validate(d: Def, value: Json): Json {
   switch (d.kind) {
+    case "multiselect": {
+      const allowed = d.allowed as string[];
+      if (!Array.isArray(value) || value.length > allowed.length + (d.free ? MAX_FREE_OPTIONS : 0)) {
+        return invalid(d, "choose from the listed options" + (d.free ? `, and add at most ${MAX_FREE_OPTIONS} of your own.` : "."));
+      }
+      const seen = new Set<string>();
+      let extra = 0;
+      const out = value.map((entry) => {
+        const o = only(d, entry as Json, ["option", "wording"]);
+        let option = text(d, o.option, "the option", true, 60);
+        const key = fold(option);
+        const listed = allowed.find((a) => fold(a) === key);
+        if (listed) option = listed;
+        else if (!d.free) return invalid(d, `choose options from the list: ${allowed.join(", ")}.`);
+        else if (key === "none") return invalid(d, "'None' can't be added as an option of your own.");
+        else if (++extra > MAX_FREE_OPTIONS) return invalid(d, `add at most ${MAX_FREE_OPTIONS} options of your own.`);
+        if (seen.has(key)) return invalid(d, `'${option}' is chosen twice.`);
+        seen.add(key);
+        return { option, wording: text(d, o.wording, "the company's wording", false, 200) };
+      });
+      if (out.length === 0) {
+        return invalid(d, "choose at least one option" + (allowed.includes("None") ? ", or None if there are none." : ", or reject this row if the company has none."));
+      }
+      if (out.length > 1 && out.some((e) => e.option === "None")) return invalid(d, "'None' can't be chosen together with other options.");
+      return out;
+    }
     case "entry_list": {
       if (!Array.isArray(value) || value.length > 10) return invalid(d, "enter a list of at most 10 entries.");
       const seen = new Set<string>();
@@ -337,8 +376,21 @@ function listedRecord(state: State, r: Rec): Record<string, unknown> {
   const decision = r.decision;
   const hasValue = Boolean(r.suggestion) || (decision !== null && (decision.status !== "pending" || (decision.value !== null && decision.value !== undefined)));
   const displayState = hasValue ? "has_value" : state.prefilled ? "not_detected" : "not_checked";
-  const shown = d?.required !== false || hasValue || state.revealed.has(r.fieldId);
-  return { ...publicRecord(r), display_state: displayState, shown };
+  const marketDepends = d?.shown_if_yes ?? [];
+  const marketYes = marketDepends.some((id) => {
+    const other = state.records.find((x) => x.fieldId === id);
+    const dec = other?.decision;
+    if (dec && (dec.status === "accepted" || dec.status === "edited")) return dec.value === "Yes";
+    return (!dec || dec.status === "pending") && other?.suggestion?.value === "Yes";
+  });
+  const shown = d?.required !== false || hasValue || state.revealed.has(r.fieldId) || marketYes;
+  const claudeOnly = marketDepends.length > 0 && Boolean(r.suggestion) && !r.decision && !state.revealed.has(r.fieldId) && !marketYes;
+  return {
+    ...publicRecord(r),
+    display_state: displayState,
+    shown,
+    ...(claudeOnly ? { shown_note: "Shown because Claude found it, although no market-based category is Yes." } : {}),
+  };
 }
 
 const fieldPath = (action: string) => new RegExp(`^/engagements/(?<id>[^/]+)/methodology-review/(?<field>[^/]+)/${action}$`);
