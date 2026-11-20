@@ -231,7 +231,7 @@ def test_rows_read_not_checked_until_a_prefill_finishes_then_not_detected(claude
     before = review(eid).json()
     assert before["prefill_ran_at"] is None and set(states(eid).values()) == {"not_checked"}
     optional = {c["field_id"] for c in before["catalog"] if not c["required"]}
-    assert optional == {"boundary:acquisitions", "boundary:leased_space", "calculation:estimation", "calculation:source_records", "scope2:instruments", *rules.GAS_IDS}
+    assert optional == {"boundary:acquisitions", "boundary:leased_space", "calculation:estimation", "calculation:source_records", "scope2:instruments"}  # every gas row is always shown
     assert all(f["shown"] is (f["field_id"] not in optional) for f in before["fields"])
     assert prefill(eid).status_code == 200
     after = review(eid).json()

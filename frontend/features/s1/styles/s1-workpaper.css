@@ -3881,3 +3881,15 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-mb-summary__foot { margin: 0; }
 .s1-mb-summary__reasons { margin: 0; padding-left: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-1); }
 .s1-xr-values .s1-sd__note { margin: 0; }
+
+/* Methodology: entity, factor, GWP and Scope 2 tables */
+.s1-mb-groupbody { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-3) var(--sp-4); }
+.s1-mb-block { display: flex; flex-direction: column; border: var(--border-hairline); border-radius: var(--radius-card); overflow: hidden; }
+.s1-mb-subhead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-bottom: var(--border-hairline); }
+.s1-mb-col-name { width: 20rem; }
+.s1-mb-col-pct { width: 7rem; }
+.s1-mb-col-matrix { width: 22rem; }
+.s1-mb-cell { vertical-align: top; }
+.s1-mb-cellline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.s1-mb-cellline + .s1-mb-cellline, .s1-mb-celledit { margin-top: var(--sp-1); }
+.s1-mb-item > .s1-mr-muted, .s1-mb-item > .s1-mr-chip { margin-left: var(--sp-1); }
