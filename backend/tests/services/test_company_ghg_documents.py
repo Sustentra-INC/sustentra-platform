@@ -219,3 +219,47 @@ def test_the_three_company_documents_reach_prefill(title: list[str]) -> None:
     store = Store({"X": typed, "Y": "CT-S1-FUELQTY"})
     found = mp.candidate_documents(store, store, "ENG", lambda record: True)
     assert [d["document_id"] for d in found] == ["X"]
+
+
+NARRATIVE_CUE = "cue: company GHG document"
+
+
+def test_undated_rows_with_a_quantity_and_unit_are_data_rows() -> None:
+    rows = "".join(f"Truck {d} fueled diesel {100 + d} gal at Fresno depot on route\n" for d in range(40))
+    text = "GHG Inventory Report\n" + PROSE * 4 + rows
+    assert narrative_ghg_document_type(None, text) is None
+    result = ClassificationService().classify({"file_name": "report", "extracted_text": text})
+    assert not any(NARRATIVE_CUE in " ".join(c["matched_signals"]["key_phrases"]) for c in result["candidate_matches"])
+    for unit in ["L", "kWh", "MWh", "therms", "CCF", "MMBtu", "Dth", "lb", "kg", "hours"]:
+        few = "".join(f"Unit {d} used {d + 5} {unit} on route\n" for d in range(5))
+        assert narrative_ghg_document_type(None, "GHG Inventory Report\n" + PROSE * 8 + few) is None, unit
+
+
+def test_long_prose_sentences_with_quantities_are_not_data_rows() -> None:
+    quantity_prose = (
+        "In 2024 our offices in Zürich and Fresno used 1,200 MWh of electricity across all of the leased floors, "
+        "which is about 4 percent less than the 1,250 MWh we reported for the year before the lease changes.\n"
+        "Natural gas for heating came to 48,000 therms at the data centres, and our fleet burned 9,500 gal of "
+        "diesel and 3,100 gal of gasoline, as recorded in the invoices that management reviewed for the year.\n") * 3
+    for title in (JPM, YUM, FLUOR):
+        text = "\n".join(title) + "\n" + PROSE * 8 + quantity_prose
+        assert narrative_ghg_document_type(None, text) in ("CT-GHG-WORKBOOK", "CT-S1-METHODDOC")
+        pages = doc(title)
+        pages["pages"][1]["text"] += quantity_prose
+        assert classify(pages)["primary_canonical_type_id"] in SUMMARY_TYPES, title
+
+
+def test_a_bill_titled_basis_of_reporting_is_never_a_summary() -> None:
+    bill = ("Cedarline Power & Light\nElectric service\nBasis of Reporting\nUsage 1,486 kWh\n" + PROSE * 8)
+    assert narrative_ghg_document_type(None, bill) is None
+    plain = "Cedarline Power & Light\nElectric service\nBasis of Reporting\nUsage 1,486 kWh\nMeter reading\n"
+    for text in (bill, plain):
+        result = ClassificationService().classify({"file_name": "Rechnung", "extracted_text": text})
+        assert not any(NARRATIVE_CUE in " ".join(c["matched_signals"]["key_phrases"])
+                       for c in result["candidate_matches"])
+        assert result["primary_canonical_type_id"] not in SUMMARY_TYPES or text is bill  # vocabulary-only match
+    # a usage quantity with any evidence signal means the narrative credit never outranks the evidence type
+    service = ClassificationService()
+    weak, summary = _candidate("CT-S2-ELEC", 0.3), _candidate("CT-GHG-WORKBOOK", 0.2)
+    service._credit_narrative(service._get_vocabulary_library(), "CT-GHG-WORKBOOK", [weak, summary], 1)
+    assert summary["confidence"] == 0.2 and weak["confidence"] == 0.3

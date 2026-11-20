@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from .document_shape import narrative_ghg_document_type
+from .document_shape import narrative_ghg_document_type, usage_rows
 from ..reference.vocabulary_loader import (
     VocabularyLibrary,
     VocabularyVariant,
@@ -133,10 +133,12 @@ class ClassificationService:
             search_text = self._build_search_text(payload)
             raw_file_name = payload.get("file_name")
             file_name = raw_file_name if isinstance(raw_file_name, str) else ""
-            narrative_type = narrative_ghg_document_type(
-                payload.get("parser_output") if isinstance(payload.get("parser_output"), dict) else None,
-                str(payload["extracted_text"]) if isinstance(payload.get("extracted_text"), str) else "")
-            scored_candidates = self._score_candidates(vocabulary_library, search_text, file_name, narrative_type)
+            parsed_output = payload.get("parser_output") if isinstance(payload.get("parser_output"), dict) else None
+            extracted = str(payload["extracted_text"]) if isinstance(payload.get("extracted_text"), str) else ""
+            narrative_type = narrative_ghg_document_type(parsed_output, extracted)
+            rows = usage_rows(parsed_output, extracted) if narrative_type else 0
+            scored_candidates = self._score_candidates(
+                vocabulary_library, search_text, file_name, narrative_type, rows)
 
             if not scored_candidates:
                 base_result["status"] = "unclassified"
@@ -226,6 +228,7 @@ class ClassificationService:
         search_text: str,
         file_name: str = "",
         narrative_type: str | None = None,
+        narrative_usage_rows: int = 0,
     ) -> list[dict[str, Any]]:
         candidates: list[dict[str, Any]] = []
 
@@ -262,7 +265,7 @@ class ClassificationService:
 
         candidates = self._apply_content_cues(vocabulary_library, search_text, candidates)
         if narrative_type:
-            candidates = self._credit_narrative(vocabulary_library, narrative_type, candidates)
+            candidates = self._credit_narrative(vocabulary_library, narrative_type, candidates, narrative_usage_rows)
         candidates.sort(
             key=lambda item: (
                 -item["confidence"],
@@ -337,6 +340,7 @@ class ClassificationService:
         vocabulary_library: VocabularyLibrary,
         type_id: str,
         candidates: list[dict[str, Any]],
+        usage_row_count: int = 0,
     ) -> list[dict[str, Any]]:
         """A company's narrative GHG document (see ``narrative_ghg_document_type``) is that summary type, but only
         when no evidence type meets its threshold. When one does, the evidence type wins and is flagged for review:
@@ -346,7 +350,9 @@ class ClassificationService:
 
         evidence = [c for c in candidates
                     if c["canonical_type_id"] not in SUMMARY_TYPES and c["canonical_type_id"] not in FGAS_INVENTORY_TYPES
-                    and c["threshold"] is not None and c["confidence"] >= c["threshold"]]
+                    and c["threshold"] is not None
+                    # a document that states a usage quantity and has any evidence signal is not outranked
+                    and (c["confidence"] >= c["threshold"] or (usage_row_count > 0 and c["confidence"] > 0))]
         if evidence:
             for candidate in evidence:
                 candidate["review_required"] = True

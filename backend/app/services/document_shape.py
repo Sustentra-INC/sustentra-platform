@@ -210,8 +210,24 @@ def _document_lines(parser_output: dict[str, Any] | None, text: str) -> tuple[li
             [line.strip() for line in first.splitlines() if line.strip()], pages)
 
 
+_GAPPED = re.compile(r"\||\t|\s{3,}")  # columns; a long sentence with commas is not a row
+_USAGE_LINE = re.compile(r"^\W*(?:total\s+)?(?:usage|consumption|quantity|qty|volume|reading)\b", re.I)
+_DATA_ROW_WORDS = 14  # a longer line is a sentence, not a row
+
+
 def _is_data_row(line: str) -> bool:
-    return bool(_DATE.search(line) and _QUANTITY_UNIT.search(line))
+    """A line that states a quantity with its unit as a record does: dated, or short (a log row, a bill line), or
+    tabular. A long prose sentence that mentions 1,200 MWh is not a row."""
+
+    if not _QUANTITY_UNIT.search(line):
+        return False
+    return bool(_DATE.search(line) or len(line.split()) <= _DATA_ROW_WORDS or _GAPPED.search(line))
+
+
+def usage_rows(parser_output: dict[str, Any] | None = None, text: str = "") -> int:
+    """How many lines of the document are data rows (see ``_is_data_row``)."""
+
+    return sum(1 for line in _document_lines(parser_output, text)[0] if _is_data_row(line))
 
 
 def narrative_ghg_document_type(parser_output: dict[str, Any] | None = None, text: str = "") -> str | None:
@@ -245,6 +261,8 @@ def narrative_ghg_document_type(parser_output: dict[str, Any] | None = None, tex
         return None
     if _BILL_LABELS.search("\n".join(lines)):
         return None
+    if any(_USAGE_LINE.search(line) and _is_data_row(line) for line in lines):
+        return None  # "Usage 1,486 kWh": a bill or log line, whatever the title says
     data_rows = sum(1 for line in lines if _is_data_row(line))
     if data_rows >= _MAX_DATA_ROWS or data_rows / len(lines) > _MAX_DATA_ROW_SHARE:
         return None
