@@ -3928,3 +3928,6 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
   .s1-mb-table tbody > tr > .s1-mb-statuscell, .s1-mb-table tbody > tr > .s1-mb-actionscell { flex: none; order: 2; }
   .s1-mb-table .s1-mr-editrow > td { flex: 1 1 100%; }
 }
+
+.s1-mb-select { width: 100%; max-width: 12rem; }
+.s1-mb-nameinput { width: 100%; max-width: 100%; }

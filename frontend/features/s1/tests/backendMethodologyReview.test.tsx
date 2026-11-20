@@ -884,14 +884,14 @@ describe("entities and the boundary sentence", () => {
     const entity = { name: "Café Québec Holdings Inc.", facilities: ["Kent"], equity_share_pct: 51, financial_control: null, included: "Yes" };
     await open(vi.fn(), withBoundary(null, entity));
     const r = row("Entity row");
-    expect(within(r).getByText("Café Québec Holdings Inc.")).toBeTruthy();
+    expect(within(r).getByDisplayValue("Café Québec Holdings Inc.")).toBeTruthy();
     expect(r.textContent).toContain("1 facility");
     expect(within(r).getByText("51%")).toBeTruthy();
     expect(within(r).getByText("Yes")).toBeTruthy();
     const none = { name: "Zürich Büro AG", facilities: [], equity_share_pct: null, financial_control: null, included: "No" };
     cleanup();
     await open(vi.fn(), withBoundary(null, none));
-    expect(within(row("Entity row")).getByText("Zürich Büro AG")).toBeTruthy();
+    expect(within(row("Entity row")).getByDisplayValue("Zürich Büro AG")).toBeTruthy();
     expect(within(row("Entity row")).getByText("No")).toBeTruthy(); // a missing equity share reads as a dash, not 0%
     expect(row("Entity row").textContent).not.toContain("%");
   });
@@ -900,7 +900,7 @@ describe("entities and the boundary sentence", () => {
     const entity = { name: "Zürich Büro AG", facilities: [], equity_share_pct: 51, financial_control: null, included: null };
     await open(vi.fn(), withBoundary(null, entity));
     const r = row("Entity row");
-    expect(within(r).getByText("Zürich Büro AG")).toBeTruthy();
+    expect(within(r).getByDisplayValue("Zürich Büro AG")).toBeTruthy();
     expect(within(r).getByText("51%")).toBeTruthy();
     rowAction(r, "Edit", "Entity row");
     const control = screen.getByLabelText("Entity row: Included") as HTMLSelectElement;
@@ -925,7 +925,7 @@ describe("entities and the boundary sentence", () => {
     const quoted = { name: "Stockton Cold Storage JV", facilities: [], equity_share_pct: 50, financial_control: null, included: "Yes", control_quoted: "No" };
     await open(vi.fn(), withBoundary(null, quoted));
     const r = row("Entity row");
-    expect(r.textContent).toContain("Stockton Cold Storage JV");
+    expect((within(r).getByLabelText("Name: Entity row") as HTMLInputElement).value).toBe("Stockton Cold Storage JV");
     expect(r.textContent).toContain("50%");
     expect(r.textContent).toContain("operational control (as quoted): No");
     rowAction(r, "Edit", "Entity row");
@@ -1341,11 +1341,13 @@ describe("the matrix, entity and factor tables and the Add buttons in their head
   it("draws entities as Name | Included | Equity % with the Add button in the header, and labels an empty row", async () => {
     await open(vi.fn(), full());
     const block = screen.getByText("Entities").closest(".s1-mb-block") as HTMLElement;
-    expect(within(block).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Name", "Included", "Equity %", "Source", "Actions"]);
-    const e1 = within(block).getByText("Cascade Provisions Co.").closest("tbody") as HTMLElement;
+    expect(within(block).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Name", "Included", "Equity %", "Source", "Review · 0 of 2"]);
+    const e1 = within(block).getByDisplayValue("Cascade Provisions Co.").closest("tbody") as HTMLElement;
     expect(e1.textContent).toContain("2 facilities");
     expect(within(e1).getByText("100%")).toBeTruthy();
-    expect(within(block).getByText("New entity")).toBeTruthy();
+    const names = within(block).getAllByLabelText(/^Name:/) as HTMLInputElement[];
+    expect(names.map((n) => n.value)).toEqual(["Cascade Provisions Co.", ""]);
+    expect(names[1].placeholder).toBe("New entity"); // never an unlabelled empty row
     fireEvent.click(within(block.querySelector(".s1-mb-subhead") as HTMLElement).getByRole("button", { name: "Add entity" }));
     await waitFor(() => expect(calls()).toContainEqual([`${BASE}/rows`, expect.objectContaining({ body: { group: "entities" } })]));
   });
@@ -1383,5 +1385,99 @@ describe("the Status column", () => {
   it("gives the long-text expand control an accessible name", async () => {
     await open();
     for (const b of document.querySelectorAll(".s1-mb-expand")) expect(b.getAttribute("aria-label")).toMatch(/Show (more|less)/);
+  });
+});
+
+describe("inline selects: the answer is chosen in the row, no free text", () => {
+  const sug = (value: unknown) => ({ value, quote: "A quote that is long enough.", document_id: "d1", file_name: "GHG report.pdf", source_reference: { page_number: 4 }, origin: "ai", model: "m", request_id: "r", suggested_at: "2026-11-01T10:00:00Z" });
+  const d0 = { group_label: "x", user_added: false };
+  const rec = (id: string, extra: Record<string, unknown> = {}) => ({ field_id: id, user_added: false, suggestion: null, decision: null, history: [], ...extra });
+  const data = () => ({
+    ai: { enabled: true, reason_code: null, reason: null },
+    groups: [
+      { group: "boundary", label: "Organizational boundary" },
+      { group: "gases", label: "Gases covered" },
+      { group: "scope1", label: "Scope 1 emission categories" },
+    ],
+    row_groups: ["entities"],
+    catalog: [
+      { ...d0, field_id: "consolidation_approach", group: "boundary", label: "Consolidation approach", kind: "enum", allowed: ["Equity Share", "Financial Control", "Operational Control"] },
+      { ...d0, field_id: "entity:e1", group: "boundary", label: "Entity", kind: "entity", user_added: true },
+      { ...d0, field_id: "gas:co2", group: "gases", label: "Gas: CO2", kind: "enum", allowed: ["Included", "Declared absent", "Not mentioned"] },
+      { ...d0, field_id: "gas:n2o", group: "gases", label: "Gas: N2O", kind: "enum", allowed: ["Included", "Declared absent", "Not mentioned"] },
+      { ...d0, field_id: "category:scope1:mobile", group: "scope1", label: "Scope 1 Mobile Combustion", kind: "enum", allowed: ["Yes", "No", "Not detected"] },
+    ],
+    fields: [
+      rec("consolidation_approach", { suggestion: sug("Operational Control") }),
+      rec("entity:e1", { suggestion: sug({ name: "Cascade Provisions Co.", facilities: ["Kent"], equity_share_pct: 100, financial_control: null, included: "Yes" }) }),
+      rec("gas:co2", { suggestion: sug("Included") }),
+      rec("gas:n2o", { display_state: "not_detected" }),
+      rec("category:scope1:mobile", { display_state: "not_detected" }),
+    ],
+  });
+  const select = (label: string) => screen.getByRole("combobox", { name: `Choose: ${label}` }) as HTMLSelectElement;
+
+  it("shows the suggestion as the selected value with its marker; Accept records it, picking another value is an Edit", async () => {
+    await open(vi.fn(), data());
+    const approach = select("Consolidation approach");
+    expect(approach.value).toBe("Operational Control");
+    expect(within(row("Consolidation approach")).getByText("Suggested by Sustentra's AI")).toBeTruthy();
+    expect(Array.from(approach.options).map((o) => o.textContent)).toEqual(["Equity Share", "Financial Control", "Operational Control"]);
+    fireEvent.change(approach, { target: { value: "Equity Share" } });
+    await waitFor(() => expect(calls()).toContainEqual([`${BASE}/consolidation_approach/edit`, expect.objectContaining({ body: { value: "Equity Share" } })]));
+    cleanup();
+    vi.mocked(api).mockClear();
+    await open(vi.fn(), data());
+    fireEvent.click(screen.getByRole("button", { name: "Accept: Consolidation approach" }));
+    await waitFor(() => expect(calls()).toContainEqual([`${BASE}/consolidation_approach/accept`, expect.objectContaining({ body: {} })]));
+  });
+
+  it("leaves a Not detected row undecided until a value is picked, and records the pick as an edit", async () => {
+    await open(vi.fn(), data());
+    const mobile = select("Scope 1 Mobile Combustion");
+    expect(mobile.value).toBe("");
+    expect(mobile.selectedOptions[0].textContent).toBe("Not detected");
+    expect(calls()).toHaveLength(0);
+    fireEvent.change(mobile, { target: { value: "Yes" } });
+    await waitFor(() => expect(calls()).toContainEqual([`${BASE}/category%3Ascope1%3Amobile/edit`, expect.objectContaining({ body: { value: "Yes" } })]));
+  });
+
+  it("reads a gas nobody mentions as Not mentioned, and chooses Included / Declared absent / Not mentioned", async () => {
+    await open(vi.fn(), data());
+    const n2o = select("Gas: N2O");
+    expect(n2o.selectedOptions[0].textContent).toBe("Not mentioned");
+    expect(Array.from(n2o.options).map((o) => o.textContent)).toEqual(["Not mentioned", "Included", "Declared absent"]);
+    fireEvent.change(n2o, { target: { value: "Declared absent" } });
+    await waitFor(() => expect(calls()).toContainEqual([`${BASE}/gas%3An2o/edit`, expect.objectContaining({ body: { value: "Declared absent" } })]));
+    expect(select("Gas: CO2").value).toBe("Included"); // the suggestion, awaiting Accept
+  });
+
+  it("is keyboard accessible: a native select with a name, reachable and not disabled, with the row's ⋯ menu beside it", async () => {
+    await open(vi.fn(), data());
+    const approach = select("Consolidation approach");
+    approach.focus();
+    expect(document.activeElement).toBe(approach);
+    expect(approach.disabled).toBe(false);
+    expect(within(row("Consolidation approach")).getByRole("button", { name: "More actions: Consolidation approach" })).toBeTruthy();
+  });
+
+  it("changes an entity's Included with a Yes / No / blank select and its name inline, sending the whole entity", async () => {
+    await open(vi.fn(), data());
+    const r = row("Entity");
+    const included = within(r).getByLabelText("Included: Entity") as HTMLSelectElement;
+    expect(Array.from(included.options).map((o) => o.textContent)).toEqual(["Not stated", "Yes", "No"]);
+    fireEvent.change(included, { target: { value: "No" } });
+    const whole = { name: "Cascade Provisions Co.", facilities: ["Kent"], equity_share_pct: 100, financial_control: null, included: "No" };
+    await waitFor(() => expect(calls()).toContainEqual([`${BASE}/entity%3Ae1/edit`, expect.objectContaining({ body: { value: whole } })]));
+    vi.mocked(api).mockClear();
+    const name = within(r).getByLabelText("Name: Entity") as HTMLInputElement;
+    fireEvent.change(name, { target: { value: "Cascade Provisions Inc." } });
+    fireEvent.blur(name);
+    await waitFor(() => expect(calls()).toContainEqual([`${BASE}/entity%3Ae1/edit`, expect.objectContaining({ body: { value: { ...whole, name: "Cascade Provisions Inc.", included: "Yes" } } })]));
+  });
+
+  it("shows Review · N of M in the entities header", async () => {
+    await open(vi.fn(), data());
+    expect(screen.getByRole("columnheader", { name: "Review · 0 of 1" })).toBeTruthy();
   });
 });
