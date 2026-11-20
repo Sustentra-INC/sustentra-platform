@@ -421,6 +421,32 @@ def test_the_gwp_set_chosen_in_methodology_drives_the_recalculation_and_the_work
     assert results()["gwp_label"] == default
 
 
+def test_several_gwp_rows_one_source_of_truth_and_the_retired_input_is_refused() -> None:
+    eid = create()["id"]
+    results = lambda: call("GET", f"{BASE}/{eid}/recalculation", "a_member").json()  # noqa: E731
+    value = lambda s: {"value": {"set": s, "horizon": "100-year"}}  # noqa: E731
+
+    # the report named AR6 first (the fixed field); the reviewer rejects it and accepts the AR5 row
+    suggest(eid, "gwp", {**SUGGESTION, "value": {"set": "AR6", "horizon": "100-year"}})
+    assert act(eid, "gwp", "reject", {"reason": "the report's default is AR5"}).status_code == 200
+    row = add_row(eid, "gwp").json()["field"]["field_id"]
+    assert act(eid, row, "edit", value("AR5")).status_code == 200
+    now = results()
+    assert now["gwp_set"] == "AR5" and now["gwp_source"] == "methodology" and now["gwp_row"] == row
+    assert "default" not in now["gwp_label"]
+
+    # a second confirmed, different set blocks: Results and the workpaper say so
+    assert act(eid, "gwp", "edit", value("AR6")).status_code == 200
+    blocked = results()
+    assert blocked["gwp_set"] is None
+    assert blocked["gwp_blocked"] == "Two GWP sets confirmed in Methodology review — keep one"
+    assert call("GET", f"{BASE}/{eid}/export", "a_member").status_code == 409
+
+    # the old input is gone: PATCH refuses it and points to Methodology review
+    refused = call("PATCH", f"{BASE}/{eid}", body={"settings": {"recalculation": {"gwp_set": "AR6"}}})
+    assert refused.status_code == 422 and "Methodology review" in refused.text
+
+
 def _workpaper_basis(content: bytes) -> str:
     import io
 

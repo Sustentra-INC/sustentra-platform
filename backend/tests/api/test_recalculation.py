@@ -117,9 +117,10 @@ def test_reference_lists_the_input_choices(act_as) -> None:
 
 
 def test_engagement_settings_validate_recalculation_inputs() -> None:
-    EngagementUpdate(settings={"recalculation": {"gwp_set": "AR6", "grid_regions": {"Facility A": "NYUP"}}})
-    with pytest.raises(ValueError):
-        EngagementUpdate(settings={"recalculation": {"gwp_set": "AR3"}})
+    EngagementUpdate(settings={"recalculation": {"grid_regions": {"Facility A": "NYUP"}}})
+    for retired in ("AR6", "AR3"):  # the GWP set is chosen in Methodology review: PATCH no longer takes it
+        with pytest.raises(ValueError, match="Methodology review"):
+            EngagementUpdate(settings={"recalculation": {"gwp_set": retired}})
     EngagementUpdate(settings={"outOfScopeDataPoints": ["process_total"]})
     with pytest.raises(ValueError):
         EngagementUpdate(settings={"outOfScopeDataPoints": ["not_a_data_point"]})

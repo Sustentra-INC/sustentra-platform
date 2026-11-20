@@ -164,7 +164,8 @@ class RecalculationInputs:
     certificates: list[dict[str, Any]] = field(default_factory=list)  # [{label, mwh}]
     reported: dict[str, float] = field(default_factory=dict)  # data point key -> value
     # Refrigerant -> GWP the reviewer entered (from the safety data sheet) for gases the EPA Hub lacks.
-    refrigerant_gwps: dict[str, float] = field(default_factory=dict)
+    # Each is (value, the set it was entered under); a number saved before the set was recorded has None.
+    refrigerant_gwps: dict[str, tuple[float, str | None]] = field(default_factory=dict)
     # Mobile CH4/N2O (workbook Eq 4 / Eq 5): [{fuel, vehicle_type, factor_fuel_type, on_road,
     # model_year?, distance?, distance_unit?, fuel_quantity?, fuel_unit?, label?}]
     vehicle_groups: list[dict[str, Any]] = field(default_factory=list)
@@ -181,6 +182,21 @@ class RecalculationInputs:
     consolidated_shares: dict[str, float] = field(default_factory=dict)
 
 
+def _gwp_entry(raw: Any) -> tuple[float, str | None] | None:
+    """A reviewer-entered refrigerant GWP as (value, the set it was entered under). A plain number is an
+    entry saved before the set was recorded: None for the set. Anything else malformed is None."""
+
+    if isinstance(raw, dict):
+        value, gwp_set = raw.get("value"), raw.get("gwp_set")
+        if set(raw) <= {"value", "gwp_set"} and gwp_set in GWP_SETS and isinstance(value, (int, float)) \
+                and not isinstance(value, bool) and value >= 0:
+            return float(value), str(gwp_set)
+        return None
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool) and raw >= 0:
+        return float(raw), None
+    return None
+
+
 def validate_recalculation_settings(value: Any) -> None:
     """Raise ValueError when settings["recalculation"] is malformed."""
 
@@ -192,8 +208,9 @@ def validate_recalculation_settings(value: Any) -> None:
                             "consolidated_shares"}
     if unknown:
         raise ValueError(f"unknown recalculation settings: {', '.join(sorted(unknown))}")
-    if "gwp_set" in value and value["gwp_set"] not in GWP_SETS:
-        raise ValueError(f"gwp_set must be one of {', '.join(GWP_SETS)}")
+    if "gwp_set" in value:
+        raise ValueError("The GWP set is chosen in Methodology review, not saved here. Remove gwp_set and "
+                         "choose the set on the Methodology review screen.")
     for key in ("grid_regions", "fuel_choices"):
         mapping = value.get(key, {})
         if not isinstance(mapping, dict) or not all(isinstance(k, str) and isinstance(v, str)
@@ -207,9 +224,9 @@ def validate_recalculation_settings(value: Any) -> None:
             raise ValueError("each certificate needs a non-negative mwh")
     gwps = value.get("refrigerant_gwps", {})
     if not isinstance(gwps, dict) or not all(
-            isinstance(k, str) and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0
-            for k, v in gwps.items()):
-        raise ValueError("refrigerant_gwps must map each refrigerant to a non-negative number")
+            isinstance(k, str) and _gwp_entry(v) is not None for k, v in gwps.items()):
+        raise ValueError("refrigerant_gwps must map each refrigerant to a non-negative number, or to "
+                         '{"value": number, "gwp_set": "AR4" | "AR5" | "AR6"}')
     _validate_vehicle_groups(value.get("vehicle_groups", []))
     reported = value.get("reported", {})
     if not isinstance(reported, dict):
@@ -322,12 +339,12 @@ def materiality_tolerance(settings: dict[str, Any] | None) -> float:
 def parse_inputs(settings: dict[str, Any] | None) -> RecalculationInputs:
     raw = (settings or {}).get("recalculation") or {}
     return RecalculationInputs(
-        gwp_set=raw.get("gwp_set") or DEFAULT_GWP_SET,
         grid_regions=dict(raw.get("grid_regions") or {}),
         fuel_choices=dict(raw.get("fuel_choices") or {}),
         certificates=list(raw.get("certificates") or []),
         reported={k: float(v) for k, v in (raw.get("reported") or {}).items() if v is not None},
-        refrigerant_gwps={k: float(v) for k, v in (raw.get("refrigerant_gwps") or {}).items()},
+        refrigerant_gwps={k: e for k, v in (raw.get("refrigerant_gwps") or {}).items()
+                          if (e := _gwp_entry(v)) is not None},
         vehicle_groups=[dict(g) for g in raw.get("vehicle_groups") or []],
         absent_sources={k: str(v) for k, v in (raw.get("absent_sources") or {}).items()},
         reported_units={k: str(v) for k, v in (raw.get("reported_units") or {}).items()},
@@ -504,7 +521,7 @@ class EngagementRecalculationService:
 
         engagement_id = str(engagement.get("id") or engagement.get("engagement_id"))
         inputs = parse_inputs(engagement.get("settings"))
-        gwp_choice = self._gwp_choice(engagement, inputs)
+        gwp_choice = self._gwp_choice(engagement)
         inputs.gwp_set = gwp_choice["set"]
         period = (_date(engagement.get("reporting_period_start")), _date(engagement.get("reporting_period_end")))
         decisions = decisions or {}
@@ -589,7 +606,8 @@ class EngagementRecalculationService:
         open_items = Counter(str(item.get("category")) for item in needs_input + awaiting)
         response = {
             "engagement_id": engagement_id,
-            "gwp_set": inputs.gwp_set,
+            "gwp_set": inputs.gwp_set if gwp_choice["supported"] else None,  # blocked: no set was used
+            "gwp_row": gwp_choice["row"],
             "gwp_horizon": gwp_choice["horizon"],
             "gwp_label": gwp_choice["label"],
             "gwp_source": gwp_choice["source"],
@@ -634,17 +652,13 @@ class EngagementRecalculationService:
         return response
 
     @staticmethod
-    def _gwp_choice(engagement: dict[str, Any], inputs: RecalculationInputs) -> GwpChoice:
-        """The GWP set of the Methodology review (the API attaches it as ``methodology_gwp``). A caller that
-        attaches none gets the set in settings["recalculation"], else the default."""
+    def _gwp_choice(engagement: dict[str, Any]) -> GwpChoice:
+        """The GWP set of the Methodology review (every caller attaches it as ``methodology_gwp``: see
+        methodology_gwp.attach_choice). Never read from settings: the old input is gone. A caller that
+        attaches none gets the default, labelled as such."""
 
         attached = engagement.get("methodology_gwp")
-        if attached is not None:
-            return attached
-        if (engagement.get("settings") or {}).get("recalculation", {}).get("gwp_set"):
-            return {"set": inputs.gwp_set, "horizon": "100-year", "source": "settings", "supported": True,
-                    "label": f"{inputs.gwp_set} · 100-year", "message": None}
-        return default_choice()
+        return attached if attached is not None else default_choice()
 
     @staticmethod
     def _documents_reviewed(records: list[ReviewedRecord], needs_input: list[dict[str, Any]],
@@ -1224,15 +1238,28 @@ class EngagementRecalculationService:
                     "unit": entry["unit"]})
         uses: list[calc.RefrigerantUse] = []
         for gas, entry in totals.items():
-            override = next((v for k, v in inputs.refrigerant_gwps.items() if k.strip().lower() == gas.lower()), None)
+            entered = next((e for k, e in inputs.refrigerant_gwps.items() if k.strip().lower() == gas.lower()), None)
+            override: float | None = None
+            if entered is not None:
+                # An entered GWP belongs to the set it was entered under (a number saved before the set was
+                # recorded is an AR5 entry: AR5 was the only set then). Under another set it is not applied.
+                entered_set = entered[1] or DEFAULT_GWP_SET
+                if entered_set == inputs.gwp_set:
+                    override = entered[0]
+                else:
+                    needs_input.append({
+                        "kind": "refrigerant_gwp", "key": gas,
+                        "message": f"The {gas} GWP you entered is an {entered_set} value, and Methodology review "
+                                   f"chose {inputs.gwp_set}. Enter the {inputs.gwp_set} 100-year GWP for {gas}."})
+                    continue
             if override is None:
                 try:
                     self.reference.gwp(gas, inputs.gwp_set)
                 except EmissionFactorNotFoundError:
                     needs_input.append({
                         "kind": "refrigerant_gwp", "key": gas,
-                        "message": f"No {inputs.gwp_set} GWP for {gas} in the EPA GHG Emission Factors Hub "
-                                   "(Tables 11-12). Enter it from the refrigerant's safety data sheet.",
+                        "message": f"No {inputs.gwp_set} GWP for {gas} in Sustentra's reference data. Enter the "
+                                   f"{inputs.gwp_set} 100-year GWP from the refrigerant's safety data sheet.",
                     })
                     continue
             terms = entry["terms"]

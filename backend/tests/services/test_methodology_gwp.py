@@ -68,11 +68,6 @@ def test_no_confirmed_choice_keeps_ar5_and_says_so(record: dict | None) -> None:
     assert _kc_gas_co2e(result)["CH4"] == pytest.approx(1.82)
 
 
-def test_a_caller_with_no_methodology_choice_keeps_the_settings_value() -> None:
-    assert _run(gwp_set="AR4")["gwp_set"] == "AR4"
-    assert _run()["gwp_label"] == DEFAULT_LABEL
-
-
 @pytest.mark.parametrize("horizon", ["500-year", "20-year"])
 def test_an_unsupported_horizon_is_blocked_not_replaced(horizon: str) -> None:
     choice = choice_from_record(_record("accepted", "AR6", horizon))
@@ -86,3 +81,97 @@ def test_an_unsupported_horizon_is_blocked_not_replaced(horizon: str) -> None:
 def test_an_unknown_set_is_blocked() -> None:
     choice = choice_from_record(_record("accepted", "AR3"))
     assert choice["supported"] is False and "not supported for calculation" in str(choice["message"])
+
+
+# --- several GWP rows: one source of truth --------------------------------------------------
+from backend.app.services.methodology_gwp import choice_from_records  # noqa: E402
+from backend.tests.services.test_engagement_recalculation_service import FakeStore, _refrigerant  # noqa: E402
+from backend.tests.services.test_engagement_recalculation_service import _service as _plain_service  # noqa: E402
+
+
+def test_a_rejected_ar6_and_an_accepted_ar5_row_say_ar5_confirmed_not_default() -> None:
+    choice = choice_from_records({
+        "gwp": _record("rejected", "AR6"),
+        "gwp:ab12cd": {"decision": {"status": "accepted", "value": {"set": "AR5", "horizon": "100-year"}}},
+    })
+    assert choice["set"] == "AR5" and choice["source"] == "methodology" and choice["row"] == "gwp:ab12cd"
+    assert "default" not in choice["label"]
+    assert choice["label"] == "AR5 · 100-year (Methodology review, GWP set row 2)"
+    result = _run(choice)
+    assert result["gwp_set"] == "AR5" and result["gwp_source"] == "methodology" and result["gwp_row"] == "gwp:ab12cd"
+
+
+def test_two_different_confirmed_sets_block_the_calculation() -> None:
+    choice = choice_from_records({"gwp": _record("accepted", "AR5"), "gwp:ab12cd": _record("edited", "AR6")})
+    assert choice["supported"] is False
+    assert choice["message"] == "Two GWP sets confirmed in Methodology review — keep one"
+    result = _run(choice)
+    assert result["gwp_set"] is None and result["gwp_blocked"] == choice["message"]
+    assert all(v is None for v in result["categories"].values())
+
+
+def test_the_same_set_confirmed_twice_is_one_choice_and_a_removed_row_does_not_count() -> None:
+    same = choice_from_records({"gwp": _record("accepted", "AR6"), "gwp:ab12cd": _record("accepted", "AR6")})
+    assert same["supported"] and same["set"] == "AR6" and same["row"] == "gwp"
+    removed = {**_record("accepted", "AR6"), "removed": True}
+    assert choice_from_records({"gwp": _record("accepted", "AR5"), "gwp:ab12cd": removed})["set"] == "AR5"
+
+
+def test_a_blocked_result_names_no_set() -> None:
+    assert _run(choice_from_record(_record("accepted", "AR5", "500-year")))["gwp_set"] is None
+
+
+def test_the_retired_settings_input_never_chooses_the_set() -> None:
+    engagement = _engagement(recalculation={"gwp_set": "AR6"})  # an old save: ignored
+    result = _service(_gas_store()).recalculate(engagement, _own)
+    assert result["gwp_set"] == "AR5" and result["gwp_label"] == DEFAULT_LABEL
+
+
+# --- refrigerants under AR4 / AR6 -----------------------------------------------------------
+def _fridge_store() -> FakeStore:
+    store = FakeStore()
+    store.add_document("R410A", "CT-S1-REFRSVC", [_refrigerant("R-410A", "2025-03-01", added=10)])
+    return store
+
+
+def _fridge(choice: Any, **recalculation: Any) -> dict:
+    engagement = _engagement(recalculation=recalculation)
+    engagement["methodology_gwp"] = choice
+    return _plain_service(_fridge_store()).recalculate(engagement, _own)
+
+
+def test_an_hfc_blend_has_no_ar6_gwp_in_the_reference_data_and_asks_for_one() -> None:
+    result = _fridge(choice_from_record(_record("accepted", "AR6")))
+    ask = next(n for n in result["needs_input"] if n["kind"] == "refrigerant_gwp")
+    assert ask["message"].startswith("No AR6 GWP for R-410A in Sustentra's reference data")
+    assert "Hub" not in ask["message"]
+    assert result["categories"]["fugitive_refrigerants"] is None
+    assert _fridge(choice_from_record(_record("accepted", "AR5")))["categories"]["fugitive_refrigerants"] is not None
+
+
+def test_an_entered_gwp_applies_only_under_the_set_it_was_entered_under() -> None:
+    ar6 = choice_from_record(_record("accepted", "AR6"))
+    tagged = {"refrigerant_gwps": {"R-410A": {"value": 2256, "gwp_set": "AR6"}}}
+    used = _fridge(ar6, **tagged)["categories"]["fugitive_refrigerants"]
+    assert used["gwp"]["R-410A"]["value"] == 2256
+    other = _fridge(choice_from_record(_record("accepted", "AR4")), **tagged)
+    assert other["categories"]["fugitive_refrigerants"] is None
+    ask = next(n for n in other["needs_input"] if n["kind"] == "refrigerant_gwp")
+    assert "AR6 value" in ask["message"] and "chose AR4" in ask["message"]
+    legacy = {"refrigerant_gwps": {"R-410A": 2088}}  # saved before sets were recorded: an AR5 value
+    assert _fridge(ar6, **legacy)["categories"]["fugitive_refrigerants"] is None
+    assert _fridge(default_choice(), **legacy)["categories"]["fugitive_refrigerants"]["gwp"]["R-410A"]["value"] == 2088
+
+
+def test_a_blocked_gwp_choice_reaches_the_line_schedule_and_is_never_called_calculated() -> None:
+    from backend.tests.services.test_calculation_lines import _engagement as lines_engagement
+    from backend.tests.services.test_calculation_lines import _schedule_store, _tree_service
+
+    engagement = lines_engagement()
+    engagement["methodology_gwp"] = choice_from_record(_record("accepted", "AR6", "500-year"))
+    schedule = _tree_service(_schedule_store()).schedule(engagement, _own, GAS_KC)
+    assert schedule is not None
+    assert schedule["calculated"] is False and "not supported for calculation" in schedule["calculation_blocked"]
+    engagement["methodology_gwp"] = default_choice()
+    schedule = _tree_service(_schedule_store()).schedule(engagement, _own, GAS_KC)
+    assert schedule is not None and schedule["calculated"] is True and schedule["calculation_blocked"] is None

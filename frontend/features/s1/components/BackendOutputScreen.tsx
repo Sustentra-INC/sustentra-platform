@@ -124,6 +124,7 @@ export function liveOutputFrom(
           ? "/demo/cascade-provisions-2025-workpaper.xlsx"
           : apiPath(`/engagements/${encodeURIComponent(result.engagement_id)}/export`),
       gwpBasis: gwpLabel(result),
+      blocked: result.gwp_blocked ?? null,
       findings,
       basisLines: [
         `${reviewed[0].toUpperCase()}${reviewed.slice(1)}`,

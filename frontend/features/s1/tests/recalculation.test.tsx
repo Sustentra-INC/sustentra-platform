@@ -1,4 +1,5 @@
 /* @vitest-environment jsdom */
+import { liveOutputFrom } from "../components/BackendOutputScreen";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -373,19 +374,19 @@ describe("refrigerants (simplified material balance)", () => {
     expect(rules["COV-DECISIONS"]).toBeUndefined();
   });
 
-  it("asks for a GWP the EPA Hub does not have and saves it", () => {
+  it("asks for a GWP the reference data does not have and saves it under the set in use", () => {
     const onSave = vi.fn();
     const result: Recalculation = {
       ...RESULT,
       needs_input: [{ kind: "refrigerant_gwp", key: "R-454B",
-        message: "No AR5 GWP for R-454B in the EPA GHG Emission Factors Hub (Tables 11-12)." }],
+        message: "No AR5 GWP for R-454B in Sustentra's reference data." }],
     };
     render(<RecalculationInputs result={result} reference={REFERENCE} settings={{}} saving={false} error={null}
       onSave={onSave} />);
     const field = screen.getByText("R-454B").closest("label")!;
     fireEvent.change(within(field).getByRole("textbox"), { target: { value: "466" } });
     fireEvent.click(screen.getByRole("button", { name: "Save and recalculate" }));
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ refrigerant_gwps: { "R-454B": 466 } }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ refrigerant_gwps: { "R-454B": { value: 466, gwp_set: "AR5" } } }));
   });
 });
 
@@ -491,5 +492,32 @@ describe("purchased steam billed by weight", () => {
     const message = leftOutMessage({ record: "COOL-JUL.pdf", period: "2025-07-01 to 2025-07-31",
       reason: "purchased_cooling_not_calculated" });
     expect(message).toMatch(/^COOL-JUL\.pdf: purchased cooling \(chilled water\) is not calculated yet/);
+  });
+});
+
+describe("the GWP set is Methodology review's", () => {
+  it("keeps a GWP entered under another set as it was, and shows only the active set's", () => {
+    const onSave = vi.fn();
+    const result: Recalculation = { ...RESULT, gwp_set: "AR6", gwp_label: "AR6 · 100-year (Methodology review)",
+      needs_input: [{ kind: "refrigerant_gwp", key: "R-454B", message: "No AR6 GWP for R-454B in Sustentra's reference data." }] };
+    const settings = { refrigerant_gwps: { "R-454B": { value: 466, gwp_set: "AR5" }, "R-32": 2088 } };
+    render(<RecalculationInputs result={result} reference={REFERENCE} settings={settings} saving={false} error={null} onSave={onSave} />);
+    const field = screen.getByText("R-454B").closest("label")!;
+    expect((within(field).getByRole("textbox") as HTMLInputElement).value).toBe("");
+    fireEvent.change(within(field).getByRole("textbox"), { target: { value: "467" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save and recalculate" }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      refrigerant_gwps: { "R-454B": { value: 467, gwp_set: "AR6" }, "R-32": { value: 2088, gwp_set: "AR5" } },
+    }));
+  });
+
+  it("names the set on Output and, when blocked, says so instead of offering the workpaper", () => {
+    const named = liveOutputFrom({ ...RESULT, gwp_label: "AR6 · 100-year (Methodology review)" }, [], []).live;
+    expect(named.gwpBasis).toBe("AR6 · 100-year (Methodology review)");
+    expect(named.blocked).toBeNull();
+    const message = "The 500-year horizon chosen in Methodology review is not supported for calculation.";
+    const blocked = liveOutputFrom({ ...RESULT, gwp_set: null, gwp_label: "AR5 500-year — not supported for calculation", gwp_blocked: message }, [], []).live;
+    expect(blocked.blocked).toBe(message);
+    expect(blocked.gwpBasis).toBe("AR5 500-year — not supported for calculation");
   });
 });

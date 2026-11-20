@@ -250,6 +250,28 @@ def _mentions(text: str, terms: Sequence[str]) -> list[int]:
     return out
 
 
+_PRIMARY_WORDS = ("default", "primary", "principal", "main", "primarily", "mainly", "standard")
+_GAS_WORDS = (("co2", "carbon dioxide"), ("ch4", "methane"), ("n2o", "nitrous oxide"), ("hfc", "hydrofluorocarbon"),
+              ("pfc", "perfluorocarbon"), ("sf6", "sulfur hexafluoride", "sulphur hexafluoride"),
+              ("nf3", "nitrogen trifluoride"))
+
+
+def gwp_in_order(suggestions: Sequence[GwpSuggestion]) -> list[GwpSuggestion]:
+    """The GWP suggestions in the order they are kept: the first becomes the fixed field, the rest rows. The
+    document decides, not the model's output order: the set a quote calls the default or primary one first;
+    else the one whose quote names the most gases; ties go to the latest AR, then the 100-year horizon, then
+    the order given."""
+
+    def rank(item: tuple[int, GwpSuggestion]) -> tuple[int, int, int, int, int]:
+        index, gwp = item
+        text = norm(gwp.quote)
+        primary = any(_mentions(text, (word,)) for word in _PRIMARY_WORDS)
+        gases = sum(1 for words in _GAS_WORDS if any(_mentions(text, (w,)) for w in words))
+        return (0 if primary else 1, -gases, -int(gwp.set[2:]), 0 if gwp.horizon == "100-year" else 1, index)
+
+    return [gwp for _, gwp in sorted(enumerate(suggestions), key=rank)]
+
+
 def set_has_horizon(quote: str, set_: str, horizon: str) -> bool:
     """Whether the quote ties this set to this horizon: the set is named, and a mention of the horizon sits
     nearer to a mention of this set than to a mention of any other set. A quote that names two sets with two
@@ -600,7 +622,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             continue
         keep(period, value, "reporting_period", None)
     gwp_pairs: set[tuple[str, str]] = set()
-    for gwp in output.gwp:
+    for gwp in gwp_in_order(output.gwp):
         value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon})
         if value is None:
             continue

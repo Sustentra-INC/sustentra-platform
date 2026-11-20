@@ -454,9 +454,10 @@ def test_every_gwp_set_the_report_names_is_kept_the_first_as_the_field_and_the_r
         {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")},
         {"set": "AR4", "horizon": "500-year", **cite("L10", "a 500-year horizon (AR4)")}]}
     assert prefill(eid).json()["suggested"] == 8  # GOOD's five, the fixed GWP field and two GWP rows
-    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}
+    # no quote says default and none names a gas: the tie goes to the latest AR, which becomes the fixed field
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR6", "horizon": "20-year"}
     rows = gwp_rows(eid)
-    assert sorted((r["suggestion"]["value"]["set"], r["suggestion"]["value"]["horizon"]) for r in rows) == [("AR4", "500-year"), ("AR6", "20-year")]
+    assert sorted((r["suggestion"]["value"]["set"], r["suggestion"]["value"]["horizon"]) for r in rows) == [("AR4", "500-year"), ("AR5", "100-year")]
     assert all(r["user_added"] is False and r["decision"] is None and r["shown"] for r in rows)
     catalog = {c["field_id"]: c for c in review(eid).json()["catalog"] if c["field_id"].startswith("gwp:")}
     assert set(catalog) == {r["field_id"] for r in rows} and all(c["label"] == "GWP set" for c in catalog.values())
@@ -497,16 +498,19 @@ def test_a_second_run_in_another_order_never_shows_one_set_twice(claude: FakeCla
     ar6 = {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")}
     claude.output = {**GOOD, "gwp": [ar5, ar6]}
     assert prefill(eid).status_code == 200
-    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}
-    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
+    # no quote says default and none names a gas: the latest AR is the fixed field, whatever the model's order
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR6", "horizon": "20-year"}
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR5"]
     claude.output = {**GOOD, "gwp": [ar6, ar5]}  # the same sets, the other way round
     assert prefill(eid).status_code == 200
-    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}  # keeps its set
-    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
-    claude.output = {**GOOD, "gwp": [ar6]}  # AR6 is already on a row, so it does not go into the fixed field too
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR6", "horizon": "20-year"}  # keeps its set
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR5"]
+    claude.output = {**GOOD, "gwp": [ar5]}  # AR5 is already on a row, so it does not go into the fixed field too
     assert prefill(eid).status_code == 200
-    assert record(eid, "gwp")["suggestion"]["value"]["set"] == "AR5"
-    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
+    assert record(eid, "gwp")["suggestion"]["value"]["set"] == "AR6"
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR5"]
+
+
 # --- estimation method for missing data: only if the company has a value -----------------------
 
 EST = "calculation:estimation"

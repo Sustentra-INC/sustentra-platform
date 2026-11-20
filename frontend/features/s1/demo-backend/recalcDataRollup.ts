@@ -11,6 +11,7 @@ import type {
 import { verificationLines } from "../fixtures/verification/resultsDataset";
 import { COMPARISON_POINTS, LAYOUT_CATEGORIES, LAYOUT_NODES, LAYOUT_OUTPUTS, LAYOUT_STEPS } from "./recalcDataLayout";
 import { buildCategories, calculate, gwpOf, typeId, type Calculated } from "./recalcDataCalc";
+import { demoGwpChoice } from "./methodology";
 import { monthCoverage, recordsOn, shareInPeriod } from "./linesModel";
 
 const GROUPS: GasGroup[] = ["CO2", "CH4", "N2O", "HFCs", "PFCs", "SF6", "NF3"];
@@ -269,6 +270,7 @@ export function qualityChecks(c: Calculated): QualityCheck[] {
 
 export function buildRecalculation(engagementId: string): Recalculation {
   const c = calculate();
+  const gwpChoice = demoGwpChoice(engagementId);
   const categories = buildCategories(c);
   const reported = defaultReported(c);
   const rollup = buildRollup(c, reported);
@@ -280,8 +282,8 @@ export function buildRecalculation(engagementId: string): Recalculation {
   const fill = (key: string) => categories[key as keyof typeof categories] ?? null;
   void typeId;
   return {
-    engagement_id: engagementId, gwp_set: c.inputs.gwp_set,
-    gwp_label: c.inputs.settings.gwp_set ? `${c.inputs.gwp_set} · 100-year` : "AR5 (default — not set in Methodology review)",
+    engagement_id: engagementId,
+    gwp_set: gwpChoice.blocked ? null : c.inputs.gwp_set, gwp_label: gwpChoice.label, gwp_blocked: gwpChoice.blocked, gwp_row: gwpChoice.row,
     reporting_period: { start: c.model.period.start, end: c.model.period.end }, tolerance_pct: c.inputs.tolerance_pct,
     categories: {
       stationary_combustion: fill("stationary_combustion"), mobile_combustion: fill("mobile_combustion"), fugitive_refrigerants: fill("fugitive_refrigerants"),

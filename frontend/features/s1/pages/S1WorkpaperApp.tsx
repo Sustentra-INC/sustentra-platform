@@ -1208,6 +1208,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         ) : activeView.name === "dashboard" ? (
           STAGING_SCREENS ? (
             <BackendDashboard
+              methodologyKey={methodologyActivity.map((a) => `${a.at}${a.what}`).join("|")}
               engagement={engagement}
               evidence={evidenceView}
               values={reviewValuesView}

@@ -346,7 +346,9 @@ export interface CalcLineInputs {
 export interface Recalculation {
   engagement_id: string;
   /** The set the numbers use: the one chosen in Methodology review (AR5 when none is confirmed). */
-  gwp_set: string;
+  gwp_set: string | null;
+  /** The Methodology review row that drove the choice (null: the default). */
+  gwp_row?: string | null;
   gwp_horizon?: string;
   /** What Results and the workpaper print: the set, and where it came from. */
   gwp_label?: string;
@@ -547,7 +549,7 @@ export interface RollupStep {
 
 /** The GWP set as Results and the workpaper name it (the server's wording, else the set alone). */
 export function gwpLabel(result: Pick<Recalculation, "gwp_set" | "gwp_label">): string {
-  return result.gwp_label ?? result.gwp_set;
+  return result.gwp_label ?? result.gwp_set ?? "not set";
 }
 
 export interface Rollup {

@@ -215,6 +215,32 @@ function stateFor(engagementId: string): State {
   return state;
 }
 
+/** The GWP choice of the demo's Methodology review, by the server's rule (services/methodology_gwp.py): the
+ *  fixed field and the rows the reviewer accepted or edited; two different confirmed sets block. */
+export function demoGwpChoice(engagementId: string): { set: string | null; label: string; blocked: string | null; row: string | null } {
+  const state = stateFor(engagementId);
+  const order = state.records.filter((r) => r.fieldId === "gwp" || r.fieldId.startsWith("gwp:"));
+  const confirmed = order
+    .map((r, i) => ({ r, position: i + 1 }))
+    .filter(({ r }) => (r.decision?.status === "accepted" || r.decision?.status === "edited") && r.decision.value && typeof r.decision.value === "object");
+  if (!confirmed.length) return { set: "AR5", label: "AR5 (default — not set in Methodology review)", blocked: null, row: null };
+  const values = confirmed.map(({ r }) => r.decision!.value as Record<string, string>);
+  if (new Set(values.map((v) => `${v.set}|${v.horizon}`)).size > 1) {
+    const message = new Set(values.map((v) => v.set)).size > 1
+      ? "Two GWP sets confirmed in Methodology review — keep one"
+      : "Two GWP horizons confirmed in Methodology review — keep one";
+    return { set: null, label: message, blocked: message, row: null };
+  }
+  const { r, position } = confirmed[0];
+  const { set, horizon } = values[0];
+  if (horizon !== "100-year") {
+    const blocked = `The ${horizon} horizon chosen in Methodology review is not supported for calculation: the reference data holds 100-year GWPs only. Nothing is calculated until the horizon there is 100-year.`;
+    return { set: null, label: `${set} ${horizon} — not supported for calculation`, blocked, row: r.fieldId };
+  }
+  const where = position === 1 ? "Methodology review" : `Methodology review, GWP set row ${position}`;
+  return { set, label: `${set} · 100-year (${where})`, blocked: null, row: r.fieldId };
+}
+
 /** Back to the opening state (the demo's Reset, and tests). */
 export function resetDemoMethodology(): void {
   states.clear();

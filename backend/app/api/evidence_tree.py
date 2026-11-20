@@ -28,6 +28,7 @@ from backend.app.api.s1_access import can_see, s1_reader
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
 from backend.app.services import workpaper_item_service
+from backend.app.services import methodology_gwp
 from backend.app.services.evidence_tree_service import EvidenceTreeService
 
 router = APIRouter(prefix="/v1", tags=["evidence-tree"])
@@ -112,6 +113,7 @@ async def get_line_schedule(
     engagement = await _visible(db, engagement_id, user)
     decisions = await document_decisions(db, engagement)
     names = await reviewer_names(db, engagement["org_id"])
+    engagement = await methodology_gwp.attach_choice(db, engagement)  # the schedule runs the recalculation
     schedule = _service().schedule(
         engagement, lambda record: can_see(record, user), line_key, decisions,
         name_of=lambda login: names.get(str(login).lower(), str(login)),
