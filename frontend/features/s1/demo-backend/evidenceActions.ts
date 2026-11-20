@@ -3,12 +3,13 @@
  * rename and delete a line, move a document, and the log of those changes. Same sentences, same
  * rules: a stale `from` is a 409, deleting a line moves its documents to Unassigned supporting
  * evidence with explicit moves, a document's moves are compacted, and every change is logged with
- * the signed-in person. State lives in memory for the tab.
+ * the signed-in person. State lives in memory for the tab. Block 1 folders (create, rename, delete, put a
+ * document in or out) follow the server's rules too.
  */
-import type { EvidenceActivityItem, EvidenceLineSetting, LineAnswer, Placement } from "../api/evidenceTree";
+import type { EvidenceActivityItem, EvidenceFolderSetting, EvidenceLineSetting, FolderAnswer, LineAnswer, Placement } from "../api/evidenceTree";
 import type { DocumentDecision } from "../types/evidence";
 import { demoError } from "./index";
-import { CATEGORY_SCOPE, SUPPORTING_UNASSIGNED, applyMoves, buildModel, engagementNow, lineKey, newLineProblem, stampDemoLines, type Model } from "./linesModel";
+import { BLOCK_SUMMARY, CATEGORY_SCOPE, SUPPORTING_UNASSIGNED, applyMoves, buildModel, engagementNow, lineKey, newLineProblem, stampDemoLines, type Model } from "./linesModel";
 import { demoDecisions, saveDemoDecision, setDemoEngagement } from "./state";
 import type { DemoRoute } from "./types";
 
@@ -80,6 +81,34 @@ function saveChain(documentId: string, chain: Placement[]): DocumentDecision {
   const decision = { ...(demoDecisions().get(documentId) ?? {}), documentId, placements: chain } as DocumentDecision;
   saveDemoDecision(decision);
   return decision;
+}
+
+export const MAX_FOLDERS = 50;
+const MAX_FOLDER_NAME = 120;
+let folderCounter = 0;
+
+/** The server's `clean_folder_name`: Unicode NFC, inner whitespace collapsed, trimmed; a sentence when it can't be used. */
+export function cleanFolderName(raw: unknown): string {
+  const name = typeof raw === "string" ? raw.normalize("NFC").split(/\s+/u).filter(Boolean).join(" ") : "";
+  if (!name) return demoError(422, "Give the folder a name.");
+  if (/\p{C}/u.test(name)) return demoError(422, "A folder name can't contain control characters.");
+  if ([...name].length > MAX_FOLDER_NAME) return demoError(422, `A folder name can be at most ${MAX_FOLDER_NAME} characters.`);
+  return name;
+}
+
+const nameKey = (name: string) => name.normalize("NFC").toLowerCase();
+const storedFolders = (): EvidenceFolderSetting[] => [...(engagementNow().evidenceFolders ?? [])];
+const saveFolders = (folders: EvidenceFolderSetting[]) => setDemoEngagement({ ...engagementNow(), evidenceFolders: folders });
+const folderAnswer = (folders: EvidenceFolderSetting[], extra: Partial<FolderAnswer> = {}): FolderAnswer => ({ ...extra, evidenceFolders: folders });
+
+function freshName(raw: unknown, folders: EvidenceFolderSetting[], exceptId?: string): string {
+  const name = cleanFolderName(raw);
+  if (folders.some((f) => f.id !== exceptId && nameKey(f.name) === nameKey(name))) demoError(409, "A folder with that name already exists. Use another name.");
+  return name;
+}
+
+function folderOr404(folders: EvidenceFolderSetting[], id: string): EvidenceFolderSetting {
+  return folders.find((f) => f.id === id) ?? demoError(404, "This folder was already deleted. Reload Evidence to see the current folders.");
 }
 
 const answer = (lines: EvidenceLineSetting[], extra: Partial<LineAnswer> = {}): LineAnswer => ({ ...extra, evidenceLines: lines });
@@ -165,6 +194,11 @@ export const evidenceActionRoutes: DemoRoute[] = [
       const known = new Set(model.lines.map((l) => l.key));
       if (!known.has(to) && !(to in BLOCKS)) demoError(422, "That line no longer exists. Reload Evidence and pick another place.");
       if (from === to) demoError(422, "The document is already there.");
+      if (from === BLOCK_SUMMARY && demoDecisions().get(params.doc)?.folderId) {
+        const { folderId: _out, ...rest } = demoDecisions().get(params.doc)!; // it leaves Block 1, so it leaves its folder
+        void _out;
+        saveDemoDecision(rest as DocumentDecision);
+      }
       const payload = saveChain(params.doc, chainWith(params.doc, { from, to }, record.defaultTarget, known));
       log({ event_type: "evidence_document_moved", document_id: params.doc, from_label: placeLabel(model, from), to_label: placeLabel(model, to) });
       return { document_id: params.doc, payload };
@@ -196,6 +230,82 @@ export const evidenceActionRoutes: DemoRoute[] = [
       saveDemoDecision(decision);
       log({ event_type: "evidence_document_facility_set", document_id: params.doc, facility_id: facilityId, facility_name: facility!.name, suggested });
       return { document_id: params.doc, payload: decision };
+    },
+  },
+  {
+    method: "POST",
+    path: /^\/engagements\/(?<id>[^/]+)\/evidence-folders$/,
+    handle: ({ body }) => {
+      const folders = storedFolders();
+      if (folders.length >= MAX_FOLDERS) demoError(422, `An engagement can have at most ${MAX_FOLDERS} folders.`);
+      const name = freshName((body as { name?: unknown } | null)?.name, folders);
+      folderCounter += 1;
+      const folder: EvidenceFolderSetting = { id: `fld-demo${folderCounter}`, name, created_by: engagementNow().signedInLogin ?? "demo", created_at: new Date().toISOString() };
+      const next = [...folders, folder];
+      saveFolders(next);
+      log({ event_type: "evidence_folder_created", folder_id: folder.id, folder_name: name });
+      return folderAnswer(next, { folder });
+    },
+  },
+  {
+    method: "PATCH",
+    path: /^\/engagements\/(?<id>[^/]+)\/evidence-folders\/(?<folder>[^/]+)$/,
+    handle: ({ params, body }) => {
+      const folders = storedFolders();
+      const found = folderOr404(folders, params.folder);
+      const name = freshName((body as { name?: unknown } | null)?.name, folders, found.id);
+      if (name === found.name) return folderAnswer(folders, { folder: found });
+      const renamed = { ...found, name };
+      const next = folders.map((f) => (f === found ? renamed : f));
+      saveFolders(next);
+      log({ event_type: "evidence_folder_renamed", folder_id: found.id, old_label: found.name, new_label: name });
+      return folderAnswer(next, { folder: renamed });
+    },
+  },
+  {
+    method: "DELETE",
+    path: /^\/engagements\/(?<id>[^/]+)\/evidence-folders\/(?<folder>[^/]+)$/,
+    handle: ({ params }) => {
+      const folders = storedFolders();
+      const found = folderOr404(folders, params.folder);
+      const shown = new Set(buildModel().records.map((r) => r.documentId));
+      const changed: Record<string, DocumentDecision> = {};
+      let moved = 0;
+      for (const [documentId, decision] of [...demoDecisions()]) {
+        if (decision.folderId !== found.id) continue;
+        const { folderId: _gone, ...rest } = decision; // the document goes to the top of Block 1
+        void _gone;
+        saveDemoDecision(rest as DocumentDecision);
+        changed[documentId] = rest as DocumentDecision;
+        if (shown.has(documentId)) moved += 1;
+      }
+      const next = folders.filter((f) => f !== found);
+      saveFolders(next);
+      log({ event_type: "evidence_folder_deleted", folder_id: found.id, folder_name: found.name, documents_moved: moved });
+      return folderAnswer(next, { documents_moved: moved, documents: changed });
+    },
+  },
+  {
+    method: "POST",
+    path: /^\/engagements\/(?<id>[^/]+)\/documents\/(?<doc>[^/]+)\/folder$/,
+    handle: ({ params, body }) => {
+      const requested = (body as { folder_id?: string | null } | null)?.folder_id ?? null;
+      const model = buildModel();
+      if (!model.records.some((r) => r.documentId === params.doc)) demoError(404, "That document isn't on the Evidence page for this engagement.");
+      if (!(model.slots.get(params.doc) ?? []).some((s) => s.target === BLOCK_SUMMARY)) {
+        demoError(422, "Only documents in Summary documents and workbook can go in a folder.");
+      }
+      const folders = storedFolders();
+      const target = requested === null ? null : folderOr404(folders, requested);
+      const existing = demoDecisions().get(params.doc);
+      const current = folders.find((f) => f.id === existing?.folderId) ?? null;
+      if ((current?.id ?? null) === (target?.id ?? null)) return { document_id: params.doc, payload: existing ?? ({ documentId: params.doc } as DocumentDecision) };
+      const { folderId: _old, ...rest } = existing ?? ({ documentId: params.doc } as DocumentDecision);
+      void _old;
+      const payload = { ...rest, documentId: params.doc, ...(target ? { folderId: target.id } : {}) } as DocumentDecision;
+      saveDemoDecision(payload);
+      log({ event_type: "evidence_document_folder_set", document_id: params.doc, folder_id: target?.id ?? null, from_label: current?.name ?? BLOCKS[BLOCK_SUMMARY], to_label: target?.name ?? BLOCKS[BLOCK_SUMMARY] });
+      return { document_id: params.doc, payload };
     },
   },
   {

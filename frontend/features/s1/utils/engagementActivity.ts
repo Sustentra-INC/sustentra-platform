@@ -118,6 +118,17 @@ function evidenceEventText(event: EvidenceActivityItem, filename: Map<string, st
     }
     case "evidence_document_moved":
       return `moved ${(event.document_id && filename.get(event.document_id)) || "a document"} from ${event.from_label ?? "its place"} to ${event.to_label ?? "another place"}${event.reread_as_label ? (event.reread_choice === "move_only" ? `, without reading it again as ${event.reread_as_label}` : `, and had it read again as ${event.reread_as_label}`) : ""}`;
+    case "evidence_folder_created":
+      return `added the folder ${event.folder_name ?? ""}`.trim();
+    case "evidence_folder_renamed":
+      return `renamed the folder ${event.old_label ?? ""} to ${event.new_label ?? ""}`.replace("  ", " ");
+    case "evidence_folder_deleted": {
+      const n = event.documents_moved ?? 0;
+      const moved = n === 0 ? "" : n === 1 ? ", moving 1 document to the top of Summary documents and workbook" : `, moving ${n} documents to the top of Summary documents and workbook`;
+      return `deleted the folder ${event.folder_name ?? ""}${moved}`;
+    }
+    case "evidence_document_folder_set":
+      return `moved ${(event.document_id && filename.get(event.document_id)) || "a document"} from ${event.from_label ?? "its place"} to ${event.to_label ?? "another place"}`;
     case "evidence_document_facility_set":
       return `placed ${(event.document_id && filename.get(event.document_id)) || "a document"} on ${event.facility_name ?? "a facility"}${event.suggested ? ", as Claude suggested" : ""}`;
   }

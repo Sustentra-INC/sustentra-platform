@@ -5,6 +5,10 @@
 * DELETE /v1/engagements/{id}/evidence-lines/{line_key}            delete a line
 * POST   /v1/engagements/{id}/documents/{document_id}/placements   move a document ({from, to})
 * POST   /v1/engagements/{id}/documents/{document_id}/facility     place a document on a Setup facility ({facility_id})
+* POST   /v1/engagements/{id}/evidence-folders                      add a folder to Block 1
+* PATCH  /v1/engagements/{id}/evidence-folders/{folder_id}          rename a folder
+* DELETE /v1/engagements/{id}/evidence-folders/{folder_id}          delete a folder (its documents go to the top of Block 1)
+* POST   /v1/engagements/{id}/documents/{document_id}/folder       put a Block 1 document in a folder, or out ({folder_id} or null)
 * GET    /v1/engagements/{id}/evidence-activity                     what was changed, newest first
 
 Writers only (archived engagement: 409, another org: 404). Every write takes the engagement's
@@ -14,6 +18,7 @@ document text. No ``from __future__ import annotations``: FastAPI resolves these
 """
 
 import json
+import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Any, Literal
 
@@ -41,7 +46,12 @@ LINE_RENAMED = "evidence_line_renamed"
 LINE_DELETED = "evidence_line_deleted"
 DOCUMENT_MOVED = "evidence_document_moved"
 FACILITY_SET = "evidence_document_facility_set"
-EVENT_TYPES = (LINE_CREATED, LINE_RENAMED, LINE_DELETED, DOCUMENT_MOVED, FACILITY_SET)
+FOLDER_CREATED = "evidence_folder_created"
+FOLDER_RENAMED = "evidence_folder_renamed"
+FOLDER_DELETED = "evidence_folder_deleted"
+DOCUMENT_FOLDERED = "evidence_document_folder_set"
+EVENT_TYPES = (LINE_CREATED, LINE_RENAMED, LINE_DELETED, DOCUMENT_MOVED, FACILITY_SET,
+               FOLDER_CREATED, FOLDER_RENAMED, FOLDER_DELETED, DOCUMENT_FOLDERED)
 
 BLOCK_NAMES = {
     cl.BLOCK_SUMMARY: "Summary documents and workbook",
@@ -71,6 +81,20 @@ class LineRename(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     label: str = Field(max_length=cl.MAX_LABEL)
+
+
+class FolderName(BaseModel):
+    """A folder's name. No length limit here: ``clean_folder_name`` answers with a sentence."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(max_length=2000)
+
+
+class FolderChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    folder_id: str | None = Field(default=None, max_length=200)  # null: out of any folder, to the top of Block 1
 
 
 class PlacementMove(BaseModel):
@@ -381,6 +405,9 @@ async def move_document(
                                                   "error": None}}
     else:
         chain = _next_chain(_chain(existing), move, doc, known)
+    if "folderId" in existing and not any(
+            s.target == cl.BLOCK_SUMMARY for s in cl.apply_placements(doc.default_slots, chain, known)):
+        existing = {k: v for k, v in existing.items() if k != "folderId"}  # it leaves Block 1, so it leaves its folder
     payload = await _save_chain(db, engagement, user, document_id, existing, chain)
     await _audit(db, request, user, DOCUMENT_MOVED, engagement,
                  {"document_id": document_id, "from": source, "to": target,
@@ -427,6 +454,170 @@ async def set_reread_state(
     await workpaper_item_service.save_item(
         db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind="document", item_key=document_id,
         payload=payload, user_id=user.id)
+    return {"document_id": document_id, "payload": payload}
+
+
+# --- Block 1 folders --------------------------------------------------------------------------
+def _stored_folders(engagement: dict[str, Any]) -> list[dict[str, Any]]:
+    return cl.stored_folders(engagement.get("settings"))
+
+
+async def _save_folders(db: AsyncSession, engagement: dict[str, Any], folders: list[dict[str, Any]]) -> None:
+    settings = {**(engagement.get("settings") or {}), "evidenceFolders": folders}
+    await engagement_service.update_engagement(db, engagement["id"], {"settings": settings})
+
+
+def _folder_answer(folders: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
+    return {**extra, "evidenceFolders": folders}
+
+
+def _folder_name_or_422(raw: str, folders: list[dict[str, Any]], except_id: str | None = None) -> str:
+    try:
+        name = cl.clean_folder_name(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    taken = {cl.folder_name_key(f["name"]) for f in folders if f["id"] != except_id}
+    if cl.folder_name_key(name) in taken:
+        raise HTTPException(status_code=409, detail="A folder with that name already exists. Use another name.")
+    return name
+
+
+def _folder_or_404(folders: list[dict[str, Any]], folder_id: str) -> dict[str, Any]:
+    found = next((f for f in folders if f["id"] == folder_id), None)
+    if found is None:
+        raise HTTPException(status_code=404, detail="This folder was already deleted. Reload Evidence to see the "
+                                                    "current folders.")
+    return found
+
+
+@router.post("/engagements/{engagement_id}/evidence-folders", status_code=201)
+async def create_folder(
+    engagement_id: str,
+    body: FolderName,
+    request: Request,
+    user: CurrentUser = Depends(s1_writer),
+    _open: dict[str, Any] = Depends(require_open_engagement),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> dict[str, Any]:
+    """Add a folder to Block 1 (one level: a folder never holds a folder)."""
+
+    engagement = await _locked(db, engagement_id)
+    folders = _stored_folders(engagement)
+    if len(folders) >= cl.MAX_FOLDERS:
+        raise HTTPException(status_code=422, detail=f"An engagement can have at most {cl.MAX_FOLDERS} folders.")
+    name = _folder_name_or_422(body.name, folders)
+    folder = {"id": f"fld-{uuid.uuid4().hex[:12]}", "name": name, "created_by": str(user.id),
+              "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    folders = [*folders, folder]
+    await _save_folders(db, engagement, folders)
+    await _audit(db, request, user, FOLDER_CREATED, engagement, {"folder_id": folder["id"], "folder_name": name})
+    return _folder_answer(folders, folder=folder)
+
+
+@router.patch("/engagements/{engagement_id}/evidence-folders/{folder_id}")
+async def rename_folder(
+    engagement_id: str,
+    folder_id: str,
+    body: FolderName,
+    request: Request,
+    user: CurrentUser = Depends(s1_writer),
+    _open: dict[str, Any] = Depends(require_open_engagement),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> dict[str, Any]:
+    engagement = await _locked(db, engagement_id)
+    folders = _stored_folders(engagement)
+    found = _folder_or_404(folders, folder_id)
+    name = _folder_name_or_422(body.name, folders, except_id=folder_id)
+    if name == found["name"]:
+        return _folder_answer(folders, folder=found)
+    renamed = {**found, "name": name}
+    folders = [renamed if f is found else f for f in folders]
+    await _save_folders(db, engagement, folders)
+    await _audit(db, request, user, FOLDER_RENAMED, engagement,
+                 {"folder_id": folder_id, "old_label": found["name"], "new_label": name})
+    return _folder_answer(folders, folder=renamed)
+
+
+@router.delete("/engagements/{engagement_id}/evidence-folders/{folder_id}")
+async def delete_folder(
+    engagement_id: str,
+    folder_id: str,
+    request: Request,
+    user: CurrentUser = Depends(s1_writer),
+    _open: dict[str, Any] = Depends(require_open_engagement),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> dict[str, Any]:
+    """Delete a folder. Its documents are not deleted: each goes to the top of Block 1, by clearing the
+    folder from its saved decision now. One transaction: the documents come out and the folder goes, or
+    nothing changes."""
+
+    engagement = await _locked(db, engagement_id)
+    folders = _stored_folders(engagement)
+    found = _folder_or_404(folders, folder_id)
+    loaded, decisions = await _load(db, engagement, user)
+    shown = {d.document_id for d in loaded.docs if any(s.target == cl.BLOCK_SUMMARY for s in d.slots)}
+    changed: dict[str, dict[str, Any]] = {}
+    moved = 0
+    for document_id, existing in decisions.items():  # every saved decision that names the folder, shown or not
+        if existing.get("folderId") != folder_id:
+            continue
+        payload = {k: v for k, v in existing.items() if k != "folderId"}
+        await workpaper_item_service.save_item(
+            db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind="document", item_key=document_id,
+            payload={**payload, "documentId": document_id}, user_id=user.id)
+        changed[document_id] = {**payload, "documentId": document_id}
+        moved += document_id in shown
+    folders = [f for f in folders if f is not found]
+    await _save_folders(db, engagement, folders)
+    await _audit(db, request, user, FOLDER_DELETED, engagement,
+                 {"folder_id": folder_id, "folder_name": found["name"], "documents_moved": moved})
+    return _folder_answer(folders, documents_moved=moved, documents=changed)
+
+
+@router.post("/engagements/{engagement_id}/documents/{document_id}/folder")
+async def set_document_folder(
+    engagement_id: str,
+    document_id: str,
+    body: FolderChoice,
+    request: Request,
+    user: CurrentUser = Depends(s1_writer),
+    _open: dict[str, Any] = Depends(require_open_engagement),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> dict[str, Any]:
+    """Put a document that is in Block 1 into a folder, or take it out (``folder_id`` null: the top of
+    Block 1). 422 for a document that is not in Block 1; 404 for a folder that is gone or a document that
+    is not on the page. Answers with the saved payload."""
+
+    if not workpaper_item_service.ITEM_KEY.match(document_id):
+        raise HTTPException(status_code=404, detail="That document isn't on the Evidence page for this engagement.")
+    engagement = await _locked(db, engagement_id)
+    loaded, decisions = await _load(db, engagement, user)
+    doc = next((d for d in loaded.docs if d.document_id == document_id), None)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="That document isn't on the Evidence page for this engagement.")
+    if not any(s.target == cl.BLOCK_SUMMARY for s in doc.slots):
+        raise HTTPException(status_code=422, detail="Only documents in Summary documents and workbook can go in a folder.")
+    folders = _stored_folders(engagement)
+    target = _folder_or_404(folders, body.folder_id) if body.folder_id is not None else None
+    existing = decisions.get(document_id) or {}
+    folder_ids = {f["id"] for f in folders}
+    current = cl.document_folder(existing, folder_ids)
+    if current == (target["id"] if target else None):  # already there: nothing to write, nothing to log
+        return {"document_id": document_id, "payload": existing}
+    payload = {k: v for k, v in existing.items() if k != "folderId"}
+    payload["documentId"] = document_id
+    if target is not None:
+        payload["folderId"] = target["id"]
+    if workpaper_item_service.payload_size(payload) > workpaper_item_service.MAX_PAYLOAD_BYTES:
+        raise HTTPException(status_code=409, detail="This document has too many saved changes to save another.")
+    await workpaper_item_service.save_item(
+        db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind="document", item_key=document_id,
+        payload=payload, user_id=user.id)
+    names = {f["id"]: f["name"] for f in folders}
+    await _audit(db, request, user, DOCUMENT_FOLDERED, engagement,
+                 {"document_id": document_id, "folder_id": target["id"] if target else None,
+                  "from_label": names.get(current) if current else BLOCK_NAMES[cl.BLOCK_SUMMARY],
+                  "to_label": target["name"] if target else BLOCK_NAMES[cl.BLOCK_SUMMARY]})
     return {"document_id": document_id, "payload": payload}
 
 
@@ -524,7 +715,8 @@ async def evidence_activity(
             "actor_name": r["actor_name"] or ("Unknown user" if r["actor_user_id"] else None),
             **{k: meta.get(k) for k in ("line_key", "label", "level2_label", "old_label", "new_label",
                                         "documents_moved", "document_id", "from", "to", "from_label", "to_label",
-                                        "facility_id", "facility_name", "suggested", "reread_as", "reread_as_label", "reread_choice")
+                                        "facility_id", "facility_name", "suggested", "folder_id", "folder_name",
+                                        "reread_as", "reread_as_label", "reread_choice")
                if k in meta},
         })
     next_cursor = audit_query.encode_cursor(rows[-1]["created_at"], rows[-1]["id"], scope) if more and rows else None

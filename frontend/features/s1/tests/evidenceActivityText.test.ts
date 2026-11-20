@@ -56,4 +56,22 @@ describe("the Activity log shows what the server recorded on the Evidence page",
     });
     expect(log[0].what).toBe("moved a document from A to B, without reading it again as Purchased electricity record");
   });
+
+  it("words the folder events", () => {
+    const log = engagementActivity({
+      ...base,
+      evidenceEvents: [
+        event({ event_type: "evidence_folder_created", folder_name: "Données 排放" }),
+        event({ id: "2", at: "2025-11-04T12:01:00Z", event_type: "evidence_folder_renamed", old_label: "Données 排放", new_label: "Archive" }),
+        event({ id: "3", at: "2025-11-04T12:02:00Z", event_type: "evidence_document_folder_set", document_id: "D1", from_label: "Archive", to_label: "Summary documents and workbook" }),
+        event({ id: "4", at: "2025-11-04T12:03:00Z", event_type: "evidence_folder_deleted", folder_name: "Archive", documents_moved: 2 }),
+      ],
+    });
+    expect(log.map((e) => e.what)).toEqual([
+      "deleted the folder Archive, moving 2 documents to the top of Summary documents and workbook",
+      "moved a document from Archive to Summary documents and workbook",
+      "renamed the folder Données 排放 to Archive",
+      "added the folder Données 排放",
+    ]);
+  });
 });

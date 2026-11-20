@@ -13,7 +13,7 @@ import {
   type Model, type ModelLine, type ModelRecord,
 } from "./linesModel";
 import { demoError } from "./index";
-import { saveDemoDecision } from "./state";
+import { demoDecisions, demoEngagement, saveDemoDecision } from "./state";
 import type { DemoRoute } from "./types";
 
 const CATEGORY_SCOPE = Object.fromEntries(CATEGORIES.map(([k, , s]) => [k, s]));
@@ -94,9 +94,16 @@ export function buildTree(facilityId: string | null): EvidenceTree {
     return { scope, label, categories, counts: countsOf(shown.filter((l) => CATEGORY_SCOPE[l.category] === scope).map((l) => l.key)) };
   });
 
+  const folders = demoEngagement()?.evidenceFolders ?? [];
+  const folderIds = new Set(folders.map((f) => f.id));
+  const summary = documents(BLOCK_SUMMARY).map((row): TreeDocRow => {
+    const folder = demoDecisions().get(row.document_id)?.folderId;
+    return { ...row, folder_id: folder && folderIds.has(folder) ? folder : null };
+  });
   return {
     blocks: {
-      summary: documents(BLOCK_SUMMARY), summary_counts: countsOf([BLOCK_SUMMARY]),
+      summary, summary_counts: countsOf([BLOCK_SUMMARY]),
+      summary_folders: folders.map((f) => ({ folder_id: f.id, name: f.name, documents: summary.filter((r) => r.folder_id === f.id).length })),
       unassigned: documents(BLOCK_UNASSIGNED), unassigned_counts: countsOf([BLOCK_UNASSIGNED]),
       supporting: { scopes, unassigned: documents(SUPPORTING_UNASSIGNED), unassigned_counts: countsOf([SUPPORTING_UNASSIGNED]) },
     },

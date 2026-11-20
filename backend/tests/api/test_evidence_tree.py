@@ -48,6 +48,11 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
 
     monkeypatch.setattr(tree_api, "creator_names", creators)
     monkeypatch.setattr(tree_api, "_service", lambda: EvidenceTreeService(store, store, store))
+
+    async def default_choice(db, engagement_id):  # noqa: ANN001, ANN202 - stands in for the Postgres lookup
+        return tree_api.methodology_gwp.default_choice()
+
+    monkeypatch.setattr(tree_api.methodology_gwp, "load_choice", default_choice)
     app.dependency_overrides[get_db_session] = no_db
     yield store
     app.dependency_overrides.pop(get_db_session, None)
@@ -61,7 +66,7 @@ def test_a_reader_gets_the_tree(act_as, wired: FakeStore) -> None:
     body = response.json()
     assert set(body) == {"blocks", "facilities", "lines", "set_aside", "vehicle_groups", "anchors_for_contractual"}
     assert body["anchors_for_contractual"] == "company" and body["vehicle_groups"] == []
-    assert set(body["blocks"]) == {"summary", "summary_counts", "unassigned", "unassigned_counts", "supporting"}
+    assert set(body["blocks"]) == {"summary", "summary_counts", "summary_folders", "unassigned", "unassigned_counts", "supporting"}
     assert [ln["key"] for ln in body["lines"]] == [GAS_KC, "s1:stationary:natural-gas:fac-stl2"]
     stationary = body["blocks"]["supporting"]["scopes"][0]["categories"][0]
     row = stationary["level2s"][0]["lines"][0]["documents"][0]
@@ -87,7 +92,7 @@ def test_a_reader_gets_a_schedule_with_names(act_as, wired: FakeStore) -> None:
         response = client.get(f"/v1/engagements/ENG-1/calculation-lines/{GAS_KC}/schedule")
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"line", "calculated", "reporting_period", "coverage", "identifiers", "values", "history", "rows",
+    assert set(body) == {"line", "calculated", "calculation_blocked", "reporting_period", "coverage", "identifiers", "values", "history", "rows",
                          "columns", "activity_quantity_note", "identifier_groups", "history_total"}
     assert body["rows"][0]["saved_by"]["name"] == "Ana Reyes" and body["rows"][0]["accepted"] is True
     assert body["line"]["key"] == GAS_KC and body["values"][0]["decided_by"] == "Ana Reyes"

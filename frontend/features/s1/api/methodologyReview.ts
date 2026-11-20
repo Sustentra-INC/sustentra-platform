@@ -14,6 +14,8 @@ export interface FieldPart {
   label: string;
   kind: "text" | "list" | "percent" | "enum" | string;
   allowed?: string[];
+  /** An enum or number the document may not give: the editor offers "Not stated" and sends null. */
+  optional?: boolean;
 }
 
 export interface CatalogField {
@@ -33,6 +35,8 @@ export interface CatalogField {
   required?: boolean;
   /** A multi-select that also takes options of the reviewer's own. */
   free?: boolean;
+  /** A short note shown beside the value ("Boundary sentence only"). */
+  value_note?: string;
 }
 
 export interface MethodologySourceReference {

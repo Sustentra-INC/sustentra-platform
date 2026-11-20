@@ -262,9 +262,17 @@ class EvidenceTreeService:
             in_scope = [ln.key for ln in shown_lines if cl.CATEGORY_SCOPE[ln.category] == scope]
             scopes.append({"scope": scope, "label": scope_label, "categories": categories,
                            "counts": counts_of(in_scope)})
+        folders = cl.stored_folders(engagement.get("settings"))
+        folder_ids = {f["id"] for f in folders}
+        summary = documents(cl.BLOCK_SUMMARY)
+        for row in summary:  # one level: a row is in a folder or at the top of Block 1
+            row["folder_id"] = cl.document_folder((decisions or {}).get(row["document_id"]), folder_ids)
         return {
             "blocks": {
-                "summary": documents(cl.BLOCK_SUMMARY), "summary_counts": counts_of([cl.BLOCK_SUMMARY]),
+                "summary": summary, "summary_counts": counts_of([cl.BLOCK_SUMMARY]),
+                "summary_folders": [{"folder_id": f["id"], "name": f["name"],
+                                     "documents": sum(1 for r in summary if r["folder_id"] == f["id"])}
+                                    for f in folders],
                 "unassigned": documents(cl.BLOCK_UNASSIGNED), "unassigned_counts": counts_of([cl.BLOCK_UNASSIGNED]),
                 "supporting": {"scopes": scopes, "unassigned": documents(cl.SUPPORTING_UNASSIGNED),
                                "unassigned_counts": counts_of([cl.SUPPORTING_UNASSIGNED])},
@@ -431,6 +439,8 @@ class EvidenceTreeService:
         return {
             "line": line.to_dict(),
             "calculated": calculated,
+            # why nothing is calculated when Methodology review chose a GWP set the data cannot calculate
+            "calculation_blocked": recalculation.get("gwp_blocked"),
             "reporting_period": {"start": _iso(loaded.period[0]), "end": _iso(loaded.period[1])},
             "coverage": cl.month_coverage(loaded.period, covered),
             "identifiers": self._identifiers(line, on_line),

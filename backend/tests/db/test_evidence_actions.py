@@ -713,6 +713,173 @@ def test_a_saved_choice_whose_facility_left_setup_shows_the_suggestion_again(sto
     assert row["facility_id"] is None and row["facility_suggestion"]["facility_id"] == "F2"
 
 
+# --- Block 1 folders (C-E3) ---------------------------------------------------------------------
+def add_summary(store: FakeStore, document_id: str, engagement_id: str) -> None:
+    store.add_document(document_id, "CT-GHG-WORKBOOK", [{"reported_total": (500, "t")}], engagement_id=engagement_id,
+                       org_id=str(ORG_A))
+    store.documents[-1]["file_name"] = f"{SECRET}-{document_id}.xlsx"
+
+
+def make_folder(engagement_id: str, name: str = "Workbooks", token: str = "a_member") -> Any:
+    return call("POST", path(engagement_id, "evidence-folders"), token, {"name": name})
+
+
+def put_in_folder(engagement_id: str, document_id: str, folder_id: str | None, token: str = "a_member") -> Any:
+    return call("POST", path(engagement_id, f"documents/{document_id}/folder"), token, {"folder_id": folder_id})
+
+
+def block1(engagement_id: str) -> dict[str, Any]:
+    response = call("GET", path(engagement_id, "evidence-tree"), "a_member")
+    assert response.status_code == 200, response.text
+    blocks = response.json()["blocks"]
+    return {"rows": {d["document_id"]: d["folder_id"] for d in blocks["summary"]},
+            "folders": {f["folder_id"]: (f["name"], f["documents"]) for f in blocks["summary_folders"]}}
+
+
+def test_create_rename_a_folder_with_a_non_ascii_name_and_audit_both(store: FakeStore) -> None:
+    engagement_id = make_engagement(store)
+    created = make_folder(engagement_id, "  Données  de   l’année — 排放 🌱 ")
+    assert created.status_code == 201, created.text
+    folder = created.json()["folder"]
+    assert folder["name"] == "Données de l’année — 排放 🌱" and folder["created_by"] == str(A_MEMBER)
+    assert created.json()["evidenceFolders"] == [folder]
+    assert block1(engagement_id)["folders"] == {folder["id"]: (folder["name"], 0)}
+    renamed = call("PATCH", path(engagement_id, f"evidence-folders/{folder['id']}"), "a_member", {"name": "Ünïcode 表"})
+    assert renamed.status_code == 200 and renamed.json()["folder"]["name"] == "Ünïcode 表"
+    created_event, renamed_event = events(engagement_id)
+    assert created_event["event_type"] == "evidence_folder_created" and created_event["actor_user_id"] == A_MEMBER
+    assert created_event["metadata"] == {"folder_id": folder["id"], "folder_name": folder["name"]}
+    assert renamed_event["event_type"] == "evidence_folder_renamed"
+    assert renamed_event["metadata"] == {"folder_id": folder["id"], "old_label": folder["name"], "new_label": "Ünïcode 表"}
+    # both show in the readable activity log
+    log = call("GET", path(engagement_id, "evidence-activity"), "a_member").json()["items"]
+    assert [i["event_type"] for i in log] == ["evidence_folder_renamed", "evidence_folder_created"]
+
+
+def test_folder_names_are_checked(store: FakeStore) -> None:
+    engagement_id = make_engagement(store)
+    assert make_folder(engagement_id, "   ").status_code == 422
+    assert make_folder(engagement_id, "bad\x00name").status_code == 422
+    assert make_folder(engagement_id, "x" * 121).status_code == 422
+    assert make_folder(engagement_id, "x" * 120).status_code == 201
+    # a duplicate, ignoring case and Unicode form (e + combining acute is the same as the one letter)
+    assert make_folder(engagement_id, "Café").status_code == 201
+    assert make_folder(engagement_id, "CAFÉ").status_code == 409
+    assert events(engagement_id)[-1]["metadata"]["folder_name"] == "Café"
+    assert len(events(engagement_id)) == 2  # the refused ones logged nothing
+
+
+def test_a_document_goes_into_a_folder_and_back_out_and_each_change_is_audited(store: FakeStore) -> None:
+    engagement_id = make_engagement(store)
+    add_summary(store, "WB", engagement_id)
+    folder_id = make_folder(engagement_id).json()["folder"]["id"]
+    put = put_in_folder(engagement_id, "WB", folder_id)
+    assert put.status_code == 200 and put.json()["payload"]["folderId"] == folder_id
+    assert block1(engagement_id) == {"rows": {"WB": folder_id}, "folders": {folder_id: ("Workbooks", 1)}}
+    assert put_in_folder(engagement_id, "WB", folder_id).status_code == 200  # already there: no write, no event
+    out = put_in_folder(engagement_id, "WB", None)
+    assert out.status_code == 200 and "folderId" not in out.json()["payload"]
+    assert block1(engagement_id)["rows"] == {"WB": None}
+    moved = [e for e in events(engagement_id) if e["event_type"] == "evidence_document_folder_set"]
+    assert [(e["metadata"]["from_label"], e["metadata"]["to_label"]) for e in moved] == [
+        ("Summary documents and workbook", "Workbooks"), ("Workbooks", "Summary documents and workbook")]
+    assert all(e["metadata"]["document_id"] == "WB" for e in moved)
+
+
+def test_deleting_a_non_empty_folder_moves_its_documents_to_the_top_of_block_1(store: FakeStore) -> None:
+    engagement_id = make_engagement(store)
+    for name in ("A", "B", "C"):
+        add_summary(store, name, engagement_id)
+    keep = make_folder(engagement_id, "Keep").json()["folder"]["id"]
+    gone = make_folder(engagement_id, "Gone").json()["folder"]["id"]
+    for name, folder in (("A", gone), ("B", gone), ("C", keep)):
+        assert put_in_folder(engagement_id, name, folder).status_code == 200
+    deleted = call("DELETE", path(engagement_id, f"evidence-folders/{gone}"), "a_member")
+    assert deleted.status_code == 200, deleted.text
+    body = deleted.json()
+    assert body["documents_moved"] == 2 and set(body["documents"]) == {"A", "B"}
+    assert all("folderId" not in p for p in body["documents"].values())
+    assert [f["id"] for f in body["evidenceFolders"]] == [keep]
+    assert block1(engagement_id) == {"rows": {"A": None, "B": None, "C": keep}, "folders": {keep: ("Keep", 1)}}
+    [*_, last] = events(engagement_id)
+    assert last["event_type"] == "evidence_folder_deleted"
+    assert last["metadata"] == {"folder_id": gone, "folder_name": "Gone", "documents_moved": 2}
+    # a second delete from another tab says so and changes nothing
+    again = call("DELETE", path(engagement_id, f"evidence-folders/{gone}"), "a_member")
+    assert again.status_code == 404 and "already deleted" in again.json()["detail"]
+    # deleting an empty folder moves none
+    empty = make_folder(engagement_id, "Empty").json()["folder"]["id"]
+    assert call("DELETE", path(engagement_id, f"evidence-folders/{empty}"), "a_member").json()["documents_moved"] == 0
+
+
+def test_a_document_moved_onto_a_line_leaves_its_folder_and_comes_back_to_the_top(store: FakeStore) -> None:
+    engagement_id = make_engagement(store)
+    add_summary(store, "WB", engagement_id)
+    create_line(engagement_id)
+    folder = make_folder(engagement_id).json()["folder"]["id"]
+    assert put_in_folder(engagement_id, "WB", folder).status_code == 200
+    assert move(engagement_id, "WB", "block:summary", PROPANE_KEY).status_code == 200
+    assert block1(engagement_id)["rows"] == {}
+    assert tree_lines(engagement_id)[PROPANE_KEY] == ["WB"]
+    # a folder is for Block 1 documents only
+    refused = put_in_folder(engagement_id, "WB", folder)
+    assert refused.status_code == 422 and "Summary documents and workbook" in refused.json()["detail"]
+    # and back again: the top of Block 1, not the old folder
+    assert move(engagement_id, "WB", PROPANE_KEY, "block:summary").status_code == 200
+    assert block1(engagement_id)["rows"] == {"WB": None}
+    assert block1(engagement_id)["folders"] == {folder: ("Workbooks", 0)}
+
+
+def test_folder_requests_for_bad_targets_and_other_orgs_are_refused(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=1)
+    add_summary(store, "WB", engagement_id)
+    folder = make_folder(engagement_id).json()["folder"]["id"]
+    assert put_in_folder(engagement_id, "WB", "fld-nope").status_code == 404
+    assert put_in_folder(engagement_id, "NOPE", folder).status_code == 404
+    assert put_in_folder(engagement_id, "D0", folder).status_code == 422  # a bill is not a summary document
+    assert call("PATCH", path(engagement_id, "evidence-folders/fld-nope"), "a_member", {"name": "x"}).status_code == 404
+    assert call("POST", path(engagement_id, "evidence-folders"), "b_member", {"name": "x"}).status_code == 404
+    assert make_folder(engagement_id, "x", token="provider").status_code in (403, 404)
+    assert [e["event_type"] for e in events(engagement_id)] == ["evidence_folder_created"]
+
+
+def test_a_settings_or_document_save_from_a_stale_tab_cannot_touch_folders(store: FakeStore) -> None:
+    engagement_id = make_engagement(store)
+    add_summary(store, "WB", engagement_id)
+    folder = make_folder(engagement_id).json()["folder"]["id"]
+    assert put_in_folder(engagement_id, "WB", folder).status_code == 200
+    stale_settings = {"facilities": [KENT], "evidenceFolders": [], "assuranceLevel": "Limited"}
+    patched = call("PATCH", path(engagement_id, "").rstrip("/"), "a_member", {"settings": stale_settings})
+    assert patched.status_code == 200, patched.text
+    assert [f["id"] for f in patched.json()["settings"]["evidenceFolders"]] == [folder]
+    stale_doc = {"documentId": "WB", "note": "n", "folderId": "fld-other"}
+    put = call("PUT", path(engagement_id, "workpaper-items/document/WB"), "a_admin", {"payload": stale_doc})
+    assert put.status_code == 200 and put.json()["payload"]["folderId"] == folder and put.json()["payload"]["note"] == "n"
+    first = call("PUT", path(engagement_id, "workpaper-items/document/NEW"), "a_member",
+                 {"payload": {"documentId": "NEW", "folderId": folder}})
+    assert "folderId" not in first.json()["payload"]
+    made = call("POST", BASE, "a_member", {"name": "X", "settings": {"facilities": [KENT], "evidenceFolders": [{"id": "x", "name": "y"}]}})
+    assert made.status_code == 201 and "evidenceFolders" not in made.json()["settings"]
+
+
+def test_a_folder_the_tree_does_not_know_counts_as_no_folder(store: FakeStore) -> None:
+    engagement_id = make_engagement(store)
+    add_summary(store, "WB", engagement_id)
+    call("PUT", path(engagement_id, "workpaper-items/document/WB"), "a_member",
+         {"payload": {"documentId": "WB"}})
+    asyncio.run(_admin("UPDATE workpaper_items SET payload = payload || '{\"folderId\": \"fld-ghost\"}'::jsonb "
+                       "WHERE item_key = 'WB'"))
+    assert block1(engagement_id) == {"rows": {"WB": None}, "folders": {}}
+
+
+def test_at_most_fifty_folders(store: FakeStore) -> None:
+    engagement_id = make_engagement(store)
+    for i in range(50):
+        assert make_folder(engagement_id, f"F{i}").status_code == 201
+    over = make_folder(engagement_id, "one more")
+    assert over.status_code == 422 and "at most 50" in over.json()["detail"]
+
+
 # --- a move onto a line of another type re-reads the document as that type (C-E2b) ---------------
 STATIONARY_NAME = "Stationary fuel consumption record"
 ELEC_KENT = "s2:purchased_energy:electricity:f1"
@@ -980,3 +1147,23 @@ def test_values_from_the_re_read_start_unreviewed_and_no_earlier_decision_carrie
     later = {**store.reviews["TWO"][0], "reviewed_at": "2026-03-01T00:00:00+00:00"}
     store.reviews["TWO"].append(later)
     assert doc_rows(engagement_id)["TWO"]["accepted"] > 0
+
+
+def test_a_summary_document_in_a_folder_leaves_it_whether_a_move_onto_a_line_re_reads_or_not(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=1)
+    for name in ("A", "B"):
+        add_summary(store, name, engagement_id)
+    folder = make_folder(engagement_id).json()["folder"]["id"]
+    for name in ("A", "B"):
+        assert put_in_folder(engagement_id, name, folder).status_code == 200
+    reread = call("POST", path(engagement_id, "documents/A/placements"), "a_member",
+                  {"from": "block:summary", "to": GAS_KENT, "reread": "reread"})
+    assert reread.status_code == 200 and reread.json()["reread"] is not None
+    assert "folderId" not in reread.json()["payload"]
+    only = call("POST", path(engagement_id, "documents/B/placements"), "a_member",
+                {"from": "block:summary", "to": GAS_KENT, "reread": "move_only"})
+    assert only.status_code == 200 and only.json()["reread"] is None and "folderId" not in only.json()["payload"]
+    assert block1(engagement_id)["rows"] == {} and block1(engagement_id)["folders"] == {folder: ("Workbooks", 0)}
+    # back to Block 1: top level, not the old folder
+    assert move(engagement_id, "B", GAS_KENT, "block:summary").status_code == 200
+    assert block1(engagement_id)["rows"] == {"B": None}

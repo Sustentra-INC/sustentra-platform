@@ -57,6 +57,8 @@ SETTINGS_KEYS = frozenset(
         # Calculation lines reviewers added on the Evidence page (the system's own lines are
         # never stored here). See services/calculation_lines.py.
         "evidenceLines",
+        # Folders in Evidence Block 1 (the summary documents). Changed only through the Evidence actions.
+        "evidenceFolders",
     }
 )
 MAX_SETTINGS_BYTES = 64 * 1024
@@ -74,7 +76,7 @@ def _check_settings(value: dict[str, Any]) -> dict[str, Any]:
     # The reviewers' lines change only through the Evidence actions (api/evidence_actions.py), which
     # lock the engagement, check the line and write an audit event. Whatever a save sends for them is
     # dropped here, so a stale Setup autosave can never delete, rename or bring back a line.
-    value = {k: v for k, v in value.items() if k != "evidenceLines"}
+    value = {k: v for k, v in value.items() if k not in ("evidenceLines", "evidenceFolders")}
     unknown = sorted(set(value) - SETTINGS_KEYS)
     if unknown:
         raise ValueError(f"unknown settings: {', '.join(unknown)}")
@@ -305,10 +307,11 @@ async def update_engagement(
     changes = payload.model_dump(exclude_unset=True)
     if "settings" in changes:  # the evidence actions change lines too: take turns, and keep the lines they saved
         current = await engagement_service.lock_engagement(db, engagement_id) or current
-        kept = ((current.get("settings") or {}).get("evidenceLines"))
-        changes["settings"] = {k: v for k, v in changes["settings"].items() if k != "evidenceLines"}
-        if kept is not None:
-            changes["settings"]["evidenceLines"] = kept
+        changes["settings"] = {k: v for k, v in changes["settings"].items() if k not in ("evidenceLines", "evidenceFolders")}
+        for kept_key in ("evidenceLines", "evidenceFolders"):
+            kept = (current.get("settings") or {}).get(kept_key)
+            if kept is not None:
+                changes["settings"][kept_key] = kept
     start = changes.get("reporting_period_start", current["reporting_period_start"])
     end = changes.get("reporting_period_end", current["reporting_period_end"])
     try:

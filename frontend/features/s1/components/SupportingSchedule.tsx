@@ -176,7 +176,9 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
           </button>
           {schedule.calculated === false ? (
             <p id="s1-sch-notcalc" className="s1-muted s1-sch-notcalc">
-              {allRows.some(isWaiting)
+              {schedule.calculation_blocked
+                ? `Not calculated: ${schedule.calculation_blocked}`
+                : allRows.some(isWaiting)
                 ? "Not calculated yet: values on this line are waiting for review."
                 : "No calculation for this line yet."}
             </p>

@@ -18,6 +18,7 @@ import {
   type TreeCategory,
   type TreeCounts,
   type TreeDocRow,
+  type TreeFolder,
   type TreeLevel2,
   type TreeLineNode,
   type TreeScope,
@@ -72,6 +73,14 @@ export interface EvidenceTreeProps {
   rereads?: Record<string, RereadState>;
   /** Asks again for a re-read that failed (or whose wait was lost): the type to read it as comes from the row. */
   onRetryReread?: (documentId: string, typeId: string, typeName: string) => void;
+  /** Block 1 folders (one level). Each runs on the server with its own audit event and rejects with the reason.
+   *  Without them (an older server), Block 1 stays a flat list. */
+  onCreateFolder?: (name: string) => Promise<void>;
+  onRenameFolder?: (folder: TreeFolder, name: string) => Promise<void>;
+  /** Resolves with how many documents went to the top of Block 1. */
+  onDeleteFolder?: (folder: TreeFolder) => Promise<number>;
+  /** Puts a Block 1 document in a folder, or out of it (null). */
+  onSetDocumentFolder?: (documentId: string, folderId: string | null) => Promise<void>;
   /** Gives the app a chance to handle an ended session; true when it did. */
   onError?: (error: unknown) => boolean;
   writesEnabled: boolean;
@@ -82,6 +91,10 @@ type Dialog =
   | { kind: "newLine"; scope: string; category: string; level2: TreeLevel2 }
   | { kind: "newFuel"; scope: string; category: TreeCategory }
   | { kind: "rename"; line: CalculationLine }
+  | { kind: "newFolder" }
+  | { kind: "renameFolder"; folder: TreeFolder }
+  | { kind: "deleteFolder"; folder: TreeFolder }
+  | { kind: "folderOf"; doc: TreeDocRow }
   /** `documents` is how many documents are on the line in the whole tree; null when that is not known. */
   | { kind: "delete"; line: CalculationLine; documents: number | null };
 
@@ -190,6 +203,10 @@ export function EvidenceTree(props: EvidenceTreeProps) {
     return [scope, category, line.level2_label, line.label].join(" › ");
   }
 
+  /** The folders of Block 1; empty on an older server. */
+  const folderList = tree.blocks.summary_folders ?? [];
+  const foldersOn = tree.blocks.summary_folders !== undefined && Boolean(props.onCreateFolder);
+
   function docRow(doc: TreeDocRow, section: string) {
     const id = `${section}|${doc.document_id}`;
     const from = doc.placement_from ?? section;
@@ -267,6 +284,9 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           entries={[
             { label: "Open document", action: () => props.onOpenExtraction(doc.document_id) },
             { label: "Move to…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "move", doc, from, section }) },
+            ...(section === BLOCK_SUMMARY && folderList.length > 0 && props.onSetDocumentFolder
+              ? [{ label: "Move to folder…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "folderOf", doc }) }]
+              : []),
           ]}
         />
       </div>
@@ -348,6 +368,51 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           </button>
         ) : null}
       </Fold>
+    );
+  }
+
+  /** Block 1: its folders (one level) first, then the documents at its top. */
+  function summaryBody() {
+    const loose = summary.filter((d) => !d.folder_id);
+    const shownFolders = [...folderList]
+      .filter((f) => !filtered || summary.some((d) => d.folder_id === f.folder_id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (!summary.length && !shownFolders.length) return <p className="s1-et-none">No summary documents yet.</p>;
+    return (
+      <>
+        {shownFolders.map((folder) => {
+          const id = `folder:${folder.folder_id}`;
+          const inside = summary.filter((d) => d.folder_id === folder.folder_id);
+          return (
+            <Fold
+              key={id}
+              id={id}
+              depth={1}
+              open={isOpen(id)}
+              onToggle={toggle}
+              title={folder.name}
+              counts={{ documents: inside.length, values: 0, accepted: 0, to_review: 0, issues: 0, pct_accepted: 0 }}
+              countOnly
+              actions={
+                props.writesEnabled && !filtered && props.onRenameFolder && props.onDeleteFolder ? (
+                  <ActionMenu
+                    label={`Actions for folder ${folder.name}`}
+                    isOpen={menuId === id}
+                    onOpenChange={(o) => setMenuId(o ? id : null)}
+                    entries={[
+                      { label: "Rename", action: () => setDialog({ kind: "renameFolder", folder }) },
+                      { label: "Delete", action: () => setDialog({ kind: "deleteFolder", folder }) },
+                    ]}
+                  />
+                ) : null
+              }
+            >
+              {inside.length ? docList(inside, BLOCK_SUMMARY) : <p className="s1-et-none">This folder is empty.</p>}
+            </Fold>
+          );
+        })}
+        {loose.length ? docList(loose, BLOCK_SUMMARY) : null}
+      </>
     );
   }
 
@@ -443,7 +508,12 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           counts={tree.blocks.summary_counts}
           countOnly
         >
-          {summary.length ? docList(summary, BLOCK_SUMMARY) : <p className="s1-et-none">No summary documents yet.</p>}
+          {summaryBody()}
+          {foldersOn && props.writesEnabled && !filtered ? (
+            <button className="s1-et-add" type="button" onClick={() => setDialog({ kind: "newFolder" })}>
+              <Plus aria-hidden /> New folder
+            </button>
+          ) : null}
         </Fold>
       ) : null}
 
@@ -565,6 +635,69 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         />
       ) : null}
 
+      {dialog?.kind === "newFolder" ? (
+        <TextDialog
+          title="New folder"
+          label="Folder name"
+          initial=""
+          action="Create folder"
+          onError={onError}
+          onCancel={() => setDialog(null)}
+          onSubmit={async (name) => {
+            await guard(() => props.onCreateFolder!(name));
+            done();
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === "renameFolder" ? (
+        <TextDialog
+          title="Rename folder"
+          label="Folder name"
+          initial={dialog.folder.name}
+          action="Rename"
+          onError={onError}
+          onCancel={() => setDialog(null)}
+          onSubmit={async (name) => {
+            await guard(() => props.onRenameFolder!(dialog.folder, name));
+            done();
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === "deleteFolder" ? (
+        <ConfirmDialog
+          title={`Delete folder ${dialog.folder.name}?`}
+          body={
+            dialog.folder.documents === 0
+              ? "The folder is empty."
+              : dialog.folder.documents === 1
+                ? "Its 1 document is not deleted. It moves to the top of Summary documents and workbook."
+                : `Its ${dialog.folder.documents} documents are not deleted. They move to the top of Summary documents and workbook.`
+          }
+          action="Delete folder"
+          onError={onError}
+          onCancel={() => setDialog(null)}
+          onConfirm={async () => {
+            await guard(() => props.onDeleteFolder!(dialog.folder));
+            done();
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === "folderOf" ? (
+        <FolderMoveDialog
+          doc={dialog.doc}
+          folders={folderList}
+          onError={onError}
+          onCancel={() => setDialog(null)}
+          onMove={async (folderId) => {
+            await guard(() => props.onSetDocumentFolder!(dialog.doc.document_id, folderId));
+            done();
+          }}
+        />
+      ) : null}
+
       {dialog?.kind === "delete" ? (
         <ConfirmDialog
           title={`Delete ${lineTitle(dialog.line)}?`}
@@ -615,6 +748,7 @@ function defaultOpen(tree: EvidenceTreeData): string[] {
 
 function collectIds(tree: EvidenceTreeData): string[] {
   const ids = ["b:summary", "b:unassigned", "b:supporting", "b:supporting-unassigned", "b:set-aside"];
+  for (const folder of tree.blocks.summary_folders ?? []) ids.push(`folder:${folder.folder_id}`);
   for (const scope of tree.blocks.supporting.scopes) {
     ids.push(`scope:${scope.scope}`);
     for (const category of scope.categories) {
@@ -923,6 +1057,54 @@ function MoveDialog({
         )}
         <button className="s1-linklike" type="button" onClick={confirming ? () => setConfirming(false) : onCancel}>
           {confirming ? "Back" : "Cancel"}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+function FolderMoveDialog({
+  doc,
+  folders,
+  onError,
+  onCancel,
+  onMove,
+}: {
+  doc: TreeDocRow;
+  folders: TreeFolder[];
+  onError: OnError;
+  onCancel: () => void;
+  onMove: (folderId: string | null) => Promise<void>;
+}) {
+  const current = doc.folder_id ?? "";
+  const [to, setTo] = useState(current);
+  const { busy, error, run } = useSubmit(onError);
+  return (
+    <Dialog title="Move to folder…" onClose={onCancel} busy={busy}>
+      <label className="s1-modal__field">
+        <span>Move {doc.file_name} to</span>
+        <select value={to} disabled={busy} onChange={(e) => setTo(e.target.value)} aria-label="Folder">
+          <option value="">Top of Summary documents and workbook</option>
+          {[...folders]
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((f) => (
+              <option key={f.folder_id} value={f.folder_id}>
+                {f.name}
+              </option>
+            ))}
+        </select>
+      </label>
+      {error ? (
+        <p className="s1-modal__note" role="alert">
+          Not moved. {error}
+        </p>
+      ) : null}
+      <div className="s1-modal__actions">
+        <button className="s1-button s1-button--pri" type="button" disabled={busy || to === current} onClick={() => void run(() => onMove(to || null))}>
+          Move
+        </button>
+        <button className="s1-linklike" type="button" disabled={busy} onClick={onCancel}>
+          Cancel
         </button>
       </div>
     </Dialog>

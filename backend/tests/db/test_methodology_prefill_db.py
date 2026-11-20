@@ -43,7 +43,7 @@ GOOD = {
     "texts": [],
     "estimations": [],
     "selections": [],
-    "periods": [{"start": "2024-01-01", "end": "2024-12-31", **cite("L3", "January 1 to December 31, 2024")}],
+    "periods": [{"start": "2024-01-01", "end": "2024-12-31", "start_implied": False, "title_line": "", "title_quote": "", **cite("L3", "January 1 to December 31, 2024")}],
     "gwp": [],
     "entities": [{"name": "Acme Foods Kent LLC", "facilities": ["Kent Cannery"], "equity_share_pct": 51,
                   "financial_control": 51, "operational_control": "Yes",
@@ -142,7 +142,7 @@ def test_a_reviewers_decision_is_never_overwritten(claude: FakeClaude) -> None:
     assert approach["decision"]["status"] == "edited" and len(approach["history"]) == 1
     rejected = record(eid, "category:scope1:stationary")
     assert rejected["suggestion"] is None and rejected["decision"]["status"] == "rejected"
-    assert record(eid, "reporting_period")["suggestion"]["value"] == {"start": "2024-01-01", "end": "2024-12-31"}
+    assert record(eid, "reporting_period")["suggestion"]["value"] == {"start": "2024-01-01", "end": "2024-12-31", "basis": "Calendar year"}
 
 
 def test_a_second_run_replaces_pending_suggestions_and_does_not_repeat_rows(claude: FakeClaude) -> None:
@@ -454,9 +454,10 @@ def test_every_gwp_set_the_report_names_is_kept_the_first_as_the_field_and_the_r
         {"set": "AR6", "horizon": "20-year", "applies_to": "", **cite("L10", "AR6 with a 20-year horizon")},
         {"set": "AR4", "horizon": "500-year", "applies_to": "", **cite("L10", "a 500-year horizon (AR4)")}]}
     assert prefill(eid).json()["suggested"] == 8  # GOOD's five, the fixed GWP field and two GWP rows
-    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}
+    # no quote says default and none names a gas: the tie goes to the latest AR, which becomes the fixed field
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR6", "horizon": "20-year"}
     rows = gwp_rows(eid)
-    assert sorted((r["suggestion"]["value"]["set"], r["suggestion"]["value"]["horizon"]) for r in rows) == [("AR4", "500-year"), ("AR6", "20-year")]
+    assert sorted((r["suggestion"]["value"]["set"], r["suggestion"]["value"]["horizon"]) for r in rows) == [("AR4", "500-year"), ("AR5", "100-year")]
     assert all(r["user_added"] is False and r["decision"] is None and r["shown"] for r in rows)
     catalog = {c["field_id"]: c for c in review(eid).json()["catalog"] if c["field_id"].startswith("gwp:")}
     assert set(catalog) == {r["field_id"] for r in rows} and all(c["label"] == "GWP set" for c in catalog.values())
@@ -497,16 +498,19 @@ def test_a_second_run_in_another_order_never_shows_one_set_twice(claude: FakeCla
     ar6 = {"set": "AR6", "horizon": "20-year", "applies_to": "", **cite("L10", "AR6 with a 20-year horizon")}
     claude.output = {**GOOD, "gwp": [ar5, ar6]}
     assert prefill(eid).status_code == 200
-    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}
-    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
+    # no quote says default and none names a gas: the latest AR is the fixed field, whatever the model's order
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR6", "horizon": "20-year"}
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR5"]
     claude.output = {**GOOD, "gwp": [ar6, ar5]}  # the same sets, the other way round
     assert prefill(eid).status_code == 200
-    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}  # keeps its set
-    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
-    claude.output = {**GOOD, "gwp": [ar6]}  # AR6 is already on a row, so it does not go into the fixed field too
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR6", "horizon": "20-year"}  # keeps its set
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR5"]
+    claude.output = {**GOOD, "gwp": [ar5]}  # AR5 is already on a row, so it does not go into the fixed field too
     assert prefill(eid).status_code == 200
-    assert record(eid, "gwp")["suggestion"]["value"]["set"] == "AR5"
-    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
+    assert record(eid, "gwp")["suggestion"]["value"]["set"] == "AR6"
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR5"]
+
+
 # --- estimation method for missing data: only if the company has a value -----------------------
 
 EST = "calculation:estimation"
@@ -666,6 +670,60 @@ def test_a_rejected_fixed_gwp_set_never_comes_back_as_a_row(claude: FakeClaude, 
     assert prefill(eid).status_code == 200
     assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
     assert record(eid, "gwp")["decision"]["status"] == "rejected"
+
+
+# --- entities: the boundary sentence, optional percentages, a corrected name ---------------------------
+
+BOUNDARY_LINES = [(1, "The boundary covers company-owned or leased buildings (offices, data centres, ATMs), vehicles and aircraft."),
+                  (1, "Café Québec Holdings Inc. is inside the boundary.")]
+
+
+def entity_rows(engagement_id: str) -> list[dict]:
+    return [f for f in review(engagement_id).json()["fields"] if f["field_id"].startswith("entity:")]
+
+
+def test_a_boundary_sentence_with_no_named_entity_is_stored_as_the_value_and_a_silent_document_reads_not_detected(
+        claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(BOUNDARY_LINES)])
+    empty: dict[str, Any] = {k: [] for k in GOOD}
+    sentence = BOUNDARY_LINES[0][1]
+    claude.output = {**empty, "texts": [{"field_id": "boundary:entities", "value": sentence, **cite("L1", sentence)}]}
+    assert prefill(eid).json()["suggested"] == 1
+    row = record(eid, "boundary:entities")
+    assert row["suggestion"]["value"] == sentence and row["suggestion"]["quote"] == sentence and row["display_state"] == "has_value"
+    assert entity_rows(eid) == []  # no entity was named, so none is invented
+    catalog = next(c for c in review(eid).json()["catalog"] if c["field_id"] == "boundary:entities")
+    assert catalog["value_note"] == "Boundary sentence only" and catalog["kind"] == "text"
+    assert act(eid, "boundary:entities", "accept").json()["decision"]["value"] == sentence
+    other = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc([(1, "Emissions are shown below.")])])
+    claude.output = empty
+    assert prefill(other).json()["suggested"] == 0
+    assert record(other, "boundary:entities")["display_state"] == "not_detected" and entity_rows(other) == []
+
+
+def test_an_entity_without_percentages_is_stored_a_reviewer_can_correct_its_name_and_a_rerun_does_not_bring_it_back(
+        claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(BOUNDARY_LINES)])
+    empty: dict[str, Any] = {k: [] for k in GOOD}
+    quote = "Café Québec Holdings Inc. is inside the boundary"
+    claude.output = {**empty, "entities": [{"name": "Café Québec Holdings Inc.", "facilities": [], "equity_share_pct": None,
+                                            "financial_control": None, "operational_control": "Yes", **cite("L2", quote)}]}
+    assert prefill(eid).json()["suggested"] == 1
+    [row] = entity_rows(eid)
+    assert row["suggestion"]["value"] == {"name": "Café Québec Holdings Inc.", "facilities": [], "equity_share_pct": None,
+                                          "financial_control": None, "operational_control": None}  # "inside the boundary" does not say who operates it
+    corrected = {**row["suggestion"]["value"], "name": "Café Québec Holdings, Inc.", "operational_control": "No"}
+    edited = act(eid, row["field_id"], "edit", {"value": corrected})
+    assert edited.status_code == 200 and edited.json()["decision"]["value"] == corrected  # name correctable; Yes / No stays
+    assert act(eid, row["field_id"], "edit", {"value": {**corrected, "equity_share_pct": 140}}).status_code == 422
+    assert act(eid, row["field_id"], "edit", {"value": {**corrected, "equity_share_pct": 80}}).status_code == 200
+    assert prefill(eid).json()["suggested"] == 0  # the same entity under its old name is not added again
+    assert len(entity_rows(eid)) == 1
+    added = call("POST", f"{BASE}/{eid}/methodology-review/rows", "a_member", {"group": "entities"})
+    assert added.status_code == 201 and added.json()["decision"]["value"]["equity_share_pct"] is None
 
 
 def test_a_gwp_set_without_a_horizon_is_stored_with_its_note_and_can_be_accepted(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -43,7 +43,7 @@ export const SETTINGS_KEYS = [
 
 /** Read from `settings` but never sent back. The reviewers' Evidence lines change only through the Evidence
  *  actions (the server keeps them and ignores a save's copy), so a Setup save from a stale tab cannot undo them. */
-const READ_ONLY_KEYS = ["evidenceLines"] as const satisfies readonly (keyof EngagementConfig)[];
+const READ_ONLY_KEYS = ["evidenceLines", "evidenceFolders"] as const satisfies readonly (keyof EngagementConfig)[];
 
 export interface EngagementPayload {
   name: string;
@@ -51,6 +51,15 @@ export interface EngagementPayload {
   reporting_period_start: string | null;
   reporting_period_end: string | null;
   settings: Record<string, unknown>;
+}
+
+/** The GWP set is chosen in Methodology review; an old save may still carry the retired input, which the
+ *  server now refuses. It is dropped on the way in and out. */
+function withoutRetiredGwp(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !("gwp_set" in value)) return value;
+  const { gwp_set: _retired, ...rest } = value as Record<string, unknown>;
+  void _retired;
+  return rest;
 }
 
 export function engagementFromBackend(row: BackendEngagement): EngagementConfig {
@@ -70,7 +79,7 @@ export function engagementFromBackend(row: BackendEngagement): EngagementConfig 
   };
   for (const key of [...SETTINGS_KEYS, ...READ_ONLY_KEYS]) {
     if (!(key in config) && settings[key] !== undefined && settings[key] !== null) {
-      (config as unknown as Record<string, unknown>)[key] = settings[key];
+      (config as unknown as Record<string, unknown>)[key] = key === "recalculation" ? withoutRetiredGwp(settings[key]) : settings[key];
     }
   }
   return config;
@@ -80,7 +89,7 @@ export function engagementToBackend(config: EngagementConfig): EngagementPayload
   const settings: Record<string, unknown> = {};
   for (const key of SETTINGS_KEYS) {
     const value = config[key];
-    if (value !== undefined) settings[key] = value;
+    if (value !== undefined) settings[key] = key === "recalculation" ? withoutRetiredGwp(value) : value;
   }
   return {
     name: (config.engagementName ?? "").trim() || config.clientName.trim() || "Untitled engagement",

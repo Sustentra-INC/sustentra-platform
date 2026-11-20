@@ -704,3 +704,188 @@ describe("a GWP set with no stated horizon and a use note", () => {
     );
   });
 });
+
+describe("a reporting period with an implied start", () => {
+  const impliedFixture = (value: unknown, quote = "for the year ended December 31, 2024") => {
+    const d = fixture() as { fields: Record<string, unknown>[] };
+    const record = d.fields.find((f) => f.field_id === "reporting_period")!;
+    record.decision = null;
+    record.history = [];
+    record.suggestion = {
+      value,
+      quote,
+      document_id: "d1",
+      file_name: "Assertion.pdf",
+      source_reference: { page_number: 1 },
+      origin: "ai",
+      model: "m",
+      request_id: "r",
+      suggested_at: "2026-11-01T10:00:00Z",
+    };
+    return d;
+  };
+
+  it("says the start is implied and shows the derived calendar or fiscal choice beside the quote that holds the end date", async () => {
+    await open(vi.fn(), impliedFixture({ start: "2024-01-01", end: "2024-12-31", start_implied: true, basis: "Calendar year" }));
+    const period = row("Reporting period");
+    expect(within(period).getByText("2024-01-01 implied to 2024-12-31, calendar year")).toBeTruthy();
+    expect(within(period).getByText("for the year ended December 31, 2024")).toBeTruthy();
+    cleanup();
+    await open(vi.fn(), impliedFixture({ start: "2024-07-01", end: "2025-06-30", start_implied: true, basis: "Fiscal year" }, "fiscal year ended June 30, 2025"));
+    expect(within(row("Reporting period")).getByText("2024-07-01 implied to 2025-06-30, fiscal year")).toBeTruthy();
+  });
+
+  it("shows a stated start without the word implied, and a period with no derived choice as the two dates", async () => {
+    await open(vi.fn(), impliedFixture({ start: "2025-01-01", end: "2025-06-30", basis: "Not stated" }));
+    expect(within(row("Reporting period")).getByText("2025-01-01 to 2025-06-30, not stated")).toBeTruthy();
+    cleanup();
+    await open(vi.fn(), impliedFixture({ start: "2025-01-01", end: "2025-12-31" }));
+    expect(within(row("Reporting period")).getByText("2025-01-01 to 2025-12-31")).toBeTruthy();
+  });
+
+  it("flags both dates when the year came from the document's title, and shows both quotes", async () => {
+    const d = impliedFixture({ start: "2023-01-01", end: "2023-12-31", start_implied: true, end_implied: true, implied_from: "calendar year, year from title", basis: "Calendar year" }, "calendar reporting year basis") as { fields: { field_id: string; suggestion: Record<string, unknown> }[] };
+    const sug = d.fields.find((f) => f.field_id === "reporting_period")!.suggestion;
+    sug.evidence = [
+      { label: "Calendar year", quote: "calendar reporting year basis", document_id: "d1", file_name: "Statement.pdf", source_reference: { page_number: 1 } },
+      { label: "Year from the title", quote: "2023 Statement of GHG Emissions", document_id: "d1", file_name: "Statement.pdf", source_reference: { page_number: 1 } },
+    ];
+    await open(vi.fn(), d);
+    const period = row("Reporting period");
+    expect(
+      within(period).getByText("2023-01-01 implied (calendar year, year from title) to 2023-12-31 implied (calendar year, year from title), calendar year")
+    ).toBeTruthy();
+    expect(within(period).getByText("calendar reporting year basis")).toBeTruthy();
+    expect(within(period).getByText("2023 Statement of GHG Emissions")).toBeTruthy();
+  });
+
+  it("edits as two dates only, so a typed start is never sent as implied", async () => {
+    await open(vi.fn(), impliedFixture({ start: "2024-01-01", end: "2024-12-31", start_implied: true, basis: "Calendar year" }));
+    const period = row("Reporting period");
+    fireEvent.click(within(period).getByRole("button", { name: "Edit: Reporting period" }));
+    fireEvent.change(within(period).getByLabelText("Start date: Reporting period"), { target: { value: "2024-02-01" } });
+    fireEvent.click(within(period).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls()).toContainEqual([`${BASE}/reporting_period/edit`, expect.objectContaining({ body: { value: { start: "2024-02-01", end: "2024-12-31" } } })])
+    );
+  });
+});
+
+describe("entities and the boundary sentence", () => {
+  const SENTENCE = "The boundary covers company-owned or leased buildings (offices, data centres, ATMs), vehicles and aircraft.";
+  const evidenceFor = (value: unknown, quote: string) => ({
+    value,
+    quote,
+    document_id: "d1",
+    file_name: "Assertion.pdf",
+    source_reference: { page_number: 2 },
+    origin: "ai",
+    model: "m",
+    request_id: "r",
+    suggested_at: "2026-11-01T10:00:00Z",
+  });
+  const entityParts = [
+    { key: "name", label: "Entity name", kind: "text" },
+    { key: "facilities", label: "Facilities", kind: "list" },
+    { key: "equity_share_pct", label: "Equity share (%, if stated)", kind: "percent" },
+    { key: "financial_control", label: "Financial control (%, if stated)", kind: "percent" },
+    { key: "operational_control", label: "Operational control", kind: "enum", allowed: ["Yes", "No"], optional: true },
+  ];
+  const withBoundary = (sentence: string | null, entity: unknown = null) => {
+    const d = fixture() as { catalog: Record<string, unknown>[]; fields: Record<string, unknown>[] };
+    d.catalog.push({ group_label: "x", user_added: false, field_id: "boundary:entities", group: "boundary", label: "Entities and facilities in the boundary", kind: "text", required: true, value_note: "Boundary sentence only" });
+    d.fields.push({
+      field_id: "boundary:entities",
+      user_added: false,
+      display_state: sentence ? "has_value" : "not_detected",
+      shown: true,
+      suggestion: sentence ? evidenceFor(sentence, sentence) : null,
+      decision: null,
+      history: [],
+    });
+    const def = d.catalog.find((c) => c.field_id === "entity:abc123")!;
+    def.parts = entityParts;
+    if (entity) d.fields.find((f) => f.field_id === "entity:abc123")!.suggestion = evidenceFor(entity, "Café Québec Holdings Inc. is inside the boundary");
+    return d;
+  };
+
+  it("shows the boundary sentence as the value, marked 'Boundary sentence only', with its quote, when no entity is named", async () => {
+    await open(vi.fn(), withBoundary(SENTENCE));
+    const r = row("Entities and facilities in the boundary");
+    expect(within(r).getAllByText(SENTENCE).length).toBeGreaterThanOrEqual(1);
+    expect(within(r).getByText("Boundary sentence only")).toBeTruthy();
+    expect(within(r).queryByText("Not detected")).toBeNull();
+    expect(within(r).getByRole("button", { name: "Assertion.pdf, page 2" })).toBeTruthy();
+  });
+
+  it("reads Not detected, not an invented sentence, when the document has none", async () => {
+    await open(vi.fn(), withBoundary(null));
+    const r = row("Entities and facilities in the boundary");
+    expect(within(r).getByText("Not detected")).toBeTruthy();
+    expect(within(r).queryByText("Boundary sentence only")).toBeNull();
+  });
+
+  it("does not call it 'the only' thing the report gives once an entity is named", async () => {
+    const entity = { name: "Café Québec Holdings Inc.", facilities: [], equity_share_pct: null, financial_control: null, operational_control: "Yes" };
+    await open(vi.fn(), withBoundary(SENTENCE, entity));
+    expect(within(row("Entities and facilities in the boundary")).queryByText("Boundary sentence only")).toBeNull();
+  });
+
+  it("labels each percentage of an entity, shows a missing one as absent, and keeps the Yes / No", async () => {
+    const entity = { name: "Café Québec Holdings Inc.", facilities: ["Kent"], equity_share_pct: 51, financial_control: null, operational_control: "Yes" };
+    await open(vi.fn(), withBoundary(null, entity));
+    const r = row("Entity row");
+    expect(within(r).getByText("Café Québec Holdings Inc. · facilities: Kent · equity share 51% · operational control: Yes")).toBeTruthy();
+    const none = { name: "Zürich Büro AG", facilities: [], equity_share_pct: null, financial_control: null, operational_control: "No" };
+    cleanup();
+    await open(vi.fn(), withBoundary(null, none));
+    expect(within(row("Entity row")).getByText("Zürich Büro AG · operational control: No")).toBeTruthy();
+  });
+
+  it("shows an entity whose Yes / No is not stated without one, and lets the reviewer leave it as Not stated", async () => {
+    const entity = { name: "Zürich Büro AG", facilities: [], equity_share_pct: 51, financial_control: null, operational_control: null };
+    await open(vi.fn(), withBoundary(null, entity));
+    const r = row("Entity row");
+    expect(within(r).getByText("Zürich Büro AG · equity share 51%")).toBeTruthy();
+    fireEvent.click(within(r).getByRole("button", { name: "Edit: Entity row" }));
+    const control = screen.getByLabelText("Entity row: Operational control") as HTMLSelectElement;
+    expect(Array.from(control.options).map((o) => o.textContent)).toEqual(["Not stated", "Yes", "No"]);
+    expect(control.value).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls()).toContainEqual([
+        `${BASE}/entity%3Aabc123/edit`,
+        expect.objectContaining({ body: { value: { name: "Zürich Büro AG", facilities: [], equity_share_pct: 51, financial_control: null, operational_control: null } } }),
+      ])
+    );
+    cleanup();
+    await open(vi.fn(), withBoundary(null, entity));
+    fireEvent.click(within(row("Entity row")).getByRole("button", { name: "Edit: Entity row" }));
+    fireEvent.change(screen.getByLabelText("Entity row: Operational control"), { target: { value: "No" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls().some(([, o]) => JSON.stringify(o).includes('"operational_control":"No"'))).toBe(true));
+  });
+
+  it("says in words why an exclusion sentence was not kept as an entity or the boundary sentence", () => {
+    expect(dropReasonWords("not_an_inclusion")).toMatch(/left out/);
+    expect(dropReasonWords("not_a_boundary_sentence")).toMatch(/boundary covers/);
+  });
+
+  it("lets the reviewer correct the name and leave both percentages blank, sending null for each", async () => {
+    const entity = { name: "Café Québec Holdings", facilities: [], equity_share_pct: null, financial_control: null, operational_control: "Yes" };
+    await open(vi.fn(), withBoundary(null, entity));
+    const r = row("Entity row");
+    fireEvent.click(within(r).getByRole("button", { name: "Edit: Entity row" }));
+    expect((screen.getByLabelText("Entity row: Equity share (%, if stated)") as HTMLInputElement).value).toBe("");
+    fireEvent.change(screen.getByLabelText("Entity row: Entity name"), { target: { value: "Café Québec Holdings, Inc." } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls()).toContainEqual([
+        `${BASE}/entity%3Aabc123/edit`,
+        expect.objectContaining({
+          body: { value: { name: "Café Québec Holdings, Inc.", facilities: [], equity_share_pct: null, financial_control: null, operational_control: "Yes" } },
+        }),
+      ])
+    );
+  });
+});

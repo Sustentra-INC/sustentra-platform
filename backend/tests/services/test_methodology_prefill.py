@@ -68,7 +68,7 @@ def test_a_wrong_line_is_dropped_but_a_unique_other_line_is_found() -> None:
 
 
 def test_an_unknown_document_is_dropped() -> None:
-    kept, dropped = check(answer(periods=[{"start": "2024-01-01", "end": "2024-12-31", **cite("L3", "January 1 to December 31, 2024", "D9")}]))
+    kept, dropped = check(answer(periods=[{"start": "2024-01-01", "end": "2024-12-31", "start_implied": False, "title_line": "", "title_quote": "", **cite("L3", "January 1 to December 31, 2024", "D9")}]))
     assert kept == [] and dict(dropped) == {"unknown_document": 1}
 
 
@@ -271,14 +271,16 @@ def test_values_over_the_store_limits_are_invalid() -> None:
 
 # --- reporting period: two dates, both printed in the quote ----------------------------------
 
-def period(start: str, end: str, quote: str, line: str = "L3") -> dict[str, str]:
-    return {"start": start, "end": end, **cite(line, quote)}
+def period(start: str, end: str, quote: str, line: str = "L3", implied: bool = False,
+           title: tuple[str, str] = ("", "")) -> dict[str, Any]:
+    return {"start": start, "end": end, "start_implied": implied, "title_line": title[0], "title_quote": title[1],
+            **cite(line, quote)}
 
 
 def test_a_period_with_both_dates_in_long_form_is_kept_as_iso() -> None:
     kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "January 1 to December 31, 2024")]))
     assert dict(dropped) == {} and [k.field_id for k in kept] == ["reporting_period"]
-    assert kept[0].suggestion["value"] == {"start": "2024-01-01", "end": "2024-12-31"}
+    assert kept[0].suggestion["value"] == {"start": "2024-01-01", "end": "2024-12-31", "basis": "Calendar year"}
 
 
 @pytest.mark.parametrize("line", [
@@ -305,6 +307,184 @@ def test_a_quote_without_both_dates_drops_the_suggestion_and_counts_it(line: str
     kept, dropped = check(answer(periods=[period("2025-01-01", "2025-12-31", line.split(": ", 1)[1], "L1")]),
                           [doc([(1, line)])])
     assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+# Synthetic quotes modelled on the shapes of three public statements (paraphrased, not copied).
+YEAR_ENDED = "Management asserts the operational GHG emissions for the year ended December 31, 2024 are fairly stated."
+
+
+def test_an_end_date_that_closes_a_year_gives_an_implied_start_flagged_as_such() -> None:
+    # JPMorgan-style management assertion: only the end date is printed.
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "for the year ended December 31, 2024", "L1", True)]),
+                          [doc([(1, YEAR_ENDED)])])
+    assert dict(dropped) == {} and [k.field_id for k in kept] == ["reporting_period"]
+    assert kept[0].suggestion["value"] == {"start": "2024-01-01", "end": "2024-12-31", "start_implied": True,
+                                           "basis": "Calendar year"}
+    assert "December 31, 2024" in kept[0].suggestion["quote"]  # the quote still holds the end date
+
+
+def test_the_implied_flag_is_worked_out_here_not_taken_from_the_reply() -> None:
+    quote = "for the year ended December 31, 2024"
+    kept, _ = check(answer(periods=[period("2024-01-01", "2024-12-31", quote, "L1", False)]), [doc([(1, YEAR_ENDED)])])
+    assert kept[0].suggestion["value"]["start_implied"] is True  # the start is not printed, so it is implied
+    both = "from January 1, 2024 for the year ended December 31, 2024"
+    kept, _ = check(answer(periods=[period("2024-01-01", "2024-12-31", both, "L1", True)]), [doc([(1, both)])])
+    assert "start_implied" not in kept[0].suggestion["value"]  # both printed: nothing is implied
+
+
+def test_a_fiscal_year_that_is_not_the_calendar_year_is_derived_as_fiscal() -> None:
+    line = "Data covers the fiscal year ended June 30, 2025."
+    kept, dropped = check(answer(periods=[period("2024-07-01", "2025-06-30", "fiscal year ended June 30, 2025", "L1", True)]),
+                          [doc([(1, line)])])
+    assert dict(dropped) == {}
+    assert kept[0].suggestion["value"] == {"start": "2024-07-01", "end": "2025-06-30", "start_implied": True,
+                                           "basis": "Fiscal year"}
+
+
+@pytest.mark.parametrize(("line", "quote", "start", "end"), [
+    ("Verified for the twelve months ending March 31, 2025.", "twelve months ending March 31, 2025", "2024-04-01", "2025-03-31"),
+    ("Emissions for the 12 months ended Feb 29, 2024 (tCO\u2082e) are shown.", "12 months ended Feb 29, 2024", "2023-03-01", "2024-02-29"),
+    ("Year ended 31 December 2023 \u2014 donn\u00e9es en tCO\u2082e, Z\u00fcrich\u00a0site.", "Year ended 31 December 2023", "2023-01-01", "2023-12-31"),
+])
+def test_other_year_wordings_and_non_ascii_text_give_the_implied_start(line: str, quote: str, start: str, end: str) -> None:
+    kept, dropped = check(answer(periods=[period(start, end, quote, "L1", True)]), [doc([(1, line)])])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["start"] == start
+    assert kept[0].suggestion["value"]["start_implied"] is True
+
+
+@pytest.mark.parametrize(("line", "quote", "start", "end"), [
+    ("Emissions as of December 31, 2024 are fairly stated.", "as of December 31, 2024", "2024-01-01", "2024-12-31"),  # a point in time, not a year
+    ("Emissions for the year ended December 31, 2024.", "year ended December 31, 2024", "2024-03-01", "2024-12-31"),  # a start that is not the year's
+    ("Emissions for the year ended December 31, 2024.", "year ended December 31, 2024", "2024-01-01", "2024-12-30"),  # an end that is not printed
+    ("The company reports on a calendar reporting year basis.", "calendar reporting year", "2024-01-01", "2024-12-31"),  # no date at all
+    ("Reporting year 2024 (dates not given).", "Reporting year 2024", "2024-01-01", "2024-12-31"),
+])
+def test_an_implied_start_needs_a_printed_end_a_year_wording_and_the_year_the_end_closes(line: str, quote: str, start: str, end: str) -> None:
+    kept, dropped = check(answer(periods=[period(start, end, quote, "L1", True)]), [doc([(1, line)])])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+@pytest.mark.parametrize("line", [
+    "Emissions for the three years ended December 31, 2024 are summarised.",   # a counted span is not one year
+    "Emissions for the 2 years ended December 31, 2024 are summarised.",
+    "Emissions for the 52 weeks ended December 28, 2024 (fiscal year 2024).",  # a 52 week year: the start is not implied
+    "The 53-week fiscal year ended January 3, 2025.",
+    "Fiscal year results are shown below. Data as of December 31, 2024.",     # the cue and the date are in different sentences
+    "The calendar year is described in section 2; the figures are dated December 31, 2024.",  # a semicolon between them
+])
+def test_an_implied_start_is_refused_for_counted_years_week_years_and_cues_in_another_clause(line: str) -> None:
+    end = "2025-01-03" if "January 3" in line else "2024-12-28" if "December 28" in line else "2024-12-31"
+    start = "2024-01-01"
+    kept, dropped = check(answer(periods=[period(start, end, line.rstrip("."), "L1", True)]), [doc([(1, line)])])
+    assert kept == [] and dict(dropped) in ({"value_not_in_quote": 1}, {"quote_not_on_document": 1}), line
+
+
+def test_the_year_wording_is_tied_to_the_end_date_in_one_clause() -> None:
+    line = "Our fiscal year 2024 (the year ended December 31, 2024), is reported here; the prior year ended 2023-12-31."
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "fiscal year 2024 (the year ended December 31, 2024)", "L1", True)]),
+                          [doc([(1, line)])])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["start_implied"] is True
+
+
+def test_the_basis_comes_from_the_quotes_own_words_before_the_dates() -> None:
+    # "fiscal year" gives Fiscal year even when the dates happen to be 1 January to 31 December
+    kept, _ = check(answer(periods=[period("2024-01-01", "2024-12-31", "fiscal year ended December 31, 2024", "L1", True)]),
+                    [doc([(1, "Data covers the fiscal year ended December 31, 2024.")])])
+    assert kept[0].suggestion["value"]["basis"] == "Fiscal year"
+    kept, _ = check(answer(periods=[period("2024-01-01", "2024-12-31", "calendar year ended December 31, 2024", "L1", True)]),
+                    [doc([(1, "Data covers the calendar year ended December 31, 2024.")])])
+    assert kept[0].suggestion["value"]["basis"] == "Calendar year"
+    kept, _ = check(answer(periods=[period("2024-01-01", "2024-12-31", "year ended December 31, 2024", "L1", True)]),
+                    [doc([(1, "Data covers the year ended December 31, 2024.")])])
+    assert kept[0].suggestion["value"]["basis"] == "Calendar year"  # no word: from the dates
+
+
+TITLE_DOC = [
+    (1, "2023 Statement of GHG Emissions"),                                                    # L1, the title
+    (1, "Management asserts the emissions are stated on the calendar reporting year basis."),  # L2
+]
+
+
+def test_calendar_year_with_no_date_takes_the_year_from_the_title_and_keeps_both_quotes() -> None:
+    # Yum! Brands shape: "calendar reporting year", no date, the year is only in the title
+    kept, dropped = check(answer(periods=[period("2023-01-01", "2023-12-31", "calendar reporting year basis", "L2", True,
+                                                 ("L1", "2023 Statement of GHG Emissions"))]), [doc(TITLE_DOC)])
+    assert dict(dropped) == {}
+    [item] = kept
+    assert item.suggestion["value"] == {"start": "2023-01-01", "end": "2023-12-31", "start_implied": True, "end_implied": True,
+                                        "implied_from": "calendar year, year from title", "basis": "Calendar year"}
+    assert [(e["label"], e["quote"]) for e in item.suggestion["evidence"]] == [
+        ("Calendar year", "calendar reporting year basis"), ("Year from the title", "2023 Statement of GHG Emissions")]
+    # Fluor shape, with non-ASCII text in the heading
+    lines = [(1, "2024 Greenhouse Gas Inventory Management Plan \u2014 Z\u00fcrich"), (1, "Calendar year emissions are reported.")]
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "Calendar year emissions", "L2", True,
+                                                 ("L1", "2024 Greenhouse Gas Inventory Management Plan"))]), [doc(lines)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["start"] == "2024-01-01"
+
+
+@pytest.mark.parametrize(("title", "start", "end", "quote"), [
+    (("L1", "2023 Statement of GHG Emissions"), "2024-01-01", "2024-12-31", "calendar reporting year basis"),  # title year is 2023
+    (("", ""), "2023-01-01", "2023-12-31", "calendar reporting year basis"),                              # no title quoted
+    (("L1", "2023 Statement of GHG Emissions"), "2023-01-01", "2023-12-31", "on the fiscal year basis"),  # not a calendar year
+    (("L1", "2023 Statement of GHG Emissions"), "2023-02-01", "2024-01-31", "calendar reporting year basis"),  # not Jan 1 to Dec 31
+])
+def test_the_title_year_is_refused_unless_it_is_one_year_on_a_title_line_and_the_quote_says_calendar_year(
+        title: tuple[str, str], start: str, end: str, quote: str) -> None:
+    kept, dropped = check(answer(periods=[period(start, end, quote, "L2", True, title)]), [doc(TITLE_DOC)])
+    assert kept == [] and sum(dropped.values()) >= 1
+
+
+CAL = "calendar reporting year basis"
+
+
+@pytest.mark.parametrize(("title_line", "title_quote", "extra"), [
+    ("Greenhouse gas emissions and water use, 2022 and 2023", "2023", []),                 # two years on the line, the quote shows one
+    ("2023 Statement of GHG Emissions compared with 2022", "2023 Statement of GHG Emissions", []),
+    ("2023 Statement of GHG Emissions", "2023 Statement of GHG Emissions", ["2022 Comparison"]),  # a comparison heading follows
+    ("Prepared for the 2024 audit cycle.", "2024 audit cycle", []),                         # not a title
+    ("For the year 2024 we report", "2024", []),
+    ("2023 Statement of GHG Emissions.", "2023 Statement of GHG Emissions", []),            # a sentence, not a heading
+    ("2023 Statement of GHG Emissions", "2023 Statement of GHG Emissions", ["Audit cycle 2100 and beyond"]),
+])
+def test_the_title_year_is_read_from_the_whole_line_and_only_from_a_clean_first_heading(title_line: str, title_quote: str, extra: list[str]) -> None:
+    year = next(y for y in ("2023", "2024") if y in title_line)
+    lines = [(1, title_line), (1, "Management asserts the emissions are stated on the calendar reporting year basis."), *[(1, e) for e in extra]]
+    kept, dropped = check(answer(periods=[period(f"{year}-01-01", f"{year}-12-31", CAL, "L2", True, ("L1", title_quote))]), [doc(lines)])
+    assert kept == [] and sum(dropped.values()) == 1, title_line  # a short quote like "2023" is refused earlier, still refused
+
+
+def test_a_clean_first_heading_still_gives_the_year_and_a_year_in_the_body_after_line_15_does_not_matter() -> None:
+    lines = [(1, "2023 Statement of GHG Emissions"), (1, "Management asserts the emissions are stated on the calendar reporting year basis.")]
+    lines += [(1, f"Row {i}") for i in range(20)] + [(2, "Prior year 2022 values are shown for comparison.")]
+    kept, dropped = check(answer(periods=[period("2023-01-01", "2023-12-31", CAL, "L2", True, ("L1", "2023 Statement of GHG Emissions"))]),
+                          [doc(lines)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["implied_from"] == "calendar year, year from title"
+
+
+def test_a_heading_after_a_cover_line_without_a_year_is_still_the_first_heading_that_names_a_year() -> None:
+    lines = [(1, "Acme Foods"), (1, "2023 Statement of GHG Emissions"), (1, "Management asserts the emissions are stated on the calendar reporting year basis.")]
+    kept, dropped = check(answer(periods=[period("2023-01-01", "2023-12-31", CAL, "L3", True, ("L2", "2023 Statement of GHG Emissions"))]),
+                          [doc(lines)])
+    assert dict(dropped) == {} and len(kept) == 1
+
+
+def test_the_title_must_be_early_in_the_document_and_printed_on_its_line() -> None:
+    late = [(1, f"Row {i}") for i in range(20)] + [(1, "2023 Statement of GHG Emissions"), (1, "calendar year emissions")]
+    kept, dropped = check(answer(periods=[period("2023-01-01", "2023-12-31", "calendar year emissions", "L22", True,
+                                                 ("L21", "2023 Statement of GHG Emissions"))]), [doc(late)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+    kept, dropped = check(answer(periods=[period("2023-01-01", "2023-12-31", "calendar reporting year basis", "L2", True,
+                                                 ("L1", "2023 Statement of Emissions"))]), [doc(TITLE_DOC)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
+
+
+def test_a_document_that_states_no_period_gives_no_period() -> None:
+    kept, dropped = check(answer(), [doc([(1, "Our approach to sustainability is described below.")])])
+    assert kept == [] and dict(dropped) == {}
+
+
+def test_the_prompt_teaches_the_implied_start() -> None:
+    assert "start_implied" in mp.SYSTEM_PROMPT and "year ended December 31, 2024" in mp.SYSTEM_PROMPT
 
 
 def test_a_reversed_or_impossible_range_is_invalid() -> None:
@@ -342,15 +522,31 @@ def gwp_item(set_: str, horizon: str, quote: str, line: str, applies_to: str = "
     return {"set": set_, "horizon": horizon, "applies_to": applies_to, **cite(line, quote)}
 
 
-def test_the_first_set_is_the_fixed_field_and_every_other_set_is_a_row() -> None:
+def test_the_latest_ar_is_the_fixed_field_when_nothing_else_decides_and_every_other_set_is_a_row() -> None:
     kept, dropped = check(answer(gwp=[
         gwp_item("AR5", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),
         gwp_item("AR6", "20-year", "AR6 with a 20-year horizon", "L2"),
         gwp_item("AR4", "500-year", "a 500-year horizon (AR4)", "L2")]), [doc(GWP_REPORT)])
     assert dict(dropped) == {}
     assert [(k.field_id, k.row_group) for k in kept] == [("gwp", None), (None, "gwp"), (None, "gwp")]
+    # no quote says default or primary and none names a gas: the tie goes to the latest AR, whatever the model's order
     assert [k.suggestion["value"] for k in kept] == [
-        {"set": "AR5", "horizon": "100-year"}, {"set": "AR6", "horizon": "20-year"}, {"set": "AR4", "horizon": "500-year"}]
+        {"set": "AR6", "horizon": "20-year"}, {"set": "AR5", "horizon": "100-year"}, {"set": "AR4", "horizon": "500-year"}]
+
+
+def test_the_set_the_document_calls_default_is_the_fixed_field_then_the_one_used_for_most_gases() -> None:
+    lines = [(1, "The default GWP set is the IPCC Fifth Assessment Report (AR5) 100-year."),
+             (1, "AR6 100-year GWPs are used for methane and nitrous oxide; AR5 for carbon dioxide.")]
+    kept, _ = check(answer(gwp=[
+        gwp_item("AR6", "100-year", "AR6 100-year GWPs are used for methane and nitrous oxide", "L2"),
+        gwp_item("AR5", "100-year", "The default GWP set is the IPCC Fifth Assessment Report (AR5) 100-year", "L1")]),
+        [doc(lines)])
+    assert kept[0].field_id == "gwp" and kept[0].suggestion["value"]["set"] == "AR5"  # default beats latest
+    more = [(1, "AR5 100-year is used for methane and nitrous oxide and HFCs."), (1, "AR6 100-year is used for methane.")]
+    kept, _ = check(answer(gwp=[
+        gwp_item("AR6", "100-year", "AR6 100-year is used for methane", "L2"),
+        gwp_item("AR5", "100-year", "AR5 100-year is used for methane and nitrous oxide and HFCs", "L1")]), [doc(more)])
+    assert kept[0].suggestion["value"]["set"] == "AR5"  # most gases beats latest
 
 
 def test_a_repeated_set_and_horizon_is_dropped_but_the_same_set_with_another_horizon_is_kept() -> None:
@@ -580,7 +776,8 @@ def test_a_quote_with_two_sets_and_two_horizons_pairs_each_set_with_the_horizon_
     line = "We report AR5 over 100-year and AR6 over 20-year horizons."
     right = [gwp_item("AR5", "100-year", line.rstrip("."), "L1"), gwp_item("AR6", "20-year", line.rstrip("."), "L1")]
     kept, dropped = check(answer(gwp=right), [doc([(1, line)])])
-    assert [k.suggestion["value"] for k in kept] == [{"set": "AR5", "horizon": "100-year"}, {"set": "AR6", "horizon": "20-year"}]
+    # the same quote and gases for both: the later AR leads
+    assert [k.suggestion["value"] for k in kept] == [{"set": "AR6", "horizon": "20-year"}, {"set": "AR5", "horizon": "100-year"}]
     assert not dropped
     swapped = [gwp_item("AR5", "20-year", line.rstrip("."), "L1"), gwp_item("AR6", "100-year", line.rstrip("."), "L1")]
     kept, dropped = check(answer(gwp=swapped), [doc([(1, line)])])
@@ -595,6 +792,161 @@ def test_a_negated_renewable_energy_credit_is_dropped() -> None:
     kept, dropped = check(answer(selections=[selection(
         "scope2:instruments", "RECs or other energy attribute certificates", line.rstrip("."), "L1")]), [doc([(1, line)])])
     assert kept == [] and dict(dropped) == {"negated": 1}
+
+
+# --- entities: a boundary sentence with no named entity, and optional percentages --------------------
+# Synthetic lines modelled on the shapes of a bank's assertion, a restaurant group's statement and an
+# engineering firm's plan (paraphrased, not copied).
+
+BOUNDARY = [
+    (1, "The boundary covers company-owned or leased buildings (offices, data centres, ATMs), vehicles and aircraft."),             # L1
+    (1, "Our boundary includes all offices where we have full authority to implement operating policies, such as Houston and Farnborough."),  # L2
+    (1, "Café Québec Holdings Inc. and Zürich Büro AG are inside the boundary; Moscow closed in December 2024."),   # L3
+    (1, "Acme Foods Kent LLC: equity share 51%, operational control: yes"),                                                         # L4
+    (1, "Greenhouse gas emissions are shown in the table below."),                                                                  # L5
+    (1, "Our offices in Moscow are within the boundary."),                                                                          # L6
+    (1, "Data centres used by Neovest are excluded because data is limited."),                                                      # L7
+    (1, "Stockton Cold Storage JV: equity share 50%, not under operational control."),                                              # L8
+    (1, "Acme Foods Kent LLC is included under the operational control approach."),                                                  # L9
+    (1, "Joint ventures not under operational control are outside the boundary."),                                                   # L10
+]
+
+
+def boundary_text(sentence: str, line: str, quote: str | None = None) -> dict[str, str]:
+    return {"field_id": rules.BOUNDARY_SENTENCE_ID, "value": sentence, **cite(line, quote or sentence)}
+
+
+def named_entity(name: str, quote: str, line: str, equity: float | None = None, control: float | None = None,
+                 op: str | None = None) -> dict[str, Any]:
+    return {"name": name, "facilities": [], "equity_share_pct": equity, "financial_control": control,
+            "operational_control": op, **cite(line, quote)}
+
+
+def test_a_boundary_sentence_with_no_named_entity_is_kept_as_the_value_with_its_quote() -> None:
+    sentence = BOUNDARY[0][1]
+    kept, dropped = check(answer(texts=[boundary_text(sentence, "L1")]), [doc(BOUNDARY)])
+    assert dict(dropped) == {} and [(k.field_id, k.suggestion["value"]) for k in kept] == [(rules.BOUNDARY_SENTENCE_ID, sentence)]
+    assert kept[0].suggestion["quote"] == sentence and kept[0].row_group is None
+
+
+def test_a_boundary_sentence_must_be_printed_in_its_quote() -> None:
+    # a paraphrase as the value, with a real quote beside it: the value shown would not trace to the quote
+    kept, dropped = check(answer(texts=[boundary_text("Everything the company owns is inside", "L1", "company-owned or leased buildings")]),
+                          [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+    kept, dropped = check(answer(texts=[boundary_text("The boundary covers a sentence that is not there.", "L1")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
+    kept, dropped = check(answer(texts=[boundary_text("  ", "L1", "company-owned or leased buildings")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"empty_value": 1}
+
+
+def test_a_boundary_sentence_with_non_ascii_text_and_extra_spacing_is_kept() -> None:
+    sentence = "Our boundary includes all offices where we have full authority to implement operating policies, such as Houston and Farnborough."
+    kept, dropped = check(answer(texts=[boundary_text(sentence.replace(" all ", "  all "), "L2", sentence)]), [doc(BOUNDARY)])
+    assert dict(dropped) == {} and len(kept) == 1
+
+
+def test_entities_named_in_the_boundary_are_kept_without_percentages_when_the_quote_names_them() -> None:
+    kept, dropped = check(answer(entities=[
+        named_entity("Café Québec Holdings Inc.", "Café Québec Holdings Inc. and Zürich Büro AG are inside the boundary", "L3"),
+        named_entity("Zürich Büro AG", "Café Québec Holdings Inc. and Zürich Büro AG are inside the boundary", "L3")]),
+        [doc(BOUNDARY)])
+    assert dict(dropped) == {} and [k.suggestion["value"]["name"] for k in kept] == ["Café Québec Holdings Inc.", "Zürich Büro AG"]
+    assert all(k.row_group == "entities" and k.suggestion["value"]["equity_share_pct"] is None for k in kept)
+    assert all(k.suggestion["value"]["financial_control"] is None for k in kept)
+
+
+def test_an_entity_with_no_percentage_whose_name_the_quote_does_not_print_is_dropped() -> None:
+    kept, dropped = check(answer(entities=[
+        named_entity("Fluor Moscow Office", "Our offices in Moscow are within the boundary", "L6"),  # the name is not in the quote
+        named_entity("Moscow", "Our offices in Moscow are within the boundary", "L6")]), [doc(BOUNDARY)])
+    assert [k.suggestion["value"]["name"] for k in kept] == ["Moscow"] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+def test_a_stated_percentage_is_still_checked_in_the_quote_and_the_other_may_be_missing() -> None:
+    kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", "equity share 51%", "L4", equity=51)]), [doc(BOUNDARY)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["equity_share_pct"] == 51 and kept[0].suggestion["value"]["financial_control"] is None
+    kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", "equity share 51%", "L4", equity=60)]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # 60 is not printed
+    kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", "equity share 51%", "L4", equity=51, control=100)]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # 100 is not printed
+
+
+def test_a_document_that_names_no_entity_and_no_boundary_sentence_gives_neither() -> None:
+    kept, dropped = check(answer(), [doc([(1, "Greenhouse gas emissions are shown in the table below.")])])
+    assert kept == [] and dict(dropped) == {}
+    # a model that tries anyway has no quote that names an entity or says what the boundary covers
+    kept, dropped = check(answer(texts=[boundary_text("The boundary covers every subsidiary.", "L5", "Greenhouse gas emissions are shown")]),
+                          [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+    kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", "Greenhouse gas emissions are shown", "L5")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"not_an_inclusion": 1}  # no inclusion wording in the quote
+
+
+def test_the_prompt_separates_named_entities_from_the_boundary_sentence_and_makes_percentages_optional() -> None:
+    for words in ("boundary:entities", "Give a percentage only when the cited line prints it", "otherwise\n  null",
+                  "name must be printed in the quote", "gives no entity", "IN the\n  boundary", "or null: set it only when the quote says so"):
+        assert words in mp.SYSTEM_PROMPT, words
+
+
+# --- entities come from inclusion statements; the per-entity Yes / No is only what the quote supports ---
+
+def test_an_exclusion_sentence_makes_no_entity_row_it_belongs_to_the_exclusions() -> None:
+    kept, dropped = check(answer(entities=[
+        named_entity("Neovest", "Data centres used by Neovest are excluded because data is limited", "L7", op="No"),
+        named_entity("Neovest data centres", "Data centres used by Neovest are excluded", "L7"),
+        named_entity("Joint ventures", "Joint ventures not under operational control are outside the boundary", "L10", op="No")]),
+        [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"not_an_inclusion": 3}
+
+
+def test_the_per_entity_yes_no_is_set_only_when_the_quote_supports_it() -> None:
+    kept, dropped = check(answer(entities=[
+        named_entity("Acme Foods Kent LLC", "Acme Foods Kent LLC is included under the operational control approach", "L9", op="No"),  # says Yes
+        named_entity("Stockton Cold Storage JV", "equity share 50%, not under operational control", "L8", equity=50, op="Yes"),   # says No
+        named_entity("Caf\u00e9 Qu\u00e9bec Holdings Inc.", "Caf\u00e9 Qu\u00e9bec Holdings Inc. and Z\u00fcrich B\u00fcro AG are inside the boundary", "L3", op="No"),
+        named_entity("Z\u00fcrich B\u00fcro AG", "Z\u00fcrich B\u00fcro AG are inside the boundary", "L3")]), [doc(BOUNDARY)])
+    assert dict(dropped) == {}
+    assert [(k.suggestion["value"]["name"], k.suggestion["value"]["operational_control"]) for k in kept] == [
+        ("Acme Foods Kent LLC", "Yes"), ("Stockton Cold Storage JV", "No"), ("Caf\u00e9 Qu\u00e9bec Holdings Inc.", None),
+        ("Z\u00fcrich B\u00fcro AG", None)]  # inclusion alone says nothing about control; Claude's own values are not trusted
+
+
+def test_an_entity_whose_quote_does_not_say_yes_or_no_keeps_it_blank_and_claude_cannot_force_one() -> None:
+    quote = "Our offices in Moscow are within the boundary"
+    for claimed in ("Yes", "No", None):
+        kept, dropped = check(answer(entities=[named_entity("Moscow", quote, "L6", op=claimed)]), [doc(BOUNDARY)])
+        assert dict(dropped) == {} and kept[0].suggestion["value"]["operational_control"] is None  # "within the boundary" is inclusion, not control
+    quote = "Our offices in Moscow and Houston"
+    kept, dropped = check(answer(entities=[named_entity("Moscow", quote, "L6", op="Yes")]), [doc([(1, "Our offices in Moscow and Houston, listed in the plan")])])
+    assert kept == [] and dict(dropped) == {"not_an_inclusion": 1}
+    kept, _ = check(answer(entities=[named_entity("Acme Foods Kent LLC", "equity share 51%", "L4", equity=51, op="Yes")]), [doc(BOUNDARY)])
+    assert kept[0].suggestion["value"]["operational_control"] is None  # a percentage alone does not say who operates it
+
+
+def test_the_boundary_sentence_is_the_one_that_says_what_is_covered_not_an_exclusion_sentence() -> None:
+    covered = BOUNDARY[0][1]
+    left_out = BOUNDARY[6][1]  # "Data centres used by Neovest are excluded because data is limited."
+    kept, dropped = check(answer(texts=[boundary_text(covered, "L1")]), [doc(BOUNDARY)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"] == covered
+    kept, dropped = check(answer(texts=[boundary_text(left_out, "L7")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"not_a_boundary_sentence": 1}
+    outside = BOUNDARY[9][1]
+    kept, dropped = check(answer(texts=[boundary_text(outside, "L10")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"not_a_boundary_sentence": 1}
+    kept, dropped = check(answer(texts=[boundary_text("Greenhouse gas emissions are shown in the table below.", "L5")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"not_a_boundary_sentence": 1}  # says nothing about what the boundary covers
+
+
+def test_included_under_the_equity_share_approach_does_not_set_operational_control() -> None:
+    line = "Acme Foods Kent LLC is included under the equity share approach."
+    for claimed in ("Yes", "No", None):
+        kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", line.rstrip("."), "L1", op=claimed)]), [doc([(1, line)])])
+        assert dict(dropped) == {} and kept[0].suggestion["value"]["operational_control"] is None
+    for quote, expected in (("X is included", None), ("X is inside the boundary", None), ("X is within the boundary", None),
+                            ("X is included under the operational control approach", "Yes"), ("X: operational control: yes", "Yes")):
+        assert mp.entity_statement(quote, "X") == (True, expected), quote
+    assert mp.entity_statement("X is not included under operational control", "X") == (False, None)
 
 
 # --- GWP: a set named without a horizon, and every set the document names, with its use note ----------
@@ -717,7 +1069,8 @@ def test_entries_dedupe_on_set_horizon_and_note() -> None:
         gwp_item("AR6", "100-year", q, "L2", "For Refrigerants"),
         gwp_item("AR6", "100-year", q, "L2", "for refrigerants"),          # same note, other casing: a repeat
         gwp_item("AR6", "100-year", q, "L2", "Fugitive Gases")]), [doc(NOTE_DOC)])  # same set and horizon, another note: kept
-    assert [k.suggestion["value"].get("applies_to") for k in kept] == ["For Refrigerants", "Fugitive Gases"]
+    # "Fugitive Gases" no longer limits a set to refrigerants: it is general and leads
+    assert [k.suggestion["value"].get("applies_to") for k in kept] == ["Fugitive Gases", "For Refrigerants"]
     assert dict(dropped) == {"duplicate_entry": 1}
 
 
@@ -725,7 +1078,7 @@ def test_entries_dedupe_on_set_horizon_and_note() -> None:
 def test_a_not_stated_entry_collapses_into_a_stated_horizon_for_the_same_set(order: tuple[str, str]) -> None:
     by_horizon = {"100-year": gwp_item("AR5", "100-year", "the AR5 100-year horizon", "L3"),
                   "Not stated": gwp_item("AR5", "Not stated", "AR5 is also named without one", "L3")}
-    other = gwp_item("AR6", "Not stated", "AR6 For Refrigerants", "L2")
+    other = gwp_item("AR6", "Not stated", "AR6 For Refrigerants", "L2", "For Refrigerants")
     kept, dropped = check(answer(gwp=[by_horizon[order[0]], by_horizon[order[1]], other]), [doc(NOTE_DOC)])
     assert [(k.suggestion["value"]["set"], k.suggestion["value"]["horizon"]) for k in kept] == [("AR5", "100-year"), ("AR6", "Not stated")]
     assert [(k.field_id, k.row_group) for k in kept] == [("gwp", None), (None, "gwp")]  # the first left is the fixed field
@@ -853,3 +1206,15 @@ def test_a_document_that_names_no_scope_gives_no_scope_suggestion_and_the_row_re
 def test_the_prompt_gives_the_scope_wording_cues_and_forbids_choosing_not_stated() -> None:
     for cue in ("scopes:covered", "Scope 1", "Category 1", "direct", "indirect", "Operational Boundary", "Never choose \"Not stated\""):
         assert cue in mp.SYSTEM_PROMPT, cue
+
+
+def test_the_use_note_orders_the_gwp_sets_before_anything_else() -> None:
+    def item(set_: str, quote: str, note: str) -> Any:
+        return mp.GwpSuggestion(**gwp_item(set_, "100-year", quote, "L1", note))
+
+    embedded = item("AR6", "AR6 is default and primary embedded in third-party factors", "embedded in third-party factors")
+    fridge = item("AR5", "AR5 for refrigerants", "for refrigerants")
+    general = item("AR4", "AR4 unless otherwise stated", "")
+    assert [g.set for g in mp.gwp_in_order([embedded, fridge, general])] == ["AR4", "AR5", "AR6"]
+    # "standard" no longer marks a primary set
+    assert "standard" not in mp._PRIMARY_WORDS

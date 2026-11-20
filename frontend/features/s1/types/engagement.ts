@@ -1,4 +1,4 @@
-import type { EvidenceLineSetting } from "../api/evidenceTree";
+import type { EvidenceFolderSetting, EvidenceLineSetting } from "../api/evidenceTree";
 
 export interface Actor {
   id: string;
@@ -79,6 +79,8 @@ export interface EngagementConfig {
   outOfScopeDataPoints?: string[];
   /** Calculation lines a reviewer added in Evidence (the system's own lines are not stored). */
   evidenceLines?: EvidenceLineSetting[];
+  /** Folders a reviewer made in Evidence Block 1 (summary documents). Changed only through the Evidence actions. */
+  evidenceFolders?: EvidenceFolderSetting[];
 }
 
 /** A renewable energy certificate applied to the market-based Scope 2 total. */
@@ -89,8 +91,6 @@ export interface RecalculationCertificate {
 
 /** Stored by the API under settings.recalculation; the backend validates every value. */
 export interface RecalculationSettings {
-  /** One set per engagement: "AR4", "AR5" (default) or "AR6". */
-  gwp_set?: string;
   /** Facility name (as on the bill) to eGRID subregion, e.g. { "Facility A": "NYUP" }. */
   grid_regions?: Record<string, string>;
   /** "stationary:<fuel code>" or "mobile:<fuel code>" to the EPA fuel name chosen for it. */
@@ -99,7 +99,8 @@ export interface RecalculationSettings {
   /** Reported data point key to the client's reported value. */
   reported?: Record<string, number>;
   /** Refrigerant to the GWP entered from its safety data sheet, for gases the EPA Hub does not list. */
-  refrigerant_gwps?: Record<string, number>;
+  /** Each entered under a GWP set (Methodology review's); a bare number is an AR5 value saved before sets were recorded. */
+  refrigerant_gwps?: Record<string, number | { value: number; gwp_set: string }>;
   /** Which vehicles used each mobile fuel, for CH4 and N2O (workbook Eq 4 / Eq 5). */
   vehicle_groups?: VehicleGroupSetting[];
   /** Emission source (roll-up key) to the reviewer's reason the company has none: a true 0. */

@@ -19,6 +19,7 @@ Where a document is filed
 from __future__ import annotations
 
 import re
+import unicodedata
 import uuid
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
@@ -455,6 +456,53 @@ def user_lines(settings: dict[str, Any] | None) -> list[CalculationLine]:
                                              e["anchor_id"], e["label"], created_by_user=True,
                                              created_by=e.get("created_by"), created_at=e.get("created_at")))
     return list(lines.values())
+
+
+# --- Block 1 folders: settings["evidenceFolders"] ---------------------------------------------
+MAX_FOLDERS = 50
+MAX_FOLDER_NAME = 120
+
+
+def clean_folder_name(raw: Any) -> str:
+    """A folder name as stored: Unicode NFC, inner whitespace collapsed, trimmed. ValueError (a message for
+    the user) when it is empty, has control characters or is too long. Any script is fine."""
+
+    if not isinstance(raw, str):
+        raise ValueError("Give the folder a name.")
+    name = " ".join(unicodedata.normalize("NFC", raw).split())
+    if not name:
+        raise ValueError("Give the folder a name.")
+    if any(unicodedata.category(ch).startswith("C") for ch in name):
+        raise ValueError("A folder name can't contain control characters.")
+    if len(name) > MAX_FOLDER_NAME:
+        raise ValueError(f"A folder name can be at most {MAX_FOLDER_NAME} characters.")
+    return name
+
+
+def folder_name_key(name: str) -> str:
+    """Two names are the same folder when they match ignoring case and Unicode form."""
+
+    return unicodedata.normalize("NFC", name).casefold()
+
+
+def stored_folders(settings: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The folders in settings, trusting stored data less than a request: an entry without a text id and name
+    or repeating an id is skipped."""
+
+    raw = (settings or {}).get("evidenceFolders")
+    out: dict[str, dict[str, Any]] = {}
+    for entry in raw[:MAX_FOLDERS] if isinstance(raw, list) else []:
+        if isinstance(entry, dict) and isinstance(entry.get("id"), str) and isinstance(entry.get("name"), str):
+            out.setdefault(entry["id"], entry)
+    return list(out.values())
+
+
+def document_folder(decision: dict[str, Any] | None, folder_ids: set[str]) -> str | None:
+    """The folder a summary document sits in, or None (top of Block 1): a decision naming a folder that
+    does not exist (deleted, or never there) counts as no folder."""
+
+    folder = (decision or {}).get("folderId")
+    return folder if isinstance(folder, str) and folder in folder_ids else None
 
 
 # --- where a record belongs by default ------------------------------------------------------

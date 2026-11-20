@@ -10,7 +10,7 @@ import {
   Pencil,
   StickyNote,
 } from "lucide-react";
-import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type {
@@ -73,8 +73,6 @@ function energyPanel(level2: string): PanelDef {
 
 const GAS_LABEL: Record<CalcGas, string> = { CO2: "CO₂", CH4: "CH₄", N2O: "N₂O" };
 const GASES: CalcGas[] = ["CO2", "CH4", "N2O"];
-const GWP_SETS = ["AR4", "AR5", "AR6"];
-const STEPS = ["Step 1 · Activity", "Step 2 · Unit", "Step 3 · Gases", "Results"] as const;
 
 /** The units the backend converts, by dimension: a company's activity unit is picked from its line's. */
 const UNIT_GROUPS: string[][] = [
@@ -184,11 +182,39 @@ function DiffChip({
   );
 }
 
-/** A dotted-underlined figure that opens its source citation beside it. Closes on Escape or a click elsewhere. */
-function SourceNote({ label, source }: { label: string; source: string }) {
+/** Where a figure comes from, as the backend states it. Only what the response carries is named. */
+type SourceRef =
+  | { kind: "document"; file: string; documentId: string; candidateId?: string }
+  | { kind: "reference"; entry: string }
+  | { kind: "entered"; by: string }
+  | { kind: "company" };
+
+/** The kind of reference a citation names, read from its own words. */
+function referenceKind(entry: string): string {
+  if (/egrid/i.test(entry)) return "eGRID";
+  if (/ipcc|\bAR[4-6]\b/i.test(entry)) return "IPCC assessment report";
+  if (/\bEPA\b.*\bHub\b|\bHub\b/i.test(entry)) return "EPA Hub table";
+  return "Reference entry";
+}
+
+/**
+ * A dotted-underlined input that opens its source beside it: a document (file and page), a reference
+ * entry, or the company's own figures. The popover ends with "Open in Evidence →" when Evidence can be
+ * opened. Closes on Escape or a click elsewhere.
+ */
+function SourceNote({
+  label,
+  source,
+  onOpen,
+}: {
+  label: string;
+  source: SourceRef;
+  /** Opens the source in Evidence; the link is left out when this is absent. */
+  onOpen?: () => void;
+}) {
   const [at, setAt] = useState<{ top: number; left: number } | null>(null);
   const button = useRef<HTMLButtonElement>(null);
-  const pop = useRef<HTMLSpanElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!at) return;
@@ -221,9 +247,42 @@ function SourceNote({ label, source }: { label: string; source: string }) {
       </button>
       {at
         ? createPortal(
-            <span ref={pop} className="s1-cp-pop" role="note" style={{ top: at.top, left: at.left }}>
-              Source: {source}
-            </span>,
+            <div ref={pop} className="s1-cp-pop" role="dialog" aria-label={`Source of ${label}`} style={{ top: at.top, left: at.left }}>
+              {source.kind === "document" ? (
+                <>
+                  <p className="s1-cp-pop__kind">Document</p>
+                  <p>{source.file}</p>
+                  <p className="s1-muted">Page: Not available</p>
+                </>
+              ) : source.kind === "reference" ? (
+                <>
+                  <p className="s1-cp-pop__kind">{referenceKind(source.entry)}</p>
+                  <p>Citation: {source.entry}</p>
+                </>
+              ) : source.kind === "entered" ? (
+                <>
+                  <p className="s1-cp-pop__kind">Entered input</p>
+                  <p>Entered by {source.by}</p>
+                </>
+              ) : (
+                <>
+                  <p className="s1-cp-pop__kind">Company-reported</p>
+                  <p className="s1-muted">Source: Not available</p>
+                </>
+              )}
+              {onOpen ? (
+                <button
+                  className="s1-cp-pop__open"
+                  type="button"
+                  onClick={() => {
+                    setAt(null);
+                    onOpen();
+                  }}
+                >
+                  Open in Evidence →
+                </button>
+              ) : null}
+            </div>,
             document.body
           )
         : null}
@@ -231,128 +290,165 @@ function SourceNote({ label, source }: { label: string; source: string }) {
   );
 }
 
-function GasTable({ line }: { line: CalculationLine }) {
-  const equations = line.method.equations;
-  const company = line.company?.step3.gases;
-  const row = (g: CalcLineGas, side: "Company" | "Recomputed", span: number | null) => (
-    <tr key={`${g.gas}:${side}`} className={side === "Recomputed" ? "s1-cp-gas__last" : undefined}>
-      {span ? (
-        <td rowSpan={span}>
-          {GAS_LABEL[g.gas]}
-          {equations[g.gas] ? <span className="s1-muted"> · {equations[g.gas]}</span> : null}
-        </td>
+const NOT_AVAILABLE = <span className="s1-muted">Not available</span>;
+
+/** "(+344.9)": the backend's own difference, shown beside the recomputed figure. Nothing when it gives none. */
+function Paren({ value }: { value: number | null | undefined }) {
+  if (value === null || value === undefined || !differs(value)) return null;
+  return <span className="s1-cp-paren"> ({formatSignedGasTonnes(value)})</span>;
+}
+
+/** One titled block of a line's calculation. */
+function StepBlock({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
+  return (
+    <section className="s1-cp-step" aria-label={title}>
+      <header className="s1-cp-step__head">
+        <h5>{title}</h5>
+        {note ? <span className="s1-muted">{note}</span> : null}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+/** The company side of a block that has none: said once, in words. */
+function NoCompany({ cols, text = "not reported" }: { cols: number; text?: string }) {
+  return (
+    <tr className="s1-cp-co">
+      <td>Company</td>
+      <td colSpan={cols}>
+        <em className="s1-muted">{text}</em>
+      </td>
+    </tr>
+  );
+}
+
+function MethodBlock({ line }: { line: CalculationLine }) {
+  const equations = GASES.filter((g) => line.method.equations[g]);
+  const references = [...new Set(line.step3.gases.map((g) => g.ef.source))];
+  const gwpSources = [...new Set(line.step3.gases.map((g) => g.gwp.source))];
+  return (
+    <StepBlock title="Calculation method" note={line.method.route}>
+      <ul className="s1-cp-eqs">
+        {equations.map((g) => (
+          <li key={g}>
+            {GAS_LABEL[g]} <span className="s1-muted">·</span> {line.method.equations[g]}
+          </li>
+        ))}
+      </ul>
+      {references.length ? (
+        <p className="s1-cp-ref">
+          <span className="s1-muted">Reference </span>
+          {references.map((r, i) => (
+            <Fragment key={r}>
+              {i ? ", " : null}
+              <SourceNote label={r} source={{ kind: "reference", entry: r }} />
+            </Fragment>
+          ))}
+        </p>
       ) : null}
+      {gwpSources.length ? (
+        <p className="s1-cp-ref">
+          <span className="s1-muted">GWP </span>
+          {gwpSources.join(", ")}
+        </p>
+      ) : null}
+    </StepBlock>
+  );
+}
+
+function Step1Block({
+  line,
+  onOpenDocument,
+}: {
+  line: CalculationLine;
+  onOpenDocument?: (documentId: string, valueId?: string) => void;
+}) {
+  const total = line.step1.total;
+  // Months counted in another unit than the total show their amount in the total's unit too.
+  const mixed = line.step1.rows.some((r) => r.unit !== total.unit);
+  return (
+    <StepBlock title="Step 1 · Activity data" note="Sum of accepted evidence values for this line">
+      <div className="s1-vw-scroll">
+        <table className="s1-vw-steps s1-cp-grid">
+          <thead>
+            <tr>
+              <th>Period</th>
+              <th>Evidence</th>
+              <th>Review</th>
+              <th className="s1-vw-num">Company-reported</th>
+              <th className="s1-vw-num s1-cp-rec">Recomputed (accepted values)</th>
+              {mixed ? <th className="s1-vw-num">In {total.unit}</th> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {line.step1.rows.map((r, index) => {
+              const name = r.file_name ?? r.document_id;
+              return (
+                <tr key={`${r.document_id}:${index}`}>
+                  <td>{period(r.period_start, r.period_end)}</td>
+                  <td>
+                    <SourceNote
+                      label={name}
+                      source={{ kind: "document", file: name, documentId: r.document_id, candidateId: r.candidate_id ?? undefined }}
+                      onOpen={onOpenDocument ? () => onOpenDocument(r.document_id, r.candidate_id ?? undefined) : undefined}
+                    />
+                  </td>
+                  <td>{r.review === "edited" ? "Edited by reviewer" : "Accepted"}</td>
+                  <td className="s1-vw-num">{NOT_AVAILABLE}</td>
+                  <td className="s1-vw-num s1-cp-rec">
+                    {r.quantity === null ? (
+                      <span className="s1-muted">No quantity</span>
+                    ) : (
+                      <>
+                        {qty(r.counted_quantity)} {r.unit}
+                        {r.share_in_period === 1 ? null : <span className="s1-muted"> · {formatPercent(r.share_in_period)} of {qty(r.quantity)} in period</span>}
+                      </>
+                    )}
+                  </td>
+                  {mixed ? (
+                    <td className="s1-vw-num">
+                      {r.counted_in_base === null ? <span className="s1-muted">Not convertible</span> : `${qty(r.counted_in_base)} ${total.unit}`}
+                    </td>
+                  ) : null}
+                </tr>
+              );
+            })}
+            <tr className="s1-vw-steps__total">
+              <td colSpan={3}>Annual activity data</td>
+              <td className="s1-vw-num">
+                {line.company ? (
+                  <SourceNote label={`${qty(line.company.activity.quantity)} ${line.company.activity.unit}`} source={{ kind: "company" }} />
+                ) : (
+                  <em className="s1-muted">not reported</em>
+                )}
+              </td>
+              <td className="s1-vw-num s1-cp-rec">
+                {qty(total.quantity)} {total.unit}
+              </td>
+              {mixed ? <td /> : null}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </StepBlock>
+  );
+}
+
+function Step2Block({ line }: { line: CalculationLine }) {
+  const row = (side: "Company" | "Recomputed", activity: { quantity: number; unit: string }, s: CalcLineStep2) => (
+    <tr key={side} className={side === "Recomputed" ? "s1-cp-rec" : "s1-cp-co"}>
       <td>{side}</td>
       <td className="s1-vw-num">
-        {qty(g.activity.value)} {g.activity.unit}
+        {qty(activity.quantity)} {activity.unit}
       </td>
+      <td className="s1-cp-op">×</td>
       <td className="s1-vw-num">
-        <SourceNote label={`${qty(g.ef.value)} ${g.ef.unit}`} source={g.ef.source} />
+        {s.from_unit} → {s.to_unit}{" "}
+        {s.factor === 1 ? "×1" : <SourceNote label={factorText(s.factor)} source={{ kind: "reference", entry: s.source ?? "Unit conversion table." }} />}
       </td>
-      <td className="s1-vw-num">{factorText(g.unit_conversion)}</td>
-      <td className="s1-vw-num">
-        {formatGasTonnes(g.mass_t)}
-        {g.biogenic ? <span className="s1-muted"> biogenic CO₂ (reported separately)</span> : null}
-      </td>
-      <td className="s1-vw-num">
-        <SourceNote label={`×${qty(g.gwp.value)}`} source={g.gwp.source} />
-      </td>
-      <td className="s1-vw-num">{formatGasTonnes(g.co2e_t)}</td>
-      <td className="s1-vw-num">
-        {side === "Recomputed" && g.difference_to_company_t !== null && g.difference_to_company_t !== undefined
-          ? formatSignedGasTonnes(g.difference_to_company_t)
-          : ""}
-      </td>
-    </tr>
-  );
-  return (
-    <div className="s1-vw-scroll">
-      <table className="s1-vw-steps s1-cp-gas">
-        <thead>
-          <tr>
-            <th>Gas</th>
-            <th>Side</th>
-            <th className="s1-vw-num">Activity</th>
-            <th className="s1-vw-num">× Emission factor</th>
-            <th className="s1-vw-num">× Unit conversion</th>
-            <th className="s1-vw-num">= Mass (t)</th>
-            <th className="s1-vw-num">× GWP</th>
-            <th className="s1-vw-num">= CO₂e (t)</th>
-            <th className="s1-vw-num">Difference to company</th>
-          </tr>
-        </thead>
-        <tbody>
-          {line.step3.gases.map((g, index) => {
-            const theirs = company?.find((c) => c.gas === g.gas);
-            return (
-              <Fragment key={`${g.gas}:${index}`}>
-                {theirs ? row(theirs, "Company", 2) : null}
-                {row(g, "Recomputed", theirs ? null : 1)}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function ResultsTable({ line }: { line: CalculationLine }) {
-  const company = line.company?.results;
-  const row = (label: string, pick: (r: CalcLineResults) => number, strong = false) => (
-    <tr className={strong ? "s1-vw-steps__total" : undefined}>
-      <td>{label}</td>
-      <td className="s1-vw-num">{formatGasTonnes(pick(line.results))}</td>
-      <td className="s1-vw-num">{company ? formatGasTonnes(pick(company)) : <span className="s1-muted">Not entered</span>}</td>
-    </tr>
-  );
-  return (
-    <div className="s1-vw-scroll">
-      <table className="s1-vw-steps">
-        <thead>
-          <tr>
-            <th>Mass and CO₂e</th>
-            <th className="s1-vw-num">Recomputed</th>
-            <th className="s1-vw-num">Company</th>
-          </tr>
-        </thead>
-        <tbody>
-          {GASES.map((gas) => row(`${GAS_LABEL[gas]} mass (t)`, (r) => r.mass_t[gas]))}
-          {line.results.biogenic_co2_t !== 0 ? row("Biogenic CO₂ (t), reported separately", (r) => r.biogenic_co2_t) : null}
-          {GASES.map((gas) => row(`${GAS_LABEL[gas]} as CO₂e (t)`, (r) => r.gas_co2e_t[gas]))}
-          {row("CO₂e, sum of gases (t)", (r) => r.sum_co2e_t)}
-          <tr>
-            <td>× Consolidated share</td>
-            <td className="s1-vw-num" colSpan={2}>
-              {line.consolidated_share_pct}%
-            </td>
-          </tr>
-          {row("Total CO₂e (t)", (r) => r.total_co2e_t, true)}
-          {line.results.difference_to_company_t !== null && line.results.difference_to_company_t !== undefined ? (
-            <tr>
-              <td>Difference to company (t)</td>
-              <td className="s1-vw-num" colSpan={2}>
-                {formatSignedGasTonnes(line.results.difference_to_company_t)}
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function Step2Table({ line }: { line: CalculationLine }) {
-  const convert = (label: string, s: CalcLineStep2) => (
-    <tr key={label}>
-      <td>{label}</td>
-      <td>
-        {s.from_unit} → {s.to_unit}
-      </td>
-      <td className="s1-vw-num">
-        {s.factor === 1 ? "×1" : <SourceNote label={factorText(s.factor)} source={s.source ?? "Unit conversion table."} />}
-      </td>
-      <td className="s1-vw-num">
+      <td className="s1-cp-op">=</td>
+      <td className="s1-vw-num s1-cp-out">
         {qty(s.result.quantity)} {s.result.unit}
       </td>
     </tr>
@@ -360,108 +456,176 @@ function Step2Table({ line }: { line: CalculationLine }) {
   const distance = line.step2.distance;
   const implied = line.step2.implied_fuel_economy;
   return (
-    <div className="s1-vw-scroll">
-      <table className="s1-vw-steps">
-        <thead>
-          <tr>
-            <th>Side</th>
-            <th>Unit</th>
-            <th className="s1-vw-num">Conversion</th>
-            <th className="s1-vw-num">Result</th>
-          </tr>
-        </thead>
-        <tbody>
-          {line.company ? convert("Company", line.company.step2) : null}
-          {convert("Recomputed", line.step2)}
-          {distance ? (
+    <StepBlock title="Step 2 · Unit conversion" note="Shared by all three gases">
+      <div className="s1-vw-scroll">
+        <table className="s1-vw-steps s1-cp-grid">
+          <thead>
             <tr>
-              <td>Distance (input)</td>
-              <td>{distance.unit}</td>
-              <td className="s1-vw-num">
-                <SourceNote label="Entered" source={distance.source} />
-              </td>
-              <td className="s1-vw-num">
-                {qty(distance.quantity)} {distance.unit}
-              </td>
+              <th />
+              <th className="s1-vw-num">Activity data</th>
+              <th />
+              <th className="s1-vw-num">Unit conversion</th>
+              <th />
+              <th className="s1-vw-num">Converted quantity</th>
             </tr>
-          ) : null}
-          {implied ? (
-            <tr>
-              <td>Implied fuel economy (reasonableness check)</td>
-              <td>{implied.unit}</td>
-              <td />
-              <td className="s1-vw-num">
-                {qty(implied.value)} {implied.unit}
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {line.company ? row("Company", line.company.activity, line.company.step2) : <NoCompany cols={5} />}
+            {row("Recomputed", line.step1.total, line.step2)}
+            {distance ? (
+              <tr>
+                <td>Distance (input)</td>
+                <td className="s1-vw-num" colSpan={3}>
+                  {qty(distance.quantity)} {distance.unit}{" "}
+                  <SourceNote label="Entered" source={{ kind: "entered", by: distance.source }} />
+                </td>
+                <td />
+                <td />
+              </tr>
+            ) : null}
+            {implied ? (
+              <tr>
+                <td>Implied fuel economy (reasonableness check)</td>
+                <td className="s1-vw-num" colSpan={3}>
+                  {qty(implied.value)} {implied.unit}
+                </td>
+                <td />
+                <td />
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+    </StepBlock>
   );
 }
 
-function Step1Table({ line, onOpenDocument }: { line: CalculationLine; onOpenDocument?: (documentId: string, valueId?: string) => void }) {
-  const total = line.step1.total;
-  // Months counted in another unit than the total show their amount in the total's unit too.
-  const mixed = line.step1.rows.some((r) => r.unit !== total.unit);
+function Step3Block({
+  line,
+  gwpLabel,
+}: {
+  line: CalculationLine;
+  gwpLabel: string;
+}) {
+  const equations = line.method.equations;
+  const company = line.company?.step3.gases;
+  const row = (g: CalcLineGas, side: "Company" | "Recomputed") => (
+    <tr key={side} className={side === "Recomputed" ? "s1-cp-rec" : "s1-cp-co"}>
+      <td>{side}</td>
+      <td className="s1-vw-num">
+        {qty(g.activity.value)} {g.activity.unit}
+      </td>
+      <td className="s1-cp-op">×</td>
+      <td className="s1-vw-num">
+        <SourceNote label={`${qty(g.ef.value)} ${g.ef.unit}`} source={{ kind: "reference", entry: g.ef.source }} />
+      </td>
+      <td className="s1-cp-op">×</td>
+      <td className="s1-vw-num">{factorText(g.unit_conversion)}</td>
+      <td className="s1-cp-op">=</td>
+      <td className="s1-vw-num s1-cp-out">
+        {formatGasTonnes(g.mass_t)}
+        {g.biogenic ? <span className="s1-muted"> biogenic CO₂ (reported separately)</span> : null}
+      </td>
+      <td className="s1-cp-op">×</td>
+      <td className="s1-vw-num">
+        <SourceNote label={qty(g.gwp.value)} source={{ kind: "reference", entry: g.gwp.source }} />
+      </td>
+      <td className="s1-cp-op">=</td>
+      <td className="s1-vw-num s1-cp-out">
+        {formatGasTonnes(g.co2e_t)}
+        {side === "Recomputed" ? <Paren value={g.difference_to_company_t} /> : null}
+      </td>
+    </tr>
+  );
   return (
-    <div className="s1-vw-scroll">
-      <table className="s1-vw-steps">
-        <thead>
-          <tr>
-            <th>Period</th>
-            <th>Evidence</th>
-            <th>Review</th>
-            <th className="s1-vw-num">Quantity</th>
-            <th className="s1-vw-num">Share in period</th>
-            <th className="s1-vw-num">Counted</th>
-            {mixed ? <th className="s1-vw-num">In {total.unit}</th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {line.step1.rows.map((r, index) => (
-            <tr key={`${r.document_id}:${index}`}>
-              <td>{period(r.period_start, r.period_end)}</td>
-              <td>
-                                {onOpenDocument ? (
-                  <button className="s1-cp-src" type="button" onClick={() => onOpenDocument(r.document_id, r.candidate_id ?? undefined)}>
-                    {r.file_name ?? r.document_id}
-                  </button>
-                ) : (
-                  (r.file_name ?? r.document_id)
-                )}
-              </td>
-              <td>{r.review === "edited" ? "Edited by reviewer" : "Accepted"}</td>
-              <td className="s1-vw-num">
-                {r.quantity === null ? <span className="s1-muted">No quantity</span> : `${qty(r.quantity)} ${r.unit}`}
-              </td>
-              <td className="s1-vw-num">{r.share_in_period === 1 ? "All" : formatPercent(r.share_in_period)}</td>
-              <td className="s1-vw-num">
-                {qty(r.counted_quantity)} {r.unit}
-              </td>
-              {mixed ? (
-                <td className="s1-vw-num">
-                  {r.counted_in_base === null ? <span className="s1-muted">Not convertible</span> : `${qty(r.counted_in_base)} ${total.unit}`}
-                </td>
-              ) : null}
+    <StepBlock title="Step 3 · Emissions by gas" note="One equation per gas">
+      <div className="s1-cp-gwp">
+        <span>GWP</span>
+        <strong>{gwpLabel}</strong>
+        <InfoTip label="GWP set">
+          One set applies to the whole engagement: the one chosen in Methodology review. Change it there and Results recalculates every line.
+        </InfoTip>
+      </div>
+      {line.step3.gases.map((g, index) => {
+        // Pair by occurrence: the nth run of a gas on our side with the nth on theirs. A different count can't be paired.
+        const ours = line.step3.gases.filter((x) => x.gas === g.gas);
+        const same = company?.filter((c) => c.gas === g.gas) ?? [];
+        const nth = ours.indexOf(g);
+        const theirs = same.length === ours.length ? same[nth] : undefined;
+        const unpaired = Boolean(company) && same.length !== ours.length;
+        return (
+          <div className="s1-vw-scroll" key={`${g.gas}:${index}`}>
+            <table className="s1-vw-steps s1-cp-grid" aria-label={`${GAS_LABEL[g.gas]} emissions`}>
+              <thead>
+                <tr>
+                  <th>
+                    {GAS_LABEL[g.gas]}
+                    {equations[g.gas] ? <span className="s1-muted"> · {equations[g.gas]}</span> : null}
+                  </th>
+                  <th className="s1-vw-num">Activity</th>
+                  <th />
+                  <th className="s1-vw-num">Emission factor</th>
+                  <th />
+                  <th className="s1-vw-num">Unit conversion</th>
+                  <th />
+                  <th className="s1-vw-num">Mass (t)</th>
+                  <th />
+                  <th className="s1-vw-num">GWP</th>
+                  <th />
+                  <th className="s1-vw-num">{GAS_LABEL[g.gas]} (t CO₂e)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {theirs ? row(theirs, "Company") : unpaired ? <NoCompany cols={11} text="Not available" /> : <NoCompany cols={11} />}
+                {row(g, "Recomputed")}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </StepBlock>
+  );
+}
+
+function ResultsBlock({ line }: { line: CalculationLine }) {
+  const company = line.company?.results;
+  const row = (label: string, pick: (r: CalcLineResults) => number, extra?: ReactNode, strong = false) => (
+    <tr key={label} className={strong ? "s1-vw-steps__total" : undefined}>
+      <td>{label}</td>
+      <td className="s1-vw-num">{company ? formatGasTonnes(pick(company)) : <em className="s1-muted">not reported</em>}</td>
+      <td className="s1-vw-num s1-cp-rec">
+        {formatGasTonnes(pick(line.results))}
+        {extra}
+      </td>
+    </tr>
+  );
+  return (
+    <StepBlock title="Results" note="Sum of gases × consolidated share">
+      <div className="s1-vw-scroll">
+        <table className="s1-vw-steps s1-cp-grid">
+          <thead>
+            <tr>
+              <th>Mass and CO₂e</th>
+              <th className="s1-vw-num">Company-reported</th>
+              <th className="s1-vw-num s1-cp-rec">Recomputed</th>
             </tr>
-          ))}
-          <tr className="s1-vw-steps__total">
-            <td colSpan={mixed ? 6 : 5}>Recomputed total</td>
-            <td className="s1-vw-num">
-              {qty(total.quantity)} {total.unit}
-            </td>
-          </tr>
-          <tr>
-            <td colSpan={mixed ? 6 : 5}>Company reported</td>
-            <td className="s1-vw-num">
-              {line.company ? `${qty(line.company.activity.quantity)} ${line.company.activity.unit}` : <span className="s1-muted">Not entered</span>}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {GASES.map((gas) => row(`${GAS_LABEL[gas]} mass (t)`, (r) => r.mass_t[gas]))}
+            {line.results.biogenic_co2_t !== 0 ? row("Biogenic CO₂ (t), reported separately", (r) => r.biogenic_co2_t) : null}
+            {GASES.map((gas) => row(`${GAS_LABEL[gas]} as CO₂e (t)`, (r) => r.gas_co2e_t[gas]))}
+            {row("CO₂e, sum of gases (t)", (r) => r.sum_co2e_t)}
+            <tr>
+              <td>× Consolidated share</td>
+              <td className="s1-vw-num s1-cp-rec" colSpan={2}>
+                {line.consolidated_share_pct}%
+              </td>
+            </tr>
+            {row("Total CO₂e (t)", (r) => r.total_co2e_t, <Paren value={line.results.difference_to_company_t} />, true)}
+          </tbody>
+        </table>
+      </div>
+    </StepBlock>
   );
 }
 
@@ -589,6 +753,7 @@ function LineDetail({
   line: CalculationLine;
   inputs?: CalcLineInputs;
   settings: RecalculationSettings;
+  /** The backend's GWP wording (Methodology review's choice), shown as given. */
   gwpSet: string;
   onSave: (next: RecalculationSettings) => Promise<string | null>;
   store: VerificationStore;
@@ -597,86 +762,39 @@ function LineDetail({
   onOpenDocument?: (documentId: string, valueId?: string) => void;
   onOpenEvidence?: (lineKey: string) => void;
 }) {
-  const [step, setStep] = useState(0);
   const [box, setBox] = useState<"examination" | "note" | "company" | null>(null);
-  const [gwpSaving, setGwpSaving] = useState(false);
-  const [gwpError, setGwpError] = useState<string | null>(null);
   const key = examinationKey("calc", line.key);
   const examination = store.examinations[key];
   const examined = Boolean(examination?.examinedBy);
   const title = `${line.label} · ${line.level2}`;
-  const ids = `s1-cp-${line.key}`;
   const flags = line.flags.map((f) => FLAG_TEXT[f]).filter(Boolean);
-
-  function onTabKey(event: KeyboardEvent<HTMLButtonElement>) {
-    const move = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-    if (!move) return;
-    event.preventDefault();
-    setStep((step + move + STEPS.length) % STEPS.length);
-  }
-
-  async function changeGwp(value: string) {
-    setGwpSaving(true);
-    setGwpError(null);
-    setGwpError(await onSave({ ...settings, gwp_set: value }));
-    setGwpSaving(false);
-  }
 
   return (
     <div className="s1-cp-detail">
-      <p className="s1-cp-route">
-        {line.method.route}
-        {flags.length ? <span className="s1-muted"> · {flags.join(" ")}</span> : null}
-      </p>
-      <div className="s1-cp-tabs" role="tablist" aria-label={`Steps · ${line.label}`}>
-        {STEPS.map((name, i) => (
-          <button
-            key={name}
-            id={`${ids}-tab-${i}`}
-            className={`s1-cp-tab${step === i ? " is-on" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={step === i}
-            aria-controls={`${ids}-panel`}
-            tabIndex={step === i ? 0 : -1}
-            onClick={() => setStep(i)}
-            onKeyDown={onTabKey}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
-      <div className="s1-cp-tabpanel" role="tabpanel" id={`${ids}-panel`} aria-labelledby={`${ids}-tab-${step}`}>
-        {step === 0 ? <Step1Table line={line} onOpenDocument={onOpenDocument} /> : null}
-        {step === 1 ? <Step2Table line={line} /> : null}
-        {step === 2 ? (
-          <>
-            <div className="s1-cp-gwp">
-              <label htmlFor={`${ids}-gwp`}>GWP set</label>
-              <select id={`${ids}-gwp`} value={gwpSet} disabled={gwpSaving} onChange={(e) => void changeGwp(e.target.value)}>
-                {GWP_SETS.map((g) => (
-                  <option key={g} value={g}>
-                    {g}
-                  </option>
-                ))}
-              </select>
-              <InfoTip label="GWP set">One set applies to the whole engagement. Changing it recalculates every line.</InfoTip>
-              {gwpError ? (
-                <span className="s1-vw-red" role="alert">
-                  {gwpError}
-                </span>
-              ) : null}
-            </div>
-            <GasTable line={line} />
-          </>
-        ) : null}
-        {step === 3 ? <ResultsTable line={line} /> : null}
-      </div>
+      <h4 className="s1-cp-line-title">{title}</h4>
+      {flags.length ? <p className="s1-muted s1-cp-flags">{flags.join(" ")}</p> : null}
+      <MethodBlock line={line} />
+      <Step1Block line={line} onOpenDocument={onOpenDocument} />
+      <Step2Block line={line} />
+      <Step3Block line={line} gwpLabel={gwpSet} />
+      <ResultsBlock line={line} />
       <div className="s1-vw-actions">
-        <button className={`s1-button s1-vw-action${examined ? " is-done" : ""}`} type="button" aria-expanded={box === "examination"} onClick={() => setBox(box === "examination" ? null : "examination")}>
-          <ClipboardCheck className="s1-vw-ico" aria-hidden />
-          Record examination
-        </button>
+        {examined ? (
+          <>
+            <span className="s1-vw-examined-by">
+              <Check className="s1-vw-ico" aria-hidden />
+              Examined by {examination?.examinedBy}
+            </span>
+            <button className="s1-button s1-vw-action" type="button" onClick={() => store.clearExamination(key)}>
+              Undo
+            </button>
+          </>
+        ) : (
+          <button className="s1-button s1-vw-action" type="button" aria-expanded={box === "examination"} onClick={() => setBox(box === "examination" ? null : "examination")}>
+            <ClipboardCheck className="s1-vw-ico" aria-hidden />
+            Record examination
+          </button>
+        )}
         <button className="s1-button s1-vw-action" type="button" aria-expanded={box === "note"} onClick={() => setBox(box === "note" ? null : "note")}>
           <StickyNote className="s1-vw-ico" aria-hidden />
           Add notes
@@ -691,12 +809,7 @@ function LineDetail({
             Open in Evidence
           </button>
         ) : null}
-        {examined ? (
-          <span className="s1-vw-examined-by">
-            <Check className="s1-vw-ico" aria-hidden />
-            Examined by {examination?.examinedBy}
-          </span>
-        ) : null}
+        <span className="s1-muted s1-cp-hint">Dotted-underlined inputs open their source. Document-backed inputs link to Evidence; reference entries show their citation.</span>
       </div>
       {box === "examination" ? (
         <RecordExamination

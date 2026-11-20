@@ -229,8 +229,10 @@ export interface LiveOutput {
   statement: LiveStatementFigures;
   /** The whole workpaper as an Excel workbook (the one real export). */
   exportHref: string;
-  /** "AR5 (EPA Hub Table 11)". */
+  /** The GWP set as Results names it, e.g. "AR5 · 100-year (Methodology review)". */
   gwpBasis: string;
+  /** Set when Methodology review chose a GWP set that cannot be calculated: the notice replaces the download. */
+  blocked?: string | null;
   /** The findings the verifier registered. */
   findings: Finding[];
   /** More lines for Basis of evidence: fully reviewed documents, records left out, what is not calculated. */
@@ -274,11 +276,22 @@ function LiveOutputScreen({
         </div>
         <div className="s1-out-actions">
           <span className="s1-state s1-state--open s1-out-status">Draft · not issued</span>
-          <a className="s1-button s1-button--pri" href={live.exportHref} download>
-            <CsvIcon /> Download workpaper (Excel)
-          </a>
+          {live.blocked ? (
+            <button className="s1-button s1-button--pri" type="button" disabled aria-describedby="s1-out-blocked">
+              <CsvIcon /> Download workpaper (Excel)
+            </button>
+          ) : (
+            <a className="s1-button s1-button--pri" href={live.exportHref} download>
+              <CsvIcon /> Download workpaper (Excel)
+            </a>
+          )}
         </div>
       </header>
+      {live.blocked ? (
+        <p id="s1-out-blocked" className="s1-vw-red" role="alert">
+          {live.blocked} The workpaper cannot be produced until this is fixed there.
+        </p>
+      ) : null}
 
       <article className="s1-out-doc">
         <div className="s1-out-doc__band">

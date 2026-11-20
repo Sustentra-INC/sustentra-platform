@@ -110,19 +110,25 @@ import { withDemoGroupIds } from "../demo-backend/groupIds";
 import { demoEngagement, setDemoEngagement } from "../demo-backend/state";
 import { adoptGroupIds } from "../utils/vehicleGroupIds";
 import {
+  createEvidenceFolder,
   createEvidenceLine,
+  deleteEvidenceFolder,
   deleteEvidenceLine,
   getEvidenceActivity,
   moveEvidenceDocument,
   setDocumentFacility,
   setRereadState,
+  renameEvidenceFolder,
   renameEvidenceLine,
+  setDocumentFolder,
   type CalculationLine,
   type EvidenceActivityItem,
   type EvidenceLineSetting,
+  type FolderAnswer,
   type LineAnswer,
   type Placement,
   type RereadChoice,
+  type TreeFolder,
 } from "../api/evidenceTree";
 import { useViewHistory, viewLabel } from "../utils/viewHistory";
 import { resultsViewForLine, scheduleViewForLine } from "./lineLinks";
@@ -678,6 +684,54 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       setDocumentDecisions((cur) => ({ ...cur, ...changed }));
     }
     return answer.documents_moved ?? 0;
+  }
+
+  /** Takes the Block 1 folders the server answered with, the same way as the lines (the server owns them). */
+  function adoptFolders(engagementId: string, answer: FolderAnswer) {
+    if (!stillOpen(engagementId)) return;
+    const evidenceFolders = answer.evidenceFolders;
+    setEngagement((current) => ({ ...current, evidenceFolders }));
+    if (pendingSave.current) pendingSave.current = { ...pendingSave.current, evidenceFolders };
+    setEngagements((current) =>
+      (current ?? []).map((item) => (item.id === engagementId ? { ...item, settings: { ...item.settings, evidenceFolders } } : item))
+    );
+    void refreshEvidenceActivity(engagementId);
+  }
+
+  /** The saved payloads of documents a folder action changed, taken as they are (as a move does). */
+  function adoptDocuments(engagementId: string, changed: Record<string, DocumentDecision>) {
+    if (!stillOpen(engagementId)) return;
+    if (dataMode === "backend") for (const [docId, decision] of Object.entries(changed)) workpaper.markSaved("document", docId, decision);
+    setDocumentDecisions((cur) => ({ ...cur, ...changed }));
+  }
+
+  async function createFolder(name: string) {
+    const id = engagement.engagementId;
+    adoptFolders(id, await createEvidenceFolder(id, name));
+  }
+
+  async function renameFolder(folder: TreeFolder, name: string) {
+    const id = engagement.engagementId;
+    adoptFolders(id, await renameEvidenceFolder(id, folder.folder_id, name));
+  }
+
+  async function deleteFolder(folder: TreeFolder): Promise<number> {
+    const id = engagement.engagementId;
+    const answer = await deleteEvidenceFolder(id, folder.folder_id);
+    adoptFolders(id, answer);
+    if (answer.documents) adoptDocuments(id, answer.documents);
+    return answer.documents_moved ?? 0;
+  }
+
+  async function setFolderOfDocument(documentId: string, folderId: string | null) {
+    const id = engagement.engagementId;
+    if (dataMode === "backend") {
+      if (!workpaper.loaded) throw new Error("Your saved work is still loading. Try again in a moment.");
+      await workpaper.whenSaved("document", documentId);
+    }
+    const { payload } = await setDocumentFolder(id, documentId, folderId);
+    adoptDocuments(id, { [documentId]: payload });
+    void refreshEvidenceActivity(id);
   }
 
   /** What the server recorded on the Evidence page, newest first (the Activity log reads it): the newest page. */
@@ -1263,6 +1317,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         ) : activeView.name === "dashboard" ? (
           STAGING_SCREENS ? (
             <BackendDashboard
+              methodologyKey={methodologyActivity.map((a) => `${a.at}${a.what}`).join("|")}
               engagement={engagement}
               evidence={evidenceView}
               values={reviewValuesView}
@@ -1435,6 +1490,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                       movedRereads.current.add(documentId);
                       void rereadAs(documentId, typeId, typeName);
                     },
+                    onCreateFolder: createFolder,
+                    onRenameFolder: renameFolder,
+                    onDeleteFolder: deleteFolder,
+                    onSetDocumentFolder: setFolderOfDocument,
                     onError: handleSessionEnded,
                   }
                 : undefined

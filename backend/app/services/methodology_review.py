@@ -30,7 +30,7 @@ import copy
 import re
 import uuid
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,6 +63,7 @@ STATUSES = (PENDING, ACCEPTED, EDITED, REJECTED)
 
 MAX_TEXT = 2000
 MAX_REASON = 500
+BOUNDARY_SENTENCE_ID = "boundary:entities"
 MAX_APPLIES_TO = 200  # a GWP set's use note, in the company's words
 MAX_FACILITIES = 20
 MAX_FACILITY = 100
@@ -141,9 +142,10 @@ _PARTS: dict[str, list[dict[str, Any]]] = {
     "entity": [
         {"key": "name", "label": "Entity name", "kind": "text"},
         {"key": "facilities", "label": "Facilities", "kind": "list"},
-        {"key": "equity_share_pct", "label": "Equity share (%)", "kind": "percent"},
-        {"key": "financial_control", "label": "Financial control (%)", "kind": "percent"},
-        {"key": "operational_control", "label": "Operational control", "kind": "enum", "allowed": list(YES_NO)},
+        {"key": "equity_share_pct", "label": "Equity share (%, if stated)", "kind": "percent"},
+        {"key": "financial_control", "label": "Financial control (%, if stated)", "kind": "percent"},
+        {"key": "operational_control", "label": "Operational control", "kind": "enum", "allowed": list(YES_NO),
+         "optional": True},
     ],
     "factor": [
         {"key": "database", "label": "Database", "kind": "text"},
@@ -192,6 +194,11 @@ def _static_fields() -> list[dict[str, Any]]:
         _field("boundary:acquisitions", "boundary", "Acquisitions and divestitures", "text", required=False),
         _field("boundary:leased_space", "boundary", "Treatment of leased space", "text", required=False),
     ]
+    # Spec row 9, the fallback: a document that gives only the boundary sentence and names no entity shows that
+    # sentence here, marked "Boundary sentence only", instead of Not detected.
+    entities = _field(BOUNDARY_SENTENCE_ID, "boundary", "Entities and facilities in the boundary", "text")
+    entities["value_note"] = "Boundary sentence only"
+    fields.append(entities)
     # Spec row 11: only if the company reports a market-based Scope 2 number, which this page reads
     # as at least one market-based category that is Yes (see ``market_based_reported``).
     instruments = _field("scope2:instruments", "scope2", "Scope 2 instrument types (market-based)", "multiselect",
@@ -277,8 +284,8 @@ def blank_value(field_id: str) -> Any:
     """What a new row holds until the reviewer fills it in."""
 
     if field_id.startswith("entity:"):
-        return {"name": "", "facilities": [], "equity_share_pct": 0, "financial_control": 0,
-                "operational_control": "No"}
+        return {"name": "", "facilities": [], "equity_share_pct": None, "financial_control": None,
+                "operational_control": None}
     if field_id.startswith("gwp:"):
         return {"set": "", "horizon": ""}
     return {"database": "", "edition": ""}
@@ -314,9 +321,13 @@ def _only(field: Mapping[str, Any], value: Any, keys: tuple[str, ...]) -> Mappin
     return value
 
 
-def _percent(field: Mapping[str, Any], value: Any, name: str) -> int | float:
+def _percent(field: Mapping[str, Any], value: Any, name: str, *, optional: bool = False) -> int | float | None:
+    """A number from 0 to 100; ``None`` (not stated) only where the percentage is optional."""
+
+    if value is None and optional:
+        return None
     if isinstance(value, bool) or not isinstance(value, int | float) or not 0 <= value <= 100:
-        raise _fail(field, f"{name} must be a number from 0 to 100.")
+        raise _fail(field, f"{name} must be a number from 0 to 100" + (", or left blank." if optional else "."))
     return value
 
 
@@ -334,8 +345,40 @@ def parse_iso_date(text: Any) -> date | None:
         return None
 
 
-def _date_range(field: Mapping[str, Any], value: Any) -> dict[str, str]:
-    if not isinstance(value, dict) or set(value) != {"start", "end"}:
+PERIOD_BASES = ("Calendar year", "Fiscal year", "Not stated")
+
+
+def year_start_for(end: date) -> date:
+    """The first day of the twelve months that finish on ``end``: the day after the same date a year
+    earlier (2024-12-31 gives 2024-01-01; 2025-06-30 gives 2024-07-01)."""
+
+    nxt = end + timedelta(days=1)
+    try:
+        return nxt.replace(year=nxt.year - 1)
+    except ValueError:  # the day after a 28 February in a leap year is 29 February, which the year before lacks
+        return date(nxt.year - 1, 3, 1)
+
+
+def period_basis(start: date, end: date) -> str:
+    """What the two dates make of the period: a calendar year (1 January to 31 December), a fiscal
+    year (twelve months that are not the calendar year) or not stated (any other length)."""
+
+    if start.year == end.year and (start.month, start.day) == (1, 1) and (end.month, end.day) == (12, 31):
+        return PERIOD_BASES[0]
+    return PERIOD_BASES[1] if start == year_start_for(end) else PERIOD_BASES[2]
+
+
+IMPLIED_FROM_TITLE = "calendar year, year from title"
+
+
+def _date_range(field: Mapping[str, Any], value: Any) -> dict[str, Any]:
+    """Start and end dates. ``start_implied`` / ``end_implied`` (true only) mark a date the report does not print;
+    ``implied_from`` says how both were worked out (only ``IMPLIED_FROM_TITLE``). ``basis`` is one of PERIOD_BASES:
+    the one the caller gives when it is valid (Claude's, from the quote's own words: "fiscal year" gives Fiscal
+    year), else worked out from the two dates, so a reviewer's edit of two dates always gets a fresh basis."""
+
+    if (not isinstance(value, dict) or not {"start", "end"} <= set(value)
+            or not set(value) <= {"start", "end", "start_implied", "end_implied", "implied_from", "basis"}):
         raise _fail(field, "enter both a start date and an end date, written YYYY-MM-DD.")
     start, end = parse_iso_date(value["start"]), parse_iso_date(value["end"])
     if start is None:
@@ -344,7 +387,20 @@ def _date_range(field: Mapping[str, Any], value: Any) -> dict[str, str]:
         raise _fail(field, "the end date is not a real date. Write it as YYYY-MM-DD, for example 2025-12-31.")
     if end < start:
         raise _fail(field, "the end date can't be before the start date.")
-    return {"start": start.isoformat(), "end": end.isoformat()}
+    out: dict[str, Any] = {"start": start.isoformat(), "end": end.isoformat()}
+    for key in ("start_implied", "end_implied"):
+        flag = value.get(key, False)
+        if not isinstance(flag, bool):
+            raise _fail(field, "an implied flag must be true or false.")
+        if flag:
+            out[key] = True
+    if "implied_from" in value:
+        if value["implied_from"] != IMPLIED_FROM_TITLE:
+            raise _fail(field, "the implied-from note is not one this page writes.")
+        out["implied_from"] = IMPLIED_FROM_TITLE
+    given = value.get("basis")
+    out["basis"] = given if given in PERIOD_BASES else period_basis(start, end)
+    return out
 
 
 def _entry_list(field: Mapping[str, Any], value: Any) -> list[dict[str, str]]:
@@ -446,13 +502,14 @@ def validate_value(field: Mapping[str, Any], value: Any) -> Any:
         facilities = data["facilities"]
         if not isinstance(facilities, list) or len(facilities) > MAX_FACILITIES:
             raise _fail(field, f"facilities must be a list of at most {MAX_FACILITIES} names.")
-        if data["operational_control"] not in YES_NO:
-            raise _fail(field, "operational control must be Yes or No.")
+        if data["operational_control"] is not None and data["operational_control"] not in YES_NO:
+            raise _fail(field, "operational control must be Yes or No, or left blank when the document does not say.")
         return {
             "name": _text(field, data["name"], required=True, limit=200, name="the name"),
             "facilities": [_text(field, f, required=True, limit=MAX_FACILITY, name="a facility name") for f in facilities],
-            "equity_share_pct": _percent(field, data["equity_share_pct"], "equity share"),
-            "financial_control": _percent(field, data["financial_control"], "financial control"),
+            # Both percentages are optional: null means the document does not give it.
+            "equity_share_pct": _percent(field, data["equity_share_pct"], "equity share", optional=True),
+            "financial_control": _percent(field, data["financial_control"], "financial control", optional=True),
             "operational_control": data["operational_control"],
         }
     raise AssertionError(f"unknown field kind {kind}")  # pragma: no cover
@@ -654,6 +711,8 @@ def bound_suggestion(field: Mapping[str, Any], suggestion: Mapping[str, Any]) ->
         out["evidence"] = kept_evidence
         if len(entries) < total:
             out["entries_omitted"] = total - len(entries)
+    elif isinstance(evidence, list) and isinstance(out["value"], dict):
+        out["evidence"] = _bound_evidence(evidence)  # a value made from two quotes (a period from its wording and its title)
     if payload_size({k: v for k, v in out.items() if k != "evidence"}) > MAX_SUGGESTION_BYTES:
         raise MethodologyInvalid(f"The suggestion for '{field['label']}' is too long to record.")
     return out
