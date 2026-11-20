@@ -28,6 +28,7 @@ superseded decisions) and passes them in.
 from __future__ import annotations
 
 import re
+from backend.app.services.facility_identifiers import normalise, same_number
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -168,7 +169,7 @@ def _repeat_in_file(first: EvidenceRecord, other: EvidenceRecord) -> bool:
     meter, or (when a meter is missing) on different pages. Two meters of one bill share its account, period and
     maybe a reading; that is not a repeat."""
 
-    if not first.account or first.account != other.account:
+    if not first.account or not same_number(first.account, other.account):
         return False
     if first.meter and other.meter:
         return first.meter == other.meter
@@ -224,7 +225,12 @@ def _duplicates(records: list[EvidenceRecord]) -> tuple[list[dict[str, Any]], se
         a, b = matches[0]
         pairs.add(frozenset((first, second)))
         whole = len(matches) == per_document[first] == per_document[second]
-        accounts = {r.account for pair in matches for r in pair if r.account}
+        shown: dict[str, str] = {}  # one entry per account, however it is written (spaces, dashes, case)
+        for pair in matches:
+            for r in pair:
+                if r.account:
+                    shown.setdefault(normalise(r.account), r.account)
+        accounts = set(shown.values())
         if whole and a.file_name != b.file_name:
             trigger = "same_document_reuploaded_with_different_file_name"
             message = (f"{a.file_name} and {b.file_name} hold the same {len(matches)} "
@@ -261,7 +267,7 @@ def _revisions(records: list[EvidenceRecord]) -> tuple[list[dict[str, Any]], set
             if (earlier.document_id == revised.document_id or earlier.revises or earlier.category != revised.category
                     or (earlier.item or "").lower() != (revised.item or "").lower()):
                 continue
-            same_account = bool(earlier.account and revised.account and earlier.account == revised.account)
+            same_account = bool(earlier.account and revised.account and same_number(earlier.account, revised.account))
             same_site = earlier.facility.lower() == revised.facility.lower()
             other = _span(earlier)
             if not (same_account or (same_site and not (earlier.account and revised.account))) or other is None:
@@ -325,7 +331,7 @@ def _overlaps(groups: dict[tuple[str, str, str | None], list[EvidenceRecord]],
                     trigger, severity = "overlapping_period", "warning"
                     message = (f"{a.label} and {b.label} both cover {start} to {end} ({days} days) for "
                                f"{_source_name(a)}: those days may be counted twice.")
-                elif a.account and b.account and a.account != b.account:
+                elif a.account and b.account and not same_number(a.account, b.account):
                     trigger, severity = "overlapping_period", "review"
                     message = (f"{a.label} and {b.label} both cover {start} to {end} ({days} days) for "
                                f"{_source_name(a)} on different accounts ({a.account}, {b.account}). Confirm they "

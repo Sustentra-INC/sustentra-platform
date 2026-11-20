@@ -381,6 +381,9 @@ class ElectricityExtractor(StationaryCombustionExtractor):
                     located = document_values.get(field_id)
                     if field_id == "service_address" and record.extra.get("address") is not None:
                         located = record.extra["address"]  # a meter's own row: each meter keeps its address
+                    if (field_id == "facility_name" and located is not None and located.last_resort
+                            and record.extra.get("address") is not None):
+                        located = None  # the customer is not a site: a meter with its own address is placed by it
                     record_candidates.append(self._candidate_for_text(
                         target, located, document_id, evidence_id, record_key, record_index, parser_output,
                         field_id))
