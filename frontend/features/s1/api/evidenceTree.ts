@@ -127,6 +127,8 @@ export interface LineSchedule {
   line: CalculationLine;
   /** True when the recalculation has this line. Absent on an older server (then treated as true). */
   calculated?: boolean;
+  /** Why nothing is calculated: Methodology review chose a GWP set the data cannot calculate. */
+  calculation_blocked?: string | null;
   reporting_period: { start: string | null; end: string | null };
   coverage: { month: string; status: CoverageStatus; quantity: number | null; unit: string | null; document_ids: string[]; flags?: string[]; waiting_on?: string[] }[];
   identifiers: { label: string; value: string; documents_with: number; documents_total: number }[];

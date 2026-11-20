@@ -45,6 +45,11 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
         return None
 
     monkeypatch.setattr(recalculation_api, "write_audit_event", no_audit)
+
+    async def no_methodology_choice(db, engagement_id):  # noqa: ANN001, ANN202
+        return getattr(store, "gwp_choice", None) or recalculation_api.methodology_gwp.default_choice()
+
+    monkeypatch.setattr(recalculation_api.methodology_gwp, "load_choice", no_methodology_choice)
     app.dependency_overrides[get_db_session] = no_db
     yield store
     app.dependency_overrides.pop(get_db_session, None)
@@ -112,9 +117,10 @@ def test_reference_lists_the_input_choices(act_as) -> None:
 
 
 def test_engagement_settings_validate_recalculation_inputs() -> None:
-    EngagementUpdate(settings={"recalculation": {"gwp_set": "AR6", "grid_regions": {"Facility A": "NYUP"}}})
-    with pytest.raises(ValueError):
-        EngagementUpdate(settings={"recalculation": {"gwp_set": "AR3"}})
+    EngagementUpdate(settings={"recalculation": {"grid_regions": {"Facility A": "NYUP"}}})
+    for retired in ("AR6", "AR3"):  # the GWP set is chosen in Methodology review: PATCH no longer takes it
+        with pytest.raises(ValueError, match="Methodology review"):
+            EngagementUpdate(settings={"recalculation": {"gwp_set": retired}})
     EngagementUpdate(settings={"outOfScopeDataPoints": ["process_total"]})
     with pytest.raises(ValueError):
         EngagementUpdate(settings={"outOfScopeDataPoints": ["not_a_data_point"]})
@@ -177,3 +183,49 @@ def test_export_separates_documents_read_from_documents_fully_reviewed(act_as, w
     summary = dict(load_workbook(io.BytesIO(response.content))["Summary"].iter_rows(min_row=2, values_only=True))
     assert summary["Documents read"] == 2
     assert summary["Documents fully reviewed"] == 1
+
+
+def _choose(store: FakeStore, gwp_set: str, horizon: str) -> None:
+    from backend.app.services.methodology_gwp import choice_from_record
+
+    store.gwp_choice = choice_from_record(  # type: ignore[attr-defined]
+        {"decision": {"status": "accepted", "value": {"set": gwp_set, "horizon": horizon}}})
+
+
+def _workpaper_basis(content: bytes) -> str:
+    import io
+
+    from openpyxl import load_workbook
+
+    summary = dict(load_workbook(io.BytesIO(content))["Summary"].iter_rows(min_row=2, values_only=True))
+    return str(summary["GWP basis"])
+
+
+def test_results_and_workpaper_state_the_methodology_gwp_set(act_as, wired: FakeStore) -> None:
+    act_as("org_member", ORG_A)
+    with TestClient(app) as client:
+        default = client.get("/v1/engagements/ENG-1/recalculation").json()
+        assert default["gwp_set"] == "AR5"
+        assert default["gwp_label"] == "AR5 (default — not set in Methodology review)"
+        assert _workpaper_basis(client.get("/v1/engagements/ENG-1/export").content) == default["gwp_label"]
+
+        _choose(wired, "AR6", "100-year")  # the reviewer accepts AR6 in Methodology: the next read follows it
+        chosen = client.get("/v1/engagements/ENG-1/recalculation").json()
+        assert chosen["gwp_set"] == "AR6" and chosen["gwp_label"] == "AR6 · 100-year (Methodology review)"
+        assert chosen["gwp_blocked"] is None
+        assert chosen["rollup"]["gwp_set"] == "AR6"
+        assert _workpaper_basis(client.get("/v1/engagements/ENG-1/export").content) == chosen["gwp_label"]
+        location = chosen["categories"]["purchased_electricity_location_based"]["gwp"]
+        assert location["CH4"]["value"] == 27.0 and location["N2O"]["value"] == 273
+
+
+def test_an_unsupported_horizon_blocks_results_and_the_workpaper(act_as, wired: FakeStore) -> None:
+    _choose(wired, "AR5", "500-year")
+    act_as("org_member", ORG_A)
+    with TestClient(app) as client:
+        body = client.get("/v1/engagements/ENG-1/recalculation").json()
+        assert body["gwp_label"] == "AR5 500-year — not supported for calculation"
+        assert "not supported for calculation" in body["gwp_blocked"]
+        assert body["categories"]["purchased_electricity_location_based"] is None  # nothing calculated
+        export = client.get("/v1/engagements/ENG-1/export")
+    assert export.status_code == 409 and "not supported for calculation" in export.json()["detail"]

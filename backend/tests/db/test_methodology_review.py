@@ -369,14 +369,15 @@ def test_migration_0016_widens_the_kind_check_and_downgrade_restores_it() -> Non
 def test_the_reporting_period_takes_two_real_dates_and_refuses_the_rest_with_a_sentence() -> None:
     eid = create()["id"]
     good = act(eid, "reporting_period", "edit", {"value": {"start": "2025-01-01", "end": "2025-12-31"}})
-    assert good.status_code == 200 and good.json()["decision"]["value"] == {"start": "2025-01-01", "end": "2025-12-31"}
+    assert good.status_code == 200 and good.json()["decision"]["value"] == {"start": "2025-01-01", "end": "2025-12-31", "basis": "Calendar year"}
     for bad, words in (({"start": "2025-12-31", "end": "2025-01-01"}, "can't be before"),
                        ({"start": "2025-13-45", "end": "2025-12-31"}, "not a real date"),
                        ({"start": "2025-01-01"}, "both a start date and an end date"),
                        ("January 1 to December 31, 2025", "both a start date and an end date")):
         refused = act(eid, "reporting_period", "edit", {"value": bad})
         assert refused.status_code == 422 and words in refused.json()["detail"]
-    assert record(eid, "reporting_period")["decision"]["value"] == {"start": "2025-01-01", "end": "2025-12-31"}
+    assert record(eid, "reporting_period")["decision"]["value"] == {
+        "start": "2025-01-01", "end": "2025-12-31", "basis": "Calendar year"}
 
 
 def test_an_old_text_period_is_kept_shown_as_a_value_and_replaced_only_by_two_dates() -> None:
@@ -393,3 +394,64 @@ def test_an_old_text_period_is_kept_shown_as_a_value_and_replaced_only_by_two_da
     assert act(eid, "reporting_period", "edit", {"value": "2025"}).status_code == 422
     assert record(eid, "reporting_period")["decision"]["value"] == "Fiscal 2024 – Zürich 排放"
     assert act(eid, "reporting_period", "edit", {"value": {"start": "2024-01-01", "end": "2024-12-31"}}).status_code == 200
+
+
+def test_the_gwp_set_chosen_in_methodology_drives_the_recalculation_and_the_workpaper() -> None:
+    """Claire C-M6: editing the set recalculates on the next read; a pending field leaves the default."""
+
+    eid = create()["id"]
+    results = lambda: call("GET", f"{BASE}/{eid}/recalculation", "a_member").json()  # noqa: E731
+    basis = lambda: _workpaper_basis(call("GET", f"{BASE}/{eid}/export", "a_member").content)  # noqa: E731
+    default = "AR5 (default — not set in Methodology review)"
+    assert (results()["gwp_set"], results()["gwp_label"], basis()) == ("AR5", default, default)
+
+    suggest(eid, "gwp", {**SUGGESTION, "value": {"set": "AR6", "horizon": "100-year"}})
+    assert results()["gwp_label"] == default  # a suggestion is not a choice
+
+    assert act(eid, "gwp", "edit", {"value": {"set": "AR6", "horizon": "100-year"}}).status_code == 200
+    now = results()
+    assert now["gwp_set"] == "AR6" and now["gwp_label"] == "AR6 · 100-year (Methodology review)"
+    assert basis() == now["gwp_label"]
+
+    act(eid, "gwp", "edit", {"value": {"set": "AR5", "horizon": "500-year"}})
+    blocked = results()
+    assert blocked["gwp_label"] == "AR5 500-year — not supported for calculation" and blocked["gwp_blocked"]
+    assert call("GET", f"{BASE}/{eid}/export", "a_member").status_code == 409
+
+    assert act(eid, "gwp", "revert").status_code == 200
+    assert results()["gwp_label"] == default
+
+
+def test_several_gwp_rows_one_source_of_truth_and_the_retired_input_is_refused() -> None:
+    eid = create()["id"]
+    results = lambda: call("GET", f"{BASE}/{eid}/recalculation", "a_member").json()  # noqa: E731
+    value = lambda s: {"value": {"set": s, "horizon": "100-year"}}  # noqa: E731
+
+    # the report named AR6 first (the fixed field); the reviewer rejects it and accepts the AR5 row
+    suggest(eid, "gwp", {**SUGGESTION, "value": {"set": "AR6", "horizon": "100-year"}})
+    assert act(eid, "gwp", "reject", {"reason": "the report's default is AR5"}).status_code == 200
+    row = add_row(eid, "gwp").json()["field"]["field_id"]
+    assert act(eid, row, "edit", value("AR5")).status_code == 200
+    now = results()
+    assert now["gwp_set"] == "AR5" and now["gwp_source"] == "methodology" and now["gwp_row"] == row
+    assert "default" not in now["gwp_label"]
+
+    # a second confirmed, different set blocks: Results and the workpaper say so
+    assert act(eid, "gwp", "edit", value("AR6")).status_code == 200
+    blocked = results()
+    assert blocked["gwp_set"] is None
+    assert blocked["gwp_blocked"] == "Two GWP sets confirmed in Methodology review — keep one"
+    assert call("GET", f"{BASE}/{eid}/export", "a_member").status_code == 409
+
+    # the old input is gone: PATCH refuses it and points to Methodology review
+    refused = call("PATCH", f"{BASE}/{eid}", body={"settings": {"recalculation": {"gwp_set": "AR6"}}})
+    assert refused.status_code == 422 and "Methodology review" in refused.text
+
+
+def _workpaper_basis(content: bytes) -> str:
+    import io
+
+    from openpyxl import load_workbook
+
+    summary = dict(load_workbook(io.BytesIO(content))["Summary"].iter_rows(min_row=2, values_only=True))
+    return str(summary["GWP basis"])

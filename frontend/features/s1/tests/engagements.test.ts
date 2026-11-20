@@ -70,7 +70,8 @@ describe("engagement mapping (S1-BE-002)", () => {
     const recalculation = { gwp_set: "AR5", grid_regions: { "Kent Cannery": "NYUP" }, reported: { scope1_total: 12.5 } };
     const config = engagementFromBackend({ ...ROW, settings: { ...ROW.settings, recalculation } });
     const payload = engagementToBackend({ ...config, assuranceLevel: "Reasonable" });
-    expect(payload.settings.recalculation).toEqual(recalculation);
+    // the GWP set is chosen in Methodology review; the retired input is not sent back (the server refuses it)
+    expect(payload.settings.recalculation).toEqual({ grid_regions: { "Kent Cannery": "NYUP" }, reported: { scope1_total: 12.5 } });
     expect(payload.settings.assuranceLevel).toBe("Reasonable");
   });
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .document_shape import narrative_ghg_document_type, usage_rows
 from ..reference.vocabulary_loader import (
     VocabularyLibrary,
     VocabularyVariant,
@@ -52,6 +53,9 @@ GHG_ACTIVITY_RE = re.compile(
     r"|\d[\d,.]*\s*(?:gal(?:lons?)?|therms?|ccf|mcf|mmbtu|dth|litres?|liters?)\b"
     # an activity column even when the value and its unit are split (a header row "Fuel type | Gallons | Scope 1"):
     r"|\b(?:gallons?|litres?|liters?|therms?|ccf|mcf|kwh|mwh|mmbtu|dth|fuel type|odometer|run hours|meter reading)\b")
+# Fluorinated-gas inventory types match the word "inventory" alone; they are not bills, tickets or logs.
+FGAS_INVENTORY_TYPES = frozenset({"CT-S1-FGASINV", "CT-S1-EQUIPLEAK", "CT-S1-ELECSF6", "CT-S1-FGASPROC"})
+MAY_BE_REPORT = "may be a company GHG report \u2014 move it to Block 1 if so"
 WORKBOOK_TYPE = "CT-GHG-WORKBOOK"
 SUMMARY_PREFIX = "CT-GHG-"
 STATIONARY_TYPE = "CT-S1-FUELQTY"
@@ -129,7 +133,12 @@ class ClassificationService:
             search_text = self._build_search_text(payload)
             raw_file_name = payload.get("file_name")
             file_name = raw_file_name if isinstance(raw_file_name, str) else ""
-            scored_candidates = self._score_candidates(vocabulary_library, search_text, file_name)
+            parsed_output = payload.get("parser_output") if isinstance(payload.get("parser_output"), dict) else None
+            extracted = str(payload["extracted_text"]) if isinstance(payload.get("extracted_text"), str) else ""
+            narrative_type = narrative_ghg_document_type(parsed_output, extracted)
+            rows = usage_rows(parsed_output, extracted) if narrative_type else 0
+            scored_candidates = self._score_candidates(
+                vocabulary_library, search_text, file_name, narrative_type, rows)
 
             if not scored_candidates:
                 base_result["status"] = "unclassified"
@@ -174,6 +183,9 @@ class ClassificationService:
                     review_required = False
 
             primary = selected_candidates[0]
+            if MAY_BE_REPORT in str(primary.get("reason") or ""):
+                review_required = True
+                notes = f"The document {MAY_BE_REPORT}."
 
             base_result.update(
                 {
@@ -215,6 +227,8 @@ class ClassificationService:
         vocabulary_library: VocabularyLibrary,
         search_text: str,
         file_name: str = "",
+        narrative_type: str | None = None,
+        narrative_usage_rows: int = 0,
     ) -> list[dict[str, Any]]:
         candidates: list[dict[str, Any]] = []
 
@@ -250,6 +264,8 @@ class ClassificationService:
             candidates.append(candidate)
 
         candidates = self._apply_content_cues(vocabulary_library, search_text, candidates)
+        if narrative_type:
+            candidates = self._credit_narrative(vocabulary_library, narrative_type, candidates, narrative_usage_rows)
         candidates.sort(
             key=lambda item: (
                 -item["confidence"],
@@ -318,6 +334,52 @@ class ClassificationService:
                 candidate["review_required"] = True
             kept.append(candidate)
         return kept
+
+    def _credit_narrative(
+        self,
+        vocabulary_library: VocabularyLibrary,
+        type_id: str,
+        candidates: list[dict[str, Any]],
+        usage_row_count: int = 0,
+    ) -> list[dict[str, Any]]:
+        """A company's narrative GHG document (see ``narrative_ghg_document_type``) is that summary type, but only
+        when no evidence type meets its threshold. When one does, the evidence type wins and is flagged for review:
+        a missed summary is one move into Block 1; a bill typed as a summary loses its emissions."""
+
+        from .calculation_lines import SUMMARY_TYPES
+
+        evidence = [c for c in candidates
+                    if c["canonical_type_id"] not in SUMMARY_TYPES and c["canonical_type_id"] not in FGAS_INVENTORY_TYPES
+                    and c["threshold"] is not None
+                    # a document that states a usage quantity and has any evidence signal is not outranked
+                    and (c["confidence"] >= c["threshold"] or (usage_row_count > 0 and c["confidence"] > 0))]
+        if evidence:
+            for candidate in evidence:
+                candidate["review_required"] = True
+                if MAY_BE_REPORT not in candidate["reason"]:
+                    candidate["reason"] = f"{candidate['reason']}; {MAY_BE_REPORT}".strip("; ")
+            return candidates
+        for candidate in candidates:
+            if candidate["canonical_type_id"] in FGAS_INVENTORY_TYPES:
+                candidate["confidence"] = round(min(candidate["confidence"], candidate["threshold"] - 0.01), 4)
+                candidate["review_required"] = True
+        label = "cue: company GHG document (title, mostly prose, no bill or log rows)"
+        of_type = [c for c in candidates if c["canonical_type_id"] == type_id]
+        if of_type:
+            target = max(of_type, key=lambda c: c["confidence"])
+        else:
+            variants = [v for v in vocabulary_library.variants if v.canonical_type_id == type_id]
+            if not variants:
+                return candidates
+            target = {"canonical_type_id": type_id, "variant_id": variants[0].variant_id, "confidence": 0.0,
+                      "threshold": min(variants[0].confidence_threshold_default, self._threshold_cap),
+                      "matched_signals": self._empty_matched_signals(), "reason": "", "review_required": True}
+            candidates.append(target)
+        target["matched_signals"]["key_phrases"].append(label)
+        target["confidence"] = round(min(max(target["confidence"] + CUE_BONUS, target["threshold"] + 0.15), 1.0), 4)
+        target["reason"] = self._build_reason(target["matched_signals"])
+        target["review_required"] = target["confidence"] < target["threshold"]
+        return candidates
 
     def _build_search_text(self, payload: dict[str, Any]) -> str:
         text_parts: list[str] = []

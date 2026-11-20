@@ -373,7 +373,9 @@ def _fugitive_vector(result: calc.CategoryResult, ref: EmissionFactorReference, 
         else:
             hub = _hub_gwp_ar5(ref, line.key)
             used = result.gwp.get(line.key, {}).get("value")
-            entered = hub is None or used is None or abs(float(used) - hub) > 1e-9  # not the Hub AR5 GWP
+            # Not the Hub's own AR5 GWP: any other set has no component GWPs in the reference data, so a blend's
+            # split keeps the Hub's AR5 ratios and says so (flag), instead of passing as that set's weights.
+            entered = (result.gwp_set != "AR5" or hub is None or used is None or abs(float(used) - hub) > 1e-9)
             grouped = co2e
             if entered and hub is not None and groups and sum(g["mass_fraction"] for g in groups.values()) < 1 - 1e-9:
                 # An entered GWP (safety data sheet, AR6) for a blend with HCFCs or hydrocarbons may

@@ -110,8 +110,18 @@ function valueText(value: MethodologyValue | undefined): string {
     }
     return value.join(", ");
   }
-  if (typeof value === "object" && typeof value.start === "string" && typeof value.end === "string" && Object.keys(value).length === 2) {
-    return `${value.start} to ${value.end}`; // a date range
+  if (
+    typeof value === "object" &&
+    typeof value.start === "string" &&
+    typeof value.end === "string" &&
+    Object.keys(value).every((k) => ["start", "end", "start_implied", "end_implied", "implied_from", "basis"].includes(k))
+  ) {
+    // A date range: a date the report does not print reads "implied" (with how it was worked out when the year came
+    // from the title); the derived basis follows ("calendar year").
+    const how = typeof value.implied_from === "string" && value.implied_from ? ` (${value.implied_from})` : "";
+    const flag = (implied: unknown) => (implied === true ? ` implied${how}` : "");
+    const basis = typeof value.basis === "string" && value.basis ? `, ${value.basis.toLowerCase()}` : "";
+    return `${value.start}${flag(value.start_implied)} to ${value.end}${flag(value.end_implied)}${basis}`;
   }
   if (typeof value === "object" && typeof value.name === "string" && "operational_control" in value) {
     // An entity: each percentage is optional, so each is labelled (a bare "51" would not say which one it is).

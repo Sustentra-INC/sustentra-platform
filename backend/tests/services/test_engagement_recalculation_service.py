@@ -383,8 +383,9 @@ def test_comparison_uses_the_engagement_materiality_threshold() -> None:
 
 
 def test_settings_validation() -> None:
-    validate_recalculation_settings({"gwp_set": "AR6", "reported": {"scope1_total": 1.0}})
-    for bad in ({"gwp_set": "AR3"}, {"surprise": 1}, {"reported": {"not_a_point": 1}},
+    validate_recalculation_settings({"reported": {"scope1_total": 1.0},
+                                     "refrigerant_gwps": {"R-410A": {"value": 2088, "gwp_set": "AR4"}, "R-32": 677}})
+    for bad in ({"gwp_set": "AR5"}, {"refrigerant_gwps": {"R-32": {"value": 1}}}, {"surprise": 1}, {"reported": {"not_a_point": 1}},
                 {"certificates": [{"mwh": -1}]}, {"grid_regions": {"A": 1}}):
         with pytest.raises(ValueError):
             validate_recalculation_settings(bad)
@@ -508,7 +509,12 @@ def test_hcfcs_are_listed_not_counted_and_unknown_gases_ask_for_a_gwp() -> None:
     asks = [n for n in result["needs_input"] if n["kind"] == "refrigerant_gwp"]
     assert [a["key"] for a in asks] == ["R-454B"] and "safety data sheet" in asks[0]["message"]
 
-    entered = {"recalculation": {"refrigerant_gwps": {"R-454B": 466}}}
+    plain = {"recalculation": {"refrigerant_gwps": {"R-454B": 466}}}  # no set recorded: none is assumed
+    unsure = _service(store).recalculate(_engagement(**plain), _own)
+    ask = next(n for n in unsure["needs_input"] if n["kind"] == "refrigerant_gwp")
+    assert ask["message"].startswith("Confirm which GWP set this refrigerant value uses")
+    assert unsure["categories"]["fugitive_refrigerants"] is None
+    entered = {"recalculation": {"refrigerant_gwps": {"R-454B": {"value": 466, "gwp_set": "AR5"}}}}
     result = _service(store).recalculate(_engagement(**entered), _own)
     fugitive = result["categories"]["fugitive_refrigerants"]
     assert fugitive["total_co2e"] == pytest.approx(8 * LB * 466)
