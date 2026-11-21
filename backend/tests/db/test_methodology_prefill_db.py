@@ -825,3 +825,43 @@ def test_scopes_covered_is_stored_with_a_quote_per_scope_and_reads_not_detected_
     assert prefill(other).json()["suggested"] == 0
     assert record(other, "scopes:covered")["suggestion"] is None and record(other, "scopes:covered")["display_state"] == "not_detected"
     assert act(other, "scopes:covered", "edit", {"value": [{"option": "Not stated", "wording": ""}]}).status_code == 200
+
+
+# --- GWP: a set inside other factors is never the fixed field (the shape of the staging re-reads) ---------------
+
+YUM_LINE = ("GHG emissions are calculated using the 100-year GWPs from the IPCC Fifth Assessment Report with the exception of "
+            "when IEA Emission Factors are applied that use the IPCC Fourth Assessment Report.")
+BANK_LINES = ["Where a GWP is not embedded in an emission factor, GWPs come from the IPCC Sixth Assessment Report (AR6), 100-year horizon.",
+              "The DESNZ, CEDA and Ecoinvent factors embed GWPs from the IPCC Fifth Assessment Report (AR5)."]
+
+
+def test_a_reply_with_only_the_set_inside_iea_factors_still_stores_the_default_in_the_field(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc([(3, YUM_LINE)])])
+    # the exact reply shape of the staging re-read: only AR4, with its "inside IEA factors" note in the reply
+    claude.output = {**{k: [] for k in GOOD}, "gwp": [
+        {"set": "AR4", "horizon": "Not stated", "applies_to": "inside IEA factors", **cite("L1", "IEA Emission Factors are applied that use the IPCC Fourth Assessment Report")}]}
+    assert prefill(eid).status_code == 200
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}  # read from the same sentence
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR4"]
+    assert gwp_rows(eid)[0]["suggestion"]["value"]["applies_to"] == "inside IEA factors"
+
+
+def test_the_default_is_found_in_the_document_around_the_quote_and_never_comes_from_the_embedded_set(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc([(4, t) for t in BANK_LINES])])
+    claude.output = {**{k: [] for k in GOOD}, "gwp": [
+        {"set": "AR5", "horizon": "Not stated", "applies_to": "inside CEDA factors", **cite("L2", "factors embed GWPs from the IPCC Fifth Assessment Report (AR5)")}]}
+    assert prefill(eid).status_code == 200
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR6", "horizon": "100-year"}
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR5"]
+
+
+def test_with_no_default_to_quote_the_field_stays_empty_and_the_embedded_set_is_a_row(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc([(4, BANK_LINES[1])])])
+    claude.output = {**{k: [] for k in GOOD}, "gwp": [
+        {"set": "AR5", "horizon": "Not stated", "applies_to": "inside CEDA factors", **cite("L1", "factors embed GWPs from the IPCC Fifth Assessment Report (AR5)")}]}
+    assert prefill(eid).status_code == 200
+    assert record(eid, "gwp")["suggestion"] is None and states(eid)["gwp"] == "not_detected"
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR5"]

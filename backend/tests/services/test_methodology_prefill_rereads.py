@@ -188,3 +188,55 @@ def test_the_prompts_ask_for_the_rereads_items() -> None:
     assert "Scope 1 and Scope 2 are covered when the report gives their totals" in text
     assert "any hydrofluorocarbon" in text and 'joined by " ... "' in text
     assert "a publication, revision or copyright date on the cover does not matter" in text
+
+
+# --- the third re-read -------------------------------------------------------------------------------------------
+
+def test_a_gas_quote_that_starts_in_the_middle_of_a_word_is_found_over_lines_and_footnotes() -> None:
+    lines = [(3, "The plan covers gases: carbon"), (3, "dioxide (CO2)¹, methane (CH4)², nitrous oxide (N2O) and nitrogen trifluoride (NF3).")]
+    for quote in ("ioxide (CO2), methane (CH4)", "dioxide (CO2), methane (CH4), nitrous oxide (N2O)"):
+        kept, dropped = check(answer(gases=[gas("gas:co2", "Included", quote, "L1")]), [doc(lines)])
+        assert not dropped and kept[0].suggestion["value"] == "Included", quote
+    kept, dropped = check(answer(gases=[gas("gas:co2", "Included", "ioxide (CO2), ethane (CH4)", "L1")]), [doc(lines)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}  # a word in the middle must still be exact
+
+
+def test_a_scope_2_category_of_either_method_offers_scope_2() -> None:
+    lines = [(2, "Purchased electricity: 120 MWh, location-based."), (2, "Purchased electricity: 80 MWh, market-based.")]
+    for field_id, line in (("category:location:electricity", "L1"), ("category:market:electricity", "L2")):
+        kept, dropped = check(answer(choices=[category(field_id, "Yes", "Purchased electricity: ", line)]), [doc(lines)])
+        scopes = next(k for k in kept if k.field_id == "scopes:covered")
+        assert [v["option"] for v in scopes.suggestion["value"]] == ["Scope 2"], field_id
+
+
+def test_a_negated_embedded_is_no_exception_cue() -> None:
+    lines = [(4, "Where a GWP is not embedded in an emission factor, GWPs come from the IPCC Sixth Assessment Report (AR6), 100-year horizon.")]
+    quote = "Where a GWP is not embedded in an emission factor, GWPs come from the IPCC Sixth Assessment Report (AR6), 100-year horizon"
+    kept, dropped = check(answer(gwp=[gwp_item("AR6", "100-year", quote, "L1")]), [doc(lines)])
+    assert not dropped and _sets(kept) == [("gwp", None, "AR6 100-year", "")]
+
+
+def test_a_twelve_month_period_ended_is_one_year() -> None:
+    lines = [(1, "Emissions for the twelve-month period ended December 31, 2024 are shown.")]
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "twelve-month period ended December 31, 2024", "L1", True)]), [doc(lines)])
+    assert not dropped and kept[0].suggestion["value"]["start_implied"] is True
+
+
+def test_the_probe_reads_a_pdf_and_names_the_rule_for_each_line(capsys: pytest.CaptureFixture[str]) -> None:
+    fitz = pytest.importorskip("fitz")
+    import tempfile
+    from pathlib import Path
+
+    from backend.scripts import probe_methodology_period as probe
+
+    pdf = fitz.open()
+    page = pdf.new_page()
+    for n, text in enumerate(["2024 Greenhouse Gas Inventory Management Plan", "Revision 2, March 2025",
+                              "Metrics for the year ended December 31, 2024 are shown."]):
+        page.insert_text((72, 72 + 24 * n), text)
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "statement.pdf"
+        pdf.save(str(path))
+        assert probe.main([str(path), "--year", "2024"]) == 0
+    out = capsys.readouterr().out
+    assert "year_wording=True" in out and "start_would_be=2024-01-01" in out and "title_year=2024" in out
