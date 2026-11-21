@@ -673,6 +673,16 @@ def _scope_groups(sentence: str) -> list[tuple[int, int, set[int]]]:
     return groups
 
 
+# "Scope 31": a footnote mark "1" stuck to "Scope 3" (scopes only go 1 to 3, so one more digit after the number is a mark), unless a word follows ("Scope 13 sites").
+_SCOPE_FOOTNOTE = re.compile(r"\b(scope\s*)([123])[1-9](?![0-9a-z])(?![.,]\d)(?!\s*[a-z])")
+
+
+def _unmark_scopes(text: str) -> str:
+    """The text with a footnote digit glued to a scope name dropped ("scope 31" -> "scope 3"); other numbers stay."""
+
+    return _SCOPE_FOOTNOTE.sub(lambda m: m[1] + m[2], text)
+
+
 def names_scope(quote: str, option: str) -> str:
     """How a quote names a scope ("Scope 1", "Scope 2", "Scope 3"): ``yes``, ``negated`` or ``no``. It reads
     "Scope 1", "Scopes 1 and 2", "scope one" and "Scopes 1 to 3". Sentences are read one by one. The scopes a
@@ -682,7 +692,7 @@ def names_scope(quote: str, option: str) -> str:
 
     wanted = _SCOPE_ID.get(option)
     negated = False
-    for sentence in _SENTENCES.split(match_text(quote)):  # a footnote mark stuck to "Scope 2" is not a digit
+    for sentence in _SENTENCES.split(_unmark_scopes(match_text(quote))):  # a footnote mark stuck to "Scope 2" is not a digit
         for start, end, numbers in _scope_groups(sentence):
             if wanted is None or wanted not in numbers:
                 continue
@@ -1533,6 +1543,17 @@ def _short_tail_line(item: _Cited, document: PrefillDocument) -> DocumentLine | 
     return line
 
 
+def _whole_line(item: _Cited, document: PrefillDocument) -> DocumentLine | None:
+    """The cited line when the quote is its entire text (compared as the locator does): a table heading cell such
+    as "Scope 1", too short to show anything on its own but exactly what the line says."""
+
+    wanted = norm(item.quote)
+    line = next((x for x in document.lines if x.alias == item.line.strip().upper()), None)
+    if line is None or not wanted or norm(line.text) != wanted:
+        return None
+    return line
+
+
 _CLAUSE_END = re.compile(r"[.;](?=\s|$)")
 _LIST_MARKS = frozenset({"\u2022", "o", "-", "\u2013", "\u25cf", "\u25e6", "\u25aa"})
 _CELL_LINES = 5  # lines a table cell cut into short lines may run over (``to_clause_end``)
@@ -1675,9 +1696,12 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         if document is None:
             drop("unknown_document", field, item)
             return None
-        if len(item.quote.strip()) < MIN_QUOTE:  # too short to show anything
-            drop("quote_not_on_document", field, item)
-            return None
+        if len(item.quote.strip()) < MIN_QUOTE:  # too short to show anything, unless it is the cited line itself
+            whole = None if pieces else _whole_line(item, document)
+            if whole is None:
+                drop("quote_not_on_document", field, item)
+                return None
+            return document, whole
         parts = [x.strip() for x in _ELLIPSIS.split(item.quote) if x.strip()] if pieces else []
         if len(parts) > 1:
             first: DocumentLine | None = None
@@ -1702,7 +1726,8 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
              ok: Callable[[str], bool] | None = None, pieces: bool = False, clause: bool = False) -> None:
         short_document = by_alias.get(item.document.strip().upper())
         short_line = (_short_tail_line(item, short_document)
-                      if short_document is not None and not pieces and len(item.quote.strip()) < MIN_QUOTE else None)
+                      if short_document is not None and not pieces and len(item.quote.strip()) < MIN_QUOTE
+                      and _whole_line(item, short_document) is None else None)
         found = (short_document, short_line) if short_document is not None and short_line is not None \
             else cited(item, field_id or row_group, pieces)
         if found is None:
@@ -1844,16 +1869,26 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         if option is None or option in rules.STANDALONE_OPTIONS:  # "None", "Not stated": nothing to quote
             drop("invalid_value", sel.field_id, sel)
             continue
-        found = cited(sel, sel.field_id)
+        sel_document = by_alias.get(sel.document.strip().upper())
+        tail_line = (_short_tail_line(sel, sel_document)
+                     if sel_document is not None and len(sel.quote.strip()) < MIN_QUOTE
+                     and _whole_line(sel, sel_document) is None else None)
+        found = (sel_document, tail_line) if sel_document is not None and tail_line is not None \
+            else cited(sel, sel.field_id)
         if found is None:
             continue
-        named = (names_scope(sel.quote, option) if sel.field_id == rules.SCOPES_ID
+        named = ("no" if tail_line is not None else
+                 names_scope(sel.quote, option) if sel.field_id == rules.SCOPES_ID
                  else names_option(sel.quote, _OPTION_TERMS.get(option, ())))
         def names(quote: str, o: str = option, f: str = sel.field_id) -> bool:
             return (names_scope(quote, o) if f == rules.SCOPES_ID else names_option(quote, _OPTION_TERMS.get(o, ()))) == "yes"
 
-        if named not in ("yes", "negated") and extended(sel, option, names, to_clause_end=True):
+        if named not in ("yes", "negated") and extended(sel, option, names, short_tail=tail_line is not None,
+                                                         to_clause_end=True):
             named = "yes"
+        if named != "yes" and tail_line is not None:  # a short tail of its line, and the read-on did not name it
+            drop("quote_not_on_document", sel.field_id, sel)
+            continue
         if named != "yes":  # the quote does not name the option, or says the company does not have it
             drop("negated" if named == "negated" else "value_not_in_quote", sel.field_id, sel, line=found[1].alias)
             continue
