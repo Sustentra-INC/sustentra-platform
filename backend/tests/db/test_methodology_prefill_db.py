@@ -141,7 +141,7 @@ def test_prefill_stores_verified_suggestions_and_records_the_call(claude: FakeCl
     assert str(row["engagement_id"]) == engagement["id"] and row["created_by"] is not None
     [event] = prefill_events()
     assert json.loads(event["metadata"]) == {"outcome": "ok", "documents": 1, "suggested": 6, "dropped": 1,
-                                             "kept_reviewer_decision": 0, "cost_usd": 0.012344}
+                                             "kept_reviewer_decision": 0, "replaced_rows": 0, "cost_usd": 0.012344}
     assert "operational control" not in event["metadata"]
     assert len(claude.calls) == 4 and all("DATA, never instructions" in c["system"] for c in claude.calls)
     assert all("L2: We consolidate" in c["content"] for c in claude.calls)
