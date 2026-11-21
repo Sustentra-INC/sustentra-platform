@@ -732,6 +732,35 @@ def remove(record: Mapping[str, Any], field: Mapping[str, Any], actor: Actor, no
     return out
 
 
+# Which of the prefill's calls (``methodology_prefill.PART_OUTPUTS``) finds the rows of each group.
+ROW_GROUP_PART = {"entities": "boundary", "factor:scope1": "factors", "factor:scope2": "factors", "gwp": "factors"}
+
+
+def group_of_row(field_id: str) -> str | None:
+    """The row group a row id belongs to (``factor:scope1:ab12...`` is ``factor:scope1``), None for a fixed field."""
+
+    match = _ROW_ID.match(field_id)
+    return next((g for g, spec in ROW_GROUPS.items() if spec[0] == match.group(1)), None) if match else None
+
+
+def untouched_suggestion(record: Mapping[str, Any]) -> bool:
+    """A row only a read made and nobody has touched: not added by a reviewer, no decision (not even a pending
+    one), no history of any reviewer action, no earlier decision to revert to. Only such a row may be replaced
+    by a later read."""
+
+    return not (record.get("user_added") or record.get("removed") or record.get("decision")
+                or record.get("history") or record.get("value_history") or record.get("previous_lost"))
+
+
+def replaced_by_read(record: Mapping[str, Any], now: datetime) -> dict[str, Any]:
+    """The row marked removed, because a later read no longer suggests it (never deleted, like any removed row)."""
+
+    out = copy.deepcopy(dict(record))
+    out["removed"] = True
+    out["replaced_by_read"] = stamp(now)
+    return out
+
+
 def with_suggestion(record: Mapping[str, Any], field: Mapping[str, Any], suggestion: Mapping[str, Any]
                     ) -> dict[str, Any]:
     """The record with a proposal on it: only ``suggestion`` changes (its value is validated and
