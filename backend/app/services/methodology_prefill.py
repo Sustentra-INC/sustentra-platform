@@ -1419,6 +1419,70 @@ class Dropped(Counter[str]):
         self.detail: list[dict[str, Any]] = []
 
 
+_NEGATING = _NEGATIONS | {"excluded", "excluding", "omitted", "except", "cannot", "n't"}
+_ABSENT_VALUES = frozenset({"Declared absent", "No", "Not detected"})
+_SENTENCE_END = re.compile(r"\.(?=\s)")
+_READ_ON_LINES = 2
+
+
+def _read_on(item: _Cited, value: Any, by_alias: Mapping[str, PrefillDocument]) -> list[str]:
+    """The readings of a quote that stops exactly at the end of a printed line, with the next line or two of the
+    same document added (to a sentence end where there is one), shortest first. Empty when the quote ends mid-line,
+    is several quotes, is not on its document, or the added words negate a value that is not an absence."""
+
+    document = by_alias.get(item.document.strip().upper())
+    if document is None or len(item.quote.strip()) < MIN_QUOTE:
+        return []
+    if len([x for x in _ELLIPSIS.split(item.quote) if x.strip()]) > 1:
+        return []
+    lines = document.lines
+    start = locate_quote_across_lines(item.quote, item.line, lines)
+    if isinstance(start, NotLocated):
+        return []
+    first = next((i for i, line in enumerate(lines) if line is start), None)
+    wanted = _words(item.quote)
+    if first is None or not wanted:
+        return []
+    hay: list[str] = []
+    first_words = 0
+    last: int | None = None
+    for j, line in enumerate(lines[first:first + _LOOKAHEAD]):
+        tokens = _words(line.text)
+        if j == 0:
+            first_words = len(tokens)
+        hay.extend(tokens)
+        if any(at < first_words and at + len(wanted) == len(hay) for at in _find(hay, wanted)):
+            last = first + j
+            break
+    if last is None:
+        return []
+    base = item.quote.rstrip()
+    if base.endswith((".", "!", "?")) or lines[last].text.rstrip().endswith((".", "!", "?")):
+        # a finished sentence: what comes next is another sentence's
+        return []
+    following: list[str] = []
+    for line in lines[last + 1:last + 1 + _READ_ON_LINES]:
+        text = line.text.strip()
+        if text:
+            following.append(text)
+            if text.endswith((".", "!", "?")):  # the sentence ends here: never read into the next one
+                break
+    base = item.quote.rstrip()
+    readings: list[str] = []
+    for count in range(1, len(following) + 1):
+        added = " ".join(following[:count])
+        cuts = [added[:m.end()] for m in _SENTENCE_END.finditer(added)]
+        readings.extend(f"{base} {piece}" for piece in [*cuts, added])
+    keep_absent = isinstance(value, str) and value in _ABSENT_VALUES
+    out: list[str] = []
+    for reading in dict.fromkeys(readings):
+        added_words = set(norm(reading[len(base):]).replace("n't", " n't ").split())
+        if not keep_absent and added_words & _NEGATING:
+            continue
+        out.append(reading)
+    return out
+
+
 def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model: str, request_id: str | None,
            now_iso: str) -> tuple[list[Verified], Dropped]:
     """The suggestions that hold up, and a count of the dropped ones by reason (``.detail`` lists them by field)."""
@@ -1439,6 +1503,20 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         for _ in range(count):
             dropped[reason] += 1
             dropped.detail.append({"field": field or "unknown", "reason": reason, "document": document, "line": line})
+
+    def extended(item: _Cited, value: Any, passes: Callable[[str], bool]) -> bool:
+        """A quote that stops exactly where a printed line ends often has its value on the next line. Read on, one
+        line and then a second, up to the end of the sentence that completes it, and keep the first reading that
+        passes the same check; the quote then holds the document's own words. A quote that ends mid-line, one that
+        needs more than two more lines, and one whose added words negate the value never extend."""
+
+        original = item.quote
+        for candidate in _read_on(item, value, by_alias):
+            item.quote = candidate
+            if passes(candidate):
+                return True
+        item.quote = original
+        return False
 
     def why_period(rule: str) -> None:
         """Log which rule rejected the period and note it on the entry just added (its ``reason`` stays the count's)."""
@@ -1484,11 +1562,14 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         if found is None:
             return
         document, line = found
-        quote_text = match_text(item.quote)
-        if (any(not value_in_quote(_fmt(n), item.quote) for n in numbers)
-                or any(not value_in_quote(w, item.quote) for w in words)
-                or (terms and not any(term in quote_text for term in terms))
-                or (ok is not None and not ok(item.quote))):
+        def holds(quote: str) -> bool:
+            quote_text = match_text(quote)
+            return not (any(not value_in_quote(_fmt(n), quote) for n in numbers)
+                        or any(not value_in_quote(w, quote) for w in words)
+                        or (terms and not any(term in quote_text for term in terms))
+                        or (ok is not None and not ok(quote)))
+
+        if not holds(item.quote) and not extended(item, value, holds):
             drop("value_not_in_quote", field_id or row_group, item, line=line.alias)
             return
         if field_id is not None:
@@ -1594,7 +1675,10 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         found = cited(estimate, "calculation:estimation")
         if found is None:
             continue
-        if not value_in_quote(estimate.source_type, estimate.quote):  # the entry is about what its quote names
+        def names_source(quote: str, source: str = estimate.source_type) -> bool:
+            return value_in_quote(source, quote)
+
+        if not names_source(estimate.quote) and not extended(estimate, estimate.source_type, names_source):  # the entry is about what its quote names
             drop("value_not_in_quote", "calculation:estimation", estimate, line=found[1].alias)
             continue
         entries.append((estimate, *found))
@@ -1614,6 +1698,11 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             continue
         named = (names_scope(sel.quote, option) if sel.field_id == rules.SCOPES_ID
                  else names_option(sel.quote, _OPTION_TERMS.get(option, ())))
+        def names(quote: str, o: str = option, f: str = sel.field_id) -> bool:
+            return (names_scope(quote, o) if f == rules.SCOPES_ID else names_option(quote, _OPTION_TERMS.get(o, ()))) == "yes"
+
+        if named not in ("yes", "negated") and extended(sel, option, names):
+            named = "yes"
         if named != "yes":  # the quote does not name the option, or says the company does not have it
             drop("negated" if named == "negated" else "value_not_in_quote", sel.field_id, sel, line=found[1].alias)
             continue
@@ -1649,11 +1738,11 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
                 keep(text, value, text.field_id, None, ok=holds_sentence)
             else:
                 keep(text, value, text.field_id, None, pieces=True)
-    for period in output.periods:
+    def read_period(period: PeriodSuggestion) -> None:
         value = checked("reporting_period", {"start": period.start, "end": period.end}, period)
         if value is None:
             why_period("invalid_value")
-            continue
+            return
         printed = dates_in(period.quote)
         start, end = rules.parse_iso_date(value["start"]), rules.parse_iso_date(value["end"])
         assert start is not None and end is not None  # validated above
@@ -1670,7 +1759,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             else:
                 drop("value_not_in_quote", "reporting_period", period)
                 why_period("end_printed_but_start_not_printed_or_not_a_year_wording")
-                continue
+                return
         elif not printed and words == rules.PERIOD_BASES[0] and (start, end) == (date(start.year, 1, 1), date(start.year, 12, 31)):
             # "calendar year" with no date printed: the year comes from the document's title, a second quote that
             # the reply names and that must be a clean first heading naming this year.
@@ -1678,20 +1767,20 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             if title is None:
                 if title_quote:
                     why_period("title_quote_not_on_its_line")  # counted by ``cited``
-                    continue
+                    return
                 drop("value_not_in_quote", "reporting_period", period)
                 why_period("calendar_year_but_no_title_quoted")
-                continue
+                return
             if title_year(title[0].lines, title[1]) != start.year:
                 drop("value_not_in_quote", "reporting_period", period)
                 why_period("title_is_not_a_clean_first_heading_naming_this_year")
-                continue
+                return
             title_found = title
             value.update({"start_implied": True, "end_implied": True, "implied_from": rules.IMPLIED_FROM_TITLE})
         else:
             drop("value_not_in_quote", "reporting_period", period)
             why_period("no_date_printed_and_not_a_calendar_year" if not printed else "end_date_not_printed")
-            continue
+            return
         before = len(kept)
         keep(period, value, "reporting_period", None)
         if title_found is not None and len(kept) > before:
@@ -1703,6 +1792,29 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
                  **({"reason": first["reason"]} if first.get("reason") else {})},
                 {"label": "Year from the title", "quote": title_quote, "document_id": document.document_id,
                  "file_name": document.file_name, "source_reference": line.source_reference}]
+    for period in output.periods:
+        # A quote cut at the end of a printed line may print the year on the next line: when the period is dropped
+        # for a value not in its quote, read on and try again; if nothing passes the first drop stands.
+        counts, detail = Counter(dropped), list(dropped.detail)
+        read_period(period)
+        failed = [d for d in dropped.detail[len(detail):] if d["reason"] == "value_not_in_quote"]
+        if not failed:
+            continue
+        first_try = (Counter(dropped), list(dropped.detail))
+        original = period.quote
+        for candidate in _read_on(period, None, by_alias):
+            dropped.clear()
+            dropped.update(counts)
+            dropped.detail[:] = detail
+            period.quote = candidate
+            read_period(period)
+            if not any(d["reason"] == "value_not_in_quote" for d in dropped.detail[len(detail):]):
+                break
+        else:
+            period.quote = original
+            dropped.clear()
+            dropped.update(first_try[0])
+            dropped.detail[:] = first_try[1]
     gwp_seen: set[tuple[str, str, str]] = set()
     sets_given = [*output.gwp, *_implied_defaults(output.gwp)]
     sets_given += _document_defaults(sets_given, by_alias)
