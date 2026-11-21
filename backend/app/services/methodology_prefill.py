@@ -1425,13 +1425,30 @@ _SENTENCE_END = re.compile(r"\.(?=\s)")
 _READ_ON_LINES = 2
 
 
-def _read_on(item: _Cited, value: Any, by_alias: Mapping[str, PrefillDocument]) -> list[str]:
+def _short_tail_line(item: _Cited, document: PrefillDocument) -> DocumentLine | None:
+    """The cited line when a quote shorter than ``MIN_QUOTE`` is exactly the end of it: the same words as the
+    line's last ones (compared as the locator does, trailing space ignored) starting at a word boundary."""
+
+    wanted = norm(item.quote)
+    line = next((x for x in document.lines if x.alias == item.line.strip().upper()), None)
+    if line is None or not wanted:
+        return None
+    text = norm(line.text)
+    if not text.endswith(wanted):
+        return None
+    before = text[:len(text) - len(wanted)]
+    if before and (before[-1].isalnum() and wanted[0].isalnum()):
+        return None
+    return line
+
+
+def _read_on(item: _Cited, value: Any, by_alias: Mapping[str, PrefillDocument], short_tail: bool = False) -> list[str]:
     """The readings of a quote that stops exactly at the end of a printed line, with the next line or two of the
     same document added (to a sentence end where there is one), shortest first. Empty when the quote ends mid-line,
     is several quotes, is not on its document, or the added words negate a value that is not an absence."""
 
     document = by_alias.get(item.document.strip().upper())
-    if document is None or len(item.quote.strip()) < MIN_QUOTE:
+    if document is None or (len(item.quote.strip()) < MIN_QUOTE and not short_tail):
         return []
     if len([x for x in _ELLIPSIS.split(item.quote) if x.strip()]) > 1:
         return []
@@ -1504,14 +1521,14 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             dropped[reason] += 1
             dropped.detail.append({"field": field or "unknown", "reason": reason, "document": document, "line": line})
 
-    def extended(item: _Cited, value: Any, passes: Callable[[str], bool]) -> bool:
+    def extended(item: _Cited, value: Any, passes: Callable[[str], bool], short_tail: bool = False) -> bool:
         """A quote that stops exactly where a printed line ends often has its value on the next line. Read on, one
         line and then a second, up to the end of the sentence that completes it, and keep the first reading that
         passes the same check; the quote then holds the document's own words. A quote that ends mid-line, one that
         needs more than two more lines, and one whose added words negate the value never extend."""
 
         original = item.quote
-        for candidate in _read_on(item, value, by_alias):
+        for candidate in _read_on(item, value, by_alias, short_tail):
             item.quote = candidate
             if passes(candidate):
                 return True
@@ -1558,7 +1575,11 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     def keep(item: _Cited, value: Any, field_id: str | None, row_group: str | None,
              numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = (),
              ok: Callable[[str], bool] | None = None, pieces: bool = False) -> None:
-        found = cited(item, field_id or row_group, pieces)
+        short_document = by_alias.get(item.document.strip().upper())
+        short_line = (_short_tail_line(item, short_document)
+                      if short_document is not None and not pieces and len(item.quote.strip()) < MIN_QUOTE else None)
+        found = (short_document, short_line) if short_document is not None and short_line is not None \
+            else cited(item, field_id or row_group, pieces)
         if found is None:
             return
         document, line = found
@@ -1569,7 +1590,12 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
                         or (terms and not any(term in quote_text for term in terms))
                         or (ok is not None and not ok(quote)))
 
-        if not holds(item.quote) and not extended(item, value, holds):
+        if short_line is not None:
+            # A one-word quote at the very end of its line is accepted only once the line after it carries the value.
+            if not extended(item, value, holds, short_tail=True):
+                drop("quote_not_on_document", field_id or row_group, item)
+                return
+        elif not holds(item.quote) and not extended(item, value, holds):
             drop("value_not_in_quote", field_id or row_group, item, line=line.alias)
             return
         if field_id is not None:
