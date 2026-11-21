@@ -1420,6 +1420,37 @@ def _why_period(reason: str) -> None:
     logger.info("methodology prefill: reporting period not kept (%s)", reason)
 
 
+_ABOUT_EMISSIONS = re.compile(r"emission|inventory|calculat|report|\bghg\b")
+_A_TARGET = re.compile(r"target|goal|commit|neutral|net[ -]zero|\bby\s+20\d\d|reduc|pledge|\bwill\b")
+_ENDS_SENTENCE = (".", "!", "?")
+RULES_PERIOD_REASON = ("The document says calendar year and its title names {year}; read by Sustentra's rules, "
+                       "not the AI.")
+
+
+def calendar_year_sentences(lines: Sequence[DocumentLine]) -> list[tuple[DocumentLine, str]]:
+    """The sentences of a document that say "calendar year" while describing how emissions or the inventory are
+    calculated or reported, each as (its first printed line, the line and its continuation up to the sentence end).
+    A target or commitment sentence ("will maintain ... each calendar year, beginning in 2024") is never one."""
+
+    found: list[tuple[DocumentLine, str]] = []
+    for index, line in enumerate(lines):
+        if not _CALENDAR_WORDS.search(match_text(line.text)):
+            continue
+        parts = [line.text.strip()]
+        for follow in lines[index + 1:index + 1 + _READ_ON_LINES]:
+            if parts[-1].endswith(_ENDS_SENTENCE) or not follow.text.strip():
+                break
+            parts.append(follow.text.strip())
+        quote = " ".join(parts)
+        before = lines[index - 1].text.strip() if index and not lines[index - 1].text.rstrip().endswith(_ENDS_SENTENCE) else ""
+        sentence = match_text(f"{before} {quote}")
+        about = _CALENDAR_WORDS.sub(" ", sentence)  # "calendar reporting year" is not about reporting by itself
+        if _ABOUT_EMISSIONS.search(about) and not _A_TARGET.search(sentence):
+            found.append((line, quote))
+    return found
+
+
+
 class Dropped(Counter[str]):
     """The dropped answers counted by reason, with ``detail``: one entry per count saying which field it was for.
 
@@ -1935,6 +1966,31 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             dropped.clear()
             dropped.update(first_try[0])
             dropped.detail[:] = first_try[1]
+    if not output.periods and "reporting_period" not in seen:
+        # The AI gave no period at all. A document that says "calendar year" about its inventory and carries one
+        # clean title year gives that year through the same checks as an answer of the AI's; nothing is counted
+        # as dropped when it does not hold, because the AI never answered.
+        counts, detail = Counter(dropped), list(dropped.detail)
+        found_by_rules = False
+        for document in documents:
+            title = next((x for x in document.lines[:TITLE_LINES] if title_year(document.lines, x) is not None), None)
+            year = title_year(document.lines, title) if title is not None else None
+            if title is None or year is None:
+                continue
+            for line, quote in calendar_year_sentences(document.lines):
+                guess = PeriodSuggestion(document=document.alias, line=line.alias, quote=quote, reason=RULES_PERIOD_REASON.format(year=year),
+                                         start=f"{year}-01-01", end=f"{year}-12-31", title_line=title.alias, title_quote=title.text.strip())
+                before = len(kept)
+                read_period(guess)
+                if len(kept) > before:
+                    kept[-1].suggestion.update({"origin": "rules", "model": "rules"})
+                    found_by_rules = True
+                    break
+            if found_by_rules:
+                break
+        dropped.clear()
+        dropped.update(counts)
+        dropped.detail[:] = detail
     gwp_seen: set[tuple[str, str, str]] = set()
     sets_given = [*output.gwp, *_implied_defaults(output.gwp)]
     sets_given += _document_defaults(sets_given, by_alias)
