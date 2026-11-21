@@ -67,7 +67,7 @@ def test_a_period_the_ai_gave_and_lost_is_not_replaced() -> None:
 
 
 def test_a_sentence_that_says_beginning_in_a_year_about_the_data_still_counts() -> None:
-    lines = [*COVER, (9, "Location-based and market-based methods have been used to calculate calendar year office"),
+    lines = [*COVER, *[(2, f"Contents page {n}") for n in range(10)], (9, "Location-based and market-based methods have been used to calculate calendar year office"),
              (9, "emissions beginning in 2022.")]
     kept, dropped = check(answer(), [doc(lines)])
     assert not dropped and kept[0].suggestion["value"]["start"] == "2024-01-01"
