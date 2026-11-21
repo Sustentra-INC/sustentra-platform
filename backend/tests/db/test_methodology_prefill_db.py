@@ -962,7 +962,8 @@ def test_a_row_a_reviewer_accepted_edited_or_rejected_survives_a_read_that_does_
     read_factors(claude, monkeypatch, eid, "epa23")
     after = factor_rows(eid)
     assert set(after) == {"U.S. EPA GHG Emission Factors Hub | 2024", "EPA eGRID | 2023",
-                          "UK DESNZ conversion factors | 2021", "U.S. EPA GHG Emission Factors Hub | 2023"}
+                          "UK DESNZ conversion factors | 2021", "U.S. EPA GHG Emission Factors Hub | 2023",
+                          "IPCC Emission Factor Database | 2006"}
     # the row nobody touched stays (the read did not mention it); the three a reviewer decided are the same records
     assert "IPCC Emission Factor Database | 2006" in after
     assert last_event()["replaced_rows"] == 0
