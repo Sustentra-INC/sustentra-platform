@@ -2115,6 +2115,49 @@ def same_row_value(group: str, a: Any, b: Any) -> bool:
     return all(norm(str(a.get(k) or "")) == norm(str(b.get(k) or "")) for k in keys)
 
 
-__all__ = ["PartResult", "run_parts", "merge_parts", "PART_OUTPUTS", "PART_LABELS", "PART_PROMPTS", "PART_MAX_OUTPUT_TOKENS", "REQUEST_TIMEOUT_S", "FEATURE", "MAX_DOCUMENTS", "MAX_LINES", "MAX_CHARS", "MAX_OUTPUT_TOKENS", "NO_DOCUMENTS", "SYSTEM_PROMPT",
+_DB_WORDS = re.compile(r"[^a-z0-9]+")
+
+
+def _database_words(text: Any) -> list[str]:
+    """A database name as comparable words: case, punctuation, spacing, "the", "U.S."/"US" and "&"/"and" ignored."""
+
+    lowered = norm(str(text or "")).replace("&", " and ")
+    return [w for w in _DB_WORDS.sub(" ", lowered.replace("u.s.", "us")).split() if w not in ("the", "and")]
+
+
+def _contains_words(long: list[str], short: list[str]) -> bool:
+    return any(long[i:i + len(short)] == short for i in range(len(long) - len(short) + 1))
+
+
+def has_identity(group: str) -> bool:
+    """Whether ``same_source`` can tell the rows of this group apart."""
+
+    return group in ("entities", "gwp") or group.startswith("factor:")
+
+
+def same_source(group: str, a: Any, b: Any) -> bool:
+    """Whether two row values are the same thing whatever the edition wording, so a re-read replaces the earlier
+    one: a factor source is the same database (one name may contain the other, when it has two words or more:
+    "EPA GHG Emission Factors Hub" and "U.S. EPA GHG Emission Factors Hub"); a GWP row the same set and use; an
+    entity the same name. A group with no such identity is never "the same" here."""
+
+    if not isinstance(a, dict) or not isinstance(b, dict):
+        return False
+    if group == "entities":
+        return bool(norm(str(a.get("name") or ""))) and norm(str(a.get("name") or "")) == norm(str(b.get("name") or ""))
+    if group == "gwp":
+        return all(norm(str(a.get(k) or "")) == norm(str(b.get(k) or "")) for k in ("set", "applies_to")) and bool(norm(str(a.get("set") or "")))
+    if group.startswith("factor:"):
+        x, y = _database_words(a.get("database")), _database_words(b.get("database"))
+        if not x or not y:
+            return False
+        if x == y:
+            return True
+        short, long = sorted((x, y), key=len)
+        return len(short) >= 2 and _contains_words(long, short)
+    return False
+
+
+__all__ = ["PartResult", "same_source", "has_identity", "run_parts", "merge_parts", "PART_OUTPUTS", "PART_LABELS", "PART_PROMPTS", "PART_MAX_OUTPUT_TOKENS", "REQUEST_TIMEOUT_S", "FEATURE", "MAX_DOCUMENTS", "MAX_LINES", "MAX_CHARS", "MAX_OUTPUT_TOKENS", "NO_DOCUMENTS", "SYSTEM_PROMPT",
            "PrefillOutput", "PrefillDocument", "Verified", "candidate_documents", "read_documents",
            "render_documents", "verify", "same_row_value"]

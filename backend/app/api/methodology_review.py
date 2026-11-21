@@ -600,11 +600,16 @@ _UNSAFE_KEY = re.compile(r"[^A-Za-z0-9:._-]")
 
 
 async def _replace_stale_rows(db: AsyncSession, engagement: dict[str, Any], user: _HasId,
-                              wanted: list[tuple[str, Any]], read_groups: frozenset[str]) -> set[str]:
-    """Mark removed every row an earlier read suggested that this read did not suggest again, so repeated reads
-    do not pile up rows. Only rows in a group whose section ran, that no reviewer touched (see
-    ``untouched_suggestion``) and that have no client follow-up request. ``wanted`` is (group, value) for each
-    row this read suggests; a row that matches one stays as it is. Returns the ids marked."""
+                              wanted: list[tuple[str, Any]], read_groups: frozenset[str],
+                              read_documents: frozenset[str] | None = None) -> set[str]:
+    """Mark removed a row an earlier read suggested, when this read supersedes it: only rows in a group whose
+    section ran, that no reviewer touched (see ``untouched_suggestion``) and that have no client follow-up
+    request. ``wanted`` is (group, value) for each row this read suggests. A stale row is superseded when this read
+    suggested the same thing in its group (``prefill.same_source``: the same database, set or entity, whatever
+    the edition wording) or when the document it was read from is no longer among ``read_documents``. A row this
+    read simply did not mention stays (a read varies in what it finds; a weaker one must not hide a source an earlier
+    one found), and so does every row of a group this read returned nothing for. A group with no identity to
+    compare falls back to removing all that this read does not suggest again. Returns the ids marked."""
 
     if not read_groups:
         return set()
@@ -618,9 +623,18 @@ async def _replace_stale_rows(db: AsyncSession, engagement: dict[str, Any], user
         base = _ASK_PREFIX + _UNSAFE_KEY.sub("_", row["item_key"])[:150]
         if any(a == base or a.startswith(base + "-") for a in asks):
             continue  # a request was raised on it: a reviewer touched it
-        mine = (row["payload"].get("suggestion") or {}).get("value")
-        if any(g == group and prefill.same_row_value(group, mine, value) for g, value in wanted):
-            continue
+        suggestion = row["payload"].get("suggestion") or {}
+        mine = suggestion.get("value")
+        values = [value for g, value in wanted if g == group]
+        if any(prefill.same_row_value(group, mine, value) for value in values):
+            continue  # suggested again as it was
+        document_id = str(suggestion.get("document_id") or "")
+        gone = read_documents is not None and bool(document_id) and document_id not in read_documents
+        if not gone:
+            if not values:
+                continue  # this read found nothing in the group: keep what an earlier one found
+            if prefill.has_identity(group) and not any(prefill.same_source(group, mine, value) for value in values):
+                continue  # a source this read did not mention
         candidates.append(row["item_key"])
     if not candidates:
         return set()
@@ -636,10 +650,12 @@ async def _replace_stale_rows(db: AsyncSession, engagement: dict[str, Any], user
 
 async def _store(db: AsyncSession, engagement: dict[str, Any], user: _HasId,
                  verified: list[prefill.Verified], dropped: Counter[str],
-                 read_groups: frozenset[str] = frozenset()) -> tuple[int, int, int]:
+                 read_groups: frozenset[str] = frozenset(),
+                 read_documents: frozenset[str] | None = None) -> tuple[int, int, int]:
     """Put each verified suggestion on its field's record: (suggested, kept_reviewer_decision, replaced_rows).
-    ``read_groups`` are the row groups whose section was read: rows an earlier read suggested in them, that
-    this read does not suggest again and no reviewer touched, are marked removed (``replaced_rows`` counts them).
+    ``read_groups`` are the row groups whose section was read: rows an earlier read suggested in them that no
+    reviewer touched and this read supersedes (the same source suggested again, or its document no longer read)
+    are marked removed (``replaced_rows`` counts them); see ``_replace_stale_rows``.
     A field the reviewer has decided is left alone. An entity or factor source already on the
     page (suggested or decided), or already added by an earlier suggestion of this same reply, is
     not added again; a new one becomes a new row. A value the store refuses (too long for the
@@ -713,7 +729,8 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: _HasId,
         suggested += 1 if saved is not None else 0
     row_items = [*(v for v in verified if v.row_group and v.row_group != "gwp"), *moved]
     replaced = await _replace_stale_rows(
-        db, engagement, user, [(str(i.row_group), i.suggestion["value"]) for i in row_items], read_groups)
+        db, engagement, user, [(str(i.row_group), i.suggestion["value"]) for i in row_items], read_groups,
+        read_documents)
     existing = [row for row in await workpaper_item_service.list_items(db, engagement["id"], KIND)
                 if rules.row_field(row["item_key"]) is not None and not row["payload"].get("removed")]
     for item in row_items:
@@ -954,7 +971,8 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
         async with _short_transaction(sessions, org_id) as work:
             failed_parts = {p for p, label in prefill.PART_LABELS.items() if label in {f["section"] for f in failed_sections}}
             read_groups = frozenset(g for g, part in rules.ROW_GROUP_PART.items() if part not in failed_parts)
-            suggested, kept, replaced = await _store(work, engagement, user, verified, dropped, read_groups)
+            suggested, kept, replaced = await _store(
+                work, engagement, user, verified, dropped, read_groups, frozenset(d.document_id for d in documents))
             await _update_meta(work, engagement, user, prefill_ran_at=stamp(_now()),
                                covered=[f["field_id"] for f in rules.CATALOG],
                                auto_read={"state": "done", "file_names": [], "reason": None, "at": stamp(_now())})
