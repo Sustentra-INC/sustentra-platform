@@ -903,6 +903,9 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
     try:
         verified, dropped = prefill.verify(reply.output, documents, model=reply.model, request_id=reply.request_id,
                                            now_iso=stamp(_now()))
+        for entry in dropped.detail:  # codes and locations only, never the document's words
+            logger.info("methodology prefill: set aside field=%s reason=%s line=%s", entry["field"], entry["reason"],
+                        entry["line"])
         async with _short_transaction(sessions, org_id) as work:
             suggested, kept = await _store(work, engagement, user, verified, dropped)
             await _update_meta(work, engagement, user, prefill_ran_at=stamp(_now()),
@@ -922,7 +925,8 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
             logger.error("methodology prefill: audit not written (%s)", type(audit_exc).__name__)
         return JSONResponse(status_code=502, content={"detail": _NOT_SAVED})
     read = [{"document_id": d.document_id, "file_name": d.file_name, "truncated": d.truncated} for d in documents]
-    return {"suggested": suggested, "dropped": dict(dropped), "kept_reviewer_decision": kept,
+    return {"suggested": suggested, "dropped": dict(dropped), "dropped_detail": dropped.detail,
+            "kept_reviewer_decision": kept,
             "documents_read": read, "cost_usd": cost_usd, "model": reply.model, "failed_sections": failed_sections}
 
 

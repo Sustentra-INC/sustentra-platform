@@ -1409,26 +1409,54 @@ def _why_period(reason: str) -> None:
     logger.info("methodology prefill: reporting period not kept (%s)", reason)
 
 
+class Dropped(Counter[str]):
+    """The dropped answers counted by reason, with ``detail``: one entry per count saying which field it was for.
+
+    An entry holds codes and locations only (field, reason, document, line), never a quote or a document's words."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.detail: list[dict[str, Any]] = []
+
+
 def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model: str, request_id: str | None,
-           now_iso: str) -> tuple[list[Verified], Counter[str]]:
-    """The suggestions that hold up, and a count of the dropped ones by reason."""
+           now_iso: str) -> tuple[list[Verified], Dropped]:
+    """The suggestions that hold up, and a count of the dropped ones by reason (``.detail`` lists them by field)."""
 
     kept: list[Verified] = []
-    dropped: Counter[str] = Counter()
+    dropped = Dropped()
     by_alias = {d.alias: d for d in documents}
     seen: set[str] = set()
 
-    def cited(item: _Cited, pieces: bool = False) -> tuple[PrefillDocument, DocumentLine] | None:
+    def drop(reason: str, field: str | None, item: _Cited | None = None, *, document: str | None = None,
+             line: str | None = None, count: int = 1) -> None:
+        """Count a dropped answer and say which field it was for: the one place ``dropped`` is added to."""
+
+        if item is not None:
+            known = by_alias.get(item.document.strip().upper())
+            document = document or (known.file_name if known else item.document.strip()[:40] or None)
+            line = line or item.line.strip()[:20] or None
+        for _ in range(count):
+            dropped[reason] += 1
+            dropped.detail.append({"field": field or "unknown", "reason": reason, "document": document, "line": line})
+
+    def why_period(rule: str) -> None:
+        """Log which rule rejected the period and note it on the entry just added (its ``reason`` stays the count's)."""
+
+        _why_period(rule)
+        dropped.detail[-1]["rule"] = rule
+
+    def cited(item: _Cited, field: str | None, pieces: bool = False) -> tuple[PrefillDocument, DocumentLine] | None:
         """The document and line the quote was read from, or None (counted in ``dropped``). With ``pieces`` (a text
         built from several formulas or sentences) the quote may be several quotes joined by "..."; each must be on
         the document, and the first one's line is the location."""
 
         document = by_alias.get(item.document.strip().upper())
         if document is None:
-            dropped["unknown_document"] += 1
+            drop("unknown_document", field, item)
             return None
         if len(item.quote.strip()) < MIN_QUOTE:  # too short to show anything
-            dropped["quote_not_on_document"] += 1
+            drop("quote_not_on_document", field, item)
             return None
         parts = [x.strip() for x in _ELLIPSIS.split(item.quote) if x.strip()] if pieces else []
         if len(parts) > 1:
@@ -1437,14 +1465,14 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
                 found_part = (locate_quote_across_lines(part, item.line if index == 0 else None, document.lines)
                               if len(part) >= MIN_QUOTE else NotLocated("quote_not_on_document"))
                 if isinstance(found_part, NotLocated):
-                    dropped[found_part.reason] += 1
+                    drop(found_part.reason, field, item)
                     return None
                 first = first or found_part
             assert first is not None
             return document, first
         line = locate_quote_across_lines(item.quote, item.line, document.lines)
         if isinstance(line, NotLocated):
-            dropped[line.reason] += 1
+            drop(line.reason, field, item)
             return None
         item.quote = whole_words(item.quote, line.text)  # a word cut in half by the reply is completed from the line
         return document, line
@@ -1452,7 +1480,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     def keep(item: _Cited, value: Any, field_id: str | None, row_group: str | None,
              numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = (),
              ok: Callable[[str], bool] | None = None, pieces: bool = False) -> None:
-        found = cited(item, pieces)
+        found = cited(item, field_id or row_group, pieces)
         if found is None:
             return
         document, line = found
@@ -1461,7 +1489,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
                 or any(not value_in_quote(w, item.quote) for w in words)
                 or (terms and not any(term in quote_text for term in terms))
                 or (ok is not None and not ok(item.quote))):
-            dropped["value_not_in_quote"] += 1
+            drop("value_not_in_quote", field_id or row_group, item, line=line.alias)
             return
         if field_id is not None:
             if field_id in seen:  # a second answer for one field: the first stands, not counted
@@ -1487,12 +1515,13 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         for part, (label, quote, document, line, why) in zip(parts, quoted, strict=True):
             key = " ".join(label.casefold().split())
             if not key or key in names:  # a blank or repeated source type: the first stands
-                dropped["empty_value" if not key else "duplicate_entry"] += 1
+                drop("empty_value" if not key else "duplicate_entry", field_id, document=document.file_name,
+                     line=line.alias)
                 continue
             if checked(field_id, [part]) is None:  # this entry alone is invalid: the others stand
                 continue
             if len(good) >= limit:
-                dropped["too_many_entries"] += 1
+                drop("too_many_entries", field_id, document=document.file_name, line=line.alias)
                 continue
             names.add(key)
             good.append(part)
@@ -1510,27 +1539,27 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             "origin": "ai", "model": model, "request_id": request_id, "suggested_at": now_iso,
             **({"reason": first["reason"]} if first.get("reason") else {})}))
 
-    def checked(field_id: str, value: Any) -> Any | None:
+    def checked(field_id: str, value: Any, item: _Cited | None = None) -> Any | None:
         definition = rules.catalog_field(field_id)
         try:
             if definition is None:
-                dropped["unknown_field"] += 1
+                drop("unknown_field", field_id, item)
                 return None
             return rules.validate_value(definition, value)
         except rules.MethodologyInvalid:
-            dropped["invalid_value"] += 1
+            drop("invalid_value", field_id, item)
             return None
 
     category_hits: list[ChoiceSuggestion] = []
     for choice in output.choices:
-        value = checked(choice.field_id, choice.value)
+        value = checked(choice.field_id, choice.value, choice)
         if value == "Yes" and category_terms(choice.field_id):
             # A Yes needs no term of its own (the quote may be the category's own answer, "Scope 2 ... RECs"), but a
             # quote that names the category by its name or a reviewed synonym and leaves it out never gives a Yes.
-            if cited(choice) is None:
+            if cited(choice, choice.field_id) is None:
                 continue
             if names_option(choice.quote, category_terms(choice.field_id), _EXCLUDING, _INCLUDING) == "negated":
-                dropped["negated"] += 1
+                drop("negated", choice.field_id, choice)
                 continue
         if value is not None:
             before_kept = len(kept)
@@ -1557,16 +1586,16 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     scope_evidence: dict[str, tuple[ChoiceSuggestion, PrefillDocument, DocumentLine]] = {}
     for hit in category_hits:
         scope = scope_of.get(hit.field_id.split(":")[1])
-        found_hit = cited(hit) if scope else None
+        found_hit = cited(hit, hit.field_id) if scope else None
         if scope and found_hit is not None and scope not in scope_evidence:
             scope_evidence[scope] = (hit, *found_hit)
     entries: list[tuple[EstimationSuggestion, PrefillDocument, DocumentLine]] = []
     for estimate in output.estimations:
-        found = cited(estimate)
+        found = cited(estimate, "calculation:estimation")
         if found is None:
             continue
         if not value_in_quote(estimate.source_type, estimate.quote):  # the entry is about what its quote names
-            dropped["value_not_in_quote"] += 1
+            drop("value_not_in_quote", "calculation:estimation", estimate, line=found[1].alias)
             continue
         entries.append((estimate, *found))
     if entries:
@@ -1578,15 +1607,15 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         by_key = {norm(a): a for a in (definition or {}).get("allowed", [])}
         option = by_key.get(norm(sel.option))
         if option is None or option in rules.STANDALONE_OPTIONS:  # "None", "Not stated": nothing to quote
-            dropped["invalid_value"] += 1
+            drop("invalid_value", sel.field_id, sel)
             continue
-        found = cited(sel)
+        found = cited(sel, sel.field_id)
         if found is None:
             continue
         named = (names_scope(sel.quote, option) if sel.field_id == rules.SCOPES_ID
                  else names_option(sel.quote, _OPTION_TERMS.get(option, ())))
         if named != "yes":  # the quote does not name the option, or says the company does not have it
-            dropped["negated" if named == "negated" else "value_not_in_quote"] += 1
+            drop("negated" if named == "negated" else "value_not_in_quote", sel.field_id, sel, line=found[1].alias)
             continue
         wording = sel.wording.strip() if sel.wording.strip() and norm(sel.wording) in norm(sel.quote) else ""
         picked.setdefault(sel.field_id, []).append(({"option": option, "wording": wording}, (option, sel.quote, *found, sel.reason)))
@@ -1601,18 +1630,18 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     for field_id, items in picked.items():
         keep_list(field_id, [part for part, _ in items], [q for _, q in items], limit=len((rules.catalog_field(field_id) or {}).get("allowed", [])) + rules.MAX_FREE_OPTIONS)
     for gas in output.gases:
-        value = checked(gas.field_id, gas.value)
+        value = checked(gas.field_id, gas.value, gas)
         if value is not None:
             keep(gas, value, gas.field_id, None, terms=_GAS_TERMS[gas.field_id])
     for text in output.texts:
         if not norm(text.value):
-            dropped["empty_value"] += 1
+            drop("empty_value", text.field_id, text)
             continue
-        value = checked(text.field_id, text.value)
+        value = checked(text.field_id, text.value, text)
         if value is not None:
             # The boundary sentence is shown as written, so it must be printed in its own quote.
             if text.field_id == rules.BOUNDARY_SENTENCE_ID and not states_boundary_coverage(value):
-                dropped["not_a_boundary_sentence"] += 1  # an exclusion sentence belongs to the exclusions
+                drop("not_a_boundary_sentence", text.field_id, text)  # an exclusion sentence belongs to the exclusions
             elif text.field_id == rules.BOUNDARY_SENTENCE_ID:
                 def holds_sentence(quote: str, v: str = value) -> bool:
                     return bool(_words(v)) and bool(_find(_words(quote), _words(v)))
@@ -1621,9 +1650,9 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             else:
                 keep(text, value, text.field_id, None, pieces=True)
     for period in output.periods:
-        value = checked("reporting_period", {"start": period.start, "end": period.end})
+        value = checked("reporting_period", {"start": period.start, "end": period.end}, period)
         if value is None:
-            _why_period("invalid_value")
+            why_period("invalid_value")
             continue
         printed = dates_in(period.quote)
         start, end = rules.parse_iso_date(value["start"]), rules.parse_iso_date(value["end"])
@@ -1639,28 +1668,29 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             elif start == rules.year_start_for(end) and states_a_year(period.quote, end):
                 value["start_implied"] = True  # worked out from the stated year, and shown as implied
             else:
-                _why_period("end_printed_but_start_not_printed_or_not_a_year_wording")
-                dropped["value_not_in_quote"] += 1
+                drop("value_not_in_quote", "reporting_period", period)
+                why_period("end_printed_but_start_not_printed_or_not_a_year_wording")
                 continue
         elif not printed and words == rules.PERIOD_BASES[0] and (start, end) == (date(start.year, 1, 1), date(start.year, 12, 31)):
             # "calendar year" with no date printed: the year comes from the document's title, a second quote that
             # the reply names and that must be a clean first heading naming this year.
-            title = cited(_Cited(document=period.document, line=period.title_line, quote=title_quote, reason="")) if title_quote else None
+            title = cited(_Cited(document=period.document, line=period.title_line, quote=title_quote, reason=""), "reporting_period") if title_quote else None
             if title is None:
-                _why_period("calendar_year_but_no_title_quoted" if not title_quote else "title_quote_not_on_its_line")
                 if title_quote:
-                    continue  # counted by ``cited``
-                dropped["value_not_in_quote"] += 1
+                    why_period("title_quote_not_on_its_line")  # counted by ``cited``
+                    continue
+                drop("value_not_in_quote", "reporting_period", period)
+                why_period("calendar_year_but_no_title_quoted")
                 continue
             if title_year(title[0].lines, title[1]) != start.year:
-                _why_period("title_is_not_a_clean_first_heading_naming_this_year")
-                dropped["value_not_in_quote"] += 1
+                drop("value_not_in_quote", "reporting_period", period)
+                why_period("title_is_not_a_clean_first_heading_naming_this_year")
                 continue
             title_found = title
             value.update({"start_implied": True, "end_implied": True, "implied_from": rules.IMPLIED_FROM_TITLE})
         else:
-            _why_period("no_date_printed_and_not_a_calendar_year" if not printed else "end_date_not_printed")
-            dropped["value_not_in_quote"] += 1
+            drop("value_not_in_quote", "reporting_period", period)
+            why_period("no_date_printed_and_not_a_calendar_year" if not printed else "end_date_not_printed")
             continue
         before = len(kept)
         keep(period, value, "reporting_period", None)
@@ -1679,12 +1709,12 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     for gwp in gwp_in_order(sets_given):
         # The use note is the company's own words, from the clause that names this set, in the quote's casing.
         note = _final_note(gwp, sets_given)
-        value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon, "applies_to": note})
+        value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon, "applies_to": note}, gwp)
         if value is None:
             continue
         identity = (value["set"], value["horizon"], norm(value.get("applies_to", "")))
         if identity in gwp_seen:  # the same set, horizon and note named again
-            dropped["duplicate_entry"] += 1
+            drop("duplicate_entry", "gwp", gwp)
             continue
         # The first set the report names is the fixed GWP field; every other set is a row of its own.
         def ties(quote: str, s_: str = gwp.set, h_: str = gwp.horizon) -> bool:
@@ -1703,7 +1733,9 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     stated = {v.suggestion["value"]["set"] for v in sets if v.suggestion["value"]["horizon"] != "Not stated"}
     redundant = [v for v in sets if v.suggestion["value"]["horizon"] == "Not stated" and v.suggestion["value"]["set"] in stated]
     if redundant:
-        dropped["duplicate_entry"] += len(redundant)
+        for dup in redundant:
+            drop("duplicate_entry", "gwp", document=dup.suggestion.get("file_name"),
+                 line=(dup.suggestion.get("source_reference") or {}).get("block_id"))
         left = [v for v in sets if v not in redundant]
         kept[:] = [v for v in kept if v not in sets]
         field_taken = False
@@ -1719,11 +1751,11 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
                 "name": entity.name, "facilities": entity.facilities, "equity_share_pct": entity.equity_share_pct,
                 "financial_control": entity.financial_control, "included": None})
         except rules.MethodologyInvalid:
-            dropped["invalid_value"] += 1
+            drop("invalid_value", "entities", entity)
             continue
         included, control = entity_statement(entity.quote, value["name"])
         if not included:  # an exclusion sentence, or one with no inclusion wording, makes no entity row
-            dropped["not_an_inclusion"] += 1
+            drop("not_an_inclusion", "entities", entity)
             continue
         # Claire C-M2: a kept entity is Included (it comes from an inclusion statement); what the quote says about
         # operational control is kept apart, only when quoted. Claude's own Yes / No is not trusted.
@@ -1740,7 +1772,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         try:
             value = rules.validate_value(definition, {"database": factor.database, "edition": factor.edition})
         except rules.MethodologyInvalid:
-            dropped["invalid_value"] += 1
+            drop("invalid_value", group, factor)
             continue
         has_digits = any(ch.isdigit() for ch in value["edition"])
         keep(factor, value, None, group, words=[value["edition"]] if has_digits else ())
