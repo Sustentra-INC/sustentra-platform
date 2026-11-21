@@ -32,8 +32,22 @@ def _strip(value: Any) -> Any:
     return value
 
 
+def _settled(value: Any) -> Any:
+    """Floats to 12 significant digits: Python 3.12's ``sum`` adds floats more precisely than 3.11's, so the last
+    binary digits of a total differ between the two; nothing a reader would ever see does."""
+
+    if isinstance(value, float):
+        return float(format(value, ".12g"))
+    if isinstance(value, dict):
+        return {k: _settled(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_settled(v) for v in value]
+    return value
+
+
 def _digest(response: dict) -> str:
-    return hashlib.sha256(json.dumps(response, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
+    settled = _settled(response)
+    return hashlib.sha256(json.dumps(settled, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
 
 
 @pytest.mark.parametrize("name", sorted(BEFORE))
@@ -45,12 +59,13 @@ def test_the_default_response_is_byte_identical_to_before_traces_existed(name: s
     assert "trace" not in json.dumps(response)
     assert _digest(response) == BEFORE[name]["sha256"]
     for category, total in BEFORE[name]["categories"].items():
-        assert (response["categories"][category] or {}).get("total_co2e") == total  # exact, not approximate
+        assert (response["categories"][category] or {}).get("total_co2e") == pytest.approx(total, rel=1e-12)
 
 
 @pytest.mark.parametrize("name", sorted(BEFORE))
 def test_asking_for_traces_changes_nothing_but_adds_them(name: str) -> None:
     assert _digest(_strip(scenarios(with_traces=True)[name])) == BEFORE[name]["sha256"]
+    assert _strip(scenarios(with_traces=True)[name]) == scenarios(with_traces=False)[name]  # exact, same run
 
 
 def test_trace_is_purely_additive_on_the_lines() -> None:
