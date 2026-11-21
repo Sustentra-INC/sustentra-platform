@@ -64,6 +64,11 @@ const ACTION_WORD: Record<string, string> = {
 const GROUP_ITEM: Record<string, string> = { gases: "Gas", scope1: "Category", scope2: "Category", biogenic: "Type", gwp: "GWP set", factors: "Database" };
 const INCLUDED_GROUPS = ["scope1", "scope2", "biogenic"];
 /** What a GWP row reads when the document gives no horizon: the GHG Protocol default, labelled as assumed. */
+/** Who proposed a value: the AI, or Sustentra's own reading rules (``origin: "rules"``), never a model name. */
+export function suggestedBy(origin: string | undefined): string {
+  return origin === "rules" ? "Sustentra's rules" : "Sustentra's AI";
+}
+
 export const GWP_ASSUMED = "100-year (assumed — not stated)";
 const isObjectValue = (v: MethodologyValue | undefined): v is { [key: string]: MethodologyValue } => v !== null && typeof v === "object" && !Array.isArray(v);
 /** Where each row group's "Add" button lives: the header of the block that holds those rows. */
@@ -158,7 +163,10 @@ export function methodologyActivityFrom(data: MethodologyReviewData): { at: stri
       who: h.by?.name ?? "Reviewer",
       what: `${ACTION_WORD[h.action] ?? h.action.replaceAll("_", " ")} on methodology: ${name}`,
     }));
-    if (record.suggestion) entries.push({ at: record.suggestion.suggested_at, who: "Sustentra's AI", what: `Suggested by Sustentra's AI on methodology: ${name}` });
+    if (record.suggestion) {
+      const who = suggestedBy(record.suggestion.origin);
+      entries.push({ at: record.suggestion.suggested_at, who, what: `Suggested by ${who} on methodology: ${name}` });
+    }
     return entries;
   });
 }
@@ -595,7 +603,7 @@ export function FieldRow({
   ) : null;
   const marker = suggestion ? (
     <AiExplainPopover
-      label="Suggested by Sustentra's AI"
+      label={`Suggested by ${suggestedBy(suggestion.origin)}`}
       className="s1-chip s1-mb-chip"
       explanation={explanationOf(record)!}
       onOpenDocument={(documentId, at) => onOpenDocument(documentId, { fieldId: def.fieldId, entry: at.entry, page: at.page })}
