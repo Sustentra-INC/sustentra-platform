@@ -595,9 +595,51 @@ _FAILED = {
 }
 
 
+_ASK_PREFIX = "ASK-METH-"  # the key a "mark for client follow-up" request on a row is stored under (api/requests.py)
+_UNSAFE_KEY = re.compile(r"[^A-Za-z0-9:._-]")
+
+
+async def _replace_stale_rows(db: AsyncSession, engagement: dict[str, Any], user: _HasId,
+                              wanted: list[tuple[str, Any]], read_groups: frozenset[str]) -> set[str]:
+    """Mark removed every row an earlier read suggested that this read did not suggest again, so repeated reads
+    do not pile up rows. Only rows in a group whose section ran, that no reviewer touched (see
+    ``untouched_suggestion``) and that have no client follow-up request. ``wanted`` is (group, value) for each
+    row this read suggests; a row that matches one stays as it is. Returns the ids marked."""
+
+    if not read_groups:
+        return set()
+    items = await workpaper_item_service.list_items(db, engagement["id"], KIND)
+    asks = [row["item_key"] for row in items if row["item_key"].startswith(_ASK_PREFIX)]
+    candidates = []
+    for row in items:
+        group = rules.group_of_row(row["item_key"])
+        if group is None or group not in read_groups or not rules.untouched_suggestion(row["payload"]):
+            continue
+        base = _ASK_PREFIX + _UNSAFE_KEY.sub("_", row["item_key"])[:150]
+        if any(a == base or a.startswith(base + "-") for a in asks):
+            continue  # a request was raised on it: a reviewer touched it
+        mine = (row["payload"].get("suggestion") or {}).get("value")
+        if any(g == group and prefill.same_row_value(group, mine, value) for g, value in wanted):
+            continue
+        candidates.append(row["item_key"])
+    if not candidates:
+        return set()
+    replaced: set[str] = set()
+    # Lock, then look again: a reviewer may have decided the row since the list was read.
+    for row in await workpaper_item_service.get_items(db, engagement["id"], KIND, sorted(candidates), for_update=True):
+        if rules.untouched_suggestion(row["payload"]):
+            await workpaper_item_service.update_payload(
+                db, engagement["id"], KIND, row["item_key"], rules.replaced_by_read(row["payload"], _now()), user.id)
+            replaced.add(row["item_key"])
+    return replaced
+
+
 async def _store(db: AsyncSession, engagement: dict[str, Any], user: _HasId,
-                 verified: list[prefill.Verified], dropped: Counter[str]) -> tuple[int, int]:
-    """Put each verified suggestion on its field's record: (suggested, kept_reviewer_decision).
+                 verified: list[prefill.Verified], dropped: Counter[str],
+                 read_groups: frozenset[str] = frozenset()) -> tuple[int, int, int]:
+    """Put each verified suggestion on its field's record: (suggested, kept_reviewer_decision, replaced_rows).
+    ``read_groups`` are the row groups whose section was read: rows an earlier read suggested in them, that
+    this read does not suggest again and no reviewer touched, are marked removed (``replaced_rows`` counts them).
     A field the reviewer has decided is left alone. An entity or factor source already on the
     page (suggested or decided), or already added by an earlier suggestion of this same reply, is
     not added again; a new one becomes a new row. A value the store refuses (too long for the
@@ -669,9 +711,12 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: _HasId,
             dropped["invalid_value"] += 1
             continue
         suggested += 1 if saved is not None else 0
+    row_items = [*(v for v in verified if v.row_group and v.row_group != "gwp"), *moved]
+    replaced = await _replace_stale_rows(
+        db, engagement, user, [(str(i.row_group), i.suggestion["value"]) for i in row_items], read_groups)
     existing = [row for row in await workpaper_item_service.list_items(db, engagement["id"], KIND)
                 if rules.row_field(row["item_key"]) is not None and not row["payload"].get("removed")]
-    for item in [*(v for v in verified if v.row_group and v.row_group != "gwp"), *moved]:
+    for item in row_items:
         group = str(item.row_group)
         value = item.suggestion["value"]
         if group == "gwp" and any(prefill.same_row_value(group, mine, value) for mine in gwp_fixed_values):
@@ -697,7 +742,7 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: _HasId,
         if row is not None:  # None: the random id collided; not expected
             existing.append({"item_key": field_id, "payload": record})  # so a repeat in this reply is skipped
             suggested += 1
-    return suggested, kept
+    return suggested, kept, len(replaced)
 
 
 async def _audit_prefill(db: AsyncSession, request: Request | None, user: CurrentUser | _Caller,
@@ -907,13 +952,16 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
             logger.info("methodology prefill: set aside field=%s reason=%s line=%s", entry["field"], entry["reason"],
                         entry["line"])
         async with _short_transaction(sessions, org_id) as work:
-            suggested, kept = await _store(work, engagement, user, verified, dropped)
+            failed_parts = {p for p, label in prefill.PART_LABELS.items() if label in {f["section"] for f in failed_sections}}
+            read_groups = frozenset(g for g, part in rules.ROW_GROUP_PART.items() if part not in failed_parts)
+            suggested, kept, replaced = await _store(work, engagement, user, verified, dropped, read_groups)
             await _update_meta(work, engagement, user, prefill_ran_at=stamp(_now()),
                                covered=[f["field_id"] for f in rules.CATALOG],
                                auto_read={"state": "done", "file_names": [], "reason": None, "at": stamp(_now())})
             await _audit_prefill(work, request, user, engagement, {
                 "outcome": "ok", "documents": len(documents), "suggested": suggested,
-                "dropped": sum(dropped.values()), "kept_reviewer_decision": kept, "cost_usd": cost_usd,
+                "dropped": sum(dropped.values()), "kept_reviewer_decision": kept, "replaced_rows": replaced,
+                "cost_usd": cost_usd,
                 **({"failed_sections": [f["section"] for f in failed_sections]} if failed_sections else {})})
     except Exception as exc:  # the call is already recorded; keep nothing and say so
         logger.error("methodology prefill: suggestions not saved (%s)", type(exc).__name__)
