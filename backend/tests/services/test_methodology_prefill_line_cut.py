@@ -117,3 +117,45 @@ def test_a_quote_that_ends_a_sentence_is_not_read_into_the_next_one() -> None:
     kept, dropped = check(answer(choices=[{"field_id": "consolidation_approach", "value": "Financial Control",
                                            **c("L1", "operational control approach.")}]), [doc(lines)])
     assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+SHORT_TAIL = [(1, "Emissions include four of the seven gases covered by the protocol \u2013 carbon"),   # L1
+              (1, "dioxide (CO2), methane (CH4), nitrous oxide (N2O), and hydrofluorocarbons (HFCs). Others")]  # L2
+
+
+def test_a_one_word_quote_at_the_end_of_its_line_reads_on_and_is_kept() -> None:
+    kept, dropped = check(answer(gases=[gas("gas:co2", "Included", "carbon", "L1")]), [doc(SHORT_TAIL)])
+    assert dict(dropped) == {} and [k.field_id for k in kept] == ["gas:co2"]
+    assert kept[0].suggestion["quote"].startswith("carbon dioxide (CO2)")
+    assert kept[0].suggestion["source_reference"] == doc(SHORT_TAIL).lines[0].source_reference
+
+
+def test_a_one_word_quote_in_the_middle_of_its_line_is_still_dropped() -> None:
+    lines = [(1, "Our carbon footprint covers the following gases in"), (1, "dioxide (CO2), methane (CH4) and others.")]
+    kept, dropped = check(answer(gases=[gas("gas:co2", "Included", "carbon", "L1")]), [doc(lines)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
+
+
+def test_a_one_word_tail_of_a_longer_word_is_still_dropped() -> None:
+    lines = [(1, "Emissions include the covered gases such as hydrocarbon"), (1, "dioxide (CO2), methane (CH4).")]
+    kept, dropped = check(answer(gases=[gas("gas:co2", "Included", "carbon", "L1")]), [doc(lines)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
+
+
+def test_a_one_word_tail_on_another_line_than_the_cited_one_is_dropped() -> None:
+    lines = [(1, "Title line"), *SHORT_TAIL]
+    kept, dropped = check(answer(gases=[gas("gas:co2", "Included", "carbon", "L1")]), [doc(lines)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
+
+
+def test_a_one_word_tail_whose_next_line_lacks_the_value_is_dropped_once() -> None:
+    lines = [(1, "Emissions include the covered gases, mainly carbon"), (1, "monoxide and soot from boilers.")]
+    kept, dropped = check(answer(gases=[gas("gas:co2", "Included", "carbon", "L1")]), [doc(lines)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
+    assert len(dropped.detail) == 1 and dropped.detail[0]["reason"] == "quote_not_on_document"
+
+
+def test_a_one_word_tail_whose_next_line_negates_is_not_included() -> None:
+    lines = [(1, "Emissions of some gases are reported, but carbon"), (1, "dioxide is not emitted at any site.")]
+    kept, dropped = check(answer(gases=[gas("gas:co2", "Included", "carbon", "L1")]), [doc(lines)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
