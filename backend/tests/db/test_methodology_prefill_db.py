@@ -902,16 +902,43 @@ def last_event() -> dict[str, Any]:
     return json.loads(prefill_events()[-1]["metadata"])
 
 
-def test_a_second_read_with_other_rows_replaces_the_first_reads_undecided_rows(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_second_read_replaces_the_same_database_and_keeps_the_sources_it_did_not_mention(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
     eid = create()["id"]
     read_factors(claude, monkeypatch, eid, "epa24", "egrid")
     first = factor_rows(eid)
     assert set(first) == {"U.S. EPA GHG Emission Factors Hub | 2024", "EPA eGRID | 2022"}
-    read_factors(claude, monkeypatch, eid, "epa23", "desnz")
-    assert set(factor_rows(eid)) == {"U.S. EPA GHG Emission Factors Hub | 2023", "UK DESNZ conversion factors | 2021"}
-    assert last_event()["replaced_rows"] == 2
+    read_factors(claude, monkeypatch, eid, "epa23", "desnz")  # EPA's other edition replaces; eGRID was not mentioned: stays
+    assert set(factor_rows(eid)) == {"U.S. EPA GHG Emission Factors Hub | 2023", "EPA eGRID | 2022", "UK DESNZ conversion factors | 2021"}
+    assert factor_rows(eid)["EPA eGRID | 2022"]["field_id"] == first["EPA eGRID | 2022"]["field_id"]
+    assert last_event()["replaced_rows"] == 1
     read_factors(claude, monkeypatch, eid, "epa23", "desnz")  # a third read of the same answer changes nothing
-    assert len(factor_rows(eid)) == 2 and last_event()["replaced_rows"] == 0
+    assert len(factor_rows(eid)) == 3 and last_event()["replaced_rows"] == 0
+
+
+def test_the_same_database_under_another_name_and_edition_is_replaced(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    read_factors(claude, monkeypatch, eid, "epa24")
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + SOURCES)])
+    claude.output = {**GOOD, "factors": [{**FACTOR["epa23"], "database": "EPA GHG Emission Factors Hub"}]}
+    assert prefill(eid).status_code == 200
+    assert set(factor_rows(eid)) == {"EPA GHG Emission Factors Hub | 2023"} and last_event()["replaced_rows"] == 1
+
+
+def test_a_row_whose_document_is_no_longer_read_is_removed(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    read_factors(claude, monkeypatch, eid, "epa24", "egrid")
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + SOURCES, document_id="DOC-2")])
+    claude.output = {**GOOD, "factors": [FACTOR["desnz"]]}
+    assert prefill(eid).status_code == 200
+    assert set(factor_rows(eid)) == {"UK DESNZ conversion factors | 2021"} and last_event()["replaced_rows"] == 2
+
+
+def test_a_group_the_read_found_nothing_in_keeps_its_rows(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    read_factors(claude, monkeypatch, eid, "epa24", "egrid")
+    read_factors(claude, monkeypatch, eid)
+    assert set(factor_rows(eid)) == {"U.S. EPA GHG Emission Factors Hub | 2024", "EPA eGRID | 2022"}
+    assert last_event()["replaced_rows"] == 0
 
 
 def test_a_row_the_read_suggests_again_keeps_its_id(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -920,8 +947,8 @@ def test_a_row_the_read_suggests_again_keeps_its_id(claude: FakeClaude, monkeypa
     kept = factor_rows(eid)["EPA eGRID | 2022"]["field_id"]
     read_factors(claude, monkeypatch, eid, "egrid", "desnz")
     rows = factor_rows(eid)
-    assert set(rows) == {"EPA eGRID | 2022", "UK DESNZ conversion factors | 2021"}
-    assert rows["EPA eGRID | 2022"]["field_id"] == kept and last_event()["replaced_rows"] == 1
+    assert set(rows) == {"U.S. EPA GHG Emission Factors Hub | 2024", "EPA eGRID | 2022", "UK DESNZ conversion factors | 2021"}
+    assert rows["EPA eGRID | 2022"]["field_id"] == kept and last_event()["replaced_rows"] == 0
 
 
 def test_a_row_a_reviewer_accepted_edited_or_rejected_survives_a_read_that_does_not_suggest_it(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -936,9 +963,9 @@ def test_a_row_a_reviewer_accepted_edited_or_rejected_survives_a_read_that_does_
     after = factor_rows(eid)
     assert set(after) == {"U.S. EPA GHG Emission Factors Hub | 2024", "EPA eGRID | 2023",
                           "UK DESNZ conversion factors | 2021", "U.S. EPA GHG Emission Factors Hub | 2023"}
-    # the row nobody touched is gone; the three a reviewer decided are the same records
-    assert "IPCC Emission Factor Database | 2006" not in after
-    assert last_event()["replaced_rows"] == 1
+    # the row nobody touched stays (the read did not mention it); the three a reviewer decided are the same records
+    assert "IPCC Emission Factor Database | 2006" in after
+    assert last_event()["replaced_rows"] == 0
     assert after["EPA eGRID | 2023"]["field_id"] == rows["EPA eGRID | 2022"]["field_id"]
     assert after["UK DESNZ conversion factors | 2021"]["decision"]["status"] == "rejected"
 
@@ -953,7 +980,7 @@ def test_a_row_the_reviewer_added_survives_a_read(claude: FakeClaude, monkeypatc
     ids = {f["field_id"] for f in review(eid).json()["fields"]}
     assert added in ids and blank in ids  # even the blank pending row the reviewer has not filled in
     assert set(factor_rows(eid)) >= {"Our own factors | 2020", "EPA eGRID | 2022"}
-    assert "U.S. EPA GHG Emission Factors Hub | 2024" not in factor_rows(eid)
+    assert "U.S. EPA GHG Emission Factors Hub | 2024" in factor_rows(eid)  # not mentioned by the second read
 
 
 def test_a_failed_section_does_not_remove_its_rows_but_the_others_are_replaced(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -970,7 +997,8 @@ def test_a_failed_section_does_not_remove_its_rows_but_the_others_are_replaced(c
     monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + SOURCES)])
     claude.output = {**GOOD, "factors": [FACTOR["desnz"]]}
     assert prefill(eid).status_code == 200
-    assert set(factor_rows(eid)) == {"UK DESNZ conversion factors | 2021"} and len(entity_rows(eid)) == 1
+    assert set(factor_rows(eid)) == {"U.S. EPA GHG Emission Factors Hub | 2024", "EPA eGRID | 2022", "UK DESNZ conversion factors | 2021"}
+    assert len(entity_rows(eid)) == 1
 
 
 def test_a_refused_read_removes_nothing_and_the_fixed_fields_are_replaced_as_before(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -984,4 +1012,4 @@ def test_a_refused_read_removes_nothing_and_the_fixed_fields_are_replaced_as_bef
                      "factors": [FACTOR["desnz"]]}
     assert prefill(eid).status_code == 200
     assert record(eid, "category:scope1:stationary")["suggestion"]["value"] == "No"  # a fixed field: replaced in place
-    assert set(factor_rows(eid)) == {"UK DESNZ conversion factors | 2021"}
+    assert set(factor_rows(eid)) == {"U.S. EPA GHG Emission Factors Hub | 2024", "EPA eGRID | 2022", "UK DESNZ conversion factors | 2021"}
