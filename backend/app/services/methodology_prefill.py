@@ -374,6 +374,7 @@ _ROMAN_MARKER = re.compile(r"(?<=[A-Za-z]{4})(?:xi{1,3}|xiv|xv|ix|iv|vi{1,3}|v|i
 # A bullet or a number in front of a list item: tokens that are only a mark, never words.
 _MARK_TOKEN = re.compile(r"^(?:[\u2022\u00b7\u25aa\u25cf\u25e6\u25a0\u25a1*\-]|\(?\d{1,2}[.)]|\([a-z]\))$")
 _LOOKAHEAD = 12  # lines a quote may run over
+_CITED_NEAR = 3  # lines between the cited line and where a repeated quote starts
 
 
 _QUOTE_MARKS = str.maketrans("", "", "\"'`\u00ab\u00bb")
@@ -466,7 +467,16 @@ def locate_quote_across_lines(quote: str, line_alias: str | None, lines: Sequenc
     cited = next((i for i, line in enumerate(lines) if line_alias and line.alias == line_alias.strip().upper()), None)
     if cited in starts:
         return lines[cited]
-    return lines[starts[0]] if len(starts) == 1 else NotLocated("ambiguous_quote")
+    if len(starts) == 1:
+        return lines[starts[0]]
+    if cited is not None:
+        # A reply often cites the line before or after the one the quote starts on (a table cell cut into short
+        # lines): the one start within a few lines of the cited line and on its page is the quote's place.
+        near = sorted((abs(i - cited), i) for i in starts
+                      if abs(i - cited) <= _CITED_NEAR and lines[i].page_number == lines[cited].page_number)
+        if near and (len(near) == 1 or near[0][0] < near[1][0]):
+            return lines[near[0][1]]
+    return NotLocated("ambiguous_quote")
 
 
 def whole_words(quote: str, text: str) -> str:
@@ -516,7 +526,8 @@ _OPTION_TERMS = {
     "Meter readings": ("meter reading", "meter readings", "bills/metered", "metered consumption", "metered data",
                        "metered usage", "meter data"),
     "Fuel cards": ("fuel card", "fuel cards"),
-    "Fuel receipts or logs": ("fuel receipt", "fuel receipts", "fuel log", "fuel logs"),
+    "Fuel receipts or logs": ("fuel receipt", "fuel receipts", "fuel log", "fuel logs", "fuel purchase receipt",
+                              "fuel purchase receipts", "logbook", "logbooks"),
     "Landlord reports": ("landlord report", "landlord reports", "landlord", "landlords"),
     "Lease agreements": ("lease agreement", "lease agreements"),
 }
@@ -1419,6 +1430,55 @@ class Dropped(Counter[str]):
         self.detail: list[dict[str, Any]] = []
 
 
+_MONTH_ABBR = {m: m[:3] for m in ("january", "february", "march", "april", "may", "june", "july", "august", "september",
+                              "october", "november", "december")}
+_MONTH_ABBR["sept"] = "sep"
+_EDITION_FILLER = frozenset({"released", "release", "version", "edition", "ed", "data", "dataset", "v", "ver", "updated"})
+_EDITION_SPLIT = re.compile(r"[,;()\[\]/]|\s+(?:and|&)\s+")
+
+
+def _edition_text(text: str) -> str:
+    """Text as editions are compared: month names to three letters ("Sept 2024" is "September 2024") and no space
+    around the dash of a year range ("1990 \u20132022" is "1990-2022")."""
+
+    text = norm(text)
+    text = re.sub(r"(?<=\d)\s*-\s*(?=\d)", "-", text)
+    return re.sub(r"\b(" + "|".join(_MONTH_ABBR) + r")\b\.?", lambda m: _MONTH_ABBR[m.group(1)], text)
+
+
+def edition_in(edition: str, quote: str) -> bool:
+    """Whether every part of a factor edition is printed in the quote. An edition such as "1990-2022 (September
+    2024)" or "released February 2024" is read part by part: filler words ("released", "version", "data") are
+    left out, and each remaining part must be in the quote as a whole token."""
+
+    text = _edition_text(quote)
+    parts = []
+    for piece in _EDITION_SPLIT.split(edition):
+        words = [w for w in _edition_text(piece).split() if w.strip(".") not in _EDITION_FILLER]
+        if words:
+            parts.append(" ".join(words))
+    return bool(parts) and all(value_in_quote(part, text) for part in parts)
+
+
+_LABEL_FILLER = frozenset({"a", "an", "the", "of", "for", "and", "or", "in", "on", "to", "by", "from", "with", "at"})
+
+
+def _stem(word: str) -> str:
+    return word[:-2] if word.endswith("es") and len(word) > 4 else word[:-1] if word.endswith("s") and len(word) > 3 else word
+
+
+def label_in(label: str, quote: str) -> bool:
+    """Whether a source type is named in the quote: printed as it is, or every word of it printed in the quote
+    (singular or plural; "Electricity for data centers" for "...electricity consumption ... primary-use data
+    centers"). Never a word the quote does not contain."""
+
+    if value_in_quote(label, quote):
+        return True
+    wanted = [_stem(w) for w in _words(label) if w not in _LABEL_FILLER]
+    have = {_stem(t) for w in _words(quote) for t in re.findall(r"[a-z0-9]+", w)}
+    return bool(wanted) and all(all(part in have for part in re.findall(r"[a-z0-9]+", w)) for w in wanted)
+
+
 _NEGATING = _NEGATIONS | {"excluded", "excluding", "omitted", "except", "cannot", "n't"}
 _ABSENT_VALUES = frozenset({"Declared absent", "No", "Not detected"})
 _SENTENCE_END = re.compile(r"\.(?=\s)")
@@ -1442,7 +1502,28 @@ def _short_tail_line(item: _Cited, document: PrefillDocument) -> DocumentLine | 
     return line
 
 
-def _read_on(item: _Cited, value: Any, by_alias: Mapping[str, PrefillDocument], short_tail: bool = False) -> list[str]:
+_CLAUSE_END = re.compile(r"[.;](?=\s|$)")
+_LIST_MARKS = frozenset({"\u2022", "o", "-", "\u2013", "\u25cf", "\u25e6", "\u25aa"})
+_CELL_LINES = 5  # lines a table cell cut into short lines may run over (``to_clause_end``)
+
+
+def _rest_of_line(line: DocumentLine, kept_words: int) -> str:
+    """The text of the line after its first ``kept_words`` words as ``_words`` counts them ("" when they do not line up)."""
+
+    raw = strip_markers(line.text).split()
+    counts = [len(_words(t)) for t in raw]
+    if sum(counts) != len(_words(line.text)):
+        return ""
+    seen = 0
+    for index, count in enumerate(counts):
+        if seen >= kept_words:
+            return " ".join(raw[index:])
+        seen += count
+    return ""
+
+
+def _read_on(item: _Cited, value: Any, by_alias: Mapping[str, PrefillDocument], short_tail: bool = False,
+             to_clause_end: bool = False) -> list[str]:
     """The readings of a quote that stops exactly at the end of a printed line, with the next line or two of the
     same document added (to a sentence end where there is one), shortest first. Empty when the quote ends mid-line,
     is several quotes, is not on its document, or the added words negate a value that is not an absence."""
@@ -1463,32 +1544,44 @@ def _read_on(item: _Cited, value: Any, by_alias: Mapping[str, PrefillDocument], 
     hay: list[str] = []
     first_words = 0
     last: int | None = None
+    rest = ""  # what the last line still says after the quote, when the quote stops inside it (``to_clause_end``)
     for j, line in enumerate(lines[first:first + _LOOKAHEAD]):
         tokens = _words(line.text)
         if j == 0:
             first_words = len(tokens)
+        before = len(hay)
         hay.extend(tokens)
-        if any(at < first_words and at + len(wanted) == len(hay) for at in _find(hay, wanted)):
+        starts_here = [at for at in _find(hay, wanted) if at < first_words]
+        if any(at + len(wanted) == len(hay) for at in starts_here):
             last = first + j
+            break
+        if to_clause_end and any(before < at + len(wanted) < len(hay) for at in starts_here):
+            last = first + j
+            rest = _rest_of_line(line, min(at + len(wanted) for at in starts_here if before < at + len(wanted) < len(hay)) - before)
             break
     if last is None:
         return []
     base = item.quote.rstrip()
-    if base.endswith((".", "!", "?")) or lines[last].text.rstrip().endswith((".", "!", "?")):
+    ends = (".", "!", "?", ";") if to_clause_end else (".", "!", "?")
+    if base.endswith(ends) or (not rest and lines[last].text.rstrip().endswith(ends)):
         # a finished sentence: what comes next is another sentence's
         return []
-    following: list[str] = []
-    for line in lines[last + 1:last + 1 + _READ_ON_LINES]:
-        text = line.text.strip()
-        if text:
-            following.append(text)
-            if text.endswith((".", "!", "?")):  # the sentence ends here: never read into the next one
+    following: list[str] = [rest] if rest else []
+    if not rest.rstrip().endswith(ends):
+        for line in lines[last + 1:last + 1 + (_CELL_LINES if to_clause_end else _READ_ON_LINES)]:
+            if line.page_number != lines[last].page_number and to_clause_end:
                 break
-    base = item.quote.rstrip()
+            text = line.text.strip()
+            if to_clause_end and text in _LIST_MARKS:  # the next list item starts here
+                break
+            if text:
+                following.append(text)
+                if text.endswith(ends):  # the sentence ends here: never read into the next one
+                    break
     readings: list[str] = []
     for count in range(1, len(following) + 1):
         added = " ".join(following[:count])
-        cuts = [added[:m.end()] for m in _SENTENCE_END.finditer(added)]
+        cuts = [added[:m.end()] for m in (_CLAUSE_END if to_clause_end else _SENTENCE_END).finditer(added)]
         readings.extend(f"{base} {piece}" for piece in [*cuts, added])
     keep_absent = isinstance(value, str) and value in _ABSENT_VALUES
     out: list[str] = []
@@ -1521,14 +1614,15 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             dropped[reason] += 1
             dropped.detail.append({"field": field or "unknown", "reason": reason, "document": document, "line": line})
 
-    def extended(item: _Cited, value: Any, passes: Callable[[str], bool], short_tail: bool = False) -> bool:
+    def extended(item: _Cited, value: Any, passes: Callable[[str], bool], short_tail: bool = False,
+                 to_clause_end: bool = False) -> bool:
         """A quote that stops exactly where a printed line ends often has its value on the next line. Read on, one
         line and then a second, up to the end of the sentence that completes it, and keep the first reading that
         passes the same check; the quote then holds the document's own words. A quote that ends mid-line, one that
         needs more than two more lines, and one whose added words negate the value never extend."""
 
         original = item.quote
-        for candidate in _read_on(item, value, by_alias, short_tail):
+        for candidate in _read_on(item, value, by_alias, short_tail, to_clause_end):
             item.quote = candidate
             if passes(candidate):
                 return True
@@ -1574,7 +1668,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
 
     def keep(item: _Cited, value: Any, field_id: str | None, row_group: str | None,
              numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = (),
-             ok: Callable[[str], bool] | None = None, pieces: bool = False) -> None:
+             ok: Callable[[str], bool] | None = None, pieces: bool = False, clause: bool = False) -> None:
         short_document = by_alias.get(item.document.strip().upper())
         short_line = (_short_tail_line(item, short_document)
                       if short_document is not None and not pieces and len(item.quote.strip()) < MIN_QUOTE else None)
@@ -1595,7 +1689,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             if not extended(item, value, holds, short_tail=True):
                 drop("quote_not_on_document", field_id or row_group, item)
                 return
-        elif not holds(item.quote) and not extended(item, value, holds):
+        elif not holds(item.quote) and not extended(item, value, holds, to_clause_end=clause):
             drop("value_not_in_quote", field_id or row_group, item, line=line.alias)
             return
         if field_id is not None:
@@ -1702,9 +1796,9 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         if found is None:
             continue
         def names_source(quote: str, source: str = estimate.source_type) -> bool:
-            return value_in_quote(source, quote)
+            return label_in(source, quote)
 
-        if not names_source(estimate.quote) and not extended(estimate, estimate.source_type, names_source):  # the entry is about what its quote names
+        if not names_source(estimate.quote) and not extended(estimate, estimate.source_type, names_source, to_clause_end=True):  # the entry is about what its quote names
             drop("value_not_in_quote", "calculation:estimation", estimate, line=found[1].alias)
             continue
         entries.append((estimate, *found))
@@ -1727,7 +1821,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         def names(quote: str, o: str = option, f: str = sel.field_id) -> bool:
             return (names_scope(quote, o) if f == rules.SCOPES_ID else names_option(quote, _OPTION_TERMS.get(o, ()))) == "yes"
 
-        if named not in ("yes", "negated") and extended(sel, option, names):
+        if named not in ("yes", "negated") and extended(sel, option, names, to_clause_end=True):
             named = "yes"
         if named != "yes":  # the quote does not name the option, or says the company does not have it
             drop("negated" if named == "negated" else "value_not_in_quote", sel.field_id, sel, line=found[1].alias)
@@ -1912,8 +2006,12 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         except rules.MethodologyInvalid:
             drop("invalid_value", group, factor)
             continue
-        has_digits = any(ch.isdigit() for ch in value["edition"])
-        keep(factor, value, None, group, words=[value["edition"]] if has_digits else ())
+        edition = value["edition"]
+        has_digits = any(ch.isdigit() for ch in edition)
+        def edition_printed(quote: str, e: str = edition) -> bool:
+            return edition_in(e, quote)
+
+        keep(factor, value, None, group, ok=edition_printed if has_digits else None, clause=True)
     return kept, dropped
 
 
