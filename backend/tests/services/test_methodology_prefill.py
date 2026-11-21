@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -1434,3 +1435,48 @@ def test_gas_formulas_match_with_subscripts_and_markers() -> None:
     kept, dropped = check(answer(gases=[gas("gas:n2o", "Included", "N₂Oiv and NF₃ᵇ are reported"),
                                         gas("gas:nf3", "Included", "N₂Oiv and NF₃ᵇ are reported")]), [doc([(1, line)])])
     assert len(kept) == 2 and not dropped
+
+
+# --- which field each set-aside answer was for ---------------------------------------------------
+
+def _detail_matches_counts(dropped: mp.Dropped) -> None:
+    assert Counter(d["reason"] for d in dropped.detail) == dropped
+
+
+def test_a_dropped_period_is_listed_under_reporting_period_with_its_rule() -> None:
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-06-30", "January 1 to December 31, 2024")]))
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+    assert dropped.detail == [{"field": "reporting_period", "reason": "value_not_in_quote", "document": "report.pdf",
+                               "line": "L3", "rule": "end_date_not_printed"}]
+    _detail_matches_counts(dropped)
+
+
+def test_a_gas_whose_name_is_not_in_the_quote_is_listed_under_its_gas() -> None:
+    kept, dropped = check(answer(gases=[gas("gas:nf3", "Declared absent", "covers CO₂, CH₄")]), [doc(GAS_REPORT)])
+    assert kept == [] and dropped.detail == [
+        {"field": "gas:nf3", "reason": "value_not_in_quote", "document": "report.pdf", "line": "L1"}]
+    _detail_matches_counts(dropped)
+
+
+def test_a_quote_not_on_the_document_is_listed_under_the_field_it_was_for() -> None:
+    kept, dropped = check(answer(
+        choices=[{"field_id": "consolidation_approach", "value": "Equity Share", **cite("L2", "we use the equity share approach throughout")}],
+        gases=[gas("gas:sf6", "Included", "a sentence that is nowhere on the page", "L1")],
+        factors=[{"scope": "scope2", "database": "eGRID", "edition": "2022", **cite("L6", "not on the page at all either")}]))
+    assert kept == []
+    assert sorted((d["field"], d["reason"]) for d in dropped.detail) == [
+        ("consolidation_approach", "quote_not_on_document"), ("factor:scope2", "quote_not_on_document"),
+        ("gas:sf6", "quote_not_on_document")]
+    _detail_matches_counts(dropped)
+    assert all(set(d) <= {"field", "reason", "document", "line", "rule"} for d in dropped.detail)  # no quote text
+
+
+def test_the_detail_matches_the_counts_when_answers_are_kept_and_dropped_together() -> None:
+    kept, dropped = check(answer(
+        choices=[{"field_id": "consolidation_approach", "value": "Operational Control", **cite("L2", "operational control approach")}],
+        periods=[period("2024-01-01", "2024-12-31", "nothing like this is printed anywhere")],
+        gases=[gas("gas:co2", "Included", "covers CO₂, CH₄"), gas("gas:ch4", "Included", "CH₄ is nowhere in this quote", "L2")]),
+        [doc(GAS_REPORT + [(1, "operational control approach")])])
+    assert dropped and len(kept) == 2
+    _detail_matches_counts(dropped)
+    assert dropped.detail[0]["document"] == "report.pdf"
