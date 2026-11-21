@@ -188,3 +188,119 @@ def test_the_prompts_ask_for_the_rereads_items() -> None:
     assert "Scope 1 and Scope 2 are covered when the report gives their totals" in text
     assert "any hydrofluorocarbon" in text and 'joined by " ... "' in text
     assert "a publication, revision or copyright date on the cover does not matter" in text
+
+
+# --- the third re-read -------------------------------------------------------------------------------------------
+
+def test_a_gas_quote_that_starts_in_the_middle_of_a_word_is_found_over_lines_and_footnotes() -> None:
+    lines = [(3, "The plan covers gases: carbon"), (3, "dioxide (CO2)¹, methane (CH4)², nitrous oxide (N2O) and nitrogen trifluoride (NF3).")]
+    for quote in ("ioxide (CO2), methane (CH4)", "dioxide (CO2), methane (CH4), nitrous oxide (N2O)"):
+        kept, dropped = check(answer(gases=[gas("gas:co2", "Included", quote, "L1")]), [doc(lines)])
+        assert not dropped and kept[0].suggestion["value"] == "Included", quote
+    kept, dropped = check(answer(gases=[gas("gas:co2", "Included", "ioxide (CO2), ethane (CH4)", "L1")]), [doc(lines)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}  # a word in the middle must still be exact
+
+
+def test_a_scope_2_category_of_either_method_offers_scope_2() -> None:
+    lines = [(2, "Purchased electricity: 120 MWh, location-based."), (2, "Purchased electricity: 80 MWh, market-based.")]
+    for field_id, line in (("category:location:electricity", "L1"), ("category:market:electricity", "L2")):
+        kept, dropped = check(answer(choices=[category(field_id, "Yes", "Purchased electricity: ", line)]), [doc(lines)])
+        scopes = next(k for k in kept if k.field_id == "scopes:covered")
+        assert [v["option"] for v in scopes.suggestion["value"]] == ["Scope 2"], field_id
+
+
+def test_a_negated_embedded_is_no_exception_cue() -> None:
+    lines = [(4, "Where a GWP is not embedded in an emission factor, GWPs come from the IPCC Sixth Assessment Report (AR6), 100-year horizon.")]
+    quote = "Where a GWP is not embedded in an emission factor, GWPs come from the IPCC Sixth Assessment Report (AR6), 100-year horizon"
+    kept, dropped = check(answer(gwp=[gwp_item("AR6", "100-year", quote, "L1")]), [doc(lines)])
+    assert not dropped and _sets(kept) == [("gwp", None, "AR6 100-year", "")]
+
+
+def test_a_twelve_month_period_ended_is_one_year() -> None:
+    lines = [(1, "Emissions for the twelve-month period ended December 31, 2024 are shown.")]
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "twelve-month period ended December 31, 2024", "L1", True)]), [doc(lines)])
+    assert not dropped and kept[0].suggestion["value"]["start_implied"] is True
+
+
+def test_the_probe_reads_a_pdf_and_names_the_rule_for_each_line(capsys: pytest.CaptureFixture[str]) -> None:
+    fitz = pytest.importorskip("fitz")
+    import tempfile
+    from pathlib import Path
+
+    from backend.scripts import probe_methodology_period as probe
+
+    pdf = fitz.open()
+    page = pdf.new_page()
+    for n, text in enumerate(["2024 Greenhouse Gas Inventory Management Plan", "Revision 2, March 2025",
+                              "Metrics for the year ended December 31, 2024 are shown."]):
+        page.insert_text((72, 72 + 24 * n), text)
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "statement.pdf"
+        pdf.save(str(path))
+        assert probe.main([str(path), "--year", "2024"]) == 0
+    out = capsys.readouterr().out
+    assert "year_wording=True" in out and "start_would_be=2024-01-01" in out and "title_year=2024" in out
+
+
+# --- what the real PDFs showed ----------------------------------------------------------------------------------
+
+# The layout of an engineering firm's plan: a copyright line, the year alone in big type, the title in pieces, and
+# the whole title again in a footer. The year is printed on several lines, always the same year.
+PLAN_COVER = [
+    (1, "© 2025 Acme Engineering."),                             # L1
+    (1, "2024"),                                                      # L2 the year, alone
+    (1, "GREENHOUSE GAS"),                                            # L3
+    (1, "INVENTORY"),                                                 # L4
+    (1, "MANAGEMENT PLAN"),                                           # L5
+    (1, "GREENHOUSE GAS INVENTORY MANAGEMENT PLAN"),                  # L6
+    (1, "© 2025 Acme Engineering."),                             # L7
+    (1, "2024 Greenhouse Gas Inventory Management Plan"),             # L8 the title that carries the year
+    (2, "GV20250479_FINAL.docx"),                                         # L9
+    (9, "Location-based and market-based methods have been used to calculate calendar year office"),  # L10
+]
+
+
+def test_a_title_in_a_footer_beside_the_bare_cover_year_gives_the_year() -> None:
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "calendar year office", "L10", True,
+                                                ("L8", "2024 Greenhouse Gas Inventory Management Plan"))]), [doc(PLAN_COVER)])
+    assert not dropped and kept[0].suggestion["value"]["implied_from"] == "calendar year, year from title"
+
+
+def test_a_different_year_among_the_cover_lines_still_refuses_the_title_year() -> None:
+    lines = [*PLAN_COVER[:2], (1, "2023"), *PLAN_COVER[2:]]  # a table of two years begins the document
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "calendar year office", "L11", True,
+                                                ("L9", "2024 Greenhouse Gas Inventory Management Plan"))]), [doc(lines)])
+    assert kept == [] and sum(dropped.values()) == 1
+
+
+# The text layer of a bank's assurance report runs words together, and its gas list prints each name in quotation marks.
+GLUED = [
+    (2, "gas(“GHG”) emissions,verified carbonoffsets,purchased electricity, and purchased renewable electricity"),   # L1
+    (2, "metrics (“metrics”) for the year ended December 31, 2024 inmanagement’sassertion,arepresented in"),       # L2
+    (2, "accordancewiththeassessmentcriteriasetforthinmanagement’sassertion."),                                      # L3
+    (5, "3. Carbon dioxide equivalent (“CO2e”) emissions are inclusive of carbon dioxide (“CO2”), methane (“CH4”), nitrous"),  # L4
+    (5, "oxide (“N2O”), hydrofluorocarbons (“HFCs”), perfluorocarbons(“PFCs”), sulfur hexafluoride (“SF6”), and nitrogen"),  # L5
+    (5, "trifluoride (“NF3”). Emissions data by individual gas is not disclosed."),                             # L6
+]
+
+
+@pytest.mark.parametrize("quote", [
+    "for the year ended December 31, 2024",
+    "metrics (“metrics”) for the year ended December 31, 2024 in management’s assertion, are presented in",  # spaced again
+    "for the year ended December 31, 2024 in management's assertion, are presented in accordance with the assessment criteria",
+])
+def test_a_period_quote_is_found_where_the_text_layer_runs_words_together(quote: str) -> None:
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", quote, "L2", True)]), [doc(GLUED)])
+    assert not dropped and kept[0].suggestion["value"]["start_implied"] is True
+
+
+def test_a_gas_named_in_quotation_marks_is_found_when_the_quote_leaves_them_out() -> None:
+    kept, dropped = check(answer(gases=[gas("gas:n2o", "Included", "nitrous oxide (N2O)", "L4"),
+                                        gas("gas:nf3", "Included", "nitrogen trifluoride (NF3)", "L5"),
+                                        gas("gas:co2", "Included", "carbon dioxide (CO2), methane (CH4), nitrous oxide (N2O)", "L4")]), [doc(GLUED)])
+    assert not dropped and {k.field_id for k in kept} == {"gas:n2o", "gas:nf3", "gas:co2"}
+
+
+def test_the_squashed_match_still_needs_the_same_letters() -> None:
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "for the year ended December 31, 2024 in management's claim, are presented in", "L2", True)]), [doc(GLUED)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}

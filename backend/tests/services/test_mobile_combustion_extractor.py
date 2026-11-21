@@ -106,9 +106,10 @@ def test_statement_one_record_per_fuel_transaction(targets: list[dict]) -> None:
     assert second["fuel_type"]["normalized_value"] == "gasoline"
     assert second["activity_quantity"]["normalized_value"] == pytest.approx(15.88)
     assert second["vehicle_or_equipment_id"]["normalized_value"] == "V-12"
-    # the card column is the account for each transaction, and is never stored in full
-    assert first["account_number"]["normalized_value"] == "****7890"
-    assert "card_number_masked" in first["account_number"]["validation_flags"]
+    # the account the statement prints is the account of every transaction; a card number is never the account
+    # (and never stored in full)
+    assert first["account_number"]["normalized_value"] == "FL-20931"
+    assert second["account_number"]["normalized_value"] == "FL-20931"
     for candidate in outcome.candidates:
         for text in (candidate["raw_value"], candidate["normalized_value"],
                      candidate["source_reference"]["text_snippet"]):

@@ -510,14 +510,14 @@
      "wrong": 0
     },
     "supplier": {
-     "exact": 21,
-     "match": 21,
+     "exact": 22,
+     "match": 22,
      "missed": 3,
      "not_targeted": 0,
      "scored": 25,
-     "silent": 1,
+     "silent": 0,
      "unscored": 1,
-     "wrong": 1
+     "wrong": 0
     },
     "technician": {
      "exact": 8,
@@ -551,27 +551,27 @@
     }
    },
    "totals": {
-    "exact": 399,
-    "match": 439,
+    "exact": 400,
+    "match": 440,
     "missed": 80,
     "not_targeted": 309,
     "scored": 520,
-    "silent": 1,
+    "silent": 0,
     "unscored": 74,
-    "wrong": 1
+    "wrong": 0
    }
   },
   "STG": {
    "families": {
     "account": {
-     "exact": 10,
-     "match": 10,
+     "exact": 11,
+     "match": 11,
      "missed": 3,
      "not_targeted": 1,
      "scored": 14,
-     "silent": 1,
+     "silent": 0,
      "unscored": 1,
-     "wrong": 1
+     "wrong": 0
     },
     "activity_quantity": {
      "exact": 136,
@@ -579,7 +579,7 @@
      "missed": 2,
      "not_targeted": 0,
      "scored": 141,
-     "silent": 3,
+     "silent": 0,
      "unscored": 12,
      "wrong": 3
     },
@@ -599,7 +599,7 @@
      "missed": 0,
      "not_targeted": 0,
      "scored": 135,
-     "silent": 3,
+     "silent": 0,
      "unscored": 0,
      "wrong": 3
     },
@@ -874,14 +874,14 @@
      "wrong": 0
     },
     "supplier": {
-     "exact": 10,
-     "match": 10,
+     "exact": 11,
+     "match": 11,
      "missed": 6,
      "not_targeted": 0,
      "scored": 17,
-     "silent": 1,
+     "silent": 0,
      "unscored": 1,
-     "wrong": 1
+     "wrong": 0
     },
     "technician": {
      "exact": 8,
@@ -925,14 +925,14 @@
     }
    },
    "totals": {
-    "exact": 400,
-    "match": 427,
+    "exact": 402,
+    "match": 429,
     "missed": 33,
     "not_targeted": 206,
     "scored": 468,
-    "silent": 8,
+    "silent": 0,
     "unscored": 65,
-    "wrong": 8
+    "wrong": 6
    }
   }
  }

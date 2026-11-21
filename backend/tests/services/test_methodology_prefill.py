@@ -1005,10 +1005,12 @@ def test_a_use_note_is_kept_only_when_it_is_printed_in_the_quote_and_never_costs
     kept, _ = check(answer(gwp=[gwp_item("AR5", "Not stated", "Supplier factors from CEDA and DESNZ embed AR5 values", "L2", "x" * 201)]),
                     [doc(GWP_NOTES)])
     # a set the quote puts inside other factors is information only; its note is the server's, not the reply's long one
-    assert kept[0].suggestion["value"]["applies_to"] == "embedded in CEDA, DESNZ factors" and kept[0].field_id is None
+    # the document states AR6 as its default (L1), so AR6 is the field and the AR5 inside the factors a row
+    assert [k.suggestion["value"]["set"] for k in kept] == ["AR6", "AR5"] and kept[0].field_id == "gwp"
+    assert kept[1].suggestion["value"]["applies_to"] == "embedded in CEDA, DESNZ factors" and kept[1].field_id is None
     kept, _ = check(answer(gwp=[gwp_item("AR5", "Not stated", "Supplier factors from CEDA and DESNZ embed AR5 values", "L2", "  CEDA and  DESNZ ")]),
                     [doc(GWP_NOTES)])
-    assert kept[0].suggestion["value"]["applies_to"] == "embedded in CEDA, DESNZ factors"
+    assert kept[-1].suggestion["value"]["applies_to"] == "embedded in CEDA, DESNZ factors"
 
 
 def test_every_set_the_document_names_is_kept_up_to_one_fixed_field_and_the_rest_as_rows() -> None:

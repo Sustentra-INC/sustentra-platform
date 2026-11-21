@@ -186,6 +186,8 @@ PRODUCT_HEADERS = ("product", "description", "fuel", "fuel type", "grade", "fuel
 # Card-number shapes only: 15-19 contiguous digits, or 4-4-4-4(-3) groups with one
 # separator. Column-joined text ("03/02/2026  1012  4471 2209") is not a card.
 _PAN_RE = re.compile(r"(?<![\d/.-])(?:\d{13,19}|\d{4}([ -])\d{4}\1\d{4}\1(\d{4})(?:\1\d{1,3})?)(?![\d/.-])")
+# A card number already masked on the page ("****1234", "xxxx-1234", "ending in 1234")
+_MASKED_CARD_RE = re.compile(r"(?:[*xX\u2022\u00b7]{2,}[\s-]*|\bending\s+(?:in\s+)?)\d{3,4}\b", re.IGNORECASE)
 _RECEIPT_QTY_RE = re.compile(
     r"(?<![\d.,])(?P<qty>\d{1,4}(?:[.,]\d{1,3}))\s*(?P<unit>gallons?|gals?|g|litres?|liters?|ltrs?|l|gge|dge)\b"
     r"\s*(?:@|x\b|at\b)",
@@ -438,14 +440,15 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
         if column is None:
             return self._missing(target, *args, ["unsupported_extraction_method"])
         located = record.extra.get(column) if record is not None else None
-        statement = (self.CARD_STATEMENT_AS_ISSUER and record is not None and "card" in record.extra
-                     and document.get("issuer") is not None)
+        card_statement = self.CARD_STATEMENT_AS_ISSUER and record is not None and "card" in record.extra
+        statement = card_statement and document.get("issuer") is not None
         if statement and field_id == "merchant_or_supplier":
             located = document["issuer"]  # the card issuer, not the station of each transaction
         elif statement and field_id == "fueling_location":
             located = self._station(record.extra.get("merchant") if record is not None else None, located)
-        elif statement and field_id == "account_number" and document.get("statement_account") is not None:
-            located = document["statement_account"]  # the account, not each transaction's card number
+        elif card_statement and field_id == "account_number" and document.get("statement_account") is not None:
+            # the account, not each transaction's card number; it needs no letterhead to be the account
+            located = document["statement_account"]
         if located is None:
             located = document.get(field_id)
         masked: list[str] = []
@@ -456,8 +459,9 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
             located = Located(card, located.cells, located.row, located.confidence, located.label_cell,
                               context=mask_card_numbers(located.context))
             masked.append("card_number_masked")
-        elif located is not None and field_id == "account_number" and _PAN_RE.search(located.raw):
-            masked.append("card_number_masked")
+        elif located is not None and field_id == "account_number" and (
+                _PAN_RE.search(located.raw) or _MASKED_CARD_RE.search(located.raw)):
+            masked.append("card_number_masked")  # a card, not an account: the reviewer is told to check it
         candidate = self._candidate_for_text(target, located, *args, parser_output, field_id)
         candidate["validation_flags"].extend(masked)
         return candidate
@@ -484,15 +488,24 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
         r"(?<![\w])(?:account|acct)\s*(?:no\.?|number|#)?\s*[:#]?\s+(?P<id>[A-Za-z0-9][A-Za-z0-9-]*\d[A-Za-z0-9-]*)(?![\w-])",
         re.IGNORECASE)
 
+    _ACCOUNT_LABEL = re.compile(r"(?:account|acct)\s*(?:no\.?|number|#)?\s*:?", re.IGNORECASE)
+
     def _statement_account(self, rows: Sequence[Row]) -> Located | None:
         """The account a statement prints in its header ("Account QF-6620-1187 · Statement date 10/03/2025"): an
         identifier of five characters or more after "Account", never a card number (those are in the table)."""
 
         for row in rows[:12]:
-            for cell in row.cells:
+            for position, cell in enumerate(row.cells):
                 match = self._STATEMENT_ACCOUNT.search(cell.text)
                 if match is not None and len(match.group("id")) >= 5 and not _PAN_RE.search(match.group("id")):
                     return Located(match.group("id"), [cell], row, CONF_DOCUMENT_SCAN, context=cell.text)
+                # a laid-out header puts the label and its value in two cells ("Account:" ... "AB-1234-0001")
+                if self._ACCOUNT_LABEL.fullmatch(cell.text.strip()) and position + 1 < len(row.cells):
+                    value = row.cells[position + 1]
+                    token = value.text.strip().split()[0] if value.text.strip() else ""
+                    if (len(token) >= 5 and re.search(r"\d", token) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", token)
+                            and not _PAN_RE.search(token)):
+                        return Located(token, [cell, value], row, CONF_DOCUMENT_SCAN, context=row.text)
         return None
 
     def _merchant(self, rows: Sequence[Row]) -> Located | None:

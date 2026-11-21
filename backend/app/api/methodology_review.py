@@ -63,6 +63,7 @@ from backend.app.services import methodology_explanation as explanation
 from backend.app.services import methodology_prefill as prefill
 from backend.app.services import methodology_review as rules
 from backend.app.services import quote_locator
+from backend.app.services.methodology_gwp import EMBEDDED, use_of
 from backend.app.services.document_file_types import served_type
 from backend.app.services import workpaper_item_service
 from backend.app.services.audit_log import write_audit_event
@@ -607,10 +608,14 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: _HasId,
     # GWP: the report may name several sets. The fixed field takes one and every other is a row, whatever
     # the order of this reply: a pending suggestion keeps its set if this run still found it, and a set that
     # is already on a row never goes into the fixed field as well.
-    gwp_items = [fixed.pop("gwp")] if "gwp" in fixed else []
-    gwp_items += [v for v in verified if v.row_group == "gwp"]
-    if gwp_items:
-        fixed["gwp"] = gwp_items[0]  # a record for the fixed field, so it can be locked and read
+    gwp_all = [fixed.pop("gwp")] if "gwp" in fixed else []
+    gwp_all += [v for v in verified if v.row_group == "gwp"]
+    # A set the document only mentions inside other factors, or as the exception to its method, is information: it
+    # is a row, whatever slot the reply (or the verifier) put it in, and never the fixed field.
+    info_only = lambda g: use_of(g.suggestion["value"].get("applies_to")) == EMBEDDED  # noqa: E731
+    gwp_items = [g for g in gwp_all if not info_only(g)]
+    if gwp_all:
+        fixed["gwp"] = gwp_items[0] if gwp_items else gwp_all[0]  # a record for the fixed field, so it can be locked and read
     for field_id in fixed:
         await workpaper_item_service.insert_item(
             db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind=KIND, item_key=field_id,
@@ -624,7 +629,7 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: _HasId,
     same = lambda a, b: prefill.same_row_value("gwp", a, b)  # noqa: E731
     moved: list[prefill.Verified] = []  # the GWP sets that are not the fixed field's
     gwp_fixed_values: list[Any] = []
-    if gwp_items:
+    if gwp_all:
         record = locked["gwp"]
         if rules.status_of(record) != rules.PENDING:
             # The decision's value, and the set that was suggested when it was decided: a rejected field has
@@ -635,7 +640,7 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: _HasId,
             held = lambda g: same(decided, g.suggestion["value"]) or same(suggested_then, g.suggestion["value"])  # noqa: E731
             if any(held(g) for g in gwp_items):
                 kept += 1
-            moved = [prefill.Verified(None, "gwp", g.suggestion) for g in gwp_items if not held(g)]
+            moved = [prefill.Verified(None, "gwp", g.suggestion) for g in gwp_all if not held(g)]
             fixed.pop("gwp")
         else:
             current = (record.get("suggestion") or {}).get("value")
@@ -643,10 +648,16 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: _HasId,
                 (g for g in gwp_items if not any(same(v, g.suggestion["value"]) for v in row_values)), None)
             if chosen is None:
                 fixed.pop("gwp")
+                stale = (record.get("suggestion") or {}).get("value")
+                if isinstance(stale, dict) and use_of(stale.get("applies_to")) == EMBEDDED:
+                    # An earlier read put an information-only set in the fixed field: with no default found now,
+                    # the field is empty again (the set stays as a row below).
+                    await workpaper_item_service.update_payload(
+                        db, engagement["id"], KIND, "gwp", {k: v for k, v in record.items() if k != "suggestion"}, user.id)
             else:
                 fixed["gwp"] = chosen
                 gwp_fixed_values.append(chosen.suggestion["value"])
-            moved = [prefill.Verified(None, "gwp", g.suggestion) for g in gwp_items if g is not chosen]
+            moved = [prefill.Verified(None, "gwp", g.suggestion) for g in gwp_all if g is not chosen]
     for field_id, item in fixed.items():
         if rules.status_of(locked[field_id]) != rules.PENDING:
             kept += 1

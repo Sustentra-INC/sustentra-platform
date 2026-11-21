@@ -148,3 +148,27 @@ def revision(rows: Sequence[Any]) -> Revision | None:
                 if marked is None:
                     marked = Revision(REVISED_WITHOUT_REFERENCE, row, cell)
     return marked
+
+
+# --- the same usage printed in two units ---------------------------------------------------
+UNIT_AMBIGUOUS_FLAG = "unit_ambiguous"
+_ENERGY = r"(?:therms?|mmbtu|mbtu|btu|dth|gj|mj|kwh|mwh)"
+_BASE = (r"(?:ccf|mcf|cf|scf|cubic\s+f(?:ee|oo)t|hundred\s+cubic\s+f(?:ee|oo)t|m3|m³|mlb|klb|lbs?|pounds?|kg|"
+         r"gal(?:lons?)?|l|litres?|liters?)")
+# "1.05 therms per CCF", "1.2 MMBtu / Mlb": a heat content or conversion factor.
+_FACTOR = re.compile(rf"\d(?:[.,]\d+)?\s*{_ENERGY}\s*(?:per|/)\s*(?:1\s*|one\s+)?{_BASE}\b", re.I)
+# "1,000 CCF x 1.05 = 1,050 therms", "(500 x 1.05 = 525.0)": the conversion worked out on the bill.
+_DERIVATION = re.compile(r"\d[\d,]*(?:\.\d+)?\s*(?:[a-z³]+\s*)?[x×*]\s*\d+\.\d+\s*=\s*\d", re.I)
+
+
+def prints_conversion(rows: Sequence[Any]) -> bool:
+    """The bill prints a heat content or conversion factor, or works one out ("1,000 CCF x 1.05 = 1,050
+    therms"): the usage is then on it in two units, and a reader that takes one of them has made a choice the
+    reviewer should see. Never raises: a bill with no such words gives False."""
+
+    for row in rows:
+        for cell in row.cells:
+            text = " ".join(cell.text.split())
+            if _FACTOR.search(text) or _DERIVATION.search(text):
+                return True
+    return False
