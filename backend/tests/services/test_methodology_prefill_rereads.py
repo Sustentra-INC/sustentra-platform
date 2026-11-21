@@ -240,3 +240,67 @@ def test_the_probe_reads_a_pdf_and_names_the_rule_for_each_line(capsys: pytest.C
         assert probe.main([str(path), "--year", "2024"]) == 0
     out = capsys.readouterr().out
     assert "year_wording=True" in out and "start_would_be=2024-01-01" in out and "title_year=2024" in out
+
+
+# --- what the real PDFs showed ----------------------------------------------------------------------------------
+
+# The layout of an engineering firm's plan: a copyright line, the year alone in big type, the title in pieces, and
+# the whole title again in a footer. The year is printed on several lines, always the same year.
+PLAN_COVER = [
+    (1, "© 2025 Acme Engineering."),                             # L1
+    (1, "2024"),                                                      # L2 the year, alone
+    (1, "GREENHOUSE GAS"),                                            # L3
+    (1, "INVENTORY"),                                                 # L4
+    (1, "MANAGEMENT PLAN"),                                           # L5
+    (1, "GREENHOUSE GAS INVENTORY MANAGEMENT PLAN"),                  # L6
+    (1, "© 2025 Acme Engineering."),                             # L7
+    (1, "2024 Greenhouse Gas Inventory Management Plan"),             # L8 the title that carries the year
+    (2, "GV20250479_FINAL.docx"),                                         # L9
+    (9, "Location-based and market-based methods have been used to calculate calendar year office"),  # L10
+]
+
+
+def test_a_title_in_a_footer_beside_the_bare_cover_year_gives_the_year() -> None:
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "calendar year office", "L10", True,
+                                                ("L8", "2024 Greenhouse Gas Inventory Management Plan"))]), [doc(PLAN_COVER)])
+    assert not dropped and kept[0].suggestion["value"]["implied_from"] == "calendar year, year from title"
+
+
+def test_a_different_year_among_the_cover_lines_still_refuses_the_title_year() -> None:
+    lines = [*PLAN_COVER[:2], (1, "2023"), *PLAN_COVER[2:]]  # a table of two years begins the document
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "calendar year office", "L11", True,
+                                                ("L9", "2024 Greenhouse Gas Inventory Management Plan"))]), [doc(lines)])
+    assert kept == [] and sum(dropped.values()) == 1
+
+
+# The text layer of a bank's assurance report runs words together, and its gas list prints each name in quotation marks.
+GLUED = [
+    (2, "gas(“GHG”) emissions,verified carbonoffsets,purchased electricity, and purchased renewable electricity"),   # L1
+    (2, "metrics (“metrics”) for the year ended December 31, 2024 inmanagement’sassertion,arepresented in"),       # L2
+    (2, "accordancewiththeassessmentcriteriasetforthinmanagement’sassertion."),                                      # L3
+    (5, "3. Carbon dioxide equivalent (“CO2e”) emissions are inclusive of carbon dioxide (“CO2”), methane (“CH4”), nitrous"),  # L4
+    (5, "oxide (“N2O”), hydrofluorocarbons (“HFCs”), perfluorocarbons(“PFCs”), sulfur hexafluoride (“SF6”), and nitrogen"),  # L5
+    (5, "trifluoride (“NF3”). Emissions data by individual gas is not disclosed."),                             # L6
+]
+
+
+@pytest.mark.parametrize("quote", [
+    "for the year ended December 31, 2024",
+    "metrics (“metrics”) for the year ended December 31, 2024 in management’s assertion, are presented in",  # spaced again
+    "for the year ended December 31, 2024 in management's assertion, are presented in accordance with the assessment criteria",
+])
+def test_a_period_quote_is_found_where_the_text_layer_runs_words_together(quote: str) -> None:
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", quote, "L2", True)]), [doc(GLUED)])
+    assert not dropped and kept[0].suggestion["value"]["start_implied"] is True
+
+
+def test_a_gas_named_in_quotation_marks_is_found_when_the_quote_leaves_them_out() -> None:
+    kept, dropped = check(answer(gases=[gas("gas:n2o", "Included", "nitrous oxide (N2O)", "L4"),
+                                        gas("gas:nf3", "Included", "nitrogen trifluoride (NF3)", "L5"),
+                                        gas("gas:co2", "Included", "carbon dioxide (CO2), methane (CH4), nitrous oxide (N2O)", "L4")]), [doc(GLUED)])
+    assert not dropped and {k.field_id for k in kept} == {"gas:n2o", "gas:nf3", "gas:co2"}
+
+
+def test_the_squashed_match_still_needs_the_same_letters() -> None:
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "for the year ended December 31, 2024 in management's claim, are presented in", "L2", True)]), [doc(GLUED)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
