@@ -100,14 +100,14 @@ class SetupFromStoreService(EngagementRecalculationService):
                        **({"address": address} if address else {})} for name, address in names.items()]
         return facilities, nameless
 
-    def recalculate(self, engagement: dict, can_see: Any, decisions: dict | None = None) -> dict:
+    def recalculate(self, engagement: dict, can_see: Any, decisions: dict | None = None, **options: Any) -> dict:
         from backend.app.services import calculation_lines as cl
         from backend.app.services import recalculation_lines as lines
         from backend.app.services.engagement_recalculation_service import parse_inputs, setup_facilities
 
         settings = dict(engagement.get("settings") or {})
         if "facilities" in settings:
-            return super().recalculate(engagement, can_see, decisions)
+            return super().recalculate(engagement, can_see, decisions, **options)
         facilities, nameless = self._named_facilities()
         decisions = {key: dict(value) for key, value in (decisions or {}).items()}
         if nameless:
@@ -138,7 +138,7 @@ class SetupFromStoreService(EngagementRecalculationService):
             decisions.setdefault(record.document_id, {})["placements"] = [{"from": cl.SUPPORTING_UNASSIGNED, "to": key}]
         if added:
             settings["evidenceLines"] = cl.normalize_evidence_lines(added)
-        return super().recalculate(engagement, can_see, decisions)
+        return super().recalculate(engagement, can_see, decisions, **options)
 
 
 def _service(store: FakeStore) -> EngagementRecalculationService:

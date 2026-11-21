@@ -1,0 +1,42 @@
+{
+ "company": {
+  "categories": {
+   "fugitive_refrigerants": null,
+   "mobile_combustion": 10.326875000000001,
+   "purchased_electricity_location_based": 348.1479801507743,
+   "purchased_electricity_market_based": 348.1479801507743,
+   "stationary_combustion": 3478.9997499999995
+  },
+  "sha256": "5e5880e41114e2e41a302442a130efdf356ffc8b30ee6f5d97105ccbf4911d98"
+ },
+ "no_regions": {
+  "categories": {
+   "fugitive_refrigerants": null,
+   "mobile_combustion": null,
+   "purchased_electricity_location_based": 924.7320626683963,
+   "purchased_electricity_market_based": 924.7320626683963,
+   "stationary_combustion": 3478.9997499999995
+  },
+  "sha256": "dbd4297ac2adbd8217b2d30c15a3fa6b898a94e1921bf3750f1be3e69553f924"
+ },
+ "plain": {
+  "categories": {
+   "fugitive_refrigerants": null,
+   "mobile_combustion": 10.326875000000001,
+   "purchased_electricity_location_based": 348.1479801507743,
+   "purchased_electricity_market_based": 348.1479801507743,
+   "stationary_combustion": 3478.9997499999995
+  },
+  "sha256": "9ad6f7c12f946e4d87971a71fd84eaf05743dbbe7e3946c2a247547122db3a04"
+ },
+ "share": {
+  "categories": {
+   "fugitive_refrigerants": null,
+   "mobile_combustion": 10.326875000000001,
+   "purchased_electricity_location_based": 348.1479801507743,
+   "purchased_electricity_market_based": 348.1479801507743,
+   "stationary_combustion": 3478.9997499999995
+  },
+  "sha256": "e4e1bcb448e7f5277700f3f45a5786d47d6930080c3b476e9c5c14eac9a63279"
+ }
+}

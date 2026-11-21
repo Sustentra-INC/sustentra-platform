@@ -1,0 +1,959 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/calculation_trace.schema.json",
+  "title": "CalculationLineTrace",
+  "description": "The step-level working of one calculation line, carried as `trace` on each item of the recalculation response's calculation_lines. It restates what the calculators produced; it never feeds a number back into any total. Python: backend/app/services/calc_trace/model.py. TypeScript: frontend/features/s1/api/calcTrace.ts.",
+  "$ref": "#/$defs/LineTrace",
+  "$defs": {
+    "panel": {
+      "enum": [
+        "stationary",
+        "mobile",
+        "fugitive",
+        "purchased_gases",
+        "electricity",
+        "steam",
+        "heat",
+        "cooling"
+      ]
+    },
+    "tag": {
+      "enum": [
+        "detected_from_evidence",
+        "not_used_for_this_line"
+      ]
+    },
+    "number_or_text": {
+      "type": [
+        "number",
+        "string",
+        "null"
+      ]
+    },
+    "LineTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trace_version",
+        "line_key",
+        "panel",
+        "state",
+        "blocking",
+        "choices",
+        "inputs",
+        "steps",
+        "result",
+        "method_mismatch",
+        "flags"
+      ],
+      "properties": {
+        "trace_version": {
+          "const": 1
+        },
+        "line_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "panel": {
+          "$ref": "#/$defs/panel"
+        },
+        "state": {
+          "enum": [
+            "complete",
+            "blocked",
+            "partial"
+          ]
+        },
+        "blocking": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Blocking"
+          }
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Choice"
+          }
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/TraceInput"
+          }
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TraceStep"
+          }
+        },
+        "result": {
+          "$ref": "#/$defs/TraceResult"
+        },
+        "method_mismatch": {
+          "type": "boolean"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "Blocking": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_id",
+        "message"
+      ],
+      "properties": {
+        "input_id": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "TraceResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "company",
+        "recomputed",
+        "difference"
+      ],
+      "properties": {
+        "unit": {
+          "const": "t CO2e"
+        },
+        "company": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "recomputed": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "difference": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "Choice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "options",
+        "chosen",
+        "chosen_by"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChoiceOption"
+          }
+        },
+        "chosen": {
+          "type": "string"
+        },
+        "chosen_by": {
+          "enum": [
+            "default",
+            "reviewer"
+          ]
+        },
+        "company": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suggestion": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Suggestion"
+            }
+          ]
+        },
+        "decision": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Decision"
+            }
+          ]
+        }
+      }
+    },
+    "ChoiceOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "available",
+        "required_inputs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "equation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "why_unavailable": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detection": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/tag"
+            }
+          ]
+        },
+        "required_inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "citation": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/SourceRef"
+            }
+          ]
+        }
+      }
+    },
+    "TraceInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "kind",
+        "required_for"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "evidence_sum",
+            "reference",
+            "reviewer_entered",
+            "company_input",
+            "methodology",
+            "constant"
+          ]
+        },
+        "required_for": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "company": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Side"
+            }
+          ]
+        },
+        "recomputed": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Side"
+            }
+          ]
+        },
+        "differs": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "difference": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rows": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/InputRow"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "InputRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "company": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Side"
+            }
+          ]
+        },
+        "recomputed": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Side"
+            }
+          ]
+        },
+        "difference": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "Side": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "status"
+      ],
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/number_or_text"
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "not_reported",
+            "suggested",
+            "accepted",
+            "edited",
+            "rejected",
+            "reference",
+            "derived",
+            "awaiting_review"
+          ]
+        },
+        "source": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/SourceRef"
+            }
+          ]
+        },
+        "suggestion": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Suggestion"
+            }
+          ]
+        },
+        "decision": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Decision"
+            }
+          ]
+        }
+      }
+    },
+    "SourceRef": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "document",
+            "workbook_cell",
+            "reference",
+            "methodology",
+            "entered",
+            "derived"
+          ]
+        },
+        "document_id": {
+          "type": "string"
+        },
+        "candidate_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "page": {
+          "type": "integer"
+        },
+        "quote": {
+          "type": "string"
+        },
+        "sheet": {
+          "type": "string"
+        },
+        "cell": {
+          "type": "string"
+        },
+        "dataset": {
+          "type": "string"
+        },
+        "table": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "row": {
+          "type": "integer"
+        },
+        "edition": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "citation": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "by": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "from": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "document"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "document_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "workbook_cell"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "document_id",
+              "sheet",
+              "cell"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "reference"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "dataset"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "methodology"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "field"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "entered"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "by",
+              "at",
+              "reason"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "derived"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "from"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "Suggestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "origin",
+        "value",
+        "reason",
+        "quote",
+        "source",
+        "model",
+        "request_id",
+        "suggested_at"
+      ],
+      "properties": {
+        "origin": {
+          "const": "ai"
+        },
+        "value": {
+          "type": [
+            "string",
+            "number"
+          ]
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "quote": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        },
+        "model": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "suggested_at": {
+          "type": "string"
+        }
+      }
+    },
+    "Decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "by",
+        "at"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "pending",
+            "accepted",
+            "edited",
+            "rejected"
+          ]
+        },
+        "value": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "by": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      }
+    },
+    "TraceStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "n",
+        "title",
+        "blocks"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "n": {
+          "enum": [
+            1,
+            2,
+            3,
+            4,
+            null
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TraceBlock"
+          }
+        }
+      }
+    },
+    "TraceBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "columns"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "tag": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/tag"
+            }
+          ]
+        },
+        "choice_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Column"
+          }
+        },
+        "company": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Operation"
+            }
+          ]
+        },
+        "recomputed": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Operation"
+            }
+          ]
+        }
+      }
+    },
+    "Column": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "label",
+        "is_result"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "is_result": {
+          "type": "boolean"
+        },
+        "display": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dp": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sig": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    "Operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "terms",
+        "result"
+      ],
+      "properties": {
+        "terms": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/Term"
+          }
+        },
+        "result": {
+          "$ref": "#/$defs/Operand"
+        }
+      }
+    },
+    "Term": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "operand"
+      ],
+      "properties": {
+        "op": {
+          "enum": [
+            null,
+            "×",
+            "÷",
+            "+",
+            "−"
+          ]
+        },
+        "operand": {
+          "$ref": "#/$defs/Operand"
+        }
+      }
+    },
+    "Operand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "column",
+        "value"
+      ],
+      "properties": {
+        "column": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/number_or_text"
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "step_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "difference": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "differs": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

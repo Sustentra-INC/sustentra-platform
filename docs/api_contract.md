@@ -774,6 +774,15 @@ naming the engagement, and rewrites nothing.
 AR4 (IPCC AR4 WG1 Table 2.14: CO2 1, CH4 25, N2O 298) has no HFC, PFC, SF6 or NF3 values, like AR6:
 a refrigerant gas needs `refrigerant_gwps` under AR4 (an open `needs_input` item says so).
 
+The recalculation response carries no traces (Results, the dashboard and the Evidence tree all fetch it).
+`GET /v1/engagements/{engagement_id}/recalculation/lines/{line_key}/trace` returns
+`{line_key, trace}` for one line: the step-level working of the line, as the evaluator in
+`backend/app/services/calc_trace/` re-ran it and checked against the calculator to 1e-9 (`trace` is null when it
+cannot be traced; 404 for an unknown line). It comes from the same engine run as the recalculation. Shape:
+`contracts/calculation_trace.schema.json`, TypeScript `features/s1/api/calcTrace.ts` (`getLineTrace`). Unset fields
+are omitted. Stationary, mobile and electricity lines have traces; fugitive, purchased gases, steam, heat and
+cooling have stub builders.
+
 ### GET /v1/provider/orgs/{org_id}
 Provider admins only (an org admin or member gets 403, no session 401). 404 `Organization not found` for an
 id that does not exist. Answers the organization (`id`, `name`, `slug`, `status`, `max_users`, `user_count`,
