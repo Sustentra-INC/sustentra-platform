@@ -12,10 +12,10 @@ vi.mock("../providerApi", async () => {
 });
 vi.mock("../orgApi", async () => {
   const actual = await vi.importActual<typeof import("../orgApi")>("../orgApi");
-  return { ...actual, resendInvite: vi.fn() };
+  return { ...actual, resendInvite: vi.fn(), listOrgUsers: vi.fn() };
 });
 
-import { resendInvite } from "../orgApi";
+import { listOrgUsers, resendInvite } from "../orgApi";
 import { OrgDetail } from "../OrgDetail";
 import { getOrg, type InitialAdminStatus } from "../providerApi";
 
@@ -42,7 +42,10 @@ async function show(detail: Record<string, unknown>) {
   await waitFor(() => expect(screen.getByRole("heading", { name: "Käserei Zürich" })).toBeInTheDocument());
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  (listOrgUsers as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ items: [], total: 0, max_users: 10, seats_used: 0 });
+});
 
 describe("provider org detail: the first admin", () => {
   it("says an invited admin is waiting, with the invite date, and offers Resend invite", async () => {

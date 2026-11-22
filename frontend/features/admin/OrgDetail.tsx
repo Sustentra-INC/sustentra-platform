@@ -15,6 +15,7 @@ import {
   type OrgDetail as OrgDetailData,
 } from "./providerApi";
 import { ConfirmByTyping } from "./ConfirmByTyping";
+import { OrgPeople } from "./OrgPeople";
 import { StatusBadge } from "./StatusBadge";
 import styles from "./admin.module.css";
 
@@ -88,6 +89,16 @@ export function OrgDetail({ orgId }: { orgId: string }) {
       setError(err instanceof ApiError ? err.detail : "Could not save changes.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** Re-read the org (counts, first admin) without blanking the page; the form fields are left as typed. */
+  async function refreshOrg() {
+    try {
+      const fetched = await getOrg(orgId);
+      setOrg((current) => ({ ...current, ...fetched }));
+    } catch {
+      // The counts stay as they were; the people list has its own error line.
     }
   }
 
@@ -240,6 +251,8 @@ export function OrgDetail({ orgId }: { orgId: string }) {
       </form>
 
       <FirstAdmin admin={org.initial_admin ?? null} counts={org.user_counts} onResend={(a) => void doResend(a)} />
+
+      <OrgPeople orgId={orgId} onChanged={() => void refreshOrg()} />
 
       {confirming ? (
         <ConfirmByTyping

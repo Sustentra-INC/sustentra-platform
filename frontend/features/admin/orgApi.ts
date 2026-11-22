@@ -16,6 +16,8 @@ export interface OrgUser {
   last_name: string;
   role: UserRole;
   status: UserStatus;
+  /** When the person was added (for an invited person, when the invite was first sent). */
+  created_at?: string | null;
 }
 
 export interface UsersResult {
