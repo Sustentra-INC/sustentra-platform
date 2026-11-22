@@ -42,11 +42,11 @@ describe("OrgPeople", () => {
     render(<OrgPeople orgId="o1" />);
     await screen.findByText("Bo Ss");
     const rows = screen.getAllByRole("row").slice(1);
-    expect(rows.map((r) => within(r).getAllByRole("cell")[0].textContent)).toEqual(["Bo Ss", "Ann Lee", "Zed Zane"]);
+    expect(rows.map((r) => within(r).getAllByRole("cell")[0].firstElementChild?.textContent)).toEqual(["Bo Ss", "Ann Lee", "Zed Zane"]);
     expect(within(rows[0]).getByText("Org admin")).toBeInTheDocument();
     expect(within(rows[0]).getByText("suspended")).toBeInTheDocument();
     expect(within(rows[1]).getByText("invited")).toBeInTheDocument();
-    expect(within(rows[1]).getByText(/invited 12 Nov 2026/)).toBeInTheDocument();
+    expect(within(rows[1]).getByText(/Invited 12 Nov 2026/)).toBeInTheDocument();
     expect(within(rows[2]).getByText("Member")).toBeInTheDocument();
   });
 
