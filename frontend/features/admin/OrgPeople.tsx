@@ -94,11 +94,9 @@ export function OrgPeople({ orgId, onChanged }: { orgId: string; onChanged?: () 
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Email</th>
+                  <th>Person</th>
                   <th>Role</th>
                   <th>Status</th>
-                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -107,35 +105,37 @@ export function OrgPeople({ orgId, onChanged }: { orgId: string; onChanged?: () 
                   const sent = day(p.created_at);
                   return (
                     <tr key={p.id}>
-                      <td>{name}</td>
-                      <td className={styles.muted}>{p.email}</td>
-                      <td>{p.role === "org_admin" ? "Org admin" : "Member"}</td>
+                      <td>
+                        <div className={styles.personName}>{name}</div>
+                        <div className={styles.personSub}>{p.email}</div>
+                      </td>
+                      <td className={styles.nowrap}>{p.role === "org_admin" ? "Org admin" : "Member"}</td>
                       <td>
                         <StatusBadge status={p.status} />
-                        {p.status === "invited" && sent ? <span className={styles.muted}> · invited {sent}</span> : null}
-                      </td>
-                      <td>
                         {p.status === "invited" ? (
-                          <div className={styles.actions}>
-                            <button
-                              type="button"
-                              className={`${styles.button} ${styles.ghost}`}
-                              aria-label={`Resend invite to ${p.email}`}
-                              onClick={() => void act(() => resendInvite(orgId, p.id), `Invite sent again to ${p.email}.`)}
-                            >
-                              Resend invite
-                            </button>
-                            <button
-                              type="button"
-                              className={`${styles.button} ${styles.danger}`}
-                              aria-label={`Cancel invite for ${p.email}`}
-                              onClick={() => {
-                                if (window.confirm(`Cancel the invitation for ${p.email}?`))
-                                  void act(() => deleteUser(orgId, p.id), `Invitation for ${p.email} cancelled.`);
-                              }}
-                            >
-                              Cancel invite
-                            </button>
+                          <div className={styles.personSub}>
+                            {sent ? <span>Invited {sent}</span> : null}
+                            <span className={styles.rowLinks}>
+                              <button
+                                type="button"
+                                className={styles.textButton}
+                                aria-label={`Resend invite to ${p.email}`}
+                                onClick={() => void act(() => resendInvite(orgId, p.id), `Invite sent again to ${p.email}.`)}
+                              >
+                                Resend invite
+                              </button>
+                              <button
+                                type="button"
+                                className={`${styles.textButton} ${styles.textDanger}`}
+                                aria-label={`Cancel invite for ${p.email}`}
+                                onClick={() => {
+                                  if (window.confirm(`Cancel the invitation for ${p.email}?`))
+                                    void act(() => deleteUser(orgId, p.id), `Invitation for ${p.email} cancelled.`);
+                                }}
+                              >
+                                Cancel invite
+                              </button>
+                            </span>
                           </div>
                         ) : null}
                       </td>
