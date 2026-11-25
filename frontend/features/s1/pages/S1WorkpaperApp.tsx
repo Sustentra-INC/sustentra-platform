@@ -8,6 +8,7 @@ import {
   listWorkspaceEvidence,
   signInAgainPath,
   submitFieldReview,
+  UploadInterruptedError,
   uploadDocumentWithProgress,
   userFacingApiError,
 } from "../api/s1Backend";
@@ -44,7 +45,10 @@ import { S1Chrome, type NavKey, type WorkpaperUser } from "../components/S1Chrom
 import { logout } from "../../auth/api";
 import { navForView } from "../utils/navForView";
 import { DashboardScreen } from "../components/DashboardScreen";
-import { UploadDialog, uploadTasksFor, type SampleScript, type UploadTask } from "../components/UploadDialog";
+import { UploadDialog, uploadTasksForItems, type SampleScript, type UploadTask } from "../components/UploadDialog";
+import { expandUploads, type UploadItem } from "../utils/expandUploads";
+import { ZipError } from "../utils/zipReader";
+import type { UploadPick } from "../utils/uploadSources";
 import { SetupScreen } from "../components/SetupScreen";
 import { DemoDocument } from "../components/demo/DemoDocument";
 import {
@@ -151,7 +155,8 @@ import type { MethodologyState } from "../types/methodology";
 /** The files of the upload in progress (or just finished): the lines the Evidence banner lists,
  *  and the documents whose reads may still fail after the upload dialog has moved on. */
 interface UploadBatch {
-  notUploaded: string[];
+  /** One banner line per file not uploaded, by task id (a retry replaces its line). */
+  notUploaded: Map<string, string>;
   notRead: string[];
   /** File name by document id, for the files that were stored. */
   names: Map<string, string>;
@@ -226,6 +231,13 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   // The batch of the upload in progress (several files dropped together): its progress table.
   const [uploadBatchId, setUploadBatchId] = useState<string | null>(null);
   const [batchCreateFailed, setBatchCreateFailed] = useState(false);
+  // Folders and zips (MVP-158): what was found in them, and what is being looked through now.
+  const [uploadSummary, setUploadSummary] = useState<string[]>([]);
+  const [unpackNote, setUnpackNote] = useState<string | null>(null);
+  const uploadItems = useRef(new Map<string, UploadItem>());
+  const uploadAbort = useRef<AbortController | null>(null);
+  const uploadBatchRef = useRef<string | undefined>(undefined);
+  const uploadRetryIds = useRef(new Set<string>());
   // Backend mode: every extracted field (facts about each document) and the reviewer's
   // saved decisions per document, laid over the machine's view of the evidence.
   const [workspaceFields, setWorkspaceFields] = useState<ExtractedField[]>([]);
@@ -482,7 +494,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
 
   // Backend mode: reads run in the background. The runs say which documents are still being
   // read, and the page hears when a read finishes. Fixture mode never fetches or schedules.
-  const uploadBatch = useRef<UploadBatch>({ notUploaded: [], notRead: [], names: new Map() });
+  const uploadBatch = useRef<UploadBatch>({ notUploaded: new Map(), notRead: [], names: new Map() });
   // Reads a reviewer asked for (setting a document's type), by run id, with the banner title to
   // use if one fails after the request has answered.
   const rereadRuns = useRef(new Map<string, string>());
@@ -495,10 +507,14 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   /** The Evidence banner for an upload batch: the files that weren't uploaded or weren't read.
    *  `refreshBackendWorkspace` clears the banner as it starts, so this is set after a refresh. */
   function showUploadProblems(batch: UploadBatch) {
-    if (batch.notUploaded.length === 0 && batch.notRead.length === 0) return;
+    const notUploaded = Array.from(batch.notUploaded.values());
+    if (notUploaded.length === 0 && batch.notRead.length === 0) return;
+    const lines = [...notUploaded, ...batch.notRead];
+    const shown = lines.slice(0, 5);
     setBackendError({
-      title: uploadProblemTitle(batch.notUploaded.length, batch.notRead.length),
-      message: [...batch.notUploaded, ...batch.notRead].join(" "),
+      title: uploadProblemTitle(notUploaded.length, batch.notRead.length),
+      message:
+        shown.join(" ") + (lines.length > shown.length ? ` And ${lines.length - shown.length} more are listed in the upload pop-up.` : ""),
     });
   }
 
@@ -883,17 +899,34 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     });
   }
 
-  function uploadFiles(files: FileList) {
+  function uploadFiles(pick: UploadPick) {
     if (dataMode === "backend") {
-      void handleUploadFiles(files);
+      void handleUploadFiles(pick);
       return;
     }
-    handleFixtureUpload(files);
+    void handleFixtureUpload(pick);
   }
 
   // Fixture-mode upload: rows appear immediately, then progress as they process.
-  function handleFixtureUpload(files: FileList) {
-    const created = Array.from(files).map((file) => makeUploadItem(file));
+  async function handleFixtureUpload(pick: UploadPick) {
+    // Folders and zips are unpacked here too; what can't be uploaded is told in the pop-up.
+    const expanded = await expandUploads(pick);
+    const files: File[] = [];
+    const skipped: string[] = expanded.items.flatMap((item) => (item.reason && !item.open ? [`${item.path}: ${item.reason}`] : []));
+    for (const item of expanded.items) {
+      if (!item.open) continue;
+      try {
+        files.push(await item.open());
+      } catch (error) {
+        skipped.push(`${item.path}: ${error instanceof ZipError ? error.message : "Couldn't be unpacked."}`);
+      }
+    }
+    setUploadSummary([
+      ...expanded.summaries,
+      ...skipped.slice(0, 5),
+      ...(skipped.length > 5 ? [`And ${skipped.length - 5} more can't be read.`] : []),
+    ]);
+    const created = files.map((file) => makeUploadItem(file));
     if (created.length === 0) return;
     setEvidenceItems((cur) => [...created, ...cur]);
     setSessionUploads((cur) => [...created.map((c) => c.documentId), ...cur]);
@@ -1083,67 +1116,67 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     }
   }
 
-  async function handleUploadFiles(files: FileList) {
-    if (dataMode !== "backend") return;
-    if (!engagement.engagementId) {
-      setBackendError({ title: "Couldn't upload", message: "Create or pick an engagement in Setup before uploading." });
-      return;
-    }
-    const picked = Array.from(files);
-    // A file no parser can read is set aside as not uploaded and never sent.
-    const tasks = uploadTasksFor(picked, Date.now().toString(36));
+  /** Sends the given tasks one at a time, each file unpacked only when its turn comes. A busy server
+   *  (429, 502-504) or a dropped connection is tried again a few times before the file is marked
+   *  as not uploaded (and offered for another try). */
+  async function runUploads(taskIds: string[], batch: UploadBatch, batchId: string | undefined, signal: AbortSignal) {
     const patchTask = (id: string, next: Partial<UploadTask>) =>
       setUploadTasks((current) => current.map((task) => (task.id === id ? { ...task, ...next } : task)));
-    setUploadTasks(tasks);
-    setIsUploading(true);
-    setBackendError(null);
-    // One line per file for the Evidence banner: not uploaded, then uploaded but not read. Reads
-    // that fail after the upload has moved on (queued reads) are added by handleReadsFinished.
-    const batch: UploadBatch = {
-      notUploaded: tasks.flatMap((task) => (task.stage === "not_uploaded" && task.error ? [task.error] : [])),
-      notRead: [],
-      names: new Map(),
-    };
-    uploadBatch.current = batch;
-    const sending = tasks.some((task) => task.stage === "waiting");
-    // Several files at once are one batch with one progress table. A batch that can't be made
-    // is not worth stopping the upload for: the files go up without one.
-    let batchId: string | undefined;
-    setUploadBatchId(null);
-    setBatchCreateFailed(false);
-    if (tasks.filter((task) => task.stage === "waiting").length > 1) {
-      try {
-        batchId = await createDocumentBatch(engagement.engagementId);
-        setUploadBatchId(batchId);
-      } catch (error) {
-        if (handleSessionEnded(error)) {
-          setIsUploading(false);
-          return;
-        }
-        setBatchCreateFailed(true);
+    const engagementId = engagement.engagementId;
+    for (const taskId of taskIds) {
+      const item = uploadItems.current.get(taskId);
+      if (!item?.open) continue;
+      const label = item.path;
+      const notUploaded = (reason: string, retryable: boolean) => {
+        patchTask(taskId, { stage: "not_uploaded", progress: 0, error: reason, retryable });
+        batch.notUploaded.set(taskId, reason.includes(item.name) ? reason : `${label}: ${reason}`);
+        if (retryable) uploadRetryIds.current.add(taskId);
+      };
+      if (signal.aborted) {
+        notUploaded("Cancelled before it was sent.", false);
+        continue;
       }
-    }
-    for (const [index, file] of picked.entries()) {
-      const taskId = tasks[index].id;
-      if (tasks[index].stage === "not_uploaded") continue;
       let uploadedId: string | null = null;
       try {
-        patchTask(taskId, { stage: "uploading" });
-        const document = await uploadDocumentWithProgress(engagement.engagementId, file, (fraction) =>
-          patchTask(taskId, { progress: fraction }),
-          batchId
-        );
+        patchTask(taskId, { stage: "uploading", progress: 0, error: undefined, retryable: false });
+        let file: File;
+        try {
+          file = await item.open();
+        } catch (error) {
+          notUploaded(error instanceof ZipError ? error.message : "Couldn't be unpacked from the zip.", false);
+          continue;
+        }
+        let lastTick = 0;
+        const onProgress = (fraction: number) => {
+          const now = performance.now();
+          if (fraction < 1 && now - lastTick < 150) return; // a tick per 150 ms, not per event
+          lastTick = now;
+          patchTask(taskId, { progress: fraction });
+        };
+        let document: Awaited<ReturnType<typeof uploadDocumentWithProgress>> | null = null;
+        for (let attempt = 0; document === null; attempt++) {
+          try {
+            document = await uploadDocumentWithProgress(engagementId, file, onProgress, batchId);
+          } catch (error) {
+            const busy = error instanceof ApiError && [429, 502, 503, 504].includes(error.status);
+            if (!(busy || error instanceof UploadInterruptedError) || attempt >= 3 || signal.aborted) throw error;
+            patchTask(taskId, { progress: 0 });
+            const wait = error instanceof ApiError && error.retryAfter ? Math.min(error.retryAfter, 10) * 1000 : 1000 * 2 ** attempt;
+            await new Promise((resolve) => window.setTimeout(resolve, wait));
+          }
+        }
         uploadedId = document.document_id;
-        batch.names.set(document.document_id, file.name);
+        batch.names.set(document.document_id, label);
         patchTask(taskId, { stage: "reading", progress: 1, documentId: document.document_id });
+        const uploaded = document;
         setEvidenceItems((current) => [
           {
-            documentId: document.document_id,
-            filename: document.file_name,
+            documentId: uploaded.document_id,
+            filename: uploaded.file_name,
             downloadUrl: undefined,
             format: file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "other",
-            uploadedBy: { id: document.uploaded_by, name: document.uploaded_by, actorType: "preparer" },
-            uploadedAt: document.uploaded_at,
+            uploadedBy: { id: uploaded.uploaded_by, name: uploaded.uploaded_by, actorType: "preparer" },
+            uploadedAt: uploaded.uploaded_at,
             evidenceClass: "main",
             disposition: "active",
             processingState: "not_ingested",
@@ -1166,7 +1199,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             reviewArea: null,
             note: null,
           },
-          ...current.filter((item) => item.documentId !== document.document_id),
+          ...current.filter((existing) => existing.documentId !== uploaded.document_id),
         ]);
         setDemoState("populated");
         // Queued, the read is only started: the runs hook follows it and the next file goes up.
@@ -1178,7 +1211,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           patchTask(taskId, { stage: "done" });
         } else {
           patchTask(taskId, { stage: "failed", error: start.reason });
-          batch.notRead.push(`${file.name}: ${start.reason}`);
+          batch.notRead.push(`${label}: ${start.reason}`);
         }
       } catch (error) {
         if (handleSessionEnded(error)) {
@@ -1189,16 +1222,112 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           // Uploaded, but asking for the read failed: the row and the banner say why.
           const reason = `Uploaded, but could not be read: ${userFacingApiError(error)}`;
           patchTask(taskId, { stage: "failed", error: reason });
-          batch.notRead.push(`${file.name}: ${reason}`);
+          batch.notRead.push(`${label}: ${reason}`);
         } else {
           // Not stored: the API's own words say why (its 415 names the file).
-          const reason = userFacingApiError(error);
-          patchTask(taskId, { stage: "not_uploaded", progress: 0, error: reason });
-          batch.notUploaded.push(reason.includes(file.name) ? reason : `${file.name}: ${reason}`);
+          const transient =
+            error instanceof UploadInterruptedError ||
+            (error instanceof ApiError && [429, 502, 503, 504].includes(error.status));
+          notUploaded(userFacingApiError(error), transient);
         }
       }
     }
-    if (sending) await refreshBackendWorkspace("populated");
+  }
+
+  async function handleUploadFiles(pick: UploadPick) {
+    if (dataMode !== "backend") return;
+    if (!engagement.engagementId) {
+      setBackendError({ title: "Couldn't upload", message: "Create or pick an engagement in Setup before uploading." });
+      return;
+    }
+    if (pick.sources.length === 0 && pick.refused.length === 0) return;
+    const controller = new AbortController();
+    uploadAbort.current = controller;
+    setIsUploading(true);
+    setBackendError(null);
+    setUploadTasks([]);
+    setUploadSummary([]);
+    setUnpackNote("Looking through what you added…");
+    let expanded;
+    try {
+      expanded = await expandUploads(pick, { signal: controller.signal, onProgress: setUnpackNote });
+    } catch {
+      setUnpackNote(null);
+      setIsUploading(false);
+      setBackendError({ title: "Couldn't upload", message: "Couldn't look through what you added. Try again." });
+      return;
+    }
+    setUnpackNote(null);
+    if (controller.signal.aborted) {
+      setIsUploading(false);
+      return;
+    }
+    setUploadSummary(expanded.summaries);
+    // A file no parser can read is set aside as not uploaded and never sent.
+    const tasks = uploadTasksForItems(expanded.items, Date.now().toString(36));
+    uploadItems.current = new Map(tasks.map((task, index) => [task.id, expanded.items[index]]));
+    uploadRetryIds.current = new Set();
+    setUploadTasks(tasks);
+    // One line per file for the Evidence banner: not uploaded, then uploaded but not read. Reads
+    // that fail after the upload has moved on (queued reads) are added by handleReadsFinished.
+    const batch: UploadBatch = {
+      notUploaded: new Map(
+        tasks.flatMap((task) =>
+          task.stage === "not_uploaded" && task.error
+            ? [[task.id, task.error.includes(task.filename) ? task.error : `${task.path ?? task.filename}: ${task.error}`] as [string, string]]
+            : []
+        )
+      ),
+      notRead: [],
+      names: new Map(),
+    };
+    uploadBatch.current = batch;
+    const waiting = tasks.filter((task) => task.stage === "waiting").map((task) => task.id);
+    // Several files at once are one batch with one progress table. A batch that can't be made
+    // is not worth stopping the upload for: the files go up without one.
+    let batchId: string | undefined;
+    setUploadBatchId(null);
+    setBatchCreateFailed(false);
+    if (waiting.length > 1) {
+      try {
+        batchId = await createDocumentBatch(engagement.engagementId);
+        setUploadBatchId(batchId);
+      } catch (error) {
+        if (handleSessionEnded(error)) {
+          setIsUploading(false);
+          return;
+        }
+        setBatchCreateFailed(true);
+      }
+    }
+    uploadBatchRef.current = batchId;
+    await runUploads(waiting, batch, batchId, controller.signal);
+    if (waiting.length > 0) await refreshBackendWorkspace("populated");
+    showUploadProblems(batch);
+    setIsUploading(false);
+  }
+
+  /** Stops looking through folders and zips, and stops sending the files not yet sent. */
+  function cancelUpload() {
+    uploadAbort.current?.abort();
+  }
+
+  /** Sends again only the files that failed because of a hiccup. */
+  async function retryFailedUploads() {
+    const ids = Array.from(uploadRetryIds.current);
+    if (ids.length === 0 || isUploading) return;
+    uploadRetryIds.current = new Set();
+    const controller = new AbortController();
+    uploadAbort.current = controller;
+    const batch = uploadBatch.current;
+    for (const id of ids) batch.notUploaded.delete(id);
+    setUploadTasks((current) =>
+      current.map((task) => (ids.includes(task.id) ? { ...task, stage: "waiting", progress: 0, error: undefined, retryable: false } : task))
+    );
+    setIsUploading(true);
+    setBackendError(null);
+    await runUploads(ids, batch, uploadBatchRef.current, controller.signal);
+    await refreshBackendWorkspace("populated");
     showUploadProblems(batch);
     setIsUploading(false);
   }
@@ -1777,6 +1906,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             }
             script={sampleScript}
             batch={dataMode === "backend" ? [] : sessionUploadItems}
+            summaryLines={uploadSummary}
+            unpackNote={unpackNote}
+            onCancelUpload={dataMode === "backend" ? cancelUpload : undefined}
+            onRetryFailed={dataMode === "backend" ? () => void retryFailedUploads() : undefined}
             tasks={dataMode === "backend" ? uploadTasks : undefined}
             items={dataMode === "backend" ? evidenceItems : undefined}
             batchProgress={batchProgress.view}

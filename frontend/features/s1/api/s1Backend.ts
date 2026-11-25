@@ -176,6 +176,14 @@ export async function listWorkspaceEvidence(engagementId: string): Promise<{
 }
 
 /** Thrown before an upload is sent when the file is over the size limit. */
+/** The connection dropped mid-upload: nothing was stored, and trying again may work. */
+export class UploadInterruptedError extends Error {
+  constructor() {
+    super("The upload was interrupted. Check your connection and try again.");
+    this.name = "UploadInterruptedError";
+  }
+}
+
 export class FileTooLargeError extends Error {
   constructor() {
     super(UPLOAD_TOO_LARGE);
@@ -231,7 +239,7 @@ export function uploadDocumentWithProgress(
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
     };
-    xhr.onerror = () => reject(new Error("The upload was interrupted. Check your connection and try again."));
+    xhr.onerror = () => reject(new UploadInterruptedError());
     xhr.onload = () => {
       let parsed: unknown = null;
       try {
@@ -248,7 +256,8 @@ export function uploadDocumentWithProgress(
         parsed && typeof parsed === "object" && "detail" in parsed && typeof (parsed as { detail: unknown }).detail === "string"
           ? (parsed as { detail: string }).detail
           : `Request failed (${xhr.status})`;
-      reject(new ApiError(xhr.status, detail, parsed, null));
+      const retryAfter = Number(xhr.getResponseHeader("Retry-After"));
+      reject(new ApiError(xhr.status, detail, parsed, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null));
     };
     xhr.send(body);
   });

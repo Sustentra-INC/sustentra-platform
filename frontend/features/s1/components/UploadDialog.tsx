@@ -1,20 +1,31 @@
 "use client";
 
-import { CloudUpload, X } from "lucide-react";
+import { CloudUpload, FolderUp, X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 
 import type { BatchView } from "../api/documentBatches";
 import type { EvidenceItem } from "../types";
 import { BatchProgress } from "./BatchProgress";
 import { BreakableName } from "./BreakableName";
-import { isReadableUpload, MAX_UPLOAD_MB, unreadableUploadMessage, UPLOAD_ACCEPT } from "../constants/uploads";
+import {
+  isReadableUpload,
+  MAX_UPLOAD_FILES,
+  MAX_UPLOAD_MB,
+  MAX_ZIP_MB,
+  unreadableUploadMessage,
+  UPLOAD_PICKER_ACCEPT,
+} from "../constants/uploads";
+import type { UploadItem } from "../utils/expandUploads";
+import { pickFromDrop, pickFromFileList, type UploadPick } from "../utils/uploadSources";
 
 
 /** One file in the current upload, as the user picked it (backend mode). */
 export interface UploadTask {
   id: string;
   filename: string;
+  /** Where it came from, when that is more than its name: "Plant A/2025/jan.pdf". */
+  path?: string;
   size: number;
   /** waiting -> uploading (bytes leave the browser) -> reading (parse, classify, extract) -> done | failed.
    *  not_uploaded: the file was never stored (a type no parser reads, or the API refused it). */
@@ -24,6 +35,20 @@ export interface UploadTask {
   error?: string;
   /** Set once the server has stored the file. */
   documentId?: string;
+  /** Not uploaded because of a hiccup (busy server, dropped connection): trying again may work. */
+  retryable?: boolean;
+}
+
+/** The tasks for the files found in what was picked: one row each, with the reason when it can't go. */
+export function uploadTasksForItems(items: UploadItem[], batchId: string): UploadTask[] {
+  return items.map((item, index) => ({
+    id: `${batchId}-${index}`,
+    filename: item.name,
+    ...(item.path !== item.name ? { path: item.path } : {}),
+    size: item.size,
+    progress: 0,
+    ...(item.open ? { stage: "waiting" as const } : { stage: "not_uploaded" as const, error: item.reason }),
+  }));
 }
 
 /** The tasks for picked files. A file no parser can read is set aside as not uploaded,
@@ -67,9 +92,21 @@ export function UploadDialog({
   onOpenDocument,
   onOpenWorkspace,
   setupWarning = null,
+  summaryLines = [],
+  unpackNote = null,
+  onCancelUpload,
+  onRetryFailed,
 }: {
   onClose: () => void;
-  onUploadFiles: (files: FileList) => void;
+  onUploadFiles: (pick: UploadPick) => void;
+  /** One line per folder or zip: how many files were found and how many can't be read. */
+  summaryLines?: string[];
+  /** While folders and zips are being looked through: what is being looked at. */
+  unpackNote?: string | null;
+  /** Stops looking through folders and zips, and stops sending the files not yet sent. */
+  onCancelUpload?: () => void;
+  /** Sends the files that failed because of a hiccup again (only those). */
+  onRetryFailed?: () => void;
   onUploadSample?: () => void;
   sampleFilename?: string;
   script?: SampleScript | null;
@@ -93,7 +130,8 @@ export function UploadDialog({
   const [before] = useState(() => new Set(batch.map((item) => item.documentId)));
   const added = batch.filter((item) => !before.has(item.documentId));
   const scripting = !!script && script.stage !== "done";
-  const busy = scripting || tasks.some((t) => t.stage === "waiting" || t.stage === "uploading" || t.stage === "reading");
+  const unpacking = unpackNote !== null;
+  const busy = scripting || unpacking || tasks.some((t) => t.stage === "waiting" || t.stage === "uploading" || t.stage === "reading");
   const anything = added.length > 0 || tasks.length > 0;
   const notUploaded = tasks.filter((t) => t.stage === "not_uploaded").length;
   const doneHint =
@@ -112,8 +150,9 @@ export function UploadDialog({
   }, [onClose]);
 
   const pick = (files: FileList | null) => {
-    if (files?.length) onUploadFiles(files);
+    if (files?.length) onUploadFiles(pickFromFileList(files));
   };
+  const retryable = tasks.filter((t) => t.retryable && t.stage === "not_uploaded").length;
 
   return createPortal(
     <div className="s1-updlg-scrim" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -169,19 +208,19 @@ export function UploadDialog({
             onDrop={(e) => {
               e.preventDefault();
               setDrag(false);
-              pick(e.dataTransfer.files);
+              if (e.dataTransfer.files.length) void pickFromDrop(e.dataTransfer).then(onUploadFiles);
             }}
           >
             <CloudUpload className="s1-updlg__dropicon" aria-hidden />
             <span className="s1-updlg__droptext">
-              <strong>Drop files here</strong> or <span className="s1-updlg__browse">choose files</span>
+              <strong>Drop files or folders here</strong> or <span className="s1-updlg__browse">choose files</span>
             </span>
-            <span className="s1-updlg__hint">PDF, Word, Excel, CSV, emails, scans and photos · up to {MAX_UPLOAD_MB} MB each</span>
+            <span className="s1-updlg__hint">PDF, Word, Excel, CSV, emails, scans and photos · up to {MAX_UPLOAD_MB} MB each. Zip files too (up to {MAX_ZIP_MB} MB, {MAX_UPLOAD_FILES.toLocaleString("en-US")} files).</span>
             <input
               className="s1-file-input"
               type="file"
               multiple
-              accept={UPLOAD_ACCEPT}
+              accept={UPLOAD_PICKER_ACCEPT}
               onChange={(e) => {
                 pick(e.target.files);
                 e.target.value = "";
@@ -189,6 +228,44 @@ export function UploadDialog({
             />
           </label>
         )}
+
+        {!script ? (
+          <div className="s1-updlg__folder">
+            <label className="s1-button">
+              <FolderUp aria-hidden /> Choose a folder
+              <input
+                className="s1-file-input"
+                type="file"
+                multiple
+                // @ts-expect-error webkitdirectory is not in React's input types
+                webkitdirectory=""
+                onChange={(e) => {
+                  pick(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+        ) : null}
+
+        {unpackNote !== null ? (
+          <div className="s1-upq__head" role="status">
+            <span>{unpackNote}</span>
+            {onCancelUpload ? (
+              <button className="s1-linklike" type="button" onClick={onCancelUpload}>
+                Cancel
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {summaryLines.length > 0 ? (
+          <div className="s1-muted s1-updlg__summary" aria-live="polite">
+            {summaryLines.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </div>
+        ) : null}
 
         {!script && onUploadSample && sampleFilename ? (
           <div className="s1-updlg__sample">
@@ -205,7 +282,9 @@ export function UploadDialog({
           </div>
         ) : null}
 
-        {tasks.length > 0 ? <UploadProgress tasks={tasks} items={items} /> : null}
+        {tasks.length > 0 ? (
+          <UploadProgress tasks={tasks} items={items} onCancel={onCancelUpload} onRetry={retryable ? onRetryFailed : undefined} retryable={retryable} />
+        ) : null}
 
         {batchNote ? (
           <p className="s1-muted s1-batch__notice" aria-live="polite">
@@ -260,7 +339,19 @@ function formatSize(bytes: number): string {
 
 /** Overall and per-file progress. The bar is bytes actually sent; reading has no
  *  measurable progress, so it shows as an in-progress stripe, not a made-up number. */
-function UploadProgress({ tasks, items }: { tasks: UploadTask[]; items: EvidenceItem[] }) {
+function UploadProgress({
+  tasks,
+  items,
+  onCancel,
+  onRetry,
+  retryable,
+}: {
+  tasks: UploadTask[];
+  items: EvidenceItem[];
+  onCancel?: () => void;
+  onRetry?: () => void;
+  retryable: number;
+}) {
   const byId = new Map(items.map((item) => [item.documentId, item]));
   // A file that was not uploaded has no bytes to send, so it is left out of the bar.
   const sending = tasks.filter((t) => t.stage !== "not_uploaded");
@@ -277,10 +368,11 @@ function UploadProgress({ tasks, items }: { tasks: UploadTask[]; items: Evidence
   const outcome = (t: UploadTask) => (t.stage === "done" && t.documentId ? byId.get(t.documentId) : undefined);
   const needsYou = tasks.filter((t) => outcome(t)?.processingState === "blocked").length;
   const running = finished < tasks.length;
+  const waiting = tasks.some((t) => t.stage === "waiting");
 
   return (
-    <div className="s1-upq" aria-live="polite">
-      <div className="s1-upq__head">
+    <div className="s1-upq">
+      <div className="s1-upq__head" aria-live="polite">
         <strong>
           {running
             ? `Uploading ${sending.length} file${sending.length === 1 ? "" : "s"} · ${percent}%`
@@ -291,6 +383,16 @@ function UploadProgress({ tasks, items }: { tasks: UploadTask[]; items: Evidence
           {notUploaded ? ` · ${notUploaded} not uploaded` : ""}
           {needsYou ? ` · ${needsYou} need${needsYou === 1 ? "s" : ""} you in Evidence` : ""}
         </span>
+        {onCancel && running && waiting ? (
+          <button className="s1-linklike" type="button" onClick={onCancel}>
+            Cancel the rest
+          </button>
+        ) : null}
+        {onRetry && !running ? (
+          <button className="s1-linklike" type="button" onClick={onRetry}>
+            Try {retryable === 1 ? "the 1 file" : `the ${retryable} files`} that didn&rsquo;t send again
+          </button>
+        ) : null}
       </div>
       <div
         className="s1-upq__bar"
@@ -302,49 +404,55 @@ function UploadProgress({ tasks, items }: { tasks: UploadTask[]; items: Evidence
       >
         <div className="s1-upq__fill" style={{ width: `${percent}%` }} />
       </div>
-      <ul className="s1-upq__list">
+      <ul
+        className={`s1-upq__list${tasks.length > 8 ? " s1-upq__list--long" : ""}`}
+        {...(tasks.length > 8 ? { tabIndex: 0, "aria-label": "Files in this upload" } : {})}
+      >
         {tasks.map((t) => (
-          <li
-            key={t.id}
-            className={`s1-upq__row s1-upq__row--${t.stage}${outcome(t)?.processingState === "blocked" ? " s1-upq__row--needs" : ""}`}
-          >
-            <BreakableName className="s1-upq__name" name={t.filename} />
-            <span className="s1-muted s1-upq__size">{formatSize(t.size)}</span>
-            <span className="s1-upq__track" aria-hidden>
-              <span
-                className={`s1-upq__track-fill${t.stage === "reading" ? " is-reading" : ""}`}
-                style={{
-                  width: `${t.stage === "waiting" || t.stage === "not_uploaded" ? 0 : t.stage === "uploading" ? Math.round(t.progress * 100) : 100}%`,
-                }}
-              />
-            </span>
-            <span className="s1-upq__stage">
-              {t.stage === "waiting"
-                ? "Waiting"
-                : t.stage === "uploading"
-                  ? `${Math.round(t.progress * 100)}%`
-                  : t.stage === "reading"
-                    ? "Reading…"
-                    : t.stage === "done"
-                      ? outcome(t)?.processingState === "blocked"
-                        ? "Needs you"
-                        : "Done"
-                      : t.stage === "not_uploaded"
-                        ? "Not uploaded"
-                        : "Failed"}
-            </span>
-            {t.error ? <span className="s1-upq__error">{t.error}</span> : null}
-            {outcome(t)?.processingState === "blocked" ? (
-              <span className="s1-upq__note">
-                {outcome(t)?.haltReason ?? "Could not be read. Choose its type in Evidence to try again."}
-              </span>
-            ) : null}
-          </li>
+          <UploadRow key={t.id} task={t} outcome={outcome(t)} />
         ))}
       </ul>
     </div>
   );
 }
+
+/** One file's row. Memoized: a progress tick on one file must not redraw a thousand rows. */
+const UploadRow = memo(function UploadRow({ task: t, outcome }: { task: UploadTask; outcome: EvidenceItem | undefined }) {
+  const blocked = outcome?.processingState === "blocked";
+  return (
+    <li className={`s1-upq__row s1-upq__row--${t.stage}${blocked ? " s1-upq__row--needs" : ""}`}>
+      <BreakableName className="s1-upq__name" name={t.path ?? t.filename} title={t.path ?? t.filename} />
+      <span className="s1-muted s1-upq__size">{formatSize(t.size)}</span>
+      <span className="s1-upq__track" aria-hidden>
+        <span
+          className={`s1-upq__track-fill${t.stage === "reading" ? " is-reading" : ""}`}
+          style={{
+            width: `${t.stage === "waiting" || t.stage === "not_uploaded" ? 0 : t.stage === "uploading" ? Math.round(t.progress * 100) : 100}%`,
+          }}
+        />
+      </span>
+      <span className="s1-upq__stage">
+        {t.stage === "waiting"
+          ? "Waiting"
+          : t.stage === "uploading"
+            ? `${Math.round(t.progress * 100)}%`
+            : t.stage === "reading"
+              ? "Reading…"
+              : t.stage === "done"
+                ? blocked
+                  ? "Needs you"
+                  : "Done"
+                : t.stage === "not_uploaded"
+                  ? "Not uploaded"
+                  : "Failed"}
+      </span>
+      {t.error ? <span className="s1-upq__error">{t.error}</span> : null}
+      {blocked ? (
+        <span className="s1-upq__note">{outcome?.haltReason ?? "Could not be read. Choose its type in Evidence to try again."}</span>
+      ) : null}
+    </li>
+  );
+});
 
 function stageHeadline(stage: SampleScript["stage"]): string {
   switch (stage) {
