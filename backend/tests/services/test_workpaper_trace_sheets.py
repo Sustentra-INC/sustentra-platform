@@ -6,6 +6,7 @@ from __future__ import annotations
 import io
 from typing import Any
 
+import pytest
 from openpyxl import Workbook, load_workbook
 
 from backend.app.services.workpaper_export_service import build_workbook
@@ -189,14 +190,14 @@ LINE = {"key": "s1:stationary:natural-gas:fac-kc01", "category": "stationary", "
             {"document_id": "doc-1", "file_name": "gas-jan.pdf", "candidate_id": "c-1", "quantity": 1000.5,
              "unit": "therm", "share_in_period": 1.0},
             {"document_id": "doc-2", "file_name": "gas-dec.pdf", "candidate_id": "c-2", "quantity": 400.0,
-             "unit": "therm", "share_in_period": 0.4838709677},
+             "unit": "therm", "share_in_period": 0.4838709677, "counted_quantity": 193.5483871},
             {"document_id": "doc-3", "file_name": "gas-feb.pdf", "candidate_id": "c-3", "quantity": 10.0,
              "unit": "therm", "share_in_period": 1.0},
         ], "total": {"quantity": 1410.5, "unit": "therm"}}}
 DETAILS = {"stationary_combustion": {"details": {"inputs": [{"fuel": "Natural Gas", "documents": [
     {"document_id": "doc-1", "record": "gas-jan.pdf (record 3)", "quantity": 1000.5, "unit": "therm",
      "share_in_period": 1.0},
-    {"document_id": "doc-2", "record": "gas-dec.pdf", "quantity": 400.0, "unit": "therm",
+    {"document_id": "doc-2", "record": "gas-dec.pdf", "quantity": 193.5483871, "unit": "therm",
      "share_in_period": 0.4838709677},
 ]}]}}}
 
@@ -215,6 +216,7 @@ def test_sources_go_from_a_calculation_line_to_its_documents() -> None:
     assert first["Record"] == "Record 3" and first["Quantity"] == 1000.5 and first["Unit"] == "therm"
     assert first["Share counted in the period"] == 1.0 and first["Page"] == 4
     assert rows[1]["Share counted in the period"] == 0.4838709677  # full precision kept
+    assert rows[1]["Quantity counted"] == 193.5483871
     assert rows[1]["Page"] is None and rows[1]["Record"] is None  # no record number on that bill
     assert rows[2]["Record"] is None and rows[2]["Page"] is None  # no match in the register: left empty
 
@@ -231,6 +233,7 @@ def test_sources_falls_back_to_the_category_inputs_without_calculation_lines() -
     rows = _rows(_book(recalculation={"categories": DETAILS}), "Sources", header_row=2)
     assert [r["Document"] for r in rows] == ["gas-jan.pdf", "gas-dec.pdf"]
     assert rows[0]["Line"] == "Natural Gas" and rows[0]["Category"] == "Stationary combustion"
+    assert rows[0]["Quantity"] is None and rows[0]["Quantity counted"] == 1000.5  # the category holds the counted amount
 
 
 def test_sources_tolerates_odd_payloads() -> None:
@@ -324,3 +327,122 @@ def test_text_longer_than_excel_allows_is_cut_with_a_note() -> None:
     book = _book(register={"documents": [{"file_name": "x" * 40000, "candidate_count": 1}]})
     value = book["Evidence"]["A2"].value
     assert len(value) <= 32767 and value.startswith("xxxx") and "cut" in value
+
+
+# --- Sources: every category, nothing dropped, nothing twice ------------------------------------------------------
+
+def test_a_row_without_a_file_name_is_kept_and_says_so() -> None:
+    line = {"category": "stationary", "level2": "Natural Gas", "label": "KC",
+            "step1": {"rows": [{"document_id": "doc-1", "quantity": 5, "unit": "therm"}]}}
+    rows = _rows(_book(recalculation={"calculation_lines": [line]}), "Sources", header_row=2)
+    assert len(rows) == 1 and rows[0]["Document"] == "File name not recorded" and rows[0]["Quantity"] == 5
+    assert "doc-1" not in _all_text(_book(recalculation={"calculation_lines": [line]}))
+
+
+def test_every_line_category_has_its_own_label_and_an_unknown_one_a_plain_form_of_its_name() -> None:
+    from backend.app.services.calculation_lines import CATEGORY_LABEL
+
+    def line(category: str) -> dict[str, Any]:
+        return {"category": category, "level2": "X", "label": "Y",
+                "step1": {"rows": [{"file_name": f"{category}.pdf", "quantity": 1, "unit": "t"}]}}
+
+    keys = [*CATEGORY_LABEL, "some_new_kind"]
+    rows = _rows(_book(recalculation={"calculation_lines": [line(k) for k in keys]}), "Sources", header_row=2)
+    assert [r["Category"] for r in rows] == [*CATEGORY_LABEL.values(), "Some new kind"]
+
+
+def test_a_document_counted_in_a_category_but_on_no_line_is_listed_once_as_not_on_a_line() -> None:
+    kept = {"document_id": "doc-1", "record": "a.pdf (record 1)", "quantity": 10.0, "unit": "therm",
+            "share_in_period": 1.0}
+    stray = {"document_id": "doc-2", "record": "b.pdf", "quantity": 7.0, "unit": "therm", "share_in_period": 1.0}
+    line = {"category": "stationary", "counts_toward": "stationary", "level2": "Natural Gas", "label": "KC",
+            "key": "s1:stationary:natural-gas:kc",
+            "step1": {"rows": [{"document_id": "doc-1", "file_name": "a.pdf", "quantity": 10.0, "unit": "therm",
+                                "share_in_period": 1.0, "counted_quantity": 10.0}]}}
+    categories = {"stationary_combustion": {"details": {"inputs": [{"fuel": "Natural Gas", "documents": [kept, stray]}]}}}
+    rows = _rows(_book(recalculation={"calculation_lines": [line], "categories": categories}), "Sources", header_row=2)
+    assert [(r["Document"], r["Record"], r["Line"]) for r in rows] == [
+        ("a.pdf", "Record 1", "Natural Gas, KC"), ("b.pdf", None, "Not on a line")]
+
+
+def test_categories_without_calculation_lines_are_listed_from_their_documents() -> None:
+    categories = {
+        "fugitive_refrigerants": {"details": {"inputs": [{"fuel": "R-410A", "documents": [
+            {"document_id": "d1", "record": "log.pdf (record 2)", "service_type": "installation", "quantity": 21.0,
+             "unit": "lb"}]}]}},
+        "purchased_steam_location_based": {"details": {"inputs": [{"fuel": "KC plant", "documents": [
+            {"document_id": "d2", "record": "steam.pdf", "quantity": 50.0, "unit": "MMBtu",
+             "share_in_period": 1.0}]}]}},
+        "purchased_steam_market_based": {"details": {"inputs": [{"fuel": "KC plant", "documents": [
+            {"document_id": "d2", "record": "steam.pdf", "quantity": 50.0, "unit": "MMBtu"}]}]}},
+    }
+    line = {"category": "stationary", "counts_toward": "stationary", "level2": "G", "label": "L",
+            "step1": {"rows": [{"file_name": "gas.pdf", "quantity": 1, "unit": "t"}]}}
+    rows = _rows(_book(recalculation={"calculation_lines": [line], "categories": categories}), "Sources", header_row=2)
+    assert [(r["Category"], r["Document"], r["Record"], r["Quantity counted"]) for r in rows] == [
+        ("Stationary combustion", "gas.pdf", None, 1),
+        ("Fugitive emissions", "log.pdf", "Record 2", 21.0),
+        ("Purchased steam", "steam.pdf", None, 50.0)]
+    assert rows[1]["Line"] == "R-410A (installation)" and rows[1]["Unit"] == "lb"
+
+
+def test_sources_cover_every_category_of_a_real_recalculation_with_no_record_twice() -> None:
+    from backend.tests.services.test_engagement_recalculation_service import _refrigerant
+    from backend.tests.services.test_recalculation_lines import (
+        GROUP_ROAD, FakeStore, _diesel_purchase, _elec_record, _gas_record, _run)
+
+    store = FakeStore()
+    store.add_document("GAS-1", "CT-S1-FUELQTY", [_gas_record(100, "2025-01-01", "2025-01-31")])
+    store.add_document("GAS-2", "CT-S1-FUELQTY", [_gas_record(3100, "2024-12-19", "2025-01-18")])  # prorated
+    store.add_document("GAS-X", "CT-S1-FUELQTY", [_gas_record(50, "2025-02-01", "2025-02-28", plant="Nowhere")])
+    store.add_document("ELEC-1", "CT-S2-ELEC", [_elec_record(10)])
+    store.add_document("FLEET", "CT-S1-MOBFUEL", [_diesel_purchase(600), _diesel_purchase(400, "2025-09-01")])
+    store.add_document("STEAM", "CT-S2-THERMAL", [{
+        "activity_quantity": (50, "MMBtu"), "activity_unit": ("MMBtu", None), "energy_type": ("steam", None),
+        "facility_name": ("Kansas City Plant", None), "service_period_start": ("2025-01-01", None),
+        "service_period_end": ("2025-01-31", None)}])
+    plant = ("Kansas City Plant", None)
+    store.add_document("REFRIG", "CT-S1-REFRSVC", [
+        {**_refrigerant("R-410A", "2025-04-09", added=4.5), "facility_name": plant},
+        {**_refrigerant("R-410A", "2025-08-18", "installation", added=21, capacity=20), "facility_name": plant}])
+    recalculation = _run(store, vehicle_groups=[GROUP_ROAD])
+    categories = recalculation["categories"]
+    assert {"stationary_combustion", "mobile_combustion", "fugitive_refrigerants", "purchased_steam_location_based",
+            "purchased_electricity_location_based"} <= {k for k, v in categories.items() if v}
+
+    expected = []
+    for key, category in categories.items():
+        if category and not key.endswith("_market_based"):
+            for entry in category["details"]["inputs"]:
+                for doc in entry["documents"]:
+                    name, _, number = doc["record"].partition(" (record ")
+                    expected.append((name, f"Record {number.rstrip(')')}" if number else None))
+    rows = _rows(_book(recalculation=recalculation), "Sources", header_row=2)
+    found = [(r["Document"], r["Record"]) for r in rows]
+    assert len(found) == len(set(found)) and set(found) == set(expected) and len(found) == len(expected) == 8
+    by_document = {r["Document"]: r for r in rows}
+    assert by_document["GAS-2.pdf"]["Share counted in the period"] < 1  # prorated: share and counted amount apart
+    assert by_document["GAS-2.pdf"]["Quantity"] == 3100
+    assert by_document["GAS-2.pdf"]["Quantity counted"] == pytest.approx(
+        by_document["GAS-2.pdf"]["Quantity"] * by_document["GAS-2.pdf"]["Share counted in the period"])
+    assert "Not on a line" not in {r["Line"] for r in rows}  # records on no line are not counted by the categories
+
+
+# --- Method: reason and old entity answers ------------------------------------------------------------------------
+
+def test_method_shows_the_reason_of_a_decision_after_the_status() -> None:
+    items = [_item("gas:n2o", decision={"status": "rejected", "value": None, "reason": "Not in the report",
+                                        "by": BY, "at": "2026-11-03T09:05:00Z"})]
+    book = _book(items=items)
+    header = [c.value for c in book["Method"][1]]
+    assert header[header.index("Status") + 1] == "Reason"
+    assert _rows(book, "Method")[0]["Reason"] == "Not in the report"
+
+
+def test_an_entity_saved_before_included_had_its_own_key_still_shows_what_it_held() -> None:
+    old = {"name": "Acme West", "facilities": [], "equity_share_pct": None, "financial_control": None,
+           "operational_control": "Yes"}
+    items = [_item("entity:abcd1234", decision={"status": "accepted", "value": old, "by": BY,
+                                                "at": "2026-11-02T10:30:00Z"})]
+    answer = _rows(_book(items=items), "Method")[0]["Answer"]
+    assert "Acme West" in answer and "Operational control (as quoted): Yes" in answer and "Included" not in answer

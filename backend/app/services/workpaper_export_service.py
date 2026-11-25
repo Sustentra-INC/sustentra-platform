@@ -15,10 +15,10 @@ by accident.
 from __future__ import annotations
 
 import io
-import re
-from datetime import UTC, date, datetime
 import math
+import re
 from collections.abc import Callable, Mapping
+from datetime import UTC, date, datetime
 from typing import Any
 
 from openpyxl import Workbook
@@ -27,6 +27,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from backend.app.services import methodology_review
+from backend.app.services.calculation_lines import CATEGORY_LABEL
 
 _HEADER_FILL = PatternFill("solid", fgColor="E8EAF4")
 _STATUS = {
@@ -311,6 +312,7 @@ def _warning_rows(recalculation: Mapping[str, Any]) -> list[list[Any]]:
 
 
 def _entity_answer(value: Mapping[str, Any]) -> str:
+    value = methodology_review.upgrade_entity_value(dict(value))  # an entity saved before "Included" had its own key
     parts = [str(value["name"])]
     if value.get("facilities"):
         parts.append("Facilities: " + ", ".join(str(f) for f in value["facilities"]))
@@ -399,7 +401,9 @@ def _method_row(item: Mapping[str, Any]) -> tuple[int, list[Any]] | None:
     order = {f["field_id"]: i for i, f in enumerate(methodology_review.CATALOG)}
     group_order = {key: i for i, (key, _label) in enumerate(methodology_review.GROUPS)}
     rank = group_order.get(field["group"], len(group_order)) * 100_000 + order.get(field_id, 50_000)
-    return rank, [field["group_label"], field["label"], answer, status.capitalize(), quote, document, page,
+    reason = (decision or {}).get("reason")
+    return rank, [field["group_label"], field["label"], answer, status.capitalize(),
+                  reason if isinstance(reason, str) and reason.strip() else None, quote, document, page,
                   name or None, at or None]
 
 
@@ -420,8 +424,19 @@ def _method_rows(items: list[dict[str, Any]]) -> list[list[Any]]:
     return [row for _rank, _position, row in sorted(rows, key=lambda r: (r[0], r[1]))]
 
 
-_CATEGORY_NAMES = {"stationary": "Stationary combustion", "biogenic": "Biogenic fuels", "mobile": "Mobile combustion"}
+_NO_FILE = "File name not recorded"
+_NOT_ON_A_LINE = "Not on a line"
 _RECORD_NUMBER = re.compile(r"^(?P<file>.*?)(?: \(record (?P<n>\d+)\))?$", re.DOTALL)
+# The category result a calculation line's records are also counted in (its details list the same documents).
+_LINE_FAMILY = {"stationary": "stationary_combustion", "biogenic": "stationary_combustion",
+                "mobile": "mobile_combustion", "purchased_energy": "purchased_electricity_location_based"}
+_DETAIL_NAMES = {"stationary_combustion": CATEGORY_LABEL["stationary"], "mobile_combustion": CATEGORY_LABEL["mobile"],
+                 "fugitive_refrigerants": CATEGORY_LABEL["fugitive"],
+                 "purchased_electricity_location_based": CATEGORY_LABEL["purchased_energy"]}
+
+
+def _plain(name: Any) -> str:
+    return str(name or "").replace("_", " ").strip().capitalize()
 
 
 def _split_record(label: Any) -> tuple[str | None, str | None]:
@@ -433,17 +448,28 @@ def _split_record(label: Any) -> tuple[str | None, str | None]:
     return match.group("file"), f"Record {match.group('n')}" if match.group("n") else None
 
 
-def _category_details(recalculation: Mapping[str, Any]) -> list[tuple[str, Mapping[str, Any]]]:
-    """Each category's reviewed documents by input (fuel or facility). The market-based electricity and thermal
-    results are left out: they are built from the same bills as the location-based ones."""
+def _amount(value: Any) -> tuple[Any, ...]:
+    return (round(value, 9) if _is_number(value) else value,)
 
-    found: list[tuple[str, Mapping[str, Any]]] = []
+
+def _detail_entries(recalculation: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Every document each category counted (its details, by fuel or facility), in order. The market-based
+    electricity and thermal results are left out: they are built from the same bills as the location-based ones."""
+
+    found: list[dict[str, Any]] = []
     for key, category in (recalculation.get("categories") or {}).items():
         inputs = ((category or {}).get("details") or {}).get("inputs") if isinstance(category, Mapping) else None
         if not isinstance(inputs, list) or str(key).endswith("_market_based"):
             continue
-        name = str(key).removesuffix("_location_based").replace("_", " ").capitalize()
-        found.extend((name, i) for i in inputs if isinstance(i, Mapping))
+        name = _DETAIL_NAMES.get(str(key)) or _plain(str(key).removesuffix("_location_based"))
+        for entry in inputs:
+            documents = entry.get("documents") if isinstance(entry, Mapping) else None
+            for doc in documents if isinstance(documents, list) else []:
+                if isinstance(doc, Mapping):
+                    line = str(entry.get("fuel") or "")
+                    if doc.get("service_type"):
+                        line = f"{line} ({doc['service_type']})" if line else str(doc["service_type"])
+                    found.append({"key": str(key), "category": name, "line": line or None, "doc": doc, "used": False})
     return found
 
 
@@ -459,45 +485,55 @@ def _page_lookup(register: Mapping[str, Any]) -> dict[tuple[str, str], Any]:
 
 
 def _source_rows(recalculation: Mapping[str, Any], register: Mapping[str, Any]) -> list[list[Any]]:
-    """Calculation line to documents, from what the recalculation already holds: nothing is recomputed."""
+    """From each calculation line to its documents, and from each category to the documents it counted.
 
-    details = _category_details(recalculation)
-    labels: dict[tuple[Any, ...], set[str]] = {}
-    for _name, entry in details:
-        for doc in entry.get("documents") or []:
-            if isinstance(doc, Mapping):
-                key = (doc.get("document_id"), doc.get("quantity"), doc.get("unit"), doc.get("share_in_period"))
-                labels.setdefault(key, set()).add(str(doc.get("record")))
+    The line rows come from the calculation lines (and the records counted but on no line). Each one uses up the
+    document the category lists for it, which also gives its record number. Whatever a category counted that no
+    line row accounts for (categories without calculation lines, such as refrigerants and purchased steam) is listed
+    after them, so every counted document appears once. Nothing is recomputed."""
+
+    entries = _detail_entries(recalculation)
+    pool: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+    for entry in entries:
+        doc = entry["doc"]
+        pool.setdefault((entry["key"], doc.get("document_id"), *_amount(doc.get("quantity")), doc.get("unit")),
+                        []).append(entry)
     pages = _page_lookup(register)
-    rows: list[list[Any]] = []
     lines = [ln for ln in recalculation.get("calculation_lines") or [] if isinstance(ln, Mapping)]
-    for line in lines:
-        category = _CATEGORY_NAMES.get(str(line.get("category"))) or (
-            "Purchased electricity" if str(line.get("level2")).lower() == "electricity" else "Purchased energy")
+    unplaced = [ln for ln in recalculation.get("calculation_unplaced") or [] if isinstance(ln, Mapping)]
+    families: set[str] = set()
+    rows: list[list[Any]] = []
+    for line in [*lines, *unplaced]:
+        counts_toward = _LINE_FAMILY.get(str(line.get("counts_toward"))) or _LINE_FAMILY.get(str(line.get("category")))
+        if counts_toward:
+            families.add(counts_toward)
+        category = CATEGORY_LABEL.get(str(line.get("category"))) or CATEGORY_LABEL.get(str(line.get("counts_toward"))
+                                                                                       ) or _plain(line.get("category"))
         level2, label = line.get("level2"), line.get("label")
-        name = f"{level2}, {label}" if level2 and label and level2 != label else str(level2 or label or "")
+        name = _NOT_ON_A_LINE if line.get("key") is None and line in unplaced else (
+            f"{level2}, {label}" if level2 and label and level2 != label else str(level2 or label or ""))
         step1 = line.get("step1")
         for row in (step1.get("rows") if isinstance(step1, Mapping) else None) or []:
             if not isinstance(row, Mapping):
                 continue
-            match = labels.get((row.get("document_id"), row.get("quantity"), row.get("unit"),
-                                row.get("share_in_period")), set())
-            file_name, record = _split_record(next(iter(match)) if len(match) == 1 else None)
-            document = row.get("file_name") or file_name
-            if not document:
-                continue
-            rows.append([category, name or None, document, record, row.get("quantity"), row.get("unit"),
-                         row.get("share_in_period"), pages.get((str(row.get("document_id")), str(row.get("candidate_id"))))])
-    if lines:
-        return rows
-    for category_name, entry in details:  # an older recalculation without calculation lines: by fuel or facility
-        for doc in entry.get("documents") or []:
-            if not isinstance(doc, Mapping):
-                continue
-            file_name, record = _split_record(doc.get("record"))
-            if file_name:
-                rows.append([category_name, entry.get("fuel"), file_name, record, doc.get("quantity"), doc.get("unit"),
-                             doc.get("share_in_period"), None])
+            counted = row.get("counted_quantity", row.get("quantity"))
+            matches = pool.get((counts_toward, row.get("document_id"), *_amount(counted), row.get("unit")), [])
+            free = next((m for m in matches if not m["used"]), None)
+            if free is not None:
+                free["used"] = True
+            labels = {str(m["doc"].get("record")) for m in matches}
+            file_name, record = _split_record(next(iter(labels)) if len(labels) == 1 else None)
+            rows.append([category, name or None, row.get("file_name") or file_name or _NO_FILE, record,
+                         row.get("quantity"), row.get("unit"), row.get("share_in_period"), counted,
+                         pages.get((str(row.get("document_id")), str(row.get("candidate_id"))))])
+    for entry in entries:
+        if entry["used"]:
+            continue
+        doc = entry["doc"]
+        file_name, record = _split_record(doc.get("record"))
+        rows.append([entry["category"], _NOT_ON_A_LINE if entry["key"] in families else entry["line"],
+                     file_name or _NO_FILE, record, None, doc.get("unit"), doc.get("share_in_period"),
+                     doc.get("quantity"), None])
     return rows
 
 
@@ -585,8 +621,9 @@ def build_workbook(
     )
     _sheet(
         book, "Method",
-        ["Group", "Question", "Answer", "Status", "Quote", "Document", "Page", "Decided by", "Decided at"],
-        _method_rows(items), [24, 40, 60, 11, 70, 36, 7, 22, 20],
+        ["Group", "Question", "Answer", "Status", "Reason", "Quote", "Document", "Page", "Decided by",
+         "Decided at"],
+        _method_rows(items), [24, 40, 60, 11, 40, 70, 36, 7, 22, 20],
     )
 
     working: list[list[Any]] = []
@@ -611,10 +648,12 @@ def build_workbook(
            working, [30, 26, 30, 30, 90, 16, 10], formats={"Result": _tonnes_if_unit(6)})
     _sheet(
         book, "Sources",
-        ["Category", "Line", "Document", "Record", "Quantity", "Unit", "Share counted in the period", "Page"],
-        _source_rows(recalculation, register), [30, 40, 44, 12, 16, 10, 16, 7],
+        ["Category", "Line", "Document", "Record", "Quantity", "Unit", "Share counted in the period",
+         "Quantity counted", "Page"],
+        _source_rows(recalculation, register), [30, 40, 44, 12, 16, 10, 16, 16, 7],
         note="From each calculation line to the documents behind it. The share is the part of the bill's service "
-             "period inside the reporting period.",
+             "period inside the reporting period. Where a category has no calculation lines, or a document is not "
+             "on a line, only the amount counted is known.",
         formats={"Share counted in the period": _fraction},
     )
 
