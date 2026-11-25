@@ -140,6 +140,32 @@ def test_backward_compatible_aliases(client):
     assert "reviewed_by" not in body
 
 
+def test_put_review_adds_one_audit_event_with_ids_only():
+    events = []
+    original = reviews._service
+    reviews.configure_service(
+        ReviewDecisionService(repository=InMemoryReviewDecisionRepository(), audit_writer=events.append)
+    )
+    try:
+        response = TestClient(app).put(
+            "/v1/evidence/EV-1/fields/activity_quantity/review",
+            json={"candidate": _candidate(), "decision": "edited", "reviewed_value": 31337, "reviewed_unit": "kWh",
+                  "reviewer_note": "secret note"},
+        )
+    finally:
+        reviews.configure_service(original)
+    assert response.status_code == 200
+    assert len(events) == 1
+    event = events[0]
+    user = make_user()
+    assert event["event_type"] == "review_value_edited"
+    assert (event["org_id"], event["actor_user_id"], event["actor_role"]) == (str(ORG_A), user.id, "org_member")
+    assert (event["target_type"], event["target_id"]) == ("engagement", "ENG-1")
+    assert event["metadata"]["document_id"] == "DOC-1" and event["metadata"]["decision"] == "edited"
+    flat = str(event)
+    assert "31337" not in flat and "kWh" not in flat and "secret note" not in flat and "bill.pdf" not in flat
+
+
 def _reject(client, note, **extra):
     return client.put(
         "/v1/evidence/EV-1/fields/activity_quantity/review",

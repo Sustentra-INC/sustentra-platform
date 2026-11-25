@@ -71,6 +71,9 @@ LOOKUPS: dict[str, tuple[tuple[str, str], ...]] = {
 }
 
 # The stores whose records decide who owns an evidence id (api/s1_access.evidence_records).
+# Tables the app role may only SELECT and INSERT on (migration 0025): the import never updates them.
+APPEND_ONLY = ("s1_review_decisions",)
+
 OWNERSHIP_STORES = ("documents", "pipeline_runs", "review_decisions", "approved_evidence")
 
 
@@ -84,6 +87,8 @@ class StoreCounts:
     inserted: int = 0
     updated: int = 0
     unchanged: int = 0
+    # Append-only stores: a line that differs from the row already imported. The row is kept as it is.
+    differs: int = 0
 
 
 @dataclass
@@ -174,6 +179,22 @@ def _upsert(connection: Connection, table: str, record: dict[str, Any], legacy_k
     params.update(org_id=_owner(record), record=json.dumps(record, ensure_ascii=False), legacy_key=legacy_key)
     names = ("org_id", *columns, "record", "legacy_key")
     values = ", ".join("CAST(:record AS jsonb)" if n == "record" else f":{n}" for n in names)
+    if table in APPEND_ONLY:
+        # The app role may not UPDATE these tables (not even through ON CONFLICT DO UPDATE): a row that
+        # is already there stays as it is, and a line that has since changed is reported, not applied.
+        added = connection.execute(
+            text(f"INSERT INTO {table} ({', '.join(names)}) VALUES ({values}) "
+                 f"ON CONFLICT ({conflict}) DO NOTHING RETURNING 1"),
+            params,
+        ).first()
+        if added is not None:
+            return "inserted"
+        stored = connection.execute(
+            text(f"SELECT record, org_id FROM {table} WHERE {conflict} = :legacy_key"), params
+        ).first()
+        same = stored is not None and stored.record == record and (
+            str(stored.org_id) if stored.org_id else None) == params["org_id"]
+        return "unchanged" if same else "differs"
     updates = ", ".join(f"{n} = EXCLUDED.{n}" for n in names if n != conflict)
     row = connection.execute(
         text(

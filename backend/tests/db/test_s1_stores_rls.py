@@ -138,7 +138,11 @@ def test_writes_are_held_to_the_callers_org_and_nothing_is_deleted(table: str) -
     async def update_other(conn: Any) -> str:
         return await conn.execute(f"UPDATE {table} SET updated_at = now() WHERE org_id = $1", ORG_B)
 
-    assert run(lambda: _as_app(update_other, tenant=ORG_A)) == "UPDATE 0"
+    if table == "s1_review_decisions":  # add-only (0025): no UPDATE privilege at all
+        with pytest.raises(asyncpg.exceptions.InsufficientPrivilegeError):
+            run(lambda: _as_app(update_other, tenant=ORG_A))
+    else:
+        assert run(lambda: _as_app(update_other, tenant=ORG_A)) == "UPDATE 0"
 
     async def delete_own(conn: Any) -> None:
         await conn.execute(f"DELETE FROM {table} WHERE org_id = $1", ORG_A)

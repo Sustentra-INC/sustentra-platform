@@ -21,6 +21,7 @@ import json
 import threading
 import uuid
 from contextlib import contextmanager
+from collections.abc import Callable
 from typing import Any, Literal
 
 from sqlalchemy import text
@@ -142,7 +143,10 @@ class S1Table:
     def _transaction(self):  # noqa: ANN202 - a context manager yielding a Connection
         return tenant_transaction(current_scope(), self._engine or get_sync_engine())
 
-    def insert(self, record: dict[str, Any]) -> None:
+    def insert(self, record: dict[str, Any], *, also: Callable[[Any], None] | None = None) -> None:
+        """Add the record. ``also`` runs on the same connection, in the same transaction, after the
+        insert: if it raises, the record is not saved either."""
+
         names = ("org_id", *self._columns, "record")
         params: dict[str, Any] = {name: _column_value(record.get(name)) for name in self._columns}
         params["org_id"] = _org_id(record)
@@ -157,6 +161,8 @@ class S1Table:
             if evidence_id not in (None, ""):
                 _claim_evidence(connection, str(evidence_id), params["org_id"])
             connection.execute(text(statement), params)
+            if also is not None:
+                also(connection)
 
     def select(self, **where: Any) -> list[dict[str, Any]]:
         """Records matching every ``column=value``, oldest first."""
