@@ -5,6 +5,7 @@ import { resolveCanonicalTypeDisplayName } from "./evidenceAdapter";
 import { anchorOf } from "../utils/sourceAnchor";
 import { decodeReviewCandidateToken } from "./fieldAdapter";
 import { asPrinted, printedUnitsByRecord } from "./printedValue";
+import { warningFlags } from "../utils/valueWarnings";
 
 /**
  * Extracted fields from the backend (one per candidate) as Extraction Review cards.
@@ -29,6 +30,9 @@ const KEY_FIELDS = new Set([
   "service_date",
 ]);
 
+/** What a rejection says on the value's record, here and when the card rejects it in the session. */
+export const REJECTED_ACTION = "rejected, not used in the calculation";
+
 export function reviewValuesFromFields(fields: ExtractedField[], evidence: EvidenceItem[]): ReviewValue[] {
   const documents = new Map(evidence.map((item) => [item.documentId, item]));
   const periods = periodsByDocument(fields);
@@ -47,6 +51,7 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
       const rawValue = candidate?.raw_value ?? candidate?.normalized_value;
       const page = location?.kind === "page" ? location.page : 1;
       const accepted = field.reviewStatus === "accepted";
+      const rejected = field.reviewStatus === "rejected";
       const corrected = field.reviewStatus === "corrected" || field.reviewStatus === "keyed_by_reviewer";
       // A card id must be unique even if an extraction repeats a candidate id.
       const repeat = seen.get(field.fieldKey) ?? 0;
@@ -67,7 +72,7 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
         value: (corrected ? field.correctedValue : field.value) ?? "",
         unit: (corrected ? field.correctedUnit ?? field.unit : field.unit) ?? "",
         methodologyFieldId: fieldNameOf(field) ?? undefined,
-        reviewState: accepted ? "accepted" : corrected ? "corrected" : "to_review",
+        reviewState: accepted ? "accepted" : corrected ? "corrected" : rejected ? "rejected" : "to_review",
         originalValue: corrected ? field.value : undefined,
         record: [
           {
@@ -76,16 +81,19 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
             at: field.readAt ?? document?.uploadedAt ?? "",
             action: field.value === null ? "did not find this on the document" : field.snippet ? `read "${field.snippet}"` : "extracted",
           },
-          ...(accepted || corrected
+          ...(accepted || corrected || rejected
             ? [{
                 kind: "human" as const,
                 actor: field.reviewedBy ?? "Reviewer",
                 at: field.reviewedAt ?? "",
                 action: accepted
                   ? "accepted as read"
-                  : field.value === null
-                    ? "entered a value the extractor did not find"
-                    : `corrected from ${field.value}${field.unit ? ` ${field.unit}` : ""}`,
+                  : rejected
+                    ? REJECTED_ACTION
+                    : field.value === null
+                      ? "entered a value the extractor did not find"
+                      : `corrected from ${field.value}${field.unit ? ` ${field.unit}` : ""}`,
+                ...(rejected && field.rejectionReason ? { reason: field.rejectionReason } : {}),
               }]
             : []),
         ],
@@ -105,6 +113,7 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
         missing: field.value === null && field.correctedValue === null,
         asPrinted: corrected ? undefined : asPrinted(field, candidate, printedUnits),
         ai: aiOf(field),
+        ...(warningFlags(field.validationFlags).length ? { warnings: warningFlags(field.validationFlags) } : {}),
         ...(field.valueProperties.includes("estimated_read") ? { estimatedRead: true } : {}),
         ...(field.rereadChanged ? { rereadChanged: true } : {}),
         ...(field.valueChangedSinceReview ? { valueChangedSinceReview: true } : {}),

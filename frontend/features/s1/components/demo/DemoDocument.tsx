@@ -222,7 +222,7 @@ function isMissing(v: ReviewValue): boolean {
   return Boolean(v.missing) || v.value === "not found";
 }
 
-const STATE_ORDER = ["missing", "to_review", "requested", "corrected", "accepted"] as const;
+const STATE_ORDER = ["missing", "to_review", "requested", "corrected", "accepted", "rejected"] as const;
 
 function stateOf(vs: ReviewValue[]): (typeof STATE_ORDER)[number] {
   const states = vs.map((v) => (isMissing(v) ? "missing" : v.reviewState));

@@ -101,7 +101,7 @@ export const ASSISTANT_TOOLS: ToolSpec[] = [
     name: "get_values",
     description:
       "Values read from the documents: what each is, the value and unit, scope, period, facility, the page it " +
-      "came from, its review state (to_review, accepted, corrected, requested) and its record (who did what). " +
+      "came from, its review state (to_review, accepted, corrected, requested, rejected) and its record (who did what). " +
       "Filter by document id, facility, free text (e.g. 'natural gas', 'R-404A') or review state.",
     input_schema: {
       type: "object",
@@ -109,7 +109,7 @@ export const ASSISTANT_TOOLS: ToolSpec[] = [
         document_id: text("A document id from search_documents (the part after doc:)."),
         facility: text("Facility name."),
         query: text("Words to match in what the value is, its document or its period."),
-        review_state: text("to_review | accepted | corrected | requested"),
+        review_state: text("to_review | accepted | corrected | requested | rejected"),
       },
     },
   },

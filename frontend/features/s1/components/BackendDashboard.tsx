@@ -50,8 +50,8 @@ export function BackendDashboard({
   useEffect(() => {
     onErrorRef.current = onError;
   });
-  // Refetch when the reviewed values change, so the figures follow the review.
-  const reviewedCount = values.filter((v) => v.reviewState === "accepted" || v.reviewState === "corrected").length;
+  // Refetch when the reviewed values change (a rejection too: the value is left out), so the figures follow the review.
+  const reviewedCount = values.filter((v) => v.reviewState === "accepted" || v.reviewState === "corrected" || v.reviewState === "rejected").length;
   useEffect(() => {
     if (!engagement.engagementId) return;
     let live = true;

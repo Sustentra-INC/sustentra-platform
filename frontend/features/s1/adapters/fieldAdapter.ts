@@ -59,6 +59,7 @@ export function mapBackendCandidateToExtractedField(
     value,
     unit: candidate.unit,
     valueProperties: mapValidationFlags(candidate.validation_flags),
+    ...(candidate.validation_flags?.length ? { validationFlags: [...candidate.validation_flags] } : {}),
     aiAlternative: mapAiAlternative(candidate),
     fieldState: value === null ? "missing_requestable" : "populated",
     snippet: candidate.source_reference?.text_snippet ?? null,

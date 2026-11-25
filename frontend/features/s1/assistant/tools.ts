@@ -149,7 +149,7 @@ function getValues(data: AssistantData, input: Record<string, unknown>) {
       (!input.review_state || v.reviewState === String(input.review_state))
     );
   });
-  const states = { to_review: 0, accepted: 0, corrected: 0, requested: 0 };
+  const states = { to_review: 0, accepted: 0, corrected: 0, requested: 0, rejected: 0 };
   matches.forEach((v) => (states[v.reviewState] += 1));
   return {
     total: matches.length,
@@ -277,8 +277,8 @@ const REFERENCE: Record<string, string> = {
     "or out of scope: the check does not apply. It states input readiness, not a pass or fail.",
   review_states:
     "Each value read from a document is to review until the auditor acts: accepted (as read), corrected (changed, with the " +
-    "value as read kept beside it), or requested (asked of the client). A value the reviewer keys by hand counts as " +
-    "reviewed. Only reviewed values count toward coverage and the recomputation.",
+    "value as read kept beside it), requested (asked of the client), or rejected (not used, with the reviewer's reason). A value the reviewer keys by hand counts as " +
+    "reviewed. Only reviewed values count toward coverage and the recomputation; a rejected value never does.",
   requests:
     "Requests are asks to the client: missing document, replace document, missing data, clarify, or confirm or restate. " +
     "They are raised from a document, a value or a check missing its inputs, sent together in one message, and resolved by " +
