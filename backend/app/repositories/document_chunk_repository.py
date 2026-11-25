@@ -41,7 +41,7 @@ UNFINISHED = ("queued", "in_progress")
 # A chunk kept on its last attempt although Textract failed on some of its pages: it is completed
 # (with the pages that did read), carries this error_code, and its failed pages count as unread.
 OCR_PAGE_FAILED = "ocr_page_failed"
-_OCR_PAGE = re.compile(r"^Page (\d+) has no text layer")
+_OCR_PAGE = re.compile(r"^Page (\d+) (?:has no text layer|is a scan)")  # older rows say the first
 
 
 def ocr_failed_pages(messages: list[str]) -> list[int]:

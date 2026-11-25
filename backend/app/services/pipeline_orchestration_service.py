@@ -44,6 +44,7 @@ from backend.app.adapters.parsers.email_parser import PARSER_NAME as EMAIL_PARSE
 from backend.app.adapters.parsers.email_reader import ENCRYPTED_EMAIL
 from backend.app.adapters.parsers.xls_parser import PASSWORD_PROTECTED
 from backend.app.services.document_chunk_service import pages_unread_message
+from backend.app.services.pdf_scan_pages import unread_scan_pages
 from backend.app.services.parser_service import ParserService
 from backend.app.services.mobile_combustion_extractor import (
     CANONICAL_TYPE_ID as MOBFUEL_TYPE_ID,
@@ -262,6 +263,7 @@ class PipelineOrchestrationService:
                 )
             parser_status = str(parser_output.get("status") or "") or None
             stage_statuses.parse = self._parser_stage_status(parser_status)
+            unread_pages = [*(unread_pages or []), *unread_scan_pages(parser_output)]  # scans OCR did not read
             if unread_pages:
                 warnings.append(
                     "pages_unread: " + pages_unread_message(unread_pages)
