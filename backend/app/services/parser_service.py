@@ -39,6 +39,7 @@ from backend.app.services.pdf_scan_pages import (
     OCR_PAGE_LIMIT,
     SCAN_MAX_TYPED_CHARACTERS,
     SCAN_PAGE_UNREAD,
+    is_blank,
     is_scan_with_text,
     unread_scan_message,
 )
@@ -228,6 +229,8 @@ class ParserService:
             for number in page_numbers[:OCR_MAX_PAGES]:
                 image = pdf[number - 1].get_pixmap(matrix=fitz.Matrix(OCR_ZOOM, OCR_ZOOM)).tobytes("png")
                 page = self._live_textract_parser.parse_bytes(image, document_id, processing_run_id)
+                if page.get("status") == "empty" and is_blank(pdf[number - 1]):
+                    continue  # the blank back of a sheet: nothing to read, so nothing was missed
                 if page.get("status") not in ("parsed", "partial"):
                     merged["warnings"].append(build_warning(
                         "ocr_page_failed", f"Page {number} is a scan and could not be read.", severity="warning"))

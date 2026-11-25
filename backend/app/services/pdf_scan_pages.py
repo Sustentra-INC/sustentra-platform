@@ -15,6 +15,9 @@ SCAN_IMAGE_COVER = 0.5  # share of the page covered by raster images
 SCAN_MAX_TYPED_CHARACTERS = 200  # non-space typed characters at or above this: a text page, whatever the images
 SCAN_MAX_TYPED_FONT = 14.0  # points on a 792 pt tall page: headers, footers, stamps; titles are larger
 SCAN_PAPER_ASPECT = (1.2, 1.7)  # long side over short side of Letter, A4, Legal; slides and receipts are outside
+BLANK_ZOOM = 0.5
+BLANK_INK_SHADE = 200  # of 255: darker than this is ink, paper and faint scanner noise are lighter
+BLANK_MAX_INK = 0.002  # share of the page
 MAX_MEASURED_IMAGES = 200  # a page drawing more images than this is not measured (bounded work)
 
 
@@ -93,6 +96,20 @@ def is_scan_with_text(page: Any, typed_characters: int) -> bool:
         return False
     cover = image_cover(page)
     return cover is not None and cover >= SCAN_IMAGE_COVER
+
+
+def is_blank(page: Any) -> bool:
+    """True when almost nothing is drawn on the page (a blank back, with or without scanner specks). Asked only of a
+    page OCR found no text on: one with ink on it that OCR could not read is not blank, and is named as unread."""
+
+    try:
+        import fitz
+
+        shade = page.get_pixmap(matrix=fitz.Matrix(BLANK_ZOOM, BLANK_ZOOM), colorspace=fitz.csGRAY, alpha=False)
+        ink = sum(1 for value in shade.samples if value < BLANK_INK_SHADE)
+        return bool(shade.samples) and ink / len(shade.samples) < BLANK_MAX_INK
+    except Exception:  # noqa: BLE001 - not measurable: not called blank, so it is still named
+        return False
 
 
 # --- scan pages that were not read: how the parser words them, and how the pipeline finds them again ---

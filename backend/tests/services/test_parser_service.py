@@ -489,6 +489,33 @@ def test_a_failed_ocr_page_is_listed_as_unread(tmp_path: Path, monkeypatch: pyte
     assert "ocr_page_failed" in [w["code"] for w in output["warnings"]]
 
 
+def test_a_blank_page_is_not_listed_as_unread_but_a_page_with_unreadable_ink_is(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The blank back of a double-sided scan (OCR finds nothing) is nothing missed; a scribble OCR cannot read is."""
+
+    import fitz
+
+    from backend.app.services.pdf_scan_pages import unread_scan_pages
+
+    class Nothing(RecordingTextract):
+        def parse_bytes(self, *args: Any) -> dict:
+            return {"status": "empty"}
+
+    monkeypatch.setenv("TEXTRACT_ENABLED", "true")
+    pdf = fitz.open()
+    pdf.new_page()  # blank
+    specks = pdf.new_page()  # blank, with scanner specks
+    for n in range(12):
+        specks.draw_circle((50 + 40 * n, 60 * (n + 1)), 1, fill=(0, 0, 0))
+    ink = pdf.new_page()  # handwriting OCR could not read
+    for n in range(20):
+        ink.draw_line((80, 100 + 10 * n), (500, 105 + 10 * n), width=2)
+    pdf.save(tmp_path / "duplex.pdf")
+
+    output = ParserService(live_textract_parser=Nothing(["x"])).parse_document(tmp_path / "duplex.pdf", "DOC-1", "RUN-1")
+
+    assert unread_scan_pages(output) == [(3, 3)]
+
+
 def test_a_chunk_reads_stamped_scans_like_the_whole_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TEXTRACT_ENABLED", "true")
     live = RecordingTextract(["Total kWh Used: 700,000 kWh", "RECEIVED 12 MAR 2025"])
