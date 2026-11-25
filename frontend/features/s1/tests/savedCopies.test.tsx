@@ -50,15 +50,23 @@ describe("Saved copies on Output", () => {
     fireEvent.click(first.getByRole("button", { name: /Download/ }));
     expect(onDownload).toHaveBeenCalledWith("copy-2", "/api/v1/engagements/E%201/workpaper-copies/copy-2/download");
     expect(screen.getByText("Fingerprint").getAttribute("title")).toMatch(/identifies this exact file/);
-    expect(pages.calls[0]).toBe("/engagements/E%201/workpaper-copies?limit=10&offset=0");
+    expect(pages.calls[0]).toBe("/engagements/E%201/workpaper-copies?limit=3&offset=0");
   });
 
-  it("shows ten and offers the older ones", async () => {
+  it("shows the newest three and offers the older ones", async () => {
     pages.list = Array.from({ length: 12 }, (_, n) => copy(n));
     render(<SavedCopies engagementId="E1" refreshKey={0} busyId={null} onDownload={onDownload} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Show older copies (2 more)" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show older copies (9 more)" }));
     await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(13));
     expect(screen.queryByRole("button", { name: /Show older/ })).toBeNull();
+  });
+
+  it("never asks for more than the API gives, and says so", async () => {
+    pages.list = Array.from({ length: 130 }, (_, n) => copy(n));
+    render(<SavedCopies engagementId="E1" refreshKey={0} busyId={null} onDownload={onDownload} />);
+    for (let n = 0; n < 10; n++) fireEvent.click(await screen.findByRole("button", { name: /Show older/ }));
+    expect(await screen.findByText("The newest 100 are shown.")).toBeTruthy();
+    expect(Math.max(...pages.calls.map((c) => Number(/limit=(\d+)/.exec(c)?.[1])))).toBe(100);
   });
 
   it("says plainly when the list cannot be loaded", async () => {

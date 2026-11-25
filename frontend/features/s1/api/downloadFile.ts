@@ -61,7 +61,7 @@ export async function downloadExcel(url: string, fallbackName: string): Promise<
     link.click();
     link.remove();
   } finally {
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000); // Safari still reads it after the click
   }
 }
 

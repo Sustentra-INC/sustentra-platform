@@ -54,6 +54,7 @@ const button = () => document.querySelector(".s1-out-actions button") as HTMLBut
 
 describe("downloading the workpaper from Output", () => {
   it("fetches with the session, saves under the server's file name, revokes the URL and refreshes the list at once", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     fetchMock.mockResolvedValue(file());
     render(<LiveOutputForTest />);
     await screen.findByText("Each workpaper you download is saved here.");
@@ -65,7 +66,10 @@ describe("downloading the workpaper from Output", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/engagements/E1/export", { credentials: "same-origin", cache: "no-store" });
     await waitFor(() => expect(saved).toHaveLength(1));
     expect(saved[0].name).toBe("Acme workpaper 2026-11-25.xlsx");
-    await waitFor(() => expect(revoked).toEqual(["blob:test/1"]));
+    expect(revoked).toEqual([]); // Safari still reads the file just after the click
+    vi.advanceTimersByTime(10_000);
+    expect(revoked).toEqual(["blob:test/1"]);
+    vi.useRealTimers();
     expect(await screen.findByText("a@firm.test")).toBeTruthy(); // refreshed without a timer
     expect(lists.calls).toBeGreaterThan(before);
     expect(screen.queryByRole("alert")).toBeNull();

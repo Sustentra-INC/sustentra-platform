@@ -5,7 +5,9 @@ import { useEffect, useState } from "react";
 import { userFacingApiError } from "../api/s1Backend";
 import { listWorkpaperCopies, workpaperCopyHref, type WorkpaperCopy } from "../api/workpaperCopies";
 
+const FIRST = 3; // the report below stays in view; the rest is one click away
 const PAGE = 10;
+const MOST = 100; // the API gives at most this many
 const FINGERPRINT_TITLE =
   "A code that identifies this exact file (its SHA-256). A file with the same code is the same file. Hover a code to see all of it.";
 
@@ -38,7 +40,7 @@ export function SavedCopies({
   onDownload: (copyId: string, url: string) => void;
 }) {
   const [state, setState] = useState<{ key: string; items: WorkpaperCopy[]; total: number } | null>(null);
-  const [limit, setLimit] = useState(PAGE);
+  const [limit, setLimit] = useState(FIRST);
   const [error, setError] = useState<string | null>(null);
   const key = `${engagementId}:${refreshKey}:${limit}`;
 
@@ -76,7 +78,7 @@ export function SavedCopies({
                 <tr>
                   <th>Saved</th>
                   <th>By</th>
-                  <th className="s1-out-num">Size</th>
+                  <th className="s1-out-num s1-out-hide-narrow">Size</th>
                   <th className="s1-out-hide-narrow" title={FINGERPRINT_TITLE}>
                     Fingerprint
                   </th>
@@ -89,8 +91,10 @@ export function SavedCopies({
                 {mine.items.map((copy) => (
                   <tr key={copy.id}>
                     <td>{when(copy.created_at)}</td>
-                    <td>{copy.prepared_by ?? "Unknown"}</td>
-                    <td className="s1-out-num">{size(copy.size_bytes)}</td>
+                    <td className="s1-out-saved__by" title={copy.prepared_by ?? undefined}>
+                      {copy.prepared_by ?? "Unknown"}
+                    </td>
+                    <td className="s1-out-num s1-out-hide-narrow">{size(copy.size_bytes)}</td>
                     <td className="s1-out-hide-narrow s1-num" title={copy.sha256}>
                       {copy.sha256.slice(0, 12)}
                     </td>
@@ -111,10 +115,12 @@ export function SavedCopies({
               </tbody>
             </table>
           </div>
-          {mine.total > mine.items.length ? (
-            <button className="s1-linklike" type="button" onClick={() => setLimit((n) => n + PAGE)}>
+          {mine.total > mine.items.length && limit < MOST ? (
+            <button className="s1-linklike" type="button" onClick={() => setLimit((n) => Math.min(n + PAGE, MOST))}>
               Show older copies ({mine.total - mine.items.length} more)
             </button>
+          ) : mine.total > mine.items.length ? (
+            <p className="s1-muted">The newest {MOST} are shown.</p>
           ) : null}
         </>
       )}

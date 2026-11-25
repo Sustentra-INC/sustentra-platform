@@ -1973,6 +1973,10 @@ html { font-size: 82%; }
 .s1-out-list__text { flex: 1 1 8rem; min-width: 0; }
 .s1-out-saved { box-sizing: border-box; width: 100%; max-width: 58rem; margin: 0 auto var(--sp-4); }
 .s1-out-saved p { margin: 0; }
+/* One line per copy: only the address gives way, cut with an ellipsis (its title holds all of it). */
+.s1-out-saved .s1-out-table { table-layout: auto; width: 100%; min-width: 0; }
+.s1-out-saved .s1-out-table :is(th, td) { white-space: nowrap; }
+.s1-out-saved .s1-out-table .s1-out-saved__by { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .s1-out-outcome { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
 
 @media (max-width: 48rem) {
