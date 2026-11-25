@@ -5,7 +5,7 @@ import type { RequestType } from "./requests";
  *  that feeds Scope 2 location- and market-based alike (a backend electricity quantity). */
 export type ScopePlacement = "general" | "scope1" | "scope2_location" | "scope2_market" | "scope2_both" | "not_placed";
 
-export type ValueReviewState = "to_review" | "accepted" | "corrected" | "requested";
+export type ValueReviewState = "to_review" | "accepted" | "corrected" | "requested" | "rejected";
 
 export type SourceKind = "pdf" | "image" | "spreadsheet" | "text";
 
@@ -107,6 +107,9 @@ export interface ReviewValue {
   asPrinted?: { value: string; unit: string; converted?: boolean };
   /** The bill says this reading was estimated by the utility, not read from the meter (backend flag `estimated_read`). The value is as printed. */
   estimatedRead?: boolean;
+  /** Backend values: the reading's validation flags that are warnings (see utils/valueWarnings.ts), so
+   *  "Accept all" leaves the value for the reviewer. Absent when there are none. */
+  warnings?: string[];
   /** The document was re-read and an earlier decision on this value no longer applies (the card is to review). */
   rereadChanged?: boolean;
   /** A correction or rejection carried over a re-read although the extracted value changed. */

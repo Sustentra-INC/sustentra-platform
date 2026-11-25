@@ -4,7 +4,7 @@ import type { EvidenceItem } from "../types";
 import { AiExplainPopover } from "./AiExplainPopover";
 
 /**
- * What Claude said about a document's type: "Type suggested by Claude, please confirm" with the
+ * What Sustentra's AI said about a document's type: "Type suggested by Sustentra's AI, please confirm" with the
  * words it cited, when it set the type; or, in words, that it disagreed with the rules (the type
  * was not changed). The existing type control changes the type.
  */
@@ -30,6 +30,14 @@ function explanationOfType(ai: { quote: string; page?: number | null }): AiExpla
   };
 }
 
+const MAX_QUOTE = 160;
+
+/** The quote as it is shown: a very long line is cut, so one row never grows without limit. */
+function shortQuote(quote: string): string {
+  const text = quote.trim();
+  return text.length > MAX_QUOTE ? `${text.slice(0, MAX_QUOTE).trimEnd()}…` : text;
+}
+
 export function AiTypeNote({ item }: { item: Pick<EvidenceItem, "aiType" | "detectedType" | "typeConfirmed"> }) {
   const ai = item.aiType;
   if (!ai) return null;
@@ -46,13 +54,21 @@ export function AiTypeNote({ item }: { item: Pick<EvidenceItem, "aiType" | "dete
       </div>
     );
   }
-  if (!ai.disagrees) return null;
+  if (!ai.disagrees || item.typeConfirmed) return null;
+  const quote = shortQuote(ai.quote);
   return (
-    <div className="s1-muted" data-testid="ai-type-note">
-      {AI_TYPE.disagreesOn(item.detectedType ?? "an unknown type", ai.typeName)}
+    <div className="s1-muted" data-testid="ai-type-note" style={{ overflowWrap: "anywhere" }}>
       <div>
-        “{ai.quote}”{ai.page != null ? ` · page ${ai.page}` : ""}
+        <span className="s1-chip" data-testid="ai-type-check">
+          {AI_TYPE.toCheck}
+        </span>
       </div>
+      <div>{AI_TYPE.disagreesOn(item.detectedType ?? "an unknown type", ai.typeName)}</div>
+      {quote ? (
+        <div>
+          “{quote}”{ai.page != null ? ` · page ${ai.page}` : ""}
+        </div>
+      ) : null}
     </div>
   );
 }

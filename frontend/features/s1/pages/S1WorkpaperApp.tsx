@@ -1810,6 +1810,18 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                   }
                 : undefined
             }
+            onPersistReject={
+              dataMode === "backend"
+                ? async (value, reason) => {
+                    try {
+                      await submitFieldReview({ field: { reviewToken: value.reviewToken }, decision: "rejected", reviewerNote: reason });
+                    } catch (error) {
+                      if (handleSessionEnded(error)) return;
+                      throw error instanceof ApiError ? new Error(userFacingApiError(error)) : error;
+                    }
+                  }
+                : undefined
+            }
             onPersistCorrect={
               dataMode === "backend"
                 ? async (value, next) => {

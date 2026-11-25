@@ -3,13 +3,14 @@
 import { Highlighter, Plus } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
-import { withRequestsFromAsks } from "../adapters/reviewValueAdapter";
+import { REJECTED_ACTION, withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import type { EngagementConfig, EvidenceItem } from "../types";
 import { AiFacilityNote } from "./AiFacilityNote";
 import { AiTypeNote } from "./AiTypeNote";
 import { AiValueNote, EstimatedReadNote } from "./AiValueNote";
 import { RereadNote } from "./RereadNote";
-import { AI_VALUE } from "../constants/copy";
+import { AI_VALUE, REJECT, WARNING_VALUE } from "../constants/copy";
+import { warningWords } from "../utils/valueWarnings";
 import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntry, ValueReviewState } from "../types/review";
 import type { Ask } from "../types/requests";
 import { andThen, useStillOpen, type MaybePromise } from "../requests/maybePromise";
@@ -80,6 +81,8 @@ interface ExtractionReviewProps {
   reviewerName?: string;
   /** Records an accept on the backend; on failure the card goes back to "to review". */
   onPersistAccept?: (value: ReviewValue) => Promise<void>;
+  /** Records a rejection and its reason on the backend; on failure the card goes back to how it was. */
+  onPersistReject?: (value: ReviewValue, reason: string) => Promise<void>;
   /** Records a correction on the backend; on failure the card goes back to how it was. */
   onPersistCorrect?: (value: ReviewValue, next: { value: string; unit: string }) => Promise<void>;
   /** Lets the reviewer key a value the reading missed (kept in the session; not yet saved to the backend). */
@@ -117,6 +120,8 @@ const SCOPE_LABEL: Record<ScopePlacement, string> = {
   not_placed: "Not placed",
 };
 
+/** The longest reason the API takes (backend api/reviews.py MAX_NOTE). */
+export const MAX_REJECT_REASON = 500;
 const REVIEW_CAP = 60; // stressor render cap; the count still shows the true total
 const NO_ASKS: Ask[] = [];
 
@@ -138,6 +143,7 @@ export function ExtractionReview({
   renderPage,
   reviewerName = "M. Osei",
   onPersistAccept,
+  onPersistReject,
   onPersistCorrect,
   allowAddValue = false,
   onValueAdded,
@@ -217,7 +223,7 @@ export function ExtractionReview({
 
   // Counted by card: values that share one reading are one card.
   const counts = useMemo(() => {
-    const c = { to_review: 0, accepted: 0, corrected: 0, requested: 0 };
+    const c = { to_review: 0, accepted: 0, corrected: 0, requested: 0, rejected: 0 };
     readings(nodeValues).forEach((vs) => (c[vs[0].reviewState] += 1));
     return c;
   }, [nodeValues]);
@@ -296,8 +302,23 @@ export function ExtractionReview({
     return () => window.cancelAnimationFrame(frame);
   }, [scrollTo]);
 
+  // Values whose decision is still being saved: a second decision on them waits, so the server hears
+  // them in the order they were made. The ref answers at once (two clicks in one tick); the state redraws.
+  const savingRef = useRef(new Set<string>());
+  const [saving, setSaving] = useState<ReadonlySet<string>>(() => new Set());
+  const isSaving = (vs: ReviewValue[]) => vs.some((x) => savingRef.current.has(x.id));
+  function holdWhileSaving(ids: string[], saves: Promise<unknown>) {
+    ids.forEach((id) => savingRef.current.add(id));
+    setSaving(new Set(savingRef.current));
+    void saves.finally(() => {
+      ids.forEach((id) => savingRef.current.delete(id));
+      setSaving(new Set(savingRef.current));
+    });
+  }
+
   /** Accept one reading: every data point it feeds. */
   function accept(vs: ReviewValue[]) {
+    if (isSaving(vs)) return;
     const now = new Date().toISOString();
     const ids = new Set(vs.map((v) => v.id));
     onValuesChange((cur) =>
@@ -324,16 +345,52 @@ export function ExtractionReview({
     );
     flash("Accepted · number, unit, field, facility and period confirmed");
     advanceFrom(ids);
-    for (const v of vs) {
-      onPersistAccept?.(v).catch((error: unknown) => {
-        onValuesChange((cur) => cur.map((x) => (x.id === v.id ? v : x)));
-        flash(`Not saved, back to review. ${error instanceof Error ? error.message : ""}`.trim());
-      });
-    }
+    if (!onPersistAccept) return;
+    holdWhileSaving(
+      vs.map((v) => v.id),
+      Promise.all(
+        vs.map((v) =>
+          onPersistAccept(v).catch((error: unknown) => {
+            onValuesChange((cur) => cur.map((x) => (x.id === v.id ? v : x)));
+            flash(`Not saved, back to ${v.reviewState === "rejected" ? "rejected" : "review"}. ${error instanceof Error ? error.message : ""}`.trim());
+          })
+        )
+      )
+    );
+  }
+
+  /** Reject one reading with the reviewer's reason: every data point it feeds. */
+  function reject(vs: ReviewValue[], reason: string) {
+    const text = reason.trim().slice(0, MAX_REJECT_REASON);
+    if (!text || isSaving(vs) || vs.some((x) => x.missing || x.withdrawn)) return;
+    const now = new Date().toISOString();
+    const ids = new Set(vs.map((v) => v.id));
+    onValuesChange((cur) =>
+      cur.map((x) =>
+        ids.has(x.id)
+          ? { ...x, reviewState: "rejected", record: [...x.record, { kind: "human", actor: reviewerName, at: now, action: REJECTED_ACTION, reason: text }] }
+          : x
+      )
+    );
+    flash("Rejected · not used in the calculation");
+    advanceFrom(ids);
+    if (!onPersistReject) return;
+    holdWhileSaving(
+      vs.map((v) => v.id),
+      Promise.all(
+        vs.map((v) =>
+          onPersistReject(v, text).catch((error: unknown) => {
+            onValuesChange((cur) => cur.map((x) => (x.id === v.id ? v : x)));
+            flash(`${REJECT.failed} ${error instanceof Error ? error.message : ""}`.trim());
+          })
+        )
+      )
+    );
   }
 
   /** Correct one reading: every data point it feeds. */
   function correct(vs: ReviewValue[], next: { value: string; unit: string }) {
+    if (isSaving(vs)) return;
     const v = vs[0];
     const now = new Date().toISOString();
     const was = `${v.value}${v.unit ? ` ${v.unit}` : ""}`;
@@ -364,12 +421,18 @@ export function ExtractionReview({
     );
     flash(`${v.value ? "Corrected to" : "Entered"} ${next.value}${next.unit ? ` ${next.unit}` : ""}`);
     if (v.reviewState === "to_review") advanceFrom(ids);
-    for (const one of vs) {
-      onPersistCorrect?.(one, next).catch((error: unknown) => {
-        onValuesChange((cur) => cur.map((x) => (x.id === one.id ? one : x)));
-        flash(`Correction not saved, back as it was. ${error instanceof Error ? error.message : ""}`.trim());
-      });
-    }
+    if (!onPersistCorrect) return;
+    holdWhileSaving(
+      vs.map((x) => x.id),
+      Promise.all(
+        vs.map((one) =>
+          onPersistCorrect(one, next).catch((error: unknown) => {
+            onValuesChange((cur) => cur.map((x) => (x.id === one.id ? one : x)));
+            flash(`Correction not saved, back as it was. ${error instanceof Error ? error.message : ""}`.trim());
+          })
+        )
+      )
+    );
   }
 
   /** Accept every value of one document still to review, saving up to six at a time. */
@@ -758,7 +821,7 @@ export function ExtractionReview({
               />
             ) : null}
             <div className="s1-xr-filters" role="group" aria-label="Show cards by review state">
-              {(["to_review", "accepted", "corrected", "requested"] as ValueReviewState[]).map((k) => (
+              {(["to_review", "accepted", "corrected", "requested", "rejected"] as ValueReviewState[]).map((k) => (
                 <button
                   key={k}
                   className={`s1-xr-filter s1-xr-filter--${k}${filter === k ? " is-on" : ""}`}
@@ -820,7 +883,10 @@ export function ExtractionReview({
                       );
                       const left = readings(open.filter((x) => !needsOwnAccept(x))).length;
                       // Claude's readings (and both sides of a conflict) are accepted one by one, against the page.
-                      const skipped = readings(open.filter(needsOwnAccept)).length;
+                      const skipped = readings(open.filter(isAiReading)).length;
+                      // So are the values the reading flagged with a warning: the note says why.
+                      const warned = open.filter((x) => !isAiReading(x) && needsOwnAccept(x));
+                      const warnedCards = readings(warned).length;
                       return docId ? (
                         <>
                           {left > 1 ? (
@@ -828,7 +894,12 @@ export function ExtractionReview({
                               Accept all {left}
                             </button>
                           ) : null}
-                          {skipped > 0 ? <span className="s1-muted">{AI_VALUE.needIndividual(skipped)}</span> : null}
+                          {skipped > 0 ? <span className="s1-muted s1-xr-skipnote">{AI_VALUE.needIndividual(skipped)}</span> : null}
+                          {warnedCards > 0 ? (
+                            <span className="s1-muted s1-xr-skipnote">
+                              {WARNING_VALUE.needIndividual(warnedCards, warningWords(warned.flatMap((x) => x.warnings ?? [])))}
+                            </span>
+                          ) : null}
                         </>
                       ) : null;
                     })()}
@@ -877,6 +948,8 @@ export function ExtractionReview({
                       }}
                       onAccept={() => accept(vs)}
                       onCorrect={(next) => correct(vs, next)}
+                      onReject={(reason) => reject(vs, reason)}
+                      busy={vs.some((x) => saving.has(x.id))}
                       onAddToRequests={() => openAddToRequests(vs)}
                     />
                   ))}
@@ -1012,6 +1085,7 @@ function DocumentKey({ values, highlight }: { values: ReviewValue[]; highlight?:
         <span className="s1-dd-key s1-dd-key--accepted">Accepted</span>
         <span className="s1-dd-key s1-dd-key--corrected">Corrected</span>
         <span className="s1-dd-key s1-dd-key--requested">{filterLabel("requested")}</span>
+        <span className="s1-dd-key s1-dd-key--rejected">{filterLabel("rejected")}</span>
         <span className="s1-dd-key s1-dd-key--missing">Not found</span>
       </div>
     </div>
@@ -1028,6 +1102,8 @@ function ValueCard({
   onSelect,
   onAccept,
   onCorrect,
+  onReject,
+  busy,
   onAddToRequests,
 }: {
   /** One reading: the values it feeds (two when location- and market-based share it). */
@@ -1039,15 +1115,39 @@ function ValueCard({
   onSelect: () => void;
   onAccept: () => void;
   onCorrect: (next: { value: string; unit: string }) => void;
+  /** Rejects the reading with the reason the reviewer gave. */
+  onReject: (reason: string) => void;
+  /** A decision on this reading is still being saved: no other decision until it is. */
+  busy: boolean;
   onAddToRequests: () => void;
 }) {
   const v = vs[0];
   const done = v.reviewState !== "to_review";
   const stateLabel = valueStateLabel(v.reviewState, request);
   const [editing, setEditing] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
+  const rejectButton = useRef<HTMLButtonElement>(null);
+  const refocusReject = useRef(false);
+  // Closing the reason box (Escape, Cancel) puts focus back on the button that opened it.
+  useEffect(() => {
+    if (rejecting || !refocusReject.current) return;
+    refocusReject.current = false;
+    rejectButton.current?.focus();
+  }, [rejecting]);
+  const closeReject = () => {
+    refocusReject.current = true;
+    setRejecting(false);
+  };
   const [draftValue, setDraftValue] = useState(v.value);
   const [draftUnit, setDraftUnit] = useState(v.unit);
+  const startRejecting = () => {
+    setEditing(false);
+    setReason("");
+    setRejecting(true);
+  };
   const startEditing = () => {
+    setRejecting(false);
     setDraftValue(v.value);
     setDraftUnit(v.unit);
     setEditing(true);
@@ -1090,6 +1190,7 @@ function ValueCard({
           </span>
         ) : null}
       </div>
+      {v.reviewState === "rejected" ? <div className="s1-muted s1-xr-reread">{REJECT.notUsed}</div> : null}
       <EstimatedReadNote value={v} />
       <AiValueNote value={v} />
       <RereadNote value={v} />
@@ -1102,7 +1203,7 @@ function ValueCard({
       </div>
 
       {/* The selected card opens: where it came from, its record, and what to do. */}
-      {selected || editing ? (
+      {selected || editing || rejecting ? (
         <div className="s1-xr-card__more">
           <div className="s1-xr-record">
             {v.record.map((r, i) => (
@@ -1153,10 +1254,50 @@ function ValueCard({
                 </button>
               </div>
             </form>
+          ) : rejecting ? (
+            <form
+              className="s1-xr-edit"
+              onKeyDown={(e) => {
+                if (e.key !== "Escape") return;
+                e.stopPropagation();
+                closeReject();
+              }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                const text = reason.trim();
+                if (!text || busy) return;
+                onReject(text);
+                setRejecting(false);
+              }}
+            >
+              <label className="s1-xr-edit__field s1-xr-edit__field--reason">
+                <span>{REJECT.prompt}</span>
+                <input autoFocus value={reason} maxLength={MAX_REJECT_REASON} onChange={(e) => setReason(e.target.value.slice(0, MAX_REJECT_REASON))} />
+              </label>
+              <div className="s1-xr-edit__actions">
+                <button className="s1-button s1-button--pri" type="submit" disabled={!reason.trim() || busy}>
+                  {REJECT.confirm}
+                </button>
+                <button className="s1-button" type="button" onClick={closeReject}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : v.reviewState === "rejected" ? (
+            // Put back: a rejected value is accepted or corrected like one still to review.
+            <>
+              <span className="s1-muted">{stateLabel}</span>
+              <button className="s1-button s1-button--pri" type="button" disabled={busy} onClick={onAccept}>
+                Accept
+              </button>
+              <button className="s1-button" type="button" disabled={busy} onClick={startEditing}>
+                Correct
+              </button>
+            </>
           ) : done ? (
             <>
               <span className="s1-muted">{stateLabel}</span>
-              <button className="s1-linklike s1-xr-recorrect" type="button" onClick={startEditing}>
+              <button className="s1-linklike s1-xr-recorrect" type="button" disabled={busy} onClick={startEditing}>
                 Correct
               </button>
             </>
@@ -1171,14 +1312,17 @@ function ValueCard({
             </>
           ) : (
             <>
-              <button className="s1-button s1-button--pri" type="button" onClick={onAccept}>
+              <button className="s1-button s1-button--pri" type="button" disabled={busy} onClick={onAccept}>
                 Accept
               </button>
-              <button className="s1-button" type="button" onClick={startEditing}>
+              <button className="s1-button" type="button" disabled={busy} onClick={startEditing}>
                 Correct
               </button>
-              <button className="s1-button" type="button" onClick={onAddToRequests}>
+              <button className="s1-button" type="button" disabled={busy} onClick={onAddToRequests}>
                 Request
+              </button>
+              <button ref={rejectButton} className="s1-button" type="button" disabled={busy} onClick={startRejecting}>
+                {REJECT.button}
               </button>
             </>
           )}
@@ -1206,8 +1350,13 @@ function pageMarks(items: ReviewValue[], documentId: string): PageMark[] {
 
 /** What a content view (workbook, CSV, Word) needs to select values from the file. */
 /** A value Claude read (or one of two it read for a field) is never swept in by "Accept all". */
-function needsOwnAccept(v: ReviewValue): boolean {
+function isAiReading(v: ReviewValue): boolean {
   return Boolean(v.ai?.suggested || v.ai?.conflict);
+}
+
+/** So is a value the reading flagged with a warning (unit unclear, estimated, ...): see utils/valueWarnings. */
+function needsOwnAccept(v: ReviewValue): boolean {
+  return isAiReading(v) || Boolean(v.warnings?.length);
 }
 
 export interface SourcePick {
@@ -1602,7 +1751,18 @@ function distinct(xs: string[]): string[] {
 }
 
 function reviewStateLabel(s: ValueReviewState): string {
-  return s === "to_review" ? "To review" : s === "accepted" ? "Accepted" : s === "corrected" ? "Corrected" : "Requested";
+  switch (s) {
+    case "to_review":
+      return "To review";
+    case "accepted":
+      return "Accepted";
+    case "corrected":
+      return "Corrected";
+    case "rejected":
+      return "Rejected";
+    case "requested":
+      return "Requested";
+  }
 }
 
 /** The filter bar and the document's key. The last bucket holds every value added to

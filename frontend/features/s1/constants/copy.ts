@@ -14,6 +14,7 @@ export const HALT_REASONS = {
 /** Claude's reading of a document's type (backend services/ai_routing.py). */
 export const AI_TYPE = {
   suggested: "Type suggested by Sustentra's AI, please confirm",
+  toCheck: "Type to check",
   disagreesOn: (rulesType: string, claudeType: string) =>
     `The rules chose ${rulesType}, but Sustentra's AI read the first pages as ${claudeType}. The type was not changed.`,
 } as const;
@@ -34,6 +35,20 @@ export const AI_VALUE = {
   disagreesHelp: "The rules read the value above and kept it. Sustentra's AI read another: check the page.",
   readBy: "Read by Sustentra's AI",
   needIndividual: (n: number) => `${n} suggested by Sustentra's AI need individual review`,
+} as const;
+
+/** Rejecting a value read from a document (a reviewer's decision, with a reason). */
+export const REJECT = {
+  button: "Reject",
+  prompt: "Why is this value not used?",
+  confirm: "Reject value",
+  notUsed: "Not used in the calculation.",
+  failed: "Reject not saved, back to review.",
+} as const;
+
+/** "Accept all" leaves out a value the reading flagged; the note says how many and why. */
+export const WARNING_VALUE = {
+  needIndividual: (n: number, reasons: string[]) => `${n} with a warning need individual review: ${reasons.join(", ")}`,
 } as const;
 
 /** The popover that explains an AI suggestion (backend services/methodology_explanation.py). */

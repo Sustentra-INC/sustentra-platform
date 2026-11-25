@@ -1486,7 +1486,8 @@ select:focus-visible,
 .s1-xr-edit { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-2); width: 100%; }
 .s1-xr-edit__field { display: flex; flex-direction: column; gap: 0.15rem; font-size: var(--text-sm); color: var(--ink-3); flex: 1 1 7rem; min-width: 0; }
 .s1-xr-edit__field--unit { flex: 0 1 6rem; }
-.s1-xr-edit__field input { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); min-width: 0; width: 100%; }
+.s1-xr-edit__field--reason { flex: 1 1 14rem; }
+.s1-xr-edit__field input { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); min-width: 0; width: 100%; box-sizing: border-box; }
 .s1-xr-edit__actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .s1-xr-acceptall { margin-left: auto; }
 .s1-xr-doc { flex-wrap: wrap; }
@@ -1822,6 +1823,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-pv__box--corrected:hover, .s1-cv__mark--corrected:hover { background: var(--hl-corrected-hover); }
 .s1-pv__box--requested, .s1-cv__mark--requested { background: var(--hl-requested); box-shadow: inset 0 -0.1rem 0 var(--hl-requested-stroke); }
 .s1-pv__box--requested:hover, .s1-cv__mark--requested:hover { background: var(--hl-requested-hover); }
+.s1-pv__box--rejected, .s1-cv__mark--rejected { background: var(--state-blocking-bg); box-shadow: inset 0 -0.1rem 0 var(--state-blocking-line); }
+.s1-pv__box--rejected:hover, .s1-cv__mark--rejected:hover { background: var(--state-blocking-line); }
 .s1-pv__box.is-sel, .s1-cv__mark.s1-cv__mark--selected {
   box-shadow: 0 0 0 0.15rem var(--accent-solid), 0 0 0 0.45rem var(--hl-selected-halo);
   animation: s1-hl-pulse 1.4s var(--ease-out) 1;
@@ -3315,8 +3318,8 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-vhead h2 { font-size: var(--text-md); margin: 0; }
 .s1-xr-vhead__top { margin-bottom: var(--sp-2); }
 
-.s1-xr-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; flex-wrap: nowrap; border: var(--border-hairline); border-radius: var(--radius-input); overflow: hidden; background: var(--sf-card); }
-.s1-xr-filter { display: flex; flex-direction: column; align-items: flex-start; gap: 0; min-width: 0; padding: 0.375rem var(--sp-2); font: inherit; color: var(--ink-2); text-align: left; background: var(--sf-card); border: 0; border-radius: 0; cursor: pointer; transition: background-color 0.15s ease, box-shadow 0.15s ease; }
+.s1-xr-filters { display: grid; grid-template-columns: repeat(5, minmax(0, auto)); gap: 0; flex-wrap: nowrap; border: var(--border-hairline); border-radius: var(--radius-input); overflow: hidden; background: var(--sf-card); }
+.s1-xr-filter { display: flex; flex-direction: column; align-items: center; gap: 0; min-width: 0; padding: 0.375rem 0.125rem; font: inherit; color: var(--ink-2); text-align: center; background: var(--sf-card); border: 0; border-radius: 0; cursor: pointer; transition: background-color 0.15s ease, box-shadow 0.15s ease; }
 .s1-xr-filter + .s1-xr-filter { border-left: var(--border-hairline); }
 .s1-xr-filter:hover { background: var(--accent-softer); }
 .s1-xr-filter.is-on { background: var(--state-active-bg); border-color: var(--line); box-shadow: inset 0 calc(-1 * var(--nav-current-marker-width)) 0 var(--state-active-fg); }
@@ -3326,6 +3329,8 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-doc { flex-wrap: nowrap; align-items: center; min-width: 0; padding: var(--sp-2) 0; }
 .s1-xr-doc__fn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s1-xr-doc > .s1-muted { flex: none; white-space: nowrap; }
+/* The note on why values are left out of Accept all can be long: it wraps inside the row. */
+.s1-xr-doc > .s1-xr-skipnote { flex: 0 1 auto; min-width: 0; white-space: normal; }
 .s1-xr-doc .s1-xr-acceptall { flex: none; margin-left: auto; padding: 0.125rem var(--sp-2); font-size: var(--text-sm); }
 .s1-xr-card {
   display: flex; flex-direction: column; gap: 0.125rem; margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3);
@@ -3336,6 +3341,7 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-card--accepted { border-left-color: var(--state-resolved-fg); }
 .s1-xr-card--corrected { border-left-color: var(--accent-solid); }
 .s1-xr-card--requested { border-left-color: var(--chart-5); }
+.s1-xr-card--rejected { border-left-color: var(--state-blocking-fg); }
 .s1-xr-card:hover { background: var(--accent-softer); }
 .s1-xr-card.is-sel { background: var(--sf-card); box-shadow: 0 0 0 var(--hairline-width) var(--state-active-fg), 0 0.25rem 0.75rem rgba(40, 40, 112, 0.08); }
 .s1-xr-card:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
@@ -3348,6 +3354,7 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-badge--accepted { color: var(--state-resolved-fg); background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
 .s1-xr-badge--corrected { color: var(--accent-strong); background: var(--accent-soft); border-color: var(--accent-line); }
 .s1-xr-badge--requested { color: var(--chart-5); background: var(--state-unverifiable-bg); border-color: var(--state-unverifiable-line); }
+.s1-xr-badge--rejected { color: var(--state-blocking-fg); background: var(--state-blocking-bg); border-color: var(--state-blocking-line); }
 .s1-xr-card__value { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 var(--sp-2); }
 .s1-xr-card .s1-xr-val { font-size: var(--text-md); line-height: var(--leading-tight); }
 .s1-xr-card .s1-xr-unit { font-size: var(--text-sm); }
@@ -3365,8 +3372,9 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-card .s1-xr-rec { flex-wrap: wrap; column-gap: var(--sp-1); line-height: var(--leading-tight); }
 .s1-xr-card .s1-xr-rec--machine { font-family: inherit; }
 .s1-xr-rec__at { margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.s1-xr-card .s1-xr-actions { margin: 0; gap: var(--sp-2); }
-.s1-xr-card .s1-xr-actions .s1-button { padding: 0.25rem var(--sp-3); font-size: var(--text-sm); }
+/* Four actions (Accept, Correct, Request, Reject) fit on one line of the panel. */
+.s1-xr-card .s1-xr-actions { margin: 0; gap: var(--sp-1); }
+.s1-xr-card .s1-xr-actions .s1-button { padding: 0.25rem var(--sp-2); font-size: var(--text-sm); }
 @media (prefers-reduced-motion: reduce) { .s1-xr-card__more { transition: none; } }
 
 /* Extraction review: the document's key, pinned above the cards (Vivian, 21 Oct). */

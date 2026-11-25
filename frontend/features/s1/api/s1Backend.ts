@@ -59,6 +59,8 @@ export interface BackendReviewDecision {
   reviewed_unit?: string | null;
   reviewer_id?: string | null;
   reviewed_at?: string | null;
+  /** Why a value was rejected (required for a rejection). */
+  reviewer_note?: string | null;
 }
 
 /**
@@ -105,7 +107,10 @@ export function fieldsFromExtraction(
           reviewStatus: field.value === null ? ("keyed_by_reviewer" as const) : ("corrected" as const),
         };
       }
-      if (review.decision === "rejected" || review.decision === "needs_more_evidence") {
+      if (review.decision === "rejected") {
+        return { ...field, ...who, reviewStatus: "rejected" as const, rejectionReason: review.reviewer_note ?? null, placementBlocked: true };
+      }
+      if (review.decision === "needs_more_evidence") {
         return { ...field, ...who, placementBlocked: true };
       }
       return field;
@@ -282,7 +287,7 @@ export async function submitFieldReview({
   reviewerNote,
 }: {
   field: Pick<ExtractedField, "reviewToken">;
-  decision: "accepted" | "edited";
+  decision: "accepted" | "edited" | "rejected";
   reviewedValue?: string | null;
   /** A corrected unit, when the reviewer changed it. */
   reviewedUnit?: string | null;
@@ -302,7 +307,7 @@ export async function submitFieldReview({
       decision,
       reviewed_value: decision === "edited" ? reviewedValue : undefined,
       reviewed_unit: decision === "edited" && reviewedUnit ? reviewedUnit : undefined,
-      reviewer_note: reviewerNote,
+      reviewer_note: reviewerNote || undefined,
     },
   });
 }
