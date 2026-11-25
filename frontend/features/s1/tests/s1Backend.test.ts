@@ -115,6 +115,21 @@ describe("S1 data seam on cookie auth (FE-007)", () => {
     expect(JSON.parse(String(review.init.body))).not.toHaveProperty("reviewer_id");
   });
 
+  it("sends a rejection as rejected with its reason and no value", async () => {
+    await submitFieldReview({
+      field: { reviewToken: encodeReviewCandidateToken(candidate) } as unknown as ExtractedField,
+      decision: "rejected",
+      reviewedValue: "99",
+      reviewerNote: "Wrong meter",
+    });
+    const review = calls().find((c) => c.url.endsWith("/review"))!;
+    const body = JSON.parse(String(review.init.body));
+    expect(body.decision).toBe("rejected");
+    expect(body.reviewer_note).toBe("Wrong meter");
+    expect(body).not.toHaveProperty("reviewed_value");
+    expect(body).not.toHaveProperty("reviewer_id");
+  });
+
   it("carries the read's own time onto each extracted field", async () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) =>
       String(input).endsWith("/extraction-result/latest")

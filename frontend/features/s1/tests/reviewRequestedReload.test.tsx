@@ -186,7 +186,7 @@ describe("extraction review on staging: a requested value after a reload", () =>
     const before = session.seen();
     expect(before.chip).toBe("Request not sent");
     expect(before.lines).toContain("Thanishque · added to requests");
-    expect(before.filters).toEqual(["1To review", "1Accepted", "0Corrected", "1Requests"]);
+    expect(before.filters).toEqual(["1To review", "1Accepted", "0Corrected", "1Requests", "0Rejected"]);
     const saved = session.live.store!.asks;
     cleanup();
 
@@ -227,8 +227,8 @@ describe("extraction review on staging: a request that was resolved or withdrawn
     expect(inSession).toEqual({
       chip: undefined,
       lines: ["System read · Electricity bill, page 1", "Thanishque · requested from client", "Thanishque · Request 1 resolved"],
-      filters: ["2To review", "1Accepted", "0Corrected", "0Requests"],
-      buttons: ["Accept", "Correct", "Request"],
+      filters: ["2To review", "1Accepted", "0Corrected", "0Requests", "0Rejected"],
+      buttons: ["Accept", "Correct", "Request", "Reject"],
     });
     expect(reloaded.seen()).toEqual(inSession);
 
@@ -236,7 +236,7 @@ describe("extraction review on staging: a request that was resolved or withdrawn
     fireEvent.click(within(reloaded.card()).getByRole("button", { name: "Request" }));
     fireEvent.click(screen.getByRole("button", { name: "Add to requests" }));
     expect(reloaded.seen().chip).toBe("Request not sent");
-    expect(reloaded.seen().filters.at(-1)).toBe("1Requests");
+    expect(reloaded.seen().filters.at(-2)).toBe("1Requests");
   });
 
   it("is back to review once withdrawn, in the session and after a reload", () => {
@@ -244,8 +244,8 @@ describe("extraction review on staging: a request that was resolved or withdrawn
     expect(inSession).toEqual({
       chip: undefined,
       lines: ["System read · Electricity bill, page 1", "Thanishque · requested from client", "Thanishque · Request 1 withdrawn"],
-      filters: ["2To review", "1Accepted", "0Corrected", "0Requests"],
-      buttons: ["Accept", "Correct", "Request"],
+      filters: ["2To review", "1Accepted", "0Corrected", "0Requests", "0Rejected"],
+      buttons: ["Accept", "Correct", "Request", "Reject"],
     });
     expect(reloaded.seen()).toEqual(inSession);
     expect(reloaded.card().textContent).toContain("found on the next bill");
@@ -254,7 +254,7 @@ describe("extraction review on staging: a request that was resolved or withdrawn
   it("stays requested while its request is sent and waiting, in the session and after a reload", () => {
     const { inSession, reloaded } = requestThenReload();
     expect(inSession.chip).toBe("Requested");
-    expect(inSession.filters.at(-1)).toBe("1Requests");
+    expect(inSession.filters.at(-2)).toBe("1Requests");
     expect(inSession.buttons).not.toContain("Accept");
     expect(reloaded.seen()).toEqual(inSession);
   });

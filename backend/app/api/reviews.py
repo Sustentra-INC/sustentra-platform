@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.app.api.documents import current_upload_service
 from backend.app.api.s1_access import (
@@ -38,6 +38,9 @@ def configure_service(service: ReviewDecisionService) -> None:
     _service = service
 
 
+MAX_NOTE = 500
+
+
 class ReviewDecisionRequest(BaseModel):
     candidate: dict
     decision: str
@@ -45,7 +48,8 @@ class ReviewDecisionRequest(BaseModel):
     reviewer_id: str | None = None
     reviewed_value: str | float | int | bool | None = None
     reviewed_unit: str | None = None
-    reviewer_note: str | None = None
+    # Why a value was rejected (required then), or any note; kept with who and when.
+    reviewer_note: str | None = Field(default=None, max_length=MAX_NOTE)
     # Backward-compatible aliases (output always uses the reviewed_* names).
     reviewed_by: str | None = None
     approved_value: str | float | int | bool | None = None
@@ -92,6 +96,10 @@ def review_field(
         payload.reviewed_unit if payload.reviewed_unit is not None else payload.approved_unit
     )
 
+    note = payload.reviewer_note.strip() if payload.reviewer_note else None
+    if payload.decision == "rejected" and not note:
+        raise HTTPException(status_code=400, detail="Say why the value is rejected: a reason is required.")
+
     try:
         return _service.submit_decision(
             candidate=candidate,
@@ -99,7 +107,7 @@ def review_field(
             reviewer_id=reviewer_id,
             reviewed_value=reviewed_value,
             reviewed_unit=reviewed_unit,
-            reviewer_note=payload.reviewer_note,
+            reviewer_note=note or None,
             org_id=org_of(user),
         )
     except ValueError as exc:
