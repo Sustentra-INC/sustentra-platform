@@ -681,3 +681,48 @@ def test_the_same_total_printed_with_two_values_on_two_sheets_reads_nothing() ->
     outcome = rt.ReportedTotalsExtractor().extract(sheet_output(("Summary", NPL), ("Old", other)), TARGETS, "ev1")
     got = {c["field_name"]: c for c in outcome.candidates}
     assert got["scope1_total"]["raw_value"] is None and got["scope2_market_total"]["normalized_value"] == 1132.1
+
+
+# --- review round 1: year-like figures, and tables that are targets, forecasts or plans --------------------------
+def test_a_whole_number_that_looks_like_a_year_is_a_figure_in_a_figure_column() -> None:
+    rows = [["Scope", "Category", "A", "B", "Total (kgCO2e)"], ["Scope 1", "Total Scope 1", 1000, 2000, 3000]]
+    assert values(read_sheet(rows)) == {"scope1_total": 3000}
+    rows = [["Scope", "Category", "A", "B", "Total (tCO2e)"], ["Scope 1", "Total Scope 1", 5, 2020, 2025],
+            ["Scope 2", "Location-based", 1, 2, 3]]
+    got = read_sheet(rows)
+    assert values(got) == {"scope1_total": 2025, "scope2_location_total": 3}
+    assert got["reporting_year"]["raw_value"] is None  # the figure 2025 is not the reporting year
+    npl = [r[:] for r in NPL[3:8]]
+    npl[1][1], npl[2][1], npl[3][1] = 1000.0, 1000, 20
+    npl[4][1] = 2020
+    got = read_sheet([["Scope 1 inventory", None, None, None, None], *npl])
+    assert values(got)["scope1_total"] == 2020 and got["reporting_year"]["raw_value"] is None
+
+
+def test_a_year_in_a_header_or_caption_is_still_a_year() -> None:
+    rows = [["Scope", "Category", "Total 2025 (tCO2e)", "Total 2024 (tCO2e)"], ["Scope 1", "Total Scope 1", 5, 7]]
+    assert values(read_sheet(rows)) == {}
+    rows = [["Inventory 2025"], ["Scope", "Category", "A", "Total (tCO2e)"], ["Scope 1", "Total Scope 1", 5, 5]]
+    assert read_sheet(rows)["reporting_year"]["normalized_value"] == 2025
+    rows = [["Facility", "2025", "2024"], ["Total", 1, 2]]
+    assert values(read_sheet(rows)) == {}
+
+
+@pytest.mark.parametrize("title", ["Emissions target 2030", "Net-zero goal", "Forecast", "Projected emissions", "Projection",
+                                   "Budget", "Planned reductions", "Reduction plan", "Scenario A", "Pathway to 2050",
+                                   "Baseline emissions", "Base year 2019", "TARGET"])
+def test_a_target_forecast_or_plan_table_reads_nothing(title: str) -> None:
+    rows = [[title], ["Facility", "Scope 1 (tCO2e)"], ["A", 1], ["Total", 1]]
+    assert values(read_sheet(rows)) == {}
+    assert any("target" in n for n in read.notes)  # type: ignore[attr-defined]
+    assert values(read_sheet([["Facility", "Scope 1 (tCO2e)"], ["A", 1], ["Total", 1]], sheet=title)) == {}
+    rows = [[title], ["Scope", "Category", "A", "Total (tCO2e)"], ["Scope 1", "Total Scope 1", 1, 1]]
+    assert values(read_sheet(rows)) == {}
+
+
+def test_plain_words_that_merely_contain_plan_or_goal_do_not_trip_it() -> None:
+    rows = [["GHG Inventory 2025"], ["Facility", "Scope 1 (tCO2e)"], ["Riverside Plant", 1], ["Planning Dept", 2],
+            ["Total", 3]]
+    assert values(read_sheet(rows, sheet="2025 Inventory")) == {"scope1_total": 3}
+    rows += [[None, None], ["Note: the base year 2019 is used for the target."]]
+    assert values(read_sheet(rows)) == {"scope1_total": 3}  # a footnote below the table is not its title

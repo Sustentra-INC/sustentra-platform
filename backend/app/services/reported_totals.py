@@ -606,6 +606,9 @@ _CATEGORIES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"fugitive(?:\s+emissions?)?(?:\s*\(.*\))?"), "fugitive_total"),
     (re.compile(r"process(?:\s+emissions?)?(?:\s*\(.*\))?"), "process_total"))
 _BASIS = re.compile(r"(location|market)[\s-]*based")
+_NOT_AN_INVENTORY = re.compile(r"(?i)\b(?:targets?|goals?|forecasts?|projected|projections?|budgets?|plan|planned|scenarios?"
+                               r"|pathways?|baseline|base\s+years?)\b")
+TARGET_NOTE = "A table here looks like a target, forecast or plan, not reported emissions, so none of its figures were read."
 NO_YEAR_NOTE = "A table here has several year columns, so none of its figures were read."
 MEASURE_NOTE = "A table here is about another measure (an intensity or a ratio), so none of its figures were read."
 
@@ -640,8 +643,10 @@ def _blocks(grid: list[list[str]]) -> list[_Block]:
             elif header:
                 captions, header = captions + header, []  # a header with no rows under it is only a caption
             continue
-        if any(_value_cell(c) for c in row):
-            body.append(index)
+        if any(_value_cell(c) for c in row) or (any(_figure_cell(c) for c in row) and (header or body)):
+            body.append(index)  # a row of only year-like numbers is a header unless a header is already above it
+        elif any(_figure_cell(c) for c in row):
+            header.append(index)
         elif len(cells) == 1:
             if body:
                 flush()
@@ -654,6 +659,12 @@ def _blocks(grid: list[list[str]]) -> list[_Block]:
             header.append(index)
     flush()
     return out
+
+
+def _figure_cell(text: Any) -> bool:
+    """A figure of a table's rows: a number (a whole number like 2025 is a figure here, not a year) or "not reported"."""
+
+    return number_of(text) is not None or is_not_reported(text)
 
 
 def _decimals(raw: str) -> int:
@@ -691,7 +702,7 @@ def _scope_of_header(text: str) -> str | None:
 def _row_label(row: Sequence[str]) -> tuple[list[tuple[int, str]], int | None]:
     """The label cells of a row (text before its first figure) and the position of that first figure."""
 
-    first = next((i for i, c in enumerate(row) if _value_cell(c)), None)
+    first = next((i for i, c in enumerate(row) if _figure_cell(c)), None)
     return ([(i, c) for i, c in enumerate(row) if c and (first is None or i < first)], first)
 
 
@@ -770,7 +781,7 @@ class _Table:
 
     def value_columns(self) -> list[int]:
         start = min((_row_label(self.grid[i])[1] or self.width) for i in self.block.body)
-        return [j for j in range(start, self.width) if any(_value_cell(self.cell(i, j)) for i in self.block.body)]
+        return [j for j in range(start, self.width) if any(_figure_cell(self.cell(i, j)) for i in self.block.body)]
 
     def year(self) -> tuple[int | None, tuple[int, int] | None, bool]:
         """(the one year named, the caption cell it is read from, whether the header names several). A preparation
@@ -847,7 +858,7 @@ def _read_scope_rows_block(table: _Table) -> TableRead | None:
     refused: set[int] = set()
     for row in classified:
         cell = table.cell(row.index, total_col)
-        if row.kind not in ("total", "category") or not _value_cell(cell):
+        if row.kind not in ("total", "category") or not _figure_cell(cell):
             continue
         parts = [table.cell(row.index, j) for j in parts_cols if number_of(table.cell(row.index, j)) is not None]
         if parts and not _adds_up(parts, cell):
@@ -864,7 +875,7 @@ def _read_scope_rows_block(table: _Table) -> TableRead | None:
     at: list[tuple[int, int]] = []
     for row in classified:
         cell = table.cell(row.index, total_col)
-        if row.index in refused or row.kind not in ("total", "category") or not _value_cell(cell):
+        if row.index in refused or row.kind not in ("total", "category") or not _figure_cell(cell):
             continue
         if row.kind == "total" and row.key:
             cells.append((row.key, "total", cell))
@@ -916,7 +927,7 @@ def _read_facility_rows_block(table: _Table) -> TableRead | None:
             continue
         j = cols[0]
         cell = table.cell(totals[0], j)
-        if not _value_cell(cell):
+        if not _figure_cell(cell):
             continue
         parts = [table.cell(i, j) for i in parts_rows if number_of(table.cell(i, j)) is not None]
         if parts and not _adds_up(parts, cell):
@@ -936,7 +947,7 @@ def _read_facility_rows_block(table: _Table) -> TableRead | None:
     return TableRead(cells, unit, unit_text, problem, year, list(dict.fromkeys(notes)), at, year_at if cells else None, texts)
 
 
-def read_tables(rows: Sequence[Sequence[Any]]) -> list[TableRead]:
+def read_tables(rows: Sequence[Sequence[Any]], sheet_name: str | None = None) -> list[TableRead]:
     """The tables in a grid of rows (a workbook sheet, a Textract table): each is read through its own header, and the
     columns are the same position in every row. A company workbook's layouts (scope rows by facility columns with one
     Total column; facility rows with scope columns and one Total row) are read from the printed Total only; any other
@@ -946,6 +957,10 @@ def read_tables(rows: Sequence[Sequence[Any]]) -> list[TableRead]:
     reads: list[TableRead] = []
     for block in _blocks(grid):
         table = _Table(grid, block)
+        own = [sheet_name or "", *(c for i in [*block.captions, *block.header] for c in grid[i] if c)]
+        if any(_NOT_AN_INVENTORY.search(t) for t in own):  # the table's own title, captions, header or sheet name
+            reads.append(_refuse(TARGET_NOTE))
+            continue
         read = _read_scope_rows_block(table)
         if read is None:
             read = _read_facility_rows_block(table)
@@ -1044,7 +1059,7 @@ class ReportedTotalsExtractor:
             reference = self._service._source_reference_for_table(parser_output, table, document_id)
             rows = table.get("rows") or []
             exact = _CellIndex(parser_output, table)
-            for read in read_tables(rows):
+            for read in read_tables(rows, table.get("sheet_name")):
                 notes.extend(read.notes)
                 for n, (row, column, raw) in enumerate(read.cells):
                     number = number_of(raw)
