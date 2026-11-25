@@ -468,3 +468,216 @@ def test_a_bare_single_year_column_that_is_not_the_period_is_not_fed() -> None:
     assert "year:2023" in cell["validation_flags"] and read([], [table])["reporting_year"]["normalized_value"] == 2023
     figure = rt.figure_of({**cell, "field_name": "scope1_total"}, accepted(), DOC)
     assert figure is not None and rt.overlay({}, {}, [figure], {2025})[0] == {}
+
+
+# --- a company's own GHG workbook: scope rows with facility columns and a Total column, or facility rows with a
+# --- Total row (EXT-031). Synthetic sheets built by the workbook parser itself, so every cell has its coordinate. ----
+def sheet_output(*sheets: tuple[str, list[list[Any]]]) -> dict[str, Any]:
+    from backend.app.adapters.parsers.excel_parser import parser_output_from_sheets
+    from openpyxl.utils import get_column_letter
+
+    def cells(rows: list[list[Any]]) -> list[list[tuple[str | None, Any]]]:
+        return [[(None if v is None else f"{get_column_letter(c + 1)}{r + 1}", v) for c, v in enumerate(row)]
+                for r, row in enumerate(rows)]
+
+    return parser_output_from_sheets([(name, cells(rows)) for name, rows in sheets], parser_name="openpyxl",
+                                     document_id="d1", processing_run_id="r1")
+
+
+def read_sheet(rows: list[list[Any]], sheet: str = "Summary") -> dict[str, dict[str, Any]]:
+    outcome = rt.ReportedTotalsExtractor().extract(sheet_output((sheet, rows)), TARGETS, "ev1")
+    read.notes = outcome.notes  # type: ignore[attr-defined]
+    return {c["field_name"]: c for c in outcome.candidates}
+
+
+def values(got: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    return {k: c["normalized_value"] for k, c in got.items() if c["raw_value"] is not None and k != "reporting_year"}
+
+
+def cell_of(candidate: dict[str, Any]) -> tuple[str | None, str | None]:
+    ref = candidate["source_reference"]
+    return ref.get("sheet_name"), ref.get("cell_or_range")
+
+
+STG = [
+    ["Test Foods Inc. - GHG Inventory Summary, Reporting Year 01/01/2025 - 12/31/2025", None, None, None, None, None],
+    ["Prepared by: Corporate Sustainability (internal). Status: DRAFT v3, 01/30/2026. Units: metric tonnes CO2e.",
+     None, None, None, None, None],
+    [None] * 6,
+    ["Scope", "Category", "Riverside Plant", "Harbor Warehouse", "Total (tCO2e)", "Method / notes"],
+    ["Scope 1", "Stationary combustion", 698.4, 176.2, 874.6, "Natural gas, propane; EPA factors"],
+    ["Scope 1", "Mobile combustion", 0, 251.7, 251.7, "Fleet fuel"],
+    ["Scope 1", "Fugitive (refrigerants)", 54, 127.3, 181.3, "Mass balance; AR5 GWPs"],
+    ["Scope 2", "Location-based", 545.8, 46.1, 591.9, "eGRID factors"],
+    ["Scope 2", "Market-based", 402.6, 38.9, 441.5, "Supplier-specific rates"],
+    ["Scope 1", "Total Scope 1", 752.4, 555.2, 1307.6, None],
+    ["Scope 1+2", "Total (location-based)", 1298.2, 601.3, 1899.5, None],
+    ["Scope 1+2", "Total (market-based)", 1155, 594.1, 1749.1, None],
+    [None] * 6,
+    ["SAMPLE - FICTIONAL TEST DOCUMENT", None, None, None, None, None],
+]
+
+NPL = [
+    ["Northgate Provisions Inc. - 2025 GHG Inventory Summary (DRAFT, internal)", None, None, None, None],
+    ["Prepared by: Sustainability team - 02/10/2026 - Not verified - Basis: EPA emission factors hub 2025", None, None, None, None],
+    [None] * 5,
+    ["Facility", "Scope 1 (tCO₂e)", "Scope 2 location-based (tCO₂e)", "Scope 2 market-based (tCO₂e)", "Total Scope 1+2 (tCO₂e)"],
+    ["Fresno Plant", 412.8, 1046.3, 978.5, 1459.1],
+    ["Sacramento Warehouse", 236.4, 147.9, 131.2, 384.3],
+    ["Tacoma Distribution Center", 318.7, 98.6, 22.4, 417.3],
+    ["Total", 967.9, 1292.8, 1132.1, 2260.7],
+    [None] * 5,
+    ["SAMPLE - FICTIONAL TEST DOCUMENT", None, None, None, None],
+]
+
+
+def test_scope_rows_with_facility_columns_read_the_total_column_cell_only() -> None:
+    got = read_sheet(STG)
+    assert values(got) == {"scope1_total": 1307.6, "scope2_location_total": 591.9, "scope2_market_total": 441.5,
+                           "stationary_combustion_total": 874.6, "mobile_combustion_total": 251.7, "fugitive_total": 181.3}
+    assert got["scope1_total"]["unit"] == "tCO2e" and "year:2025" in got["scope1_total"]["validation_flags"]
+    assert got["reporting_year"]["normalized_value"] == 2025
+    assert cell_of(got["scope1_total"]) == ("Summary", "E10") and cell_of(got["scope2_location_total"]) == ("Summary", "E8")
+    assert cell_of(got["scope2_market_total"]) == ("Summary", "E9")
+    # 251.7 is printed twice in that row: the Total column's cell is the one pointed at, not the Harbor cell
+    assert cell_of(got["mobile_combustion_total"]) == ("Summary", "E6")
+    assert not any("intensity" in n for n in read.notes)  # type: ignore[attr-defined]
+
+
+def test_facility_rows_with_scope_columns_read_the_total_row_only() -> None:
+    got = read_sheet(NPL)
+    assert values(got) == {"scope1_total": 967.9, "scope2_location_total": 1292.8, "scope2_market_total": 1132.1}
+    assert got["scope1_total"]["unit"] == "tCO2e" and got["scope1_total"]["source_reference"]["cell_or_range"] == "B8"
+    assert cell_of(got["scope2_location_total"]) == ("Summary", "C8") and cell_of(got["scope2_market_total"]) == ("Summary", "D8")
+    assert got["scope1_total"]["validation_flags"].count("year:2025") == 1  # the preparation date is not the year
+
+
+def test_the_scope_1_plus_2_rows_and_column_are_never_a_scope_total() -> None:
+    got = read_sheet(STG)
+    assert all(c["normalized_value"] not in (1899.5, 1749.1) for c in got.values())
+    assert 2260.7 not in values(read_sheet(NPL)).values()
+
+
+def test_several_columns_and_no_total_read_nothing_and_are_never_added_up() -> None:
+    no_total = [[r[0], r[1], r[2], r[3], r[5]] for r in STG[3:10]]
+    assert values(read_sheet(no_total)) == {}
+    no_total_row = NPL[:7]
+    assert values(read_sheet(no_total_row)) == {}
+    assert any("total" in n.lower() for n in read.notes)  # type: ignore[attr-defined]
+
+
+def test_one_value_column_is_the_total_only_by_the_existing_rule() -> None:
+    rows = [["Emissions (tCO2e)", "", ""], ["Scope", "Category", "Emissions (tCO2e)"], ["Scope 1", "Stationary combustion", 10.5],
+            ["Scope 1", "Total Scope 1", 10.5]]
+    assert values(read_sheet(rows)) == {"scope1_total": 10.5, "stationary_combustion_total": 10.5}
+    rows[1][2] = "Riverside Plant"
+    rows[0][0] = "Summary"
+    assert values(read_sheet(rows)) == {}
+
+
+def test_two_total_columns_are_ambiguous_and_read_nothing() -> None:
+    two_years = [["Scope", "Category", "Riverside", "Total 2025 (tCO2e)", "Total 2024 (tCO2e)"],
+                 ["Scope 1", "Total Scope 1", 5, 5, 7]]
+    assert values(read_sheet(two_years)) == {}
+    two_units = [["Scope", "Category", "Total (tCO2e)", "Total (kgCO2e)"], ["Scope 1", "Total Scope 1", 5, 5000]]
+    assert values(read_sheet(two_units)) == {}
+    assert any("more than one" in n for n in read.notes)  # type: ignore[attr-defined]
+
+
+def test_a_prior_year_column_beside_the_current_year_does_not_make_the_total_wrong() -> None:
+    rows = [["Scope", "Category", "Riverside", "Harbor", "Total (tCO2e)", "Prior year (tCO2e)", "Change (%)"],
+            ["Scope 1", "Total Scope 1", 5, 6, 11, 9, 22.2]]
+    assert values(read_sheet(rows)) == {"scope1_total": 11}
+
+
+def test_a_row_whose_total_is_not_the_sum_of_its_facilities_is_not_read() -> None:
+    rows = [r[:] for r in STG]
+    rows[4][4] = 900.6  # stationary combustion total no longer adds up
+    got = values(read_sheet(rows))
+    assert "stationary_combustion_total" not in got and got["scope2_market_total"] == 441.5
+    assert any("add up" in n for n in read.notes)  # type: ignore[attr-defined]
+    rows = [r[:] for r in STG]
+    rows[9][4] = 1300.0  # Total Scope 1 disagrees with its category rows
+    got = values(read_sheet(rows))
+    assert "scope1_total" not in got and "mobile_combustion_total" not in got
+    assert got["scope2_market_total"] == 441.5
+
+
+def test_rounding_in_the_printed_parts_is_not_a_conflict() -> None:
+    rows = [["Scope", "Category", "A", "B", "Total (tCO2e)"], ["Scope 1", "Total Scope 1", 10.0, 10.0, 20.5]]
+    assert values(read_sheet(rows)) == {}  # 20.0 against 20.5 is beyond the rounding of one decimal
+    rows = [["Scope", "Category", "A", "B", "Total (tCO2e)"], ["Scope 1", "Total Scope 1", 10.04, 10.04, 20.1]]
+    assert values(read_sheet(rows)) == {"scope1_total": 20.1}  # 20.08 prints as 20.1
+
+
+def test_two_total_rows_or_a_subtotal_row_are_handled_without_a_guess() -> None:
+    two = [r[:] for r in NPL[3:8]] + [["Grand total", 1, 2, 3, 4]]
+    assert values(read_sheet(two)) == {}
+    sub = [NPL[3], NPL[4], ["Total Fresno", 412.8, 1046.3, 978.5, 1459.1], NPL[5], NPL[6], NPL[7]]
+    assert values(read_sheet(sub)) == {"scope1_total": 967.9, "scope2_location_total": 1292.8, "scope2_market_total": 1132.1}
+    only_subtotals = [NPL[3], NPL[4], ["Total Fresno", 412.8, 1046.3, 978.5, 1459.1]]
+    assert values(read_sheet(only_subtotals)) == {}
+
+
+def test_a_total_row_that_is_not_the_sum_of_the_facilities_reads_nothing_for_that_column() -> None:
+    rows = [r[:] for r in NPL]
+    rows[7][2] = 1500.0
+    got = values(read_sheet(rows))
+    assert "scope2_location_total" not in got and got["scope1_total"] == 967.9 and got["scope2_market_total"] == 1132.1
+
+
+def test_a_facility_row_is_not_a_company_total() -> None:
+    assert values(read_sheet(NPL[3:5])) == {}
+
+
+def test_a_notes_column_or_a_date_is_not_an_intensity_but_a_real_denominator_still_is() -> None:
+    assert values(read_sheet(STG))["scope1_total"] == 1307.6  # "Method / notes" and dates
+    for header in ("Total (tCO2e / $M revenue)", "Total (tCO2e per unit)", "Total emissions intensity (tCO2e)"):
+        rows = [["Scope", "Category", "Riverside", header], ["Scope 1", "Total Scope 1", 5, 5]]
+        assert values(read_sheet(rows)) == {}, header
+    caption = [["Emissions tCO2e / employee"], ["Scope", "Category", "Total"], ["Scope 1", "Total Scope 1", 5]]
+    assert values(read_sheet(caption)) == {}
+    assert rt.read_unit(["Prepared 01/30/2026. Units: metric tonnes CO2e."]) == ("tCO2e", "Prepared 01/30/2026. Units: metric tonnes CO2e.", None)
+    assert rt.read_unit(["Total (tCO2e) / notes"])[2] is None
+    assert rt.read_unit(["tCO2e/MWh"])[2] == "measure" and rt.read_unit(["kgCO2e / $M"])[2] == "measure"
+
+
+def test_a_scope_2_row_without_its_basis_is_not_read_in_a_workbook_either() -> None:
+    rows = [["Scope", "Category", "Total (tCO2e)"], ["Scope 2", "Total Scope 2", 5], ["Scope 1", "Total Scope 1", 3]]
+    assert values(read_sheet(rows)) == {"scope1_total": 3}
+
+
+def test_not_reported_in_a_total_cell_stays_not_reported_never_zero() -> None:
+    rows = [["Scope", "Category", "Riverside", "Total (tCO2e)"], ["Scope 1", "Total Scope 1", 5, "N/A"]]
+    got = read_sheet(rows)["scope1_total"]
+    assert got["raw_value"] == "N/A" and got["normalized_value"] is None and "not_reported" in got["validation_flags"]
+
+
+def test_subscript_units_and_a_merged_two_row_header_are_read() -> None:
+    rows = [["Emissions summary", None, None, None], [None, None, "Facilities", None, "Total"],
+            ["Scope", "Category", "Riverside", "Harbor", "(tCO₂e)"],
+            ["Scope 1", "Total Scope 1", 5, 6, 11]]
+    got = read_sheet(rows)
+    assert values(got) == {"scope1_total": 11} and got["scope1_total"]["unit"] == "tCO2e"
+
+
+def test_a_scope_cell_merged_down_the_rows_is_inherited_for_categories_only() -> None:
+    rows = [["Scope", "Category", "A", "Total (tCO2e)"], ["Scope 1", "Stationary combustion", 1, 1], [None, "Mobile combustion", 2, 2],
+            [None, "Total", 3, 3]]
+    assert values(read_sheet(rows)) == {"stationary_combustion_total": 1, "mobile_combustion_total": 2}
+
+
+def test_two_tables_on_one_sheet_keep_their_own_headers_and_units() -> None:
+    rows = [["Scope", "Category", "A", "Total (tCO2e)"], ["Scope 1", "Total Scope 1", 5, 5], [None] * 4,
+            ["Scope", "Category", "A", "Total (ktCO2e)"], ["Scope 2", "Location-based", 0.5, 0.5]]
+    got = read_sheet(rows)
+    assert (got["scope1_total"]["unit"], got["scope2_location_total"]["unit"]) == ("tCO2e", "ktCO2e")
+
+
+def test_the_same_total_printed_with_two_values_on_two_sheets_reads_nothing() -> None:
+    other = [r[:] for r in NPL]
+    other[7][1] = 961.0
+    other[4][1] = 405.9
+    outcome = rt.ReportedTotalsExtractor().extract(sheet_output(("Summary", NPL), ("Old", other)), TARGETS, "ev1")
+    got = {c["field_name"]: c for c in outcome.candidates}
+    assert got["scope1_total"]["raw_value"] is None and got["scope2_market_total"]["normalized_value"] == 1132.1
