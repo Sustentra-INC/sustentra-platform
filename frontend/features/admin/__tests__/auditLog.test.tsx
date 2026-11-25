@@ -64,4 +64,13 @@ describe("AuditLog (COMP-002 contract)", () => {
       await waitFor(() => expect(screen.getAllByText(label).length).toBeGreaterThan(0));
     }
   });
+
+  it("reads workpaper downloads in plain words", async () => {
+    const types = ["workpaper_exported", "workpaper_copy_downloaded"];
+    fetchMock.mockResolvedValue(page(types.map((event_type, n) => ({ ...EVENT, id: `w${n}`, event_type })), null));
+    render(<AuditLog orgId="o1" />);
+    for (const label of ["Downloaded the workpaper", "Downloaded a saved workpaper"]) {
+      await waitFor(() => expect(screen.getAllByText(label).length).toBeGreaterThan(0));
+    }
+  });
 });

@@ -9,10 +9,12 @@ PATCH /v1/engagements/{engagement_id} under settings["recalculation"].
 
 from __future__ import annotations
 
+import logging
 import re
+import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api import documents as documents_api
@@ -20,6 +22,7 @@ from backend.app.api import reviews as reviews_api
 from backend.app.api.engagements import _visible
 from backend.app.api.s1_access import can_see, s1_reader
 from backend.app.core.auth import CurrentUser
+from backend.app.core.config import get_settings
 from backend.app.core.db import get_db_session
 from backend.app.reference import egrid_zip
 from backend.app.reference.emission_factor_loader import (
@@ -28,12 +31,23 @@ from backend.app.reference.emission_factor_loader import (
     default_emission_factor_reference,
 )
 from backend.app.services import emissions_rollup, methodology_gwp, workpaper_export_service, workpaper_item_service
+from backend.app.services import workpaper_copy_service
 from backend.app.services.audit_log import write_audit_event
 from backend.app.services.engagement_recalculation_service import (
     DATA_POINT_CATALOGUE,
     DATA_POINTS,
     EngagementRecalculationService,
 )
+from backend.app.services.workpaper_copy_store import (
+    CopyRecord,
+    PostgresWorkpaperCopyStore,
+    WorkpaperCopyCorrupt,
+    WorkpaperCopyStore,
+)
+
+logger = logging.getLogger("sustentra.workpaper_copies")
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+FILE_NAME_CHARS = 80  # of the engagement's name, in the file name
 
 router = APIRouter(prefix="/v1", tags=["recalculation"])
 
@@ -85,6 +99,35 @@ async def get_line_trace(
     return {"line_key": line_key, "trace": line.get("trace")}
 
 
+def copy_store(db: AsyncSession) -> WorkpaperCopyStore:
+    """Where kept copies live (tests swap it; a later S3 store is returned here)."""
+
+    return PostgresWorkpaperCopyStore(db)
+
+
+def _file_name(engagement: dict, day: datetime) -> str:
+    name = re.sub(r"[^A-Za-z0-9 ._-]+", "", str(engagement.get("name") or "engagement"))[:FILE_NAME_CHARS]
+    return f"{name.strip(' .-_') or 'engagement'} workpaper {day:%Y-%m-%d}.xlsx"
+
+
+def _attachment(content: bytes, file_name: str, sha256: str) -> Response:
+    return Response(
+        content=content, media_type=XLSX,
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"', "ETag": f'"{sha256}"',
+                 "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+def _audit(request: Request, user: CurrentUser, engagement: dict, event: str, metadata: dict) -> dict:
+    return {
+        "event_type": event, "org_id": engagement["org_id"], "actor_user_id": user.id, "actor_role": user.role,
+        "target_type": "engagement", "target_id": str(engagement["id"]),
+        "request_id": getattr(request.state, "request_id", None),
+        "ip_address": request.client.host if request.client else None,
+        "user_agent": request.headers.get("user-agent"), "metadata": metadata,
+    }
+
+
 @router.get("/engagements/{engagement_id}/export")
 async def export_workpaper(
     engagement_id: str,
@@ -92,7 +135,12 @@ async def export_workpaper(
     user: CurrentUser = Depends(s1_reader),
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> Response:
-    """The workpaper as an Excel file (the same numbers the screens show)."""
+    """The workpaper as an Excel file (the same numbers the screens show).
+
+    The exact bytes served are kept first (``workpaper_copies``), in this request's transaction with the
+    download record and the audit event. If any of that cannot be saved nothing is sent: 503, retry. A
+    download is never served without a record of it. Allowed for an archived engagement, as before.
+    """
 
     engagement = await _visible(db, engagement_id, user)
     items = await workpaper_item_service.list_items(db, engagement["id"])
@@ -105,25 +153,101 @@ async def export_workpaper(
     if recalculation.get("gwp_blocked"):  # the workpaper must not state numbers Results does not show
         raise HTTPException(status_code=409, detail=recalculation["gwp_blocked"])
     register = service.evidence_register(str(engagement["id"]), visible)
-    content = workpaper_export_service.build_workbook(
-        engagement=engagement, recalculation=recalculation, register=register, items=items,
-        exported_by=user.email,
-    )
-    await write_audit_event(
-        db, "workpaper_exported", org_id=engagement["org_id"], actor_user_id=user.id, actor_role=user.role,
-        target_type="engagement", target_id=str(engagement["id"]),
-        request_id=getattr(request.state, "request_id", None),
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"), metadata={"format": "xlsx"},
-    )
-    name = re.sub(r"[^A-Za-z0-9 ._-]+", "", str(engagement.get("name") or "engagement")).strip() or "engagement"
-    filename = f"{name} workpaper {datetime.now(UTC):%Y-%m-%d}.xlsx"
-    return Response(
-        content=content,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"',
-                 "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
-    )
+    settings = get_settings()
+    request_id = getattr(request.state, "request_id", None)
+    try:
+        kept = await workpaper_copy_service.keep_for_download(
+            copy_store(db),
+            build=lambda: workpaper_export_service.build_workbook_with_fingerprint(
+                engagement=engagement, recalculation=recalculation, register=register, items=items,
+                exported_by=user.email),
+            org_id=str(engagement["org_id"]), engagement_id=str(engagement["id"]),
+            file_name=_file_name(engagement, datetime.now(UTC)), app_version=settings.git_sha,
+            user_id=user.id, email=user.email, request_id=request_id, max_bytes=settings.workpaper_copy_max_bytes,
+        )
+        await write_audit_event(db, **_audit(request, user, engagement, "workpaper_exported", {
+            "format": "xlsx", "copy_id": str(kept.copy.id), "sha256": kept.copy.sha256,
+            "size_bytes": kept.copy.size_bytes, "copy_reused": kept.reused}))
+    except workpaper_copy_service.CopyTooLarge as exc:
+        logger.error("workpaper too large to keep: engagement %s, %s", engagement["id"], exc)
+        raise HTTPException(
+            status_code=413,
+            detail=f"This workpaper is larger than the {settings.workpaper_copy_max_mb} MB Sustentra keeps for each "
+                   "saved copy, so it was not downloaded. Please contact support.") from exc
+    except Exception as exc:
+        logger.exception("workpaper download refused: copy or audit event not saved (engagement %s)", engagement["id"])
+        raise HTTPException(
+            status_code=503, headers={"Retry-After": "5"},
+            detail="The workpaper could not be saved, so it was not downloaded. Please try again in a moment."
+        ) from exc
+    return _attachment(kept.content, kept.copy.file_name, kept.copy.sha256)
+
+
+def _copy_json(copy: CopyRecord) -> dict:
+    return {
+        "id": str(copy.id), "created_at": copy.created_at.isoformat() if copy.created_at else None,
+        "prepared_by": copy.prepared_by_email, "file_name": copy.file_name, "size_bytes": copy.size_bytes,
+        "sha256": copy.sha256, "app_version": copy.app_version, "downloads": copy.downloads,
+    }
+
+
+@router.get("/engagements/{engagement_id}/workpaper-copies")
+async def list_workpaper_copies(
+    engagement_id: str,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0, le=1_000_000),
+    user: CurrentUser = Depends(s1_reader),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> dict:
+    """The workpapers kept for this engagement, newest first: when, who, size, SHA-256 and how many times
+    each was downloaded."""
+
+    engagement = await _visible(db, engagement_id, user)
+    copies, total = await copy_store(db).list(str(engagement["id"]), limit=limit, offset=offset)
+    return {"items": [_copy_json(c) for c in copies], "total": total, "limit": limit, "offset": offset}
+
+
+@router.get("/engagements/{engagement_id}/workpaper-copies/{copy_id}/download")
+async def download_workpaper_copy(
+    engagement_id: str,
+    copy_id: str,
+    request: Request,
+    user: CurrentUser = Depends(s1_reader),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> Response:
+    """One kept workpaper, byte for byte. Its SHA-256 is checked on the way out: a copy that no longer
+    matches is not sent (500, and an error in the log). The download is recorded, with an audit event,
+    before anything is sent (503 if that cannot be saved)."""
+
+    engagement = await _visible(db, engagement_id, user)
+    try:
+        key = uuid.UUID(copy_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="No such saved workpaper.") from None
+    store = copy_store(db)
+    try:
+        found = await store.read(str(engagement["id"]), key)
+    except WorkpaperCopyCorrupt:
+        logger.error("kept workpaper %s of engagement %s does not match its SHA-256 or size", key, engagement["id"])
+        raise HTTPException(
+            status_code=500,
+            detail="This saved workpaper no longer matches its checksum, so it was not sent. "
+                   "Support has been notified.") from None
+    if found is None:
+        raise HTTPException(status_code=404, detail="No such saved workpaper.")
+    copy, content = found
+    try:
+        await store.add_download(copy, kind="saved", user_id=user.id, email=user.email,
+                                 request_id=getattr(request.state, "request_id", None))
+        await write_audit_event(db, **_audit(request, user, engagement, "workpaper_copy_downloaded", {
+            "copy_id": str(copy.id), "sha256": copy.sha256, "size_bytes": copy.size_bytes}))
+    except Exception as exc:
+        logger.exception("saved workpaper download refused: record not saved (copy %s)", key)
+        raise HTTPException(
+            status_code=503, headers={"Retry-After": "5"},
+            detail="The download could not be recorded, so the workpaper was not sent. Please try again in a moment."
+        ) from exc
+    return _attachment(content, copy.file_name, copy.sha256)
 
 
 @router.get("/reference/egrid-zip/{zip_code}")

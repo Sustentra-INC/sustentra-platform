@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from backend.app.api import recalculation as recalculation_api
 from backend.app.api.engagements import EngagementUpdate
 from backend.app.main import app
+from backend.app.services.workpaper_copy_store import InMemoryWorkpaperCopyStore
 from backend.tests.api.conftest import ORG_A, ORG_B
 from backend.tests.services.test_engagement_recalculation_service import (
     FakeStore,
@@ -45,6 +46,9 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
         return None
 
     monkeypatch.setattr(recalculation_api, "write_audit_event", no_audit)
+    memory = InMemoryWorkpaperCopyStore()  # no database here: the kept copies live in memory
+    store.copies = memory  # type: ignore[attr-defined]
+    monkeypatch.setattr(recalculation_api, "copy_store", lambda db: memory)
 
     async def no_methodology_choice(db, engagement_id):  # noqa: ANN001, ANN202
         return getattr(store, "gwp_choice", None) or recalculation_api.methodology_gwp.default_choice()

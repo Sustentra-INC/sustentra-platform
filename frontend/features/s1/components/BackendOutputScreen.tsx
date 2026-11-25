@@ -123,6 +123,8 @@ export function liveOutputFrom(
         process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture"
           ? "/demo/cascade-provisions-2025-workpaper.xlsx"
           : apiPath(`/engagements/${encodeURIComponent(result.engagement_id)}/export`),
+      // The demo's fixed file is not a kept download: no list there.
+      savedCopiesFor: process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture" ? undefined : result.engagement_id,
       gwpBasis: gwpLabel(result),
       blocked: result.gwp_blocked ?? null,
       findings,

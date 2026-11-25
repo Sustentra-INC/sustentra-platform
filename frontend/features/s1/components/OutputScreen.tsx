@@ -1,9 +1,10 @@
 "use client";
 
 import { Cpu } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { EngagementConfig } from "../types";
+import { SavedCopies } from "./SavedCopies";
 import type { Finding } from "../types/verification";
 import type { ResultLine, ResultState } from "../types/verificationResults";
 import type { DashboardFigures } from "../utils/engagementActivity";
@@ -229,6 +230,9 @@ export interface LiveOutput {
   statement: LiveStatementFigures;
   /** The whole workpaper as an Excel workbook (the one real export). */
   exportHref: string;
+  /** Set when downloads are kept (the real backend): the engagement whose saved copies are listed under the button.
+   *  Absent on the demo site, which serves a fixed file and keeps nothing. */
+  savedCopiesFor?: string;
   /** The GWP set as Results names it, e.g. "AR5 · 100-year (Methodology review)". */
   gwpBasis: string;
   /** Set when Methodology review chose a GWP set that cannot be calculated: the notice replaces the download. */
@@ -257,6 +261,16 @@ function LiveOutputScreen({
   live: LiveOutput;
 }) {
   const { statement } = live;
+  const [savedRefresh, setSavedRefresh] = useState(0);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+  }, []);
+  // The file is a browser download, so the page cannot tell when it has been saved: look again shortly after.
+  const afterDownload = () => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => setSavedRefresh((n) => n + 1), 2500);
+  };
   const client = engagement?.clientName || engagement?.engagementName || "Engagement";
   const period = engagement ? formatReportingPeriod(engagement.reportingPeriod.start, engagement.reportingPeriod.end) : NOT_SET;
   const team = engagement?.engagementTeam?.map((m) => m.name).filter(Boolean).join(", ");
@@ -281,7 +295,7 @@ function LiveOutputScreen({
               <CsvIcon /> Download workpaper (Excel)
             </button>
           ) : (
-            <a className="s1-button s1-button--pri" href={live.exportHref} download>
+            <a className="s1-button s1-button--pri" href={live.exportHref} download onClick={afterDownload}>
               <CsvIcon /> Download workpaper (Excel)
             </a>
           )}
@@ -292,6 +306,8 @@ function LiveOutputScreen({
           {live.blocked} The workpaper cannot be produced until this is fixed there.
         </p>
       ) : null}
+
+      {live.savedCopiesFor ? <SavedCopies engagementId={live.savedCopiesFor} refreshKey={savedRefresh} /> : null}
 
       <article className="s1-out-doc">
         <div className="s1-out-doc__band">
