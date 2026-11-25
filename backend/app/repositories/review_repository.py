@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy.engine import Engine
 
 from backend.app.domain.review import ReviewDecision
+from backend.app.services.audit_log import write_audit_event_sync
 from backend.app.repositories.s1_postgres import S1Table
 
 DEFAULT_JSONL_PATH = "local-data/review-decisions/review_decisions.jsonl"
@@ -29,12 +30,22 @@ def _to_dict(decision: ReviewDecision | dict) -> dict[str, Any]:
 
 
 class _BaseReviewDecisionRepository:
-    """Shared query behavior expressed in terms of ``_records()``."""
+    """Shared query behavior expressed in terms of ``_records()``.
+
+    Decisions are only ever added: a changed mind is a new decision, and the latest one wins.
+    ``audits_atomically`` says whether ``save(decision, audit=...)`` writes the audit event in the
+    same transaction as the decision (Postgres); stores that cannot (the files) ignore ``audit`` and
+    the caller writes the event after the decision is saved.
+    """
+
+    audits_atomically = False
 
     def _records(self) -> list[dict]:  # pragma: no cover - abstract
         raise NotImplementedError
 
-    def save(self, decision: ReviewDecision | dict) -> dict:  # pragma: no cover - abstract
+    def save(
+        self, decision: ReviewDecision | dict, audit: dict[str, Any] | None = None
+    ) -> dict:  # pragma: no cover - abstract
         raise NotImplementedError
 
     def list_all(self) -> list[dict]:
@@ -71,7 +82,7 @@ class InMemoryReviewDecisionRepository(_BaseReviewDecisionRepository):
     def _records(self) -> list[dict]:
         return [copy.deepcopy(record) for record in self._store]
 
-    def save(self, decision: ReviewDecision | dict) -> dict:
+    def save(self, decision: ReviewDecision | dict, audit: dict[str, Any] | None = None) -> dict:
         record = _to_dict(decision)
         self._store.append(copy.deepcopy(record))
         return record
@@ -97,7 +108,7 @@ class JsonlReviewDecisionRepository(_BaseReviewDecisionRepository):
                 records.append(json.loads(stripped))
         return records
 
-    def save(self, decision: ReviewDecision | dict) -> dict:
+    def save(self, decision: ReviewDecision | dict, audit: dict[str, Any] | None = None) -> dict:
         record = _to_dict(decision)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("a", encoding="utf-8") as handle:
@@ -106,15 +117,24 @@ class JsonlReviewDecisionRepository(_BaseReviewDecisionRepository):
 
 
 class PostgresReviewDecisionRepository(_BaseReviewDecisionRepository):
+    """The app role may only SELECT and INSERT on this table (migration 0025): there is no update
+    or delete here, and none to add."""
+
+    audits_atomically = True
+
     def __init__(self, engine: Engine | None = None) -> None:
         self._table = S1Table("s1_review_decisions", engine=engine)
 
     def _records(self) -> list[dict]:
         return self._table.select()
 
-    def save(self, decision: ReviewDecision | dict) -> dict:
+    def save(self, decision: ReviewDecision | dict, audit: dict[str, Any] | None = None) -> dict:
+        """Insert the decision; with ``audit`` (keyword arguments of ``write_audit_event_sync``) the
+        event commits in the same transaction, so neither is saved without the other."""
+
         record = _to_dict(decision)
-        self._table.insert(record)
+        also = None if audit is None else (lambda connection: write_audit_event_sync(connection, **audit))
+        self._table.insert(record, also=also)
         return record
 
     def list_by_evidence(self, evidence_id: str) -> list[dict]:

@@ -36,7 +36,9 @@ dc exec api python -m backend.app.cli verify-s1-stores
 ```
 
 The import is a sync and can be repeated: it adds lines written since the last run and
-updates lines the ownership claim (`claim-s1-data`) rewrote. Run any claims you need first.
+updates lines the ownership claim (`claim-s1-data`) rewrote, except review decisions: those are add-only
+for the app role (migration 0025), so a decision line changed after it was imported is reported ("changed
+since imported") and the stored row is kept. Run any claims you need first.
 `verify-s1-stores` must end with "The files and Postgres agree." Documents whose file is
 missing on disk are listed but are not a mismatch (they are missing today too).
 

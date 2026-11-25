@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from backend.app.api.documents import current_upload_service
@@ -16,14 +16,16 @@ from backend.app.api.s1_access import (
 from backend.app.core.auth import CurrentUser
 
 from backend.app.repositories import s1_stores
-from backend.app.services.review_decision_service import ReviewDecisionService
+from backend.app.services.audit_log import write_audit_event_in_own_transaction
+from backend.app.services.review_decision_service import AuditContext, ReviewDecisionService
 from backend.app.services.reviewed_evidence import mark_review_targets, reviews_for_latest_type
 
 router = APIRouter(prefix="/v1", tags=["reviews"])
 
 # Module-level service backed by local JSONL persistence (ignored by git).
 _service = ReviewDecisionService(
-    repository=s1_stores.review_decisions()
+    repository=s1_stores.review_decisions(),
+    audit_writer=write_audit_event_in_own_transaction,
 )
 
 
@@ -56,11 +58,28 @@ class ReviewDecisionRequest(BaseModel):
     approved_unit: str | None = None
 
 
+def _latest_run_id(evidence_id: str, document_id: str) -> str | None:
+    """The document's latest pipeline run, for the audit event. Best effort: a decision is never
+    refused because the run could not be looked up."""
+
+    try:
+        from backend.app.api import pipeline as pipeline_api
+
+        runs = [
+            r for r in pipeline_api.current_service().list_runs_by_evidence(evidence_id)
+            if r.get("document_id") == document_id and r.get("pipeline_run_id")
+        ]
+        return str(runs[-1]["pipeline_run_id"]) if runs else None
+    except Exception:
+        return None
+
+
 @router.put("/evidence/{evidence_id}/fields/{field_name}/review")
 def review_field(
     evidence_id: str,
     field_name: str,
     payload: ReviewDecisionRequest,
+    request: Request,
     user: CurrentUser = Depends(s1_writer),
 ) -> dict:
     candidate = payload.candidate
@@ -82,10 +101,15 @@ def review_field(
     candidate_id = str(candidate.get("candidate_id") or "")
     if candidate_id != expected_prefix and not candidate_id.startswith(expected_prefix + "::"):
         raise HTTPException(status_code=400, detail="candidate_id does not match the evidence, document and field.")
-    if not any(
-        doc.get("document_id") == document_id and can_see(doc, user)
-        for doc in current_upload_service().list_documents_by_evidence(evidence_id)
-    ):
+    document = next(
+        (
+            doc
+            for doc in current_upload_service().list_documents_by_evidence(evidence_id)
+            if doc.get("document_id") == document_id and can_see(doc, user)
+        ),
+        None,
+    )
+    if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
     reviewer_id = user.email
 
@@ -109,6 +133,16 @@ def review_field(
             reviewed_unit=reviewed_unit,
             reviewer_note=note or None,
             org_id=org_of(user),
+            audit=AuditContext(
+                org_id=org_of(user),
+                actor_user_id=user.id,
+                actor_role=user.role,
+                engagement_id=str(document["engagement_id"]) if document.get("engagement_id") else None,
+                pipeline_run_id=_latest_run_id(evidence_id, document_id),
+                request_id=getattr(request.state, "request_id", None),
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

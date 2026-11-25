@@ -10,14 +10,68 @@ called.
 from __future__ import annotations
 
 import copy
+import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from backend.app.domain.review import ReviewDecision
 from backend.app.repositories.review_repository import InMemoryReviewDecisionRepository
 
+logger = logging.getLogger("sustentra.review_audit")
+
 VALID_DECISIONS = {"accepted", "rejected", "edited", "needs_more_evidence"}
+
+# One audit event per decision written through the API. The Activity log screen labels these.
+AUDIT_EVENT_TYPES = {
+    "accepted": "review_value_accepted",
+    "edited": "review_value_edited",
+    "rejected": "review_value_rejected",
+    "needs_more_evidence": "review_value_more_evidence_requested",
+}
+
+
+@dataclass(frozen=True)
+class AuditContext:
+    """Who made a decision and where, for its audit event. Ids only: the event never carries the
+    value, unit, note or a file name."""
+
+    org_id: str | None
+    actor_user_id: UUID | None
+    actor_role: str | None
+    engagement_id: str | None = None
+    pipeline_run_id: str | None = None
+    request_id: str | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None
+
+
+def audit_event_for(record: dict, context: AuditContext) -> dict[str, Any]:
+    """Keyword arguments of ``write_audit_event_sync`` for a saved decision's record."""
+
+    ids = {
+        "review_decision_id": record["review_decision_id"],
+        "candidate_id": record["candidate_id"],
+        "field_name": record["field_name"],
+        "document_id": record["document_id"],
+        "evidence_id": record["evidence_id"],
+        "engagement_id": context.engagement_id,
+        "pipeline_run_id": context.pipeline_run_id,
+        "decision": record["decision"],
+    }
+    return {
+        "event_type": AUDIT_EVENT_TYPES[record["decision"]],
+        "org_id": context.org_id,
+        "actor_user_id": context.actor_user_id,
+        "actor_role": context.actor_role,
+        "target_type": "engagement" if context.engagement_id else "document",
+        "target_id": context.engagement_id or record["document_id"],
+        "request_id": context.request_id,
+        "ip_address": context.ip_address,
+        "user_agent": context.user_agent,
+        "metadata": {k: v for k, v in ids.items() if v is not None},
+    }
 
 REQUIRED_CANDIDATE_FIELDS = (
     "candidate_id",
@@ -42,10 +96,14 @@ class ReviewDecisionService:
         repository: Any | None = None,
         clock: Callable[[], str] | None = None,
         id_factory: Callable[[dict], str] | None = None,
+        audit_writer: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self._repository = repository or InMemoryReviewDecisionRepository()
         self._clock = clock or (lambda: datetime.now(timezone.utc).isoformat())
         self._id_factory = id_factory or self._default_id_factory
+        # Writes an audit event on its own, for repositories that cannot write it in the decision's
+        # transaction (the files). Raising is allowed: the failure is logged, never silent.
+        self._audit_writer = audit_writer
 
     @staticmethod
     def _default_id_factory(candidate: dict) -> str:
@@ -60,6 +118,7 @@ class ReviewDecisionService:
         reviewed_unit: str | None = None,
         reviewer_note: str | None = None,
         org_id: str | None = None,
+        audit: AuditContext | None = None,
     ) -> dict:
         self._validate_candidate(candidate)
 
@@ -93,7 +152,31 @@ class ReviewDecisionService:
 
         # Validate against the strict domain model before persisting.
         model = ReviewDecision(**record)
-        return self._repository.save(model.model_dump())
+        data = model.model_dump()
+        if audit is None:
+            return self._repository.save(data)
+        event = audit_event_for(data, audit)
+        if getattr(self._repository, "audits_atomically", False):
+            # Postgres: decision and event commit together; if either fails neither is saved and the
+            # caller gets the error, so a decision is never reported as saved without its event.
+            return self._repository.save(data, audit=event)
+        # Files: the decision is saved first (it must never be lost or reported lost because of the
+        # event), then the event. A failed event is logged as an error, with the ids to repair it.
+        saved = self._repository.save(data)
+        self._write_audit_after(saved, event)
+        return saved
+
+    def _write_audit_after(self, saved: dict, event: dict[str, Any]) -> None:
+        try:
+            if self._audit_writer is None:
+                raise RuntimeError("no audit writer is configured")
+            self._audit_writer(event)
+        except Exception:
+            logger.error(
+                "Audit event %s missing for saved review decision %s (document %s, field %s)",
+                event["event_type"], saved.get("review_decision_id"), saved.get("document_id"),
+                saved.get("field_name"), exc_info=True,
+            )
 
     def list_by_evidence(self, evidence_id: str) -> list[dict]:
         return self._repository.list_by_evidence(evidence_id)

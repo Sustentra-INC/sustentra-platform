@@ -55,4 +55,13 @@ describe("AuditLog (COMP-002 contract)", () => {
       expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain("event_type=user_deleted"),
     );
   });
+
+  it("reads review decisions in plain words", async () => {
+    const types = ["review_value_accepted", "review_value_edited", "review_value_rejected", "review_value_more_evidence_requested"];
+    fetchMock.mockResolvedValue(page(types.map((event_type, n) => ({ ...EVENT, id: `r${n}`, event_type })), null));
+    render(<AuditLog orgId="o1" />);
+    for (const label of ["Accepted a value", "Corrected a value", "Rejected a value", "Asked for more evidence"]) {
+      await waitFor(() => expect(screen.getAllByText(label).length).toBeGreaterThan(0));
+    }
+  });
 });
