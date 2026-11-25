@@ -4,6 +4,8 @@ import { Cpu } from "lucide-react";
 import { useState } from "react";
 
 import type { EngagementConfig } from "../types";
+import { SavedCopies } from "./SavedCopies";
+import { useFileDownload } from "./useFileDownload";
 import type { Finding } from "../types/verification";
 import type { ResultLine, ResultState } from "../types/verificationResults";
 import type { DashboardFigures } from "../utils/engagementActivity";
@@ -229,6 +231,11 @@ export interface LiveOutput {
   statement: LiveStatementFigures;
   /** The whole workpaper as an Excel workbook (the one real export). */
   exportHref: string;
+  /** Set when downloads are kept (the real backend): the engagement whose saved copies are listed under the button.
+   *  Absent on the demo site, which serves a fixed file and keeps nothing. */
+  savedCopiesFor?: string;
+  /** The screen's handler for an ended session (true when it dealt with it). */
+  onError?: (error: unknown) => boolean;
   /** The GWP set as Results names it, e.g. "AR5 · 100-year (Methodology review)". */
   gwpBasis: string;
   /** Set when Methodology review chose a GWP set that cannot be calculated: the notice replaces the download. */
@@ -257,6 +264,9 @@ function LiveOutputScreen({
   live: LiveOutput;
 }) {
   const { statement } = live;
+  const [savedRefresh, setSavedRefresh] = useState(0);
+  // Fetched in the page, not a plain link, so a refusal shows its own words instead of a failed or JSON file.
+  const download = useFileDownload(live.onError, () => setSavedRefresh((n) => n + 1));
   const client = engagement?.clientName || engagement?.engagementName || "Engagement";
   const period = engagement ? formatReportingPeriod(engagement.reportingPeriod.start, engagement.reportingPeriod.end) : NOT_SET;
   const team = engagement?.engagementTeam?.map((m) => m.name).filter(Boolean).join(", ");
@@ -281,9 +291,21 @@ function LiveOutputScreen({
               <CsvIcon /> Download workpaper (Excel)
             </button>
           ) : (
-            <a className="s1-button s1-button--pri" href={live.exportHref} download>
-              <CsvIcon /> Download workpaper (Excel)
-            </a>
+            live.savedCopiesFor ? (
+              <button
+                className="s1-button s1-button--pri"
+                type="button"
+                disabled={download.busy}
+                aria-busy={download.busyId === "live"}
+                onClick={() => void download.start("live", live.exportHref, "workpaper.xlsx")}
+              >
+                <CsvIcon /> {download.busyId === "live" ? "Preparing…" : "Download workpaper (Excel)"}
+              </button>
+            ) : (
+              <a className="s1-button s1-button--pri" href={live.exportHref} download>
+                <CsvIcon /> Download workpaper (Excel)
+              </a>
+            )
           )}
         </div>
       </header>
@@ -291,6 +313,21 @@ function LiveOutputScreen({
         <p id="s1-out-blocked" className="s1-vw-red" role="alert">
           {live.blocked} The workpaper cannot be produced until this is fixed there.
         </p>
+      ) : null}
+
+      {download.message ? (
+        <p className="s1-vw-red" role="alert">
+          {download.message}
+        </p>
+      ) : null}
+
+      {live.savedCopiesFor ? (
+        <SavedCopies
+          engagementId={live.savedCopiesFor}
+          refreshKey={savedRefresh}
+          busyId={download.busyId}
+          onDownload={(id, url) => void download.start(id, url, "workpaper.xlsx")}
+        />
       ) : null}
 
       <article className="s1-out-doc">

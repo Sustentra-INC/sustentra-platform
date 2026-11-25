@@ -2,15 +2,15 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-const response = vi.hoisted(() => ({ body: {} as unknown }));
+const response = vi.hoisted(() => ({ body: {} as unknown, copies: { items: [], total: 0, limit: 20, offset: 0 } as unknown }));
 vi.mock("../../../lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../lib/api")>()),
-  api: vi.fn(() => Promise.resolve(response.body)),
+  api: vi.fn((path: string) => Promise.resolve(path.includes("/workpaper-copies") ? response.copies : response.body)),
 }));
 
 import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAdapter";
 import type { Recalculation } from "../api/recalculation";
-import { BackendOutputScreen } from "../components/BackendOutputScreen";
+import { BackendOutputScreen, liveOutputFrom } from "../components/BackendOutputScreen";
 import { OutputScreen, type LiveOutput } from "../components/OutputScreen";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import type { EngagementConfig, EvidenceItem } from "../types";
@@ -190,8 +190,8 @@ describe("the live statement", () => {
       [finding]
     );
     await screen.findByText("Draft working paper · not an assurance opinion");
-    const download = screen.getByRole("link", { name: /Download workpaper \(Excel\)/ });
-    expect(download.getAttribute("href")).toBe("/api/v1/engagements/ENG-1/export");
+    // A button that fetches the file (so a refusal shows its words), not a plain link.
+    expect(screen.getByRole("button", { name: /Download workpaper \(Excel\)/ })).toBeTruthy();
     // The demo's toast-only exports are not offered here.
     expect(screen.queryByRole("button", { name: /Corrections register|Evidence index|Download statement/ })).toBeNull();
     expect(screen.getByText("Operational control")).toBeTruthy();
@@ -220,5 +220,17 @@ describe("the live statement", () => {
     expect(screen.getByRole("heading", { name: "Acme Foods" })).toBeTruthy();
     expect(screen.getByText("Dana Reyes")).toBeTruthy(); // the engagement team, in place of the demo's verifier firm
     expect(screen.queryByText(/Meridian|M\. Osei|Cascade Provisions/)).toBeNull();
+  });
+});
+
+describe("saved copies need a real backend", () => {
+  it("lists them for the engagement on staging, and not at all on the demo site", () => {
+    expect(liveOutputFrom(LIVE, [], []).live.savedCopiesFor).toBe(LIVE.engagement_id);
+    vi.stubEnv("NEXT_PUBLIC_S1_DATA_MODE", "fixture");
+    try {
+      expect(liveOutputFrom(LIVE, [], []).live.savedCopiesFor).toBeUndefined();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

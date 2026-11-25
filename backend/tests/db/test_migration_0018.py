@@ -72,6 +72,7 @@ def test_0018_down_and_up_returns_a_parked_run_to_the_queue() -> None:
             "0023_notifications",
             "0024_org_auto_read_summaries",
             "0025_review_decisions_add_only",
+            "0026_workpaper_copies",
         )
         fetch("TRUNCATE s1_processing_runs")
         fetch("TRUNCATE users, organizations CASCADE")

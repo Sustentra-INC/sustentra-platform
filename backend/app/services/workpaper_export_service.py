@@ -14,6 +14,7 @@ by accident.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import math
 import re
@@ -537,6 +538,22 @@ def _source_rows(recalculation: Mapping[str, Any], register: Mapping[str, Any]) 
     return rows
 
 
+def content_fingerprint(book: Workbook, exported_by: str) -> str:
+    """A SHA-256 of what the workbook says: every sheet's name and every cell's value, in order, except the
+    time the workbook was prepared (the Summary's "Exported" row keeps only who prepared it). An .xlsx file
+    carries the time in its own properties and in its zip entries, so its bytes differ on every build; this
+    does not, so two builds of the same figures by the same person have the same fingerprint."""
+
+    digest = hashlib.sha256()
+    for sheet in book.worksheets:
+        digest.update(f"\x1esheet:{sheet.title}\n".encode())
+        for row in sheet.iter_rows(values_only=True):
+            if sheet.title == "Summary" and row and row[0] == "Exported":
+                row = ("Exported", exported_by)
+            digest.update(("\x1f".join("" if v is None else f"{type(v).__name__}:{v}" for v in row) + "\n").encode())
+    return digest.hexdigest()
+
+
 def build_workbook(
     *,
     engagement: dict[str, Any],
@@ -545,6 +562,21 @@ def build_workbook(
     items: list[dict[str, Any]],
     exported_by: str,
 ) -> bytes:
+    return build_workbook_with_fingerprint(
+        engagement=engagement, recalculation=recalculation, register=register, items=items, exported_by=exported_by
+    )[0]
+
+
+def build_workbook_with_fingerprint(
+    *,
+    engagement: dict[str, Any],
+    recalculation: dict[str, Any],
+    register: dict[str, list[dict[str, Any]]],
+    items: list[dict[str, Any]],
+    exported_by: str,
+) -> tuple[bytes, str]:
+    """The workbook's bytes and its ``content_fingerprint`` (what it says, without when it was prepared)."""
+
     book = Workbook()
     book.remove(book.active)
     settings = engagement.get("settings") or {}
@@ -707,6 +739,7 @@ def build_workbook(
         sheet.protection.sheet = True
         sheet.protection.formatColumns = False
 
+    fingerprint = content_fingerprint(book, exported_by)
     buffer = io.BytesIO()
     book.save(buffer)
-    return buffer.getvalue()
+    return buffer.getvalue(), fingerprint

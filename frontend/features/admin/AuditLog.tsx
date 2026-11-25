@@ -27,6 +27,8 @@ const EVENT_LABELS: Record<string, string> = {
   review_value_edited: "Corrected a value",
   review_value_rejected: "Rejected a value",
   review_value_more_evidence_requested: "Asked for more evidence",
+  workpaper_exported: "Downloaded the workpaper",
+  workpaper_copy_downloaded: "Downloaded a saved workpaper",
   org_created: "Organization created",
   org_updated: "Organization updated",
   org_suspended: "Organization suspended",

@@ -83,6 +83,9 @@ class Settings(BaseSettings):
     # size on the upload route only (+1 MB for the multipart envelope); the frontend
     # mirrors it in features/s1/constants/uploads.ts.
     max_upload_mb: int = Field(default=25, ge=1, le=200)
+    # The most one kept copy of an engagement's Excel workpaper may hold (workpaper_copies). A workpaper
+    # over it is not downloaded, because every download keeps the exact file; a 1,000-document one is a few MB.
+    workpaper_copy_max_mb: int = Field(default=50, ge=1, le=200)
 
     # Per-session limit for GET /api/v1/auth/me (AUTH-007): called on every page
     # render, so it is kept out of the brute-force bucket below.
@@ -178,6 +181,10 @@ class Settings(BaseSettings):
         if self.s1_reader_heartbeat_seconds * 3 > self.s1_reader_lease_seconds:
             raise ValueError("S1_READER_HEARTBEAT_SECONDS must be at most a third of S1_READER_LEASE_SECONDS.")
         return self
+
+    @property
+    def workpaper_copy_max_bytes(self) -> int:
+        return self.workpaper_copy_max_mb * 1024 * 1024
 
     @property
     def max_upload_bytes(self) -> int:
