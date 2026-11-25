@@ -51,6 +51,10 @@ MAX_LINES = 200
 MAX_CHARS = 12_000
 MAX_OUTPUT_TOKENS = 600
 MIN_QUOTE = 8  # characters
+# The double-check (shadow) is optional, so it must not hold a read up: one quick call waits at most 15 s with
+# no retry. A document the rules could not place depends on the AI for its type and keeps the default client
+# (90 s, one retry).
+REQUEST_TIMEOUT_S = 15.0
 NONE_ID = "none"
 UNAVAILABLE = "ai_unavailable"
 CAP_REACHED = "ai_cap_reached"
@@ -197,12 +201,25 @@ def new_client(settings: Settings) -> ClaudeClient | None:
         return None
 
 
+def new_routing_client(settings: Settings) -> ClaudeClient | None:
+    """The client the double-check uses: it fails fast, so a slow answer never holds a read up for long."""
+
+    try:
+        return get_claude(settings, timeout_s=REQUEST_TIMEOUT_S, max_retries=0)
+    except AiNotConfiguredError:
+        return None
+
+
 class AiRouting:
     def __init__(self, *, settings: Settings | None = None,
                  client_factory: Callable[[Settings], ClaudeClient | None] = new_client,
-                 ledger: Ledger | None = None) -> None:
+                 ledger: Ledger | None = None,
+                 quick_client_factory: Callable[[Settings], ClaudeClient | None] | None = None) -> None:
         self._settings = settings
         self._client_factory = client_factory
+        # A factory given for tests serves both paths unless a quick one is given too.
+        self._quick_client_factory = quick_client_factory or (
+            new_routing_client if client_factory is new_client else client_factory)
         self._ledger = ledger
 
     @property
@@ -214,23 +231,24 @@ class AiRouting:
         return self.settings.s1_ai_routing_shadow
 
     def suggest(self, parser_output: dict[str, Any], *, org_id: str | None, engagement_id: str,
-                has_targets: Callable[[str], bool]) -> RoutingResult:
-        """Ask Claude which type the document is. Never raises."""
+                has_targets: Callable[[str], bool], quick: bool = False) -> RoutingResult:
+        """Ask Claude which type the document is. Never raises. ``quick``: the optional double-check,
+        with the short timeout and no retry."""
 
         settings = self.settings
         if not settings.ai_suggestions_enabled or not org_id:
             return RoutingResult("off")
         try:
-            return self._suggest(settings, parser_output, org_id, engagement_id, has_targets)
+            return self._suggest(settings, parser_output, org_id, engagement_id, has_targets, quick)
         except Exception as exc:  # the pipeline must go on; the type only is logged
             logger.warning("ai routing: failed (%s)", type(exc).__name__)
             return RoutingResult("unavailable", warning=f"{UNAVAILABLE}: Sustentra's AI could not be used to read the type.")
 
     def _suggest(self, settings: Settings, parser_output: dict[str, Any], org_id_text: str, engagement_id: str,
-                 has_targets: Callable[[str], bool]) -> RoutingResult:
+                 has_targets: Callable[[str], bool], quick: bool = False) -> RoutingResult:
         org_id = uuid.UUID(org_id_text)
         ledger = self._ledger or DbLedger()
-        client = self._client_factory(settings)
+        client = (self._quick_client_factory if quick else self._client_factory)(settings)
         if client is None:
             return RoutingResult("off")
         lines = first_lines(parser_output)

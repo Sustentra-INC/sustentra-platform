@@ -164,3 +164,60 @@ def test_put_review_adds_one_audit_event_with_ids_only():
     assert event["metadata"]["document_id"] == "DOC-1" and event["metadata"]["decision"] == "edited"
     flat = str(event)
     assert "31337" not in flat and "kWh" not in flat and "secret note" not in flat and "bill.pdf" not in flat
+
+
+def _reject(client, note, **extra):
+    return client.put(
+        "/v1/evidence/EV-1/fields/activity_quantity/review",
+        json={"candidate": _candidate(), "decision": "rejected", "reviewer_note": note, **extra},
+    )
+
+
+def test_reject_stores_the_reason_who_and_when(client):
+    response = _reject(client, "  Wrong meter: this is the neighbour's bill  ")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision"] == "rejected"
+    assert body["reviewed_value"] is None and body["reviewed_unit"] is None
+    assert body["reviewer_note"] == "Wrong meter: this is the neighbour's bill"
+    assert body["reviewer_id"] == make_user().email
+    assert body["reviewed_at"] == "2026-01-01T00:00:00+00:00"
+    # and it reads back, with the reason, from the document's decisions
+    listed = client.get("/v1/documents/DOC-1/reviews").json()
+    assert listed[-1]["decision"] == "rejected" and listed[-1]["reviewer_note"].startswith("Wrong meter")
+
+
+@pytest.mark.parametrize("note", [None, "", "   ", "\n\t"])
+def test_reject_without_a_reason_is_refused_and_nothing_is_stored(client, note):
+    response = _reject(client, note)
+    assert response.status_code == 400
+    assert "reason" in response.json()["detail"].lower()
+    assert client.get("/v1/evidence/EV-1/reviews").json() == []
+
+
+def test_reject_reason_is_capped_at_500_characters(client):
+    assert _reject(client, "x" * 500).status_code == 200
+    assert _reject(client, "x" * 501).status_code == 422
+
+
+def test_a_rejected_value_can_be_put_back_by_a_later_accept(client):
+    assert _reject(client, "Not this one").status_code == 200
+    again = client.put(
+        "/v1/evidence/EV-1/fields/activity_quantity/review",
+        json={"candidate": _candidate(), "decision": "accepted"},
+    )
+    assert again.status_code == 200
+    latest = client.get("/v1/candidates/candidate::EV-1::DOC-1::activity_quantity/reviews/latest").json()
+    assert latest["decision"] == "accepted"
+
+
+def test_reject_with_a_value_is_refused(client):
+    assert _reject(client, "no", reviewed_value=5).status_code == 400
+
+
+def test_accept_does_not_need_a_reason(client):
+    response = client.put(
+        "/v1/evidence/EV-1/fields/activity_quantity/review",
+        json={"candidate": _candidate(), "decision": "accepted"},
+    )
+    assert response.status_code == 200 and response.json()["reviewer_note"] is None

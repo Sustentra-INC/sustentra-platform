@@ -104,8 +104,14 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
    is read again as that type.
 3. Choose a type before reading (override): Claude is not called (no new `routing` row in
    `ai_usage`).
-4. With `S1_AI_ROUTING_SHADOW=true`, upload a normal fuel bill: its type is unchanged. If
-   Claude disagrees, the row says so in words.
+4. Double-check (the shadow). It is off until the Parameter Store String `/staging/s1_ai_routing_shadow`
+   is `true` and staging is redeployed (a blank or unreadable value leaves it off). Then upload a normal
+   fuel bill: its type is unchanged. If Sustentra's AI read another type, the Type cell shows a
+   "Type to check" chip with the words "The rules chose X, but Sustentra's AI read the first pages as Y",
+   the quote and its page, and the row counts under "Needs you". "Confirm this type" (or choosing a type)
+   removes the chip and the count, and a reload or a new read keeps it removed. When the call fails, is
+   slow (15 s, no retry) or the monthly cap is reached, the read finishes as without AI and the run only
+   carries "The type was not double-checked by Sustentra's AI this time."
 5. Switch AI off: the same documents read exactly as before, with no Claude lines.
 6. Each call is one `ai_usage` row with feature `routing`; the Methodology review page's
    month spend includes it.

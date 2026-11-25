@@ -167,8 +167,8 @@ def test_export_is_an_excel_workpaper_of_the_same_numbers(act_as, wired: FakeSto
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     assert response.headers["content-disposition"].startswith("attachment;")
     book = load_workbook(io.BytesIO(response.content))
-    assert book.sheetnames == ["Summary", "Final outputs", "Roll-up", "Categories", "Data points", "Working",
-                               "Evidence", "Reviewed values", "Requests", "Findings", "Left out"]
+    assert book.sheetnames == ["Summary", "Final outputs", "Roll-up", "Categories", "Data points", "Warnings",
+                               "Method", "Working", "Sources", "Evidence", "Reviewed values", "Requests", "Findings", "Left out"]
     outputs = {row[1]: row for row in book["Final outputs"].iter_rows(min_row=2, values_only=True)}
     assert len(outputs) == 34  # Scope 2 rows 30-37 twice: location- and market-based
     electricity = outputs["Indirect emissions from purchased electricity (location-based)"]

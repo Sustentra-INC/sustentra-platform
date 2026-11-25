@@ -82,3 +82,18 @@ def test_show_settings_masks_the_key(monkeypatch: pytest.MonkeyPatch, capsys: py
 def test_blank_bedrock_model_id_is_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AI_BEDROCK_MODEL_ID", "  ")
     assert Settings().ai_bedrock_model_id is None
+
+
+def test_routing_shadow_is_off_by_default_and_on_only_when_asked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("S1_AI_ROUTING_SHADOW", raising=False)
+    assert Settings().s1_ai_routing_shadow is False
+    monkeypatch.setenv("S1_AI_ROUTING_SHADOW", "true")
+    assert Settings().s1_ai_routing_shadow is True
+
+
+@pytest.mark.parametrize("value", ["", "  ", "maybe", "2", "yes please"])
+def test_a_bad_routing_shadow_value_leaves_it_off_and_does_not_stop_the_app(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("S1_AI_ROUTING_SHADOW", value)
+    assert Settings().s1_ai_routing_shadow is False

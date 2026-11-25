@@ -71,7 +71,7 @@ describe("extraction review: a value added to requests", () => {
     expect(view.chip()).toBe("Request not sent");
     expect(view.lines()).toContain("Thanishque · added to requests");
     expect(view.card().textContent).not.toMatch(/requested from client|Requested/);
-    expect(view.filters().at(-1)).toMatch(/^1Requests$/);
+    expect(view.filters().at(-2)).toMatch(/^1Requests$/);
 
     act(() => {
       view.live.store!.sendAsks([ask.id]);
@@ -91,8 +91,8 @@ describe("extraction review: a value added to requests", () => {
       "Thanishque · requested from client",
       "M. Osei · Request 1 resolved", // who the requests store records as resolving it
     ]);
-    expect(within(view.card()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Accept", "Correct", "Request"]);
-    expect(view.filters().at(-1)).toMatch(/^0Requests$/);
+    expect(within(view.card()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Accept", "Correct", "Request", "Reject"]);
+    expect(view.filters().at(-2)).toMatch(/^0Requests$/);
   });
 
   it("says a request withdrawn before it was sent never reached the client", () => {
@@ -112,7 +112,7 @@ describe("extraction review: a value added to requests", () => {
     ]);
     expect(view.card().textContent).toContain("found on the next bill");
     expect(view.card().textContent).not.toContain("requested from client");
-    expect(within(view.card()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Accept", "Correct", "Request"]);
+    expect(within(view.card()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Accept", "Correct", "Request", "Reject"]);
   });
 
   it("follows the latest request raised from the card", () => {

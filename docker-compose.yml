@@ -55,6 +55,7 @@ services:
       # AI suggestions stay off unless you export these (docs/backend_services.md).
       AI_SUGGESTIONS_ENABLED: ${AI_SUGGESTIONS_ENABLED:-false}
       AI_PROVIDER: ${AI_PROVIDER:-anthropic}
+      S1_AI_ROUTING_SHADOW: ${S1_AI_ROUTING_SHADOW:-false}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       PYTHONPATH: /app
     command: >

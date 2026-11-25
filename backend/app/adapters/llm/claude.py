@@ -250,12 +250,13 @@ class SdkClaude:
         return self._bedrock_model_id or BEDROCK_MODEL_PREFIX + self._model
 
 
-def build_sdk_client(settings: Settings, timeout_s: float = REQUEST_TIMEOUT_S) -> SdkClient:
+def build_sdk_client(settings: Settings, timeout_s: float = REQUEST_TIMEOUT_S,
+                     max_retries: int = MAX_RETRIES) -> SdkClient:
     if settings.ai_provider == "bedrock":
         try:
             # Region from AWS_REGION; credentials from the default chain (the instance role).
             return anthropic.AnthropicBedrockMantle(
-                timeout=timeout_s, max_retries=MAX_RETRIES, open_telemetry=False
+                timeout=timeout_s, max_retries=max_retries, open_telemetry=False
             )
         except anthropic.AnthropicError as exc:
             raise AiNotConfiguredError(f"Bedrock is not configured: {exc}") from exc
@@ -264,12 +265,13 @@ def build_sdk_client(settings: Settings, timeout_s: float = REQUEST_TIMEOUT_S) -
     return anthropic.Anthropic(
         api_key=settings.anthropic_api_key.get_secret_value(),
         timeout=timeout_s,
-        max_retries=MAX_RETRIES,
+        max_retries=max_retries,
         open_telemetry=False,
     )
 
 
-def get_claude(settings: Settings | None = None, *, timeout_s: float = REQUEST_TIMEOUT_S) -> ClaudeClient | None:
+def get_claude(settings: Settings | None = None, *, timeout_s: float = REQUEST_TIMEOUT_S,
+               max_retries: int = MAX_RETRIES) -> ClaudeClient | None:
     """The configured Claude client, or None when AI_PROVIDER=anthropic has no key.
 
     Raises UnknownModelError for an AI_MODEL without a price, and AiNotConfiguredError
@@ -281,7 +283,7 @@ def get_claude(settings: Settings | None = None, *, timeout_s: float = REQUEST_T
     if settings.ai_provider == "anthropic" and settings.anthropic_api_key is None:
         return None
     return SdkClaude(
-        build_sdk_client(settings, timeout_s),
+        build_sdk_client(settings, timeout_s, max_retries),
         provider=settings.ai_provider,
         model=settings.ai_model,
         effort=settings.ai_effort,

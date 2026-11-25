@@ -33,6 +33,10 @@ export interface ExtractedField {
   correctedValue: string | null;
   /** The unit the reviewer set when correcting, if they changed it. */
   correctedUnit?: string | null;
+  /** Every validation flag the backend set on this value, as sent (valueProperties keeps only the known ones). */
+  validationFlags?: string[];
+  /** Why the reviewer rejected the value (the decision's note). */
+  rejectionReason?: string | null;
   /** Who made the latest review decision, and when (from the API). */
   reviewedBy?: string | null;
   reviewedAt?: string | null;
