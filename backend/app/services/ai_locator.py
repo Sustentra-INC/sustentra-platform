@@ -22,6 +22,7 @@ call, inputs are not modified.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
@@ -37,6 +38,9 @@ DropReason = Literal["empty_value", "unknown_line", "quote_not_on_document", "am
 _QUOTES = str.maketrans({c: "'" for c in "\u2018\u2019\u201a\u201b\u2032"}
                         | {c: '"' for c in "\u201c\u201d\u201e\u201f\u00ab\u00bb"})
 _DASHES = re.compile("[\u2010-\u2015\u2212]")  # hyphens, en/em dashes, minus sign
+ROW_SEPARATOR = " | "
+ROW_MAX_CHARS = 2_000  # a longer sheet row is shown as several lines, cut between cells
+_CELL = re.compile(r"\$?([A-Za-z]{1,3})\$?(\d+)")
 
 
 @dataclass(frozen=True)
@@ -49,6 +53,14 @@ class DocumentLine:
     block_id: str
     # The parser's own reference for the block, shaped by contracts/source_reference.schema.json.
     source_reference: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class RowLine(DocumentLine):
+    """A sheet row (or a piece of a long one) as one line: its cells, left to right, joined by
+    ``ROW_SEPARATOR``. ``cells`` are the cell lines it was built from, each with its own reference."""
+
+    cells: tuple[DocumentLine, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -110,6 +122,92 @@ def document_lines(parser_output: Mapping[str, Any]) -> list[DocumentLine]:
         lines.append(DocumentLine(alias=f"L{len(lines) + 1}", text=text, page_number=page,
                                   block_id=str(block["block_id"]), source_reference=reference))
     return lines
+
+
+def row_lines(parser_output: Mapping[str, Any]) -> list[DocumentLine]:
+    """``document_lines`` with each workbook row as one line (a ``RowLine``) instead of one line per cell.
+
+    A cell is a block whose reference has a sheet name and a single-cell address ("B7"); the cells of
+    one sheet row are joined left to right. Every other block (PDF, Word, CSV, email, a merged range)
+    stays the line ``document_lines`` gives. Cells are never merged across rows or sheets, so two
+    sheets with the same row numbers stay apart. Only the AI extraction reads this; ``locate_cell``
+    then finds the one cell a value is printed in."""
+    rows: dict[tuple[str, int], list[tuple[int, DocumentLine]]] = {}
+    order: list[DocumentLine | tuple[str, int]] = []
+    for line in document_lines(parser_output):
+        sheet = line.source_reference.get("sheet_name")
+        address = _CELL.fullmatch(str(line.source_reference.get("cell_or_range") or "").strip())
+        if not sheet or address is None:
+            order.append(line)
+            continue
+        key = (str(sheet), int(address.group(2)))
+        if key not in rows:
+            rows[key] = []
+            order.append(key)
+        rows[key].append((_column(address.group(1)), line))
+    lines: list[DocumentLine] = []
+    for item in order:
+        if isinstance(item, DocumentLine):
+            lines.append(dataclasses.replace(item, alias=f"L{len(lines) + 1}"))
+            continue
+        for chunk in _chunks([cell for _, cell in sorted(rows[item], key=lambda pair: pair[0])]):
+            text = ROW_SEPARATOR.join(cell.text for cell in chunk)
+            lines.append(RowLine(alias=f"L{len(lines) + 1}", text=text, page_number=None, block_id=chunk[0].block_id,
+                                 source_reference=copy.deepcopy(chunk[0].source_reference), cells=tuple(chunk)))
+    return lines
+
+
+def _column(letters: str) -> int:
+    number = 0
+    for letter in letters.upper():
+        number = number * 26 + ord(letter) - 64
+    return number
+
+
+def _chunks(cells: Sequence[DocumentLine]) -> list[list[DocumentLine]]:
+    chunks: list[list[DocumentLine]] = []
+    size = 0
+    for cell in cells:
+        if chunks and size + len(ROW_SEPARATOR) + len(cell.text) <= ROW_MAX_CHARS:
+            chunks[-1].append(cell)
+            size += len(ROW_SEPARATOR) + len(cell.text)
+        else:
+            chunks.append([cell])
+            size = len(cell.text)
+    return chunks
+
+
+def locate_cell(row: RowLine, quote: str, value: str) -> DocumentLine | NotLocated:
+    """The one cell of ``row`` that holds ``value``, given a quote already found on the row.
+
+    The value must be printed as a whole token inside one cell, in the part of that cell the quote
+    covers (never across cells, whatever the cell text contains). If the quote covers the value in
+    more than one cell, or the quote is on the row more than once with different cells, it is
+    ambiguous and dropped."""
+    wanted = norm(quote)
+    pieces = [norm(cell.text) for cell in row.cells]
+    full = ROW_SEPARATOR.join(pieces)
+    if not wanted or full != norm(row.text):
+        return NotLocated("ambiguous_quote")
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for piece in pieces:
+        spans.append((start, start + len(piece)))
+        start += len(piece) + len(ROW_SEPARATOR)
+    holders: set[int] = set()
+    at = full.find(wanted)
+    while at != -1:
+        end = at + len(wanted)
+        for index, (low, high) in enumerate(spans):
+            if low < end and at < high and value_in_quote(value, full[max(at, low):min(end, high)]) \
+                    and value_in_quote(value, pieces[index]):
+                holders.add(index)
+        at = full.find(wanted, at + 1)
+    if not holders:
+        return NotLocated("value_not_in_quote")
+    if len(holders) > 1:
+        return NotLocated("ambiguous_quote")
+    return row.cells[holders.pop()]
 
 
 def locate_quote(quote: str, line_alias: str | None, lines: Sequence[DocumentLine]) -> DocumentLine | NotLocated:
