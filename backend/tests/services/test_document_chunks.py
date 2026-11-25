@@ -362,7 +362,7 @@ def test_the_ocr_page_cap_is_per_chunk(tmp_path: Path, monkeypatch: pytest.Monke
     read = [service.parse_document(pdf, "D", "R", "application/pdf", pages=span) for span in split_pages(30, 10)]
 
     for output in read:
-        assert sum(1 for p in output["pages"] if p["text"] == "ocr text") == 5
+        assert sum(1 for p in output["pages"] if p["text"].startswith("ocr text")) == 5  # OCR first, then typed lines it missed
         assert any(w["code"] == "ocr_page_limit" for w in output["warnings"])
 
 

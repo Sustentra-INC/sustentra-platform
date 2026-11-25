@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -316,3 +317,267 @@ def test_textract_enabled_does_not_route_text_to_live_textract(
 
     assert output["parser_name"] == "text_parser"
     assert live_parser.calls == []
+
+
+# --- scans with typed text on them (a stamp, a fax header) ------------------------------------------------
+
+STAMP = "RECEIVED 12 MAR 2025 ACME CORP MAIL ROOM"  # 33 characters: over the 20 of an empty page
+
+
+def _picture():
+    import fitz
+
+    pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 40, 40), False)
+    pix.clear_with(210)
+    return pix
+
+
+def _scan_pdf(path: Path, pages: list[dict]) -> Path:
+    """Each page: ``images`` (rects), ``text`` (typed lines at the top), optional ``rotate``/``cropbox``."""
+
+    import fitz
+
+    with fitz.open() as pdf:
+        for spec in pages:
+            width, height = spec.get("size") or (595, 842)
+            page = pdf.new_page(width=width, height=height)
+            if spec.get("cropbox"):
+                page.set_cropbox(fitz.Rect(*spec["cropbox"]))
+            for rect in spec.get("images", []):
+                page.insert_image(fitz.Rect(*rect), pixmap=_picture(), keep_proportion=False)
+            for index, line in enumerate(spec.get("text", [])):
+                page.insert_text((72, 60 + 14 * index), line, fontsize=spec.get("fontsize", 11))
+            if spec.get("rotate"):
+                page.set_rotation(spec["rotate"])
+        pdf.save(path)
+    return path
+
+
+FULL = (0, 0, 595, 842)  # an A4 page
+
+
+class RecordingTextract(FakeLiveTextractParser):
+    """Reads every page as the given lines (a stamp included or not)."""
+
+    def __init__(self, lines: list[str]) -> None:
+        super().__init__()
+        self.lines = lines
+
+    def parse_bytes(self, document_bytes: bytes, document_id: str, processing_run_id: str) -> dict:
+        self.byte_calls.append(document_bytes)
+        n = len(self.byte_calls)
+        out = self.parse(Path("page.png"), document_id, processing_run_id)
+        self.calls.pop()
+        out["pages"] = [{"page_number": 1, "text": "\n".join(self.lines)}]
+        out["text_blocks"] = [{"block_id": f"tx-{n}-{i}", "text": t, "page_number": 1, "confidence": 0.9,
+                               "bounding_box": {"left": 0.1, "top": 0.1 * i, "width": 0.5, "height": 0.03},
+                               "source_reference_id": f"SRC-tx-{n}-{i}"} for i, t in enumerate(self.lines)]
+        out["source_references"] = [{"source_reference_id": f"SRC-tx-{n}-{i}", "document_id": document_id,
+                                     "page_number": 1, "sheet_name": None, "cell_or_range": None,
+                                     "text_snippet": t, "bounding_box": None, "parser_block_ids": [f"tx-{n}-{i}"]}
+                                    for i, t in enumerate(self.lines)]
+        return out
+
+
+@pytest.mark.parametrize("spec,expected", [
+    ({"images": [FULL], "text": [STAMP]}, True),  # a scan with a stamp
+    ({"images": [(0, 0, 595, 421), (0, 421, 595, 842)], "text": [STAMP]}, True),  # a scan in two strips
+    ({"images": [FULL, FULL, (0, 0, 595, 300)], "text": [STAMP]}, True),  # overlapping images
+    ({"images": [FULL], "text": [STAMP], "rotate": 90}, True),  # a turned scan
+    ({"images": [(100, 100, 200, 200)], "text": [STAMP]}, False),  # a logo
+    ({"images": [(0, 0, 595, 350)], "text": [STAMP]}, False),  # under half the page
+    ({"images": [FULL, FULL, FULL], "text": [STAMP] * 1}, True),
+    ({"images": [FULL], "text": [f"Line {i} of an invoice with real words" for i in range(8)]}, False),  # watermark
+    ({"images": [FULL], "text": ["Quarterly Review of Site Energy"], "fontsize": 40}, False),  # a designed cover: big type
+    ({"images": [(0, 0, 960, 540)], "text": [STAMP], "size": (960, 540)}, False),  # a slide: not paper-shaped
+    ({"images": [], "text": [STAMP]}, False),  # vector page: nothing to measure
+    ({"images": [FULL], "text": [STAMP], "cropbox": (50, 50, 560, 700)}, False),  # cropped: not measured
+])
+def test_a_page_mostly_image_with_a_little_text_is_a_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spec: dict, expected: bool
+) -> None:
+    monkeypatch.setenv("TEXTRACT_ENABLED", "true")
+    live = RecordingTextract(["Total kWh Used: 700,000 kWh"])
+    path = _scan_pdf(tmp_path / "bill.pdf", [spec])
+
+    output = ParserService(live_textract_parser=live).parse_document(path, "DOC-1", "RUN-1")
+
+    assert (len(live.byte_calls) == 1) is expected
+    assert ("ocr_applied" in [w["code"] for w in output["warnings"]]) is expected
+
+
+def test_a_searchable_scan_stays_a_text_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TEXTRACT_ENABLED", "true")
+    live = RecordingTextract(["x"])
+    text = [f"Searchable line {i} from a scan with an OCR layer" for i in range(6)]  # ~280 characters
+    path = _scan_pdf(tmp_path / "searchable.pdf", [{"images": [FULL], "text": text}])
+
+    ParserService(live_textract_parser=live).parse_document(path, "DOC-1", "RUN-1")
+
+    assert live.byte_calls == []
+
+
+def test_ocr_replaces_the_typed_lines_it_read_and_keeps_the_ones_it_did_not(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TEXTRACT_ENABLED", "true")
+    live = RecordingTextract(["Electricity bill", "Total kWh Used: 700,000 kWh", "RECEIVED 12 MAR 2025"])
+    path = _scan_pdf(tmp_path / "bill.pdf", [
+        {"text": ["Cover page text that is typed and long enough"]},
+        {"images": [FULL], "text": ["RECEIVED 12 MAR 2025", "Fax ref ZX-991 ACME"]},  # stamp OCR reads; fax line it misses
+    ])
+
+    output = ParserService(live_textract_parser=live).parse_document(path, "DOC-1", "RUN-1")
+
+    assert_parser_output_shape(output)
+    page2 = [b["text"] for b in output["text_blocks"] if b["page_number"] == 2]
+    assert page2.count("RECEIVED 12 MAR 2025") == 1  # read once: OCR's, not the typed copy too
+    assert "Fax ref ZX-991 ACME" in page2 and "Total kWh Used: 700,000 kWh" in page2
+    assert [b["text"] for b in output["text_blocks"] if b["page_number"] == 1] == [
+        "Cover page text that is typed and long enough"]  # a text page is untouched
+    text = output["pages"][1]["text"]
+    assert text.count("RECEIVED 12 MAR 2025") == 1 and text.endswith("Fax ref ZX-991 ACME")
+    ids = {b["block_id"] for b in output["text_blocks"]}
+    assert all(set(r["parser_block_ids"]) <= ids for r in output["source_references"] if r["page_number"] == 2)
+    assert all(r["page_number"] in (1, 2) for r in output["source_references"])
+    assert len({r["source_reference_id"] for r in output["source_references"]}) == len(output["source_references"])
+
+
+def test_a_stamped_scan_is_named_when_textract_is_off(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.services.pdf_scan_pages import unread_scan_pages
+
+    monkeypatch.delenv("TEXTRACT_ENABLED", raising=False)
+    live = RecordingTextract(["x"])
+    path = _scan_pdf(tmp_path / "bill.pdf", [{"text": ["Typed page with enough words to count as text here"]},
+                                             {"images": [FULL], "text": [STAMP]}])
+
+    output = ParserService(live_textract_parser=live).parse_document(path, "DOC-1", "RUN-1")
+
+    warning = next(w for w in output["warnings"] if w["code"] == "scan_page_unread")
+    assert warning["message"].startswith("Page 2 is a scan") and "Textract" not in warning["message"]
+    assert unread_scan_pages(output) == [(2, 2)] and live.byte_calls == []
+
+
+def test_pages_over_the_ocr_limit_are_named(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.services import parser_service
+    from backend.app.services.pdf_scan_pages import unread_scan_pages
+
+    monkeypatch.setenv("TEXTRACT_ENABLED", "true")
+    monkeypatch.setattr(parser_service, "OCR_MAX_PAGES", 2)
+    path = _scan_pdf(tmp_path / "many.pdf", [{"images": [FULL], "text": [STAMP]}] * 5)
+
+    output = ParserService(live_textract_parser=RecordingTextract(["a b c d"])).parse_document(path, "DOC-1", "RUN-1")
+
+    limit = next(w for w in output["warnings"] if w["code"] == "ocr_page_limit")
+    assert limit["message"].startswith("Pages 3-5 are scans and were not read")
+    assert unread_scan_pages(output) == [(3, 5)]
+
+
+def test_a_failed_ocr_page_is_listed_as_unread(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.services.pdf_scan_pages import unread_scan_pages
+
+    class Failing(RecordingTextract):
+        def parse_bytes(self, *args: Any) -> dict:
+            return {"status": "failed"}
+
+    monkeypatch.setenv("TEXTRACT_ENABLED", "true")
+    path = _scan_pdf(tmp_path / "bill.pdf", [{"images": [FULL], "text": [STAMP]}])
+
+    output = ParserService(live_textract_parser=Failing(["x"])).parse_document(path, "DOC-1", "RUN-1")
+
+    assert unread_scan_pages(output) == [(1, 1)]
+    assert "ocr_page_failed" in [w["code"] for w in output["warnings"]]
+
+
+def test_a_blank_page_is_not_listed_as_unread_but_a_page_with_unreadable_ink_is(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The blank back of a double-sided scan (OCR finds nothing) is nothing missed; a scribble OCR cannot read is."""
+
+    import fitz
+
+    from backend.app.services.pdf_scan_pages import unread_scan_pages
+
+    class Nothing(RecordingTextract):
+        def parse_bytes(self, *args: Any) -> dict:
+            return {"status": "empty"}
+
+    monkeypatch.setenv("TEXTRACT_ENABLED", "true")
+    pdf = fitz.open()
+    pdf.new_page()  # blank
+    specks = pdf.new_page()  # blank, with scanner specks
+    for n in range(12):
+        specks.draw_circle((50 + 40 * n, 60 * (n + 1)), 1, fill=(0, 0, 0))
+    ink = pdf.new_page()  # handwriting OCR could not read
+    for n in range(20):
+        ink.draw_line((80, 100 + 10 * n), (500, 105 + 10 * n), width=2)
+    pdf.save(tmp_path / "duplex.pdf")
+
+    output = ParserService(live_textract_parser=Nothing(["x"])).parse_document(tmp_path / "duplex.pdf", "DOC-1", "RUN-1")
+
+    assert unread_scan_pages(output) == [(3, 3)]
+
+
+def test_a_chunk_reads_stamped_scans_like_the_whole_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TEXTRACT_ENABLED", "true")
+    live = RecordingTextract(["Total kWh Used: 700,000 kWh", "RECEIVED 12 MAR 2025"])
+    path = _scan_pdf(tmp_path / "bill.pdf", [{"text": ["Typed page with enough words to count as text here"]},
+                                             {"images": [FULL], "text": ["RECEIVED 12 MAR 2025", "Fax ref ZX-991"]},
+                                             {"images": [FULL], "text": [STAMP]}])
+    whole = ParserService(live_textract_parser=live).parse_document(path, "DOC-1", "RUN-1")
+    live_chunk = RecordingTextract(["Total kWh Used: 700,000 kWh", "RECEIVED 12 MAR 2025"])
+    chunk = ParserService(live_textract_parser=live_chunk).parse_document(path, "DOC-1", "RUN-1", pages=(2, 3))
+
+    assert [p["page_number"] for p in chunk["pages"]] == [2, 3]
+    assert chunk["pages"] == whole["pages"][1:]
+    assert [(b["page_number"], b["text"]) for b in chunk["text_blocks"]] == [
+        (b["page_number"], b["text"]) for b in whole["text_blocks"] if b["page_number"] >= 2]
+
+
+def test_a_page_that_cannot_be_measured_keeps_the_text_only_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import fitz
+
+    from backend.app.services import pdf_scan_pages
+
+    monkeypatch.setenv("TEXTRACT_ENABLED", "true")
+    path = _scan_pdf(tmp_path / "bill.pdf", [{"images": [FULL], "text": [STAMP]}])
+    live = RecordingTextract(["x y z w"])
+
+    def boom(self: Any) -> Any:
+        raise RuntimeError("corrupt xref")
+
+    monkeypatch.setattr(fitz.Page, "get_image_info", boom)
+    output = ParserService(live_textract_parser=live).parse_document(path, "DOC-1", "RUN-1")
+    assert output["status"] == "parsed" and live.byte_calls == []
+
+    monkeypatch.undo()
+    monkeypatch.setenv("TEXTRACT_ENABLED", "true")
+    monkeypatch.setattr(pdf_scan_pages, "MAX_MEASURED_IMAGES", 0)  # a page drawing too many images
+    ParserService(live_textract_parser=live).parse_document(path, "DOC-1", "RUN-1")
+    assert live.byte_calls == []
+
+
+def test_thousands_of_images_on_a_page_are_not_measured(tmp_path: Path) -> None:
+    import fitz
+
+    from backend.app.services.pdf_scan_pages import image_cover
+
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_image(fitz.Rect(0, 0, 9, 9), pixmap=_picture())
+        name = page.get_images(full=True)[0][7]
+        stream = "".join(f"q 9 0 0 9 {i % 60 * 10} {i // 60 * 10} cm /{name} Do Q\n" for i in range(3000))
+        pdf.update_stream(page.get_contents()[0], stream.encode())
+        assert image_cover(page) is None
+
+
+def test_image_cover_counts_overlaps_once_and_ignores_the_rest(tmp_path: Path) -> None:
+    import fitz
+
+    from backend.app.services.pdf_scan_pages import _union_area, image_cover
+
+    assert _union_area([(0, 0, 10, 10), (5, 5, 15, 15), (0, 0, 10, 10)]) == 175.0
+    path = _scan_pdf(tmp_path / "p.pdf", [{"images": [(0, 0, 595, 421), (0, 0, 595, 421)]}, {}])
+    with fitz.open(path) as pdf:
+        assert image_cover(pdf[0]) == pytest.approx(0.5)
+        assert image_cover(pdf[1]) == 0.0

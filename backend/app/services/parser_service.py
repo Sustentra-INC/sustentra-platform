@@ -35,6 +35,14 @@ from backend.app.adapters.parsers.pdf_parser import PdfParser
 from backend.app.adapters.parsers.text_parser import TextParser
 from backend.app.adapters.parsers.textract_parser import TextractParser
 from backend.app.adapters.parsers.xls_parser import XlsParser
+from backend.app.services.pdf_scan_pages import (
+    OCR_PAGE_LIMIT,
+    SCAN_MAX_TYPED_CHARACTERS,
+    SCAN_PAGE_UNREAD,
+    is_blank,
+    is_scan_with_text,
+    unread_scan_message,
+)
 
 TEXT_EXTENSIONS = {".txt", ".md", ".markdown"}
 CSV_EXTENSIONS = {".csv"}
@@ -58,10 +66,26 @@ MIME_TYPE_ROUTES = {
 
 
 # A page with fewer non-space characters than this has no usable text layer (a scan, or a
-# stamp on an image); with Textract on it is rendered and read.
+# stamp on an image); with Textract on it is rendered and read. A page with a little more typed text
+# that is mostly image is a scan too (see pdf_scan_pages).
 OCR_MIN_PAGE_CHARACTERS = 20
 OCR_MAX_PAGES = 50  # per document: Textract is billed per page
 OCR_ZOOM = 2.0  # ~150 dpi for a letter page, well under the 10 MB synchronous limit
+
+
+def _squash(text: str) -> str:
+    """Lower-case letters and digits only: lines compare the same whatever the spacing or punctuation."""
+
+    return re.sub(r"[\W_]+", "", text.lower())
+
+
+def _not_read_by_ocr(line: str, ocr_all: str, ocr_lines: set[str]) -> bool:
+    """A typed line OCR left out: not inside OCR's text (a short one: not one of OCR's lines)."""
+
+    key = _squash(line)
+    if not key:
+        return False
+    return key not in ocr_all if len(key) >= 4 else key not in ocr_lines
 
 
 class ParserService:
@@ -148,21 +172,51 @@ class ParserService:
 
     def _parse_pdf(self, path: Path, document_id: str, processing_run_id: str,
                    pages: tuple[int, int] | None = None) -> dict:
-        """A PDF's own text layer first. With Textract on, only the pages without one
-        (scans, photos saved as PDF) are rendered and read by Textract, one page per
-        synchronous call, so text PDFs never leave the server and a multi-page scan needs
-        no S3 round trip. A PDF the local reader cannot open goes to Textract whole."""
+        """A PDF's own text layer first. With Textract on, only the scan pages are rendered and read
+        by Textract, one page per synchronous call, so text PDFs never leave the server and a
+        multi-page scan needs no S3 round trip. A scan page has no text layer, or is mostly image
+        with only a little typed text on it (a stamp, a fax header). A PDF the local reader cannot
+        open goes to Textract whole. Scan pages that are not read are named in a warning."""
 
         output = self._pdf_parser.parse(path, document_id, processing_run_id, pages)
-        if not self._textract_enabled():
-            return output
-        if output.get("status") == "failed" and pages is None:  # a chunk is retried, not read whole
+        enabled = self._textract_enabled()
+        if enabled and output.get("status") == "failed" and pages is None:  # a chunk is retried, not read whole
             return self._live_textract_parser.parse(path, document_id, processing_run_id)
-        scanned = [
-            int(page["page_number"]) for page in output.get("pages") or []
-            if len(re.sub(r"\s", "", str(page.get("text") or ""))) < OCR_MIN_PAGE_CHARACTERS
-        ]
+        stamped = self._scans_with_text(path, output)
+        if not enabled:
+            if stamped:
+                output = {**output, "warnings": [*(output.get("warnings") or []), build_warning(
+                    SCAN_PAGE_UNREAD, unread_scan_message(
+                        stamped, "with some typed text on it; the scan was not read because OCR is off."))]}
+            return output
+        scanned = sorted({
+            *(int(page["page_number"]) for page in output.get("pages") or []
+              if len(re.sub(r"\s", "", str(page.get("text") or ""))) < OCR_MIN_PAGE_CHARACTERS),
+            *stamped,
+        })
         return self._ocr_pages(path, output, scanned, document_id, processing_run_id) if scanned else output
+
+    @staticmethod
+    def _scans_with_text(path: Path, output: dict) -> list[int]:
+        """Pages with some typed text (too little to be a text page) that are mostly image. Only pages
+        in that text band are measured; one that cannot be measured is left as a text page."""
+
+        typed = {int(p["page_number"]): len(re.sub(r"\s", "", str(p.get("text") or "")))
+                 for p in output.get("pages") or []}
+        band = [n for n, chars in typed.items() if OCR_MIN_PAGE_CHARACTERS <= chars < SCAN_MAX_TYPED_CHARACTERS]
+        if not band:
+            return []
+        found: list[int] = []
+        try:
+            import fitz
+
+            with fitz.open(path) as pdf:
+                for number in band:
+                    if 0 < number <= pdf.page_count and is_scan_with_text(pdf[number - 1], typed[number]):
+                        found.append(number)
+        except Exception:  # noqa: BLE001 - the text-only rule stays when the file cannot be measured
+            return []
+        return found
 
     def _ocr_pages(self, path: Path, output: dict, page_numbers: list[int], document_id: str,
                    processing_run_id: str) -> dict:
@@ -175,31 +229,52 @@ class ParserService:
             for number in page_numbers[:OCR_MAX_PAGES]:
                 image = pdf[number - 1].get_pixmap(matrix=fitz.Matrix(OCR_ZOOM, OCR_ZOOM)).tobytes("png")
                 page = self._live_textract_parser.parse_bytes(image, document_id, processing_run_id)
+                if page.get("status") == "empty" and is_blank(pdf[number - 1]):
+                    continue  # the blank back of a sheet: nothing to read, so nothing was missed
                 if page.get("status") not in ("parsed", "partial"):
                     merged["warnings"].append(build_warning(
-                        "ocr_page_failed", f"Page {number} has no text layer and Textract could not read it.",
-                        severity="warning"))
+                        "ocr_page_failed", f"Page {number} is a scan and could not be read.", severity="warning"))
                     continue
                 read.append(number)
-                for key in ("text_blocks", "tables", "key_value_pairs", "source_references"):
-                    for item in page.get(key) or []:
-                        merged[key].append({**item, "page_number": number})
-                text = "\n".join(str(p.get("text") or "") for p in page.get("pages") or []).strip()
-                merged["pages"] = [{**p, "text": text} if int(p["page_number"]) == number else p
-                                   for p in merged["pages"]]
+                self._merge_ocr_page(merged, number, page)
         if len(page_numbers) > OCR_MAX_PAGES:
-            merged["warnings"].append(build_warning(
-                "ocr_page_limit", f"Only the first {OCR_MAX_PAGES} pages without a text layer were read.",
+            merged["warnings"].append(build_warning(OCR_PAGE_LIMIT, unread_scan_message(
+                page_numbers[OCR_MAX_PAGES:],
+                f"and were not read: only the first {OCR_MAX_PAGES} scanned pages of a document are read."),
                 severity="warning"))
         if read:
             merged["warnings"] = [w for w in merged["warnings"] if not (
                 w.get("code") == "empty_page_text" and any(f"Page {n} " in str(w.get("message")) for n in read))]
             merged["warnings"].append(build_warning(
-                "ocr_applied", f"Read with Textract (no text layer): page {', '.join(map(str, read))}.",
-                severity="info"))
+                "ocr_applied", f"Read as a scan (OCR): page {', '.join(map(str, read))}.", severity="info"))
         empty = [p for p in merged["pages"] if not str(p.get("text") or "").strip()]
         status = "parsed" if not empty else "partial" if len(empty) < len(merged["pages"]) else output["status"]
         return {**output, **merged, "status": status}
+
+    @staticmethod
+    def _merge_ocr_page(merged: dict, number: int, ocr: dict) -> None:
+        """Put one OCR-read page into the merged output. OCR's blocks replace the page's typed ones; a typed
+        line OCR did not read (not found in OCR's text) is kept, so nothing typed is lost and nothing is
+        read twice. The page's text is OCR's text, then the kept typed lines. Page numbers stay the PDF's."""
+
+        ocr_text = "\n".join(str(p.get("text") or "") for p in ocr.get("pages") or []).strip()
+        ocr_all = _squash(ocr_text)
+        ocr_lines = {_squash(str(b.get("text") or "")) for b in ocr.get("text_blocks") or []}
+        typed = [b for b in merged["text_blocks"] if b.get("page_number") == number]
+        kept = [b for b in typed if _not_read_by_ocr(str(b.get("text") or ""), ocr_all, ocr_lines)]
+        dropped = {b.get("block_id") for b in typed} - {b.get("block_id") for b in kept}
+        merged["text_blocks"] = [b for b in merged["text_blocks"] if b.get("block_id") not in dropped
+                                 or b.get("page_number") != number]
+        merged["source_references"] = [
+            r for r in merged["source_references"]
+            if not (r.get("page_number") == number and r.get("parser_block_ids")
+                    and set(r["parser_block_ids"]) <= dropped)]
+        for key in ("text_blocks", "tables", "key_value_pairs", "source_references"):
+            for item in ocr.get(key) or []:
+                merged[key].append({**item, "page_number": number})
+        text = "\n".join([ocr_text, *(str(b.get("text") or "") for b in kept)]).strip()
+        merged["pages"] = [{**p, "text": text} if int(p["page_number"]) == number else p
+                           for p in merged["pages"]]
 
     @staticmethod
     def _textract_enabled() -> bool:

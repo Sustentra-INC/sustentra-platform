@@ -287,6 +287,21 @@ def test_a_chunked_run_is_routed_on_the_merged_output_and_skipped_when_pages_1_2
     assert claude2.calls == [] and ledger.rows == [] and run["canonical_type_source"] == "none"
 
 
+def test_scans_the_parser_did_not_read_become_a_pages_unread_warning(tmp_path: Any) -> None:
+    """A stamped scan with OCR off, or past the OCR cap, is named like a page no chunk could read."""
+    routing, _ = router(FakeClaude(said("none", "", "")))
+    output = {**parsed(LETTER), "warnings": [
+        {"code": "scan_page_unread", "severity": "warning",
+         "message": "Page 2 is a scan with some typed text on it; the scan was not read because OCR is off."},
+        {"code": "ocr_page_limit", "severity": "warning",
+         "message": "Pages 60-62 are scans and were not read: only the first 50 scanned pages of a document are read."}]}
+    run = pipeline(routing).process_local_document(
+        local_file_path=_write_temp_text_file(tmp_path), engagement_id="ENG-1", org_id=ORG, persist_run=False,
+        prebuilt_parser_output=output)["pipeline_run"]
+    assert "pages_unread: Pages 2, 60-62 could not be read, so any values on them are missing." in run["warnings"]
+    assert run["status"] == "partial"
+
+
 # --- the double-check (shadow) must never hold a read up --------------------------------------
 
 SHADOW_ARGS: dict[str, Any] = {"status": "classified", "primary": "CT-S1-FUELQTY"}
