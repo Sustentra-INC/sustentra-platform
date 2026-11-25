@@ -45,6 +45,8 @@ export function mapBackendDocumentToEvidenceItem(
   const hasType = Boolean(summary?.canonical_type_id);
   const routing = summary?.ai_routing ?? null;
   const aiSetType = hasType && summary?.canonical_type_source === "ai" && routing?.used === true;
+  // The rules placed the type and Sustentra's AI read another one: the type stands, and a person checks it.
+  const aiDisagrees = hasType && !aiSetType && routing?.used === false && routing?.disagrees === true;
   const summaryWarnings = summary?.warnings ?? [];
   const noExtractionTargets =
     summary?.status === "partial" &&
@@ -86,8 +88,8 @@ export function mapBackendDocumentToEvidenceItem(
           })
         : null,
     detectedType: resolveCanonicalTypeDisplayName(summary),
-    typeReviewBand: aiSetType ? "needs_review" : hasType ? "auto_accepted" : null,
-    typeReviewReason: aiSetType ? AI_TYPE.suggested : null,
+    typeReviewBand: aiSetType || aiDisagrees ? "needs_review" : hasType ? "auto_accepted" : null,
+    typeReviewReason: aiSetType ? AI_TYPE.suggested : aiDisagrees ? AI_TYPE.toCheck : null,
     ...(routing && (aiSetType || routing.disagrees)
       ? {
           aiType: {

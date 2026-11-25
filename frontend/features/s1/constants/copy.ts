@@ -14,6 +14,7 @@ export const HALT_REASONS = {
 /** Claude's reading of a document's type (backend services/ai_routing.py). */
 export const AI_TYPE = {
   suggested: "Type suggested by Sustentra's AI, please confirm",
+  toCheck: "Type to check",
   disagreesOn: (rulesType: string, claudeType: string) =>
     `The rules chose ${rulesType}, but Sustentra's AI read the first pages as ${claudeType}. The type was not changed.`,
 } as const;
