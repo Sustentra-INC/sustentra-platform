@@ -111,6 +111,8 @@ def upload_lock(key: str, engine: Engine | None = None):  # noqa: ANN201 - a con
         # starved of the connection it needs to finish (which would hold the lock until timeout).
         with _UPLOAD_LOCK_HOLDERS:
             with tenant_transaction(current_scope(), engine or get_sync_engine()) as connection:
+                # never wait for ever on another server process: past this the request fails and is retried by hand
+                connection.execute(text("SELECT set_config('lock_timeout', '20s', true)"))
                 connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": key})
                 yield
 
