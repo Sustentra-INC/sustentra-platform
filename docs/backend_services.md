@@ -120,7 +120,7 @@ Claude yet, and the feature is off everywhere.
 | `AI_MODEL` | `claude-sonnet-5-5` | Claude API model id; on Bedrock the adapter adds `anthropic.`. |
 | `AI_BEDROCK_MODEL_ID` | none | Bedrock only: full model id, sent as given. Unset, the adapter sends `anthropic.` + `AI_MODEL`. Prices stay keyed by `AI_MODEL`. |
 | `AI_EFFORT` | `low` | `low`, `medium` or `high`. |
-| `S1_AI_ROUTING_SHADOW` | `false` | Claude routing also reads documents the rules placed confidently, and may only add the warning `ai_type_disagrees`. One call per document; needs `AI_SUGGESTIONS_ENABLED`. |
+| `S1_AI_ROUTING_SHADOW` | `false` | Claude routing also reads documents the rules placed confidently, and may only add the warning `ai_type_disagrees`. One call per document; needs `AI_SUGGESTIONS_ENABLED`. Deployed only when the Parameter Store value `/<env>/s1_ai_routing_shadow` is `true`; a blank or unreadable value leaves it off. One call waits at most 15 s, with no retry. |
 | `AI_WINDOW_PAGES` | `5` | Claude reading: pages per window (one page of overlap between windows). |
 | `AI_MAX_WINDOWS` | `10` | Claude reading: windows per document; the pages left out are the warning `ai_pages_skipped`. |
 | `AI_INLINE_MAX_WINDOWS` | `2` | Claude reading in inline mode (inside the upload request): at most this many windows. |
@@ -235,7 +235,7 @@ only suggests.
    logger at INFO, because at DEBUG the SDK logs whole request bodies.
 
 The optional String parameters `/<env>/ai_suggestions_enabled`, `/<env>/ai_provider`,
-`/<env>/ai_model`, `/<env>/ai_bedrock_model_id` and `/<env>/ai_monthly_cap_usd` are written to `app.env` the same way,
+`/<env>/ai_model`, `/<env>/ai_bedrock_model_id`, `/<env>/ai_monthly_cap_usd` and `/<env>/s1_ai_routing_shadow` are written to `app.env` the same way,
 when they exist.
 
 ### Runbook

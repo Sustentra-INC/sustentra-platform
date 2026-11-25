@@ -51,6 +51,9 @@ MAX_LINES = 200
 MAX_CHARS = 12_000
 MAX_OUTPUT_TOKENS = 600
 MIN_QUOTE = 8  # characters
+# One call reads at most 12,000 characters and answers in at most 600 tokens, and a person waits for the
+# read: so one call is bounded to 15 s with no retry (the Claude client default is 90 s and one retry).
+REQUEST_TIMEOUT_S = 15.0
 NONE_ID = "none"
 UNAVAILABLE = "ai_unavailable"
 CAP_REACHED = "ai_cap_reached"
@@ -197,9 +200,18 @@ def new_client(settings: Settings) -> ClaudeClient | None:
         return None
 
 
+def new_routing_client(settings: Settings) -> ClaudeClient | None:
+    """The client routing uses: it fails fast, so a slow answer never holds a read up for long."""
+
+    try:
+        return get_claude(settings, timeout_s=REQUEST_TIMEOUT_S, max_retries=0)
+    except AiNotConfiguredError:
+        return None
+
+
 class AiRouting:
     def __init__(self, *, settings: Settings | None = None,
-                 client_factory: Callable[[Settings], ClaudeClient | None] = new_client,
+                 client_factory: Callable[[Settings], ClaudeClient | None] = new_routing_client,
                  ledger: Ledger | None = None) -> None:
         self._settings = settings
         self._client_factory = client_factory

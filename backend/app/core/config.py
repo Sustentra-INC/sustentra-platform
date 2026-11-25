@@ -138,6 +138,17 @@ class Settings(BaseSettings):
     def _strip(cls, value: str) -> str:
         return value.strip()
 
+    @field_validator("s1_ai_routing_shadow", mode="before")
+    @classmethod
+    def _unreadable_shadow_switch_is_off(cls, value: object) -> object:
+        """A blank or unreadable S1_AI_ROUTING_SHADOW leaves the double-check off; it must not stop the app."""
+
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.strip().lower() in {"1", "true", "yes", "on", "t", "y"}:
+            return True
+        return False
+
     @field_validator("ai_bedrock_model_id", mode="before")
     @classmethod
     def _blank_bedrock_id_is_unset(cls, value: object) -> object:
