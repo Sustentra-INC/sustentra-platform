@@ -130,6 +130,8 @@ SHEET_RULE = """\
 - A spreadsheet line is one sheet row: its cells from left to right, separated by " | ". A value
   is read from one cell. Quote the cell with its label (the words next to it on the row), copied exactly.
   The sheet's first row is repeated above its rows as the likely column headers.
+  A row can hold one figure per site, year or unit: read the one whose column header is what the field asks for. A
+  company total is only in a total column or a total row, never one site's figure.
 """
 
 
