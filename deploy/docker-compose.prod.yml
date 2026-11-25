@@ -11,6 +11,9 @@ x-hardening: &hardening
     - ALL
   restart: unless-stopped
 
+# Every service has a memory ceiling (MVP-243): one that runs away is stopped and restarted by itself, and
+# cannot take the whole 2 GB host with it. The ceilings add up to more than the host has on purpose: they are
+# not reservations, and the services do not peak together. Idle figures: staging, 25 Nov 2026.
 services:
   caddy:
     <<: *hardening
@@ -48,6 +51,7 @@ services:
     depends_on:
       - web
       - api
+    mem_limit: 192m  # idle about 25 MB
 
   web:
     <<: *hardening
@@ -71,6 +75,7 @@ services:
       - /app/.next/cache
     expose:
       - "3000"
+    mem_limit: 384m  # idle about 85 MB
 
   api:
     <<: *hardening
@@ -94,6 +99,8 @@ services:
       - /tmp
     expose:
       - "8000"
+    # idle about 160 MB; uploads (25 MB a file) and the Excel workpaper are its peaks
+    mem_limit: 896m
 
   # Reads the queued processing runs (S1_PROCESSING=queued). Runs the api image with the
   # api's settings. Active whenever S1_STORE is postgres-backed; under jsonl it idles and

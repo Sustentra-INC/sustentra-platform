@@ -90,6 +90,11 @@ def test_the_reader_runs_the_api_image_with_the_api_settings() -> None:
     assert reader["logging"]["options"]["tag"] == "{{.Name}}"
 
 
+def test_every_service_has_a_memory_ceiling() -> None:
+    limits = {name: service.get("mem_limit") for name, service in _services().items()}
+    assert limits == {"caddy": "192m", "web": "384m", "api": "896m", "reader": "768m"}
+
+
 def test_the_reader_stops_after_its_grace(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("S1_READER_SHUTDOWN_GRACE_SECONDS", raising=False)
     grace = Settings().s1_reader_shutdown_grace_seconds
