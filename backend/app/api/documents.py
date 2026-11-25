@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import uuid
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -223,6 +225,36 @@ def _queue_first_read(document: dict, user: CurrentUser) -> dict:
     return {**document, "processing_status": "queued", "processing_run": view}
 
 
+def _valid_client_upload_id(value: str | None) -> str | None:
+    """The browser's per-file upload id, normalized; a value that is not a UUID is a 422."""
+
+    if value is None or value == "":
+        return None
+    try:
+        return str(uuid.UUID(value.strip()))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="client_upload_id must be a UUID.") from exc
+
+
+def _answer_repeated_upload(document: dict, user: CurrentUser) -> dict:
+    """The answer for an upload id that already stored a document: that document, not a second copy.
+    A read already asked for (any state) comes with it, so the client does not ask again; a document
+    whose first attempt stopped before its read was asked for gets it now (asking is idempotent while
+    a read is active). Whatever state the document is in since (withdrawn, duplicate), it is returned
+    as it is: the same upload id is the same upload."""
+
+    run = next(
+        (r for r in current_run_repository().latest_per_document(str(document["engagement_id"]))
+         if r.document_id == document["document_id"]),
+        None,
+    )
+    if run is not None:
+        from backend.app.api.processing_runs import run_view  # it imports this module
+
+        return {**document, "processing_run": run_view(run)}
+    return _queue_first_read(document, user) if get_settings().s1_processing == "queued" else document
+
+
 @router.post("/engagements/{engagement_id}/documents/upload")
 async def upload_document(
     request: Request,
@@ -233,10 +265,12 @@ async def upload_document(
     evidence_id: str | None = Form(None),
     document_type: str | None = Form(None),
     batch_id: str | None = Form(None),
+    client_upload_id: str | None = Form(None),
     user: CurrentUser = Depends(s1_writer),
     engagement: dict = Depends(require_open_engagement),
 ) -> dict:
     org_id = org_of(user)
+    upload_id = _valid_client_upload_id(client_upload_id)
     _require_evidence_slot(evidence_id, user, engagement_id)
     if batch_id:  # one of several files uploaded together: the batch must be this engagement's
         from backend.app.api.document_batches import require_batch  # it imports this module
@@ -253,18 +287,34 @@ async def upload_document(
         content = await file.read()
         if len(content) > max_bytes:
             raise HTTPException(status_code=413, detail=upload_too_large_detail(max_bytes))
-        document = _upload_service.upload_document(
-            engagement_id=engagement_id,
-            file_name=file.filename,
-            content=content,
-            mime_type=mime_type,
-            document_role=document_role,
-            uploaded_by=_uploader(user),
-            evidence_id=evidence_id,
-            document_type=document_type,
-            org_id=org_id,
-            batch_id=batch_id or None,
+        # With an upload id, look-up and store happen under one lock (Postgres: an advisory lock, so it
+        # holds across server processes), so a retry that arrives while the first attempt is still
+        # being stored waits for it and then gets that document.
+        guard = (
+            _upload_service.upload_guard(org_id=org_id, engagement_id=engagement_id, client_upload_id=upload_id)
+            if upload_id
+            else nullcontext()
         )
+        with guard:
+            if upload_id:
+                existing = _upload_service.find_by_client_upload_id(
+                    engagement_id=engagement_id, org_id=org_id, client_upload_id=upload_id
+                )
+                if existing is not None:
+                    return _answer_repeated_upload(existing, user)
+            document = _upload_service.upload_document(
+                engagement_id=engagement_id,
+                file_name=file.filename,
+                content=content,
+                mime_type=mime_type,
+                document_role=document_role,
+                uploaded_by=_uploader(user),
+                evidence_id=evidence_id,
+                document_type=document_type,
+                org_id=org_id,
+                batch_id=batch_id or None,
+                client_upload_id=upload_id,
+            )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _queue_first_read(document, user) if get_settings().s1_processing == "queued" else document

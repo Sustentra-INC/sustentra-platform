@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy.engine import Engine
 
 from backend.app.domain.document import Document
-from backend.app.repositories.s1_postgres import S1Table
+from backend.app.repositories.s1_postgres import S1Table, upload_lock
 
 DEFAULT_JSONL_PATH = "local-data/documents/documents.jsonl"
 
@@ -30,6 +30,10 @@ def _to_dict(document: Document | dict) -> dict[str, Any]:
     if isinstance(document, dict):
         return copy.deepcopy(document)
     raise TypeError("document must be a Document or dict.")
+
+
+def _same_owner(a: Any, b: Any) -> bool:
+    return (None if a in (None, "") else str(a).lower()) == (None if b in (None, "") else str(b).lower())
 
 
 class _BaseDocumentRepository:
@@ -60,6 +64,15 @@ class _BaseDocumentRepository:
     def get_latest_by_evidence(self, evidence_id: str) -> dict | None:
         matches = self.list_by_evidence(evidence_id)
         return matches[-1] if matches else None
+
+    def get_by_client_upload_id(self, engagement_id: str, org_id: str | None, client_upload_id: str) -> dict | None:
+        """The document this organization's engagement already stored for that upload id, if any.
+        Never matches another organization's or engagement's document."""
+
+        for record in self.list_by_engagement(engagement_id):
+            if record.get("client_upload_id") == client_upload_id and _same_owner(record.get("org_id"), org_id):
+                return record
+        return None
 
     def update_processing_status(self, document_id: str, processing_status: str) -> dict:
         existing = self.get_by_id(document_id)
@@ -137,6 +150,14 @@ class PostgresDocumentRepository(_BaseDocumentRepository):
 
     def get_by_id(self, document_id: str) -> dict | None:
         return self._table.latest(document_id=document_id)
+
+    def upload_guard(self, key: str) -> Any:
+        return upload_lock(key, self._table.engine)
+
+    def get_by_client_upload_id(self, engagement_id: str, org_id: str | None, client_upload_id: str) -> dict | None:
+        return self._table.find_in_record(
+            "client_upload_id", client_upload_id, engagement_id=engagement_id, org_id=org_id
+        )
 
     def get_latest_by_evidence(self, evidence_id: str) -> dict | None:
         return self._table.latest(evidence_id=evidence_id)

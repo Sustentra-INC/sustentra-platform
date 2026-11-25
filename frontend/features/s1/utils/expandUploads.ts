@@ -35,8 +35,9 @@ export interface UploadItem {
   /** The name sent to the server: the last part of the path. */
   name: string;
   size: number;
-  /** Present when the file can be uploaded; gives the bytes (a zip entry is unpacked now). */
-  open?: () => Promise<File>;
+  /** Present when the file can be uploaded; gives the bytes (a zip entry is unpacked now). The signal is
+   *  the current upload's, passed at the moment of unpacking (a retry after a cancel gets a fresh one). */
+  open?: (signal?: AbortSignal) => Promise<File>;
   /** Present when it can't be uploaded: why, in one plain line. */
   reason?: string;
 }
@@ -87,7 +88,12 @@ function fileItem(file: File, path: string, limits: Limits): UploadItem {
   if (file.size === 0) return { ...base, reason: "The file is empty." };
   if (file.size > limits.maxFileBytes) return { ...base, reason: UPLOAD_TOO_LARGE };
   if (!isReadableUpload({ name, type: file.type })) return { ...base, reason: unreadableUploadMessage(name) };
-  return { ...base, open: async () => file };
+  const item: UploadItem = {
+    ...base,
+    // The name may be lengthened later to tell it from a file of the same name; the bytes are the same.
+    open: async () => (item.name === file.name ? file : new File([file], item.name, { type: file.type })),
+  };
+  return item;
 }
 
 interface ZipResult {
@@ -171,15 +177,15 @@ async function expandZip(
     else if (!isReadableUpload({ name })) items.push({ ...base, reason: unreadableUploadMessage(name) });
     else {
       let counted = 0;
-      items.push({
+      const item: UploadItem = {
         ...base,
-        open: async () => {
+        open: async (signal?: AbortSignal) => {
           budget.unpacked -= counted; // a retry unpacks it again: count it once
           counted = 0;
           const bytes = await extractZipEntry(file, entry, {
             maxBytes: limits.maxFileBytes,
             maxRatio: limits.maxRatio,
-            signal: options.signal,
+            signal,
             onBytes: (n) => {
               budget.unpacked += n;
               counted += n;
@@ -187,9 +193,10 @@ async function expandZip(
                 throw new ZipError(`Stopped: the zips unpack to more than ${MAX_UNPACKED_GB} GB in all.`);
             },
           });
-          return new File([bytes.buffer as ArrayBuffer], name);
+          return new File([bytes.buffer as ArrayBuffer], item.name);
         },
-      });
+      };
+      items.push(item);
     }
   }
   return {
@@ -317,5 +324,62 @@ export async function expandUploads(pick: UploadPick, options: ExpandOptions = {
     items.push(...folderItems);
     summaries.push(summaryLine(cleanText(unit.root), found, folderItems.filter((i) => i.reason).length, junk));
   }
+  tellSameNamesApart(items);
   return { items, summaries };
+}
+
+/** What the server will keep of a name (backend/app/services/local_storage_service.py,
+ *  _sanitize_file_name): anything outside A-Z a-z 0-9 . _ - becomes "_". Two names that match after
+ *  this would look the same in Evidence, so this is the form compared. Case-insensitive. */
+function storedForm(name: string): string {
+  return name.replace(/[^A-Za-z0-9._-]+/g, "_").trim().toLowerCase();
+}
+
+/** The name with its type kept and its length capped, as sent. */
+function capName(name: string): string {
+  return baseNameOf(name);
+}
+
+/**
+ * Files in one pick whose names match (as the server will store them) are sent with the shortest
+ * parent folders that tell them apart, joined with " - ": "Plant A - bill.pdf", "Plant B - bill.pdf".
+ * A file with a name of its own keeps it exactly. The row still shows the full path.
+ */
+export function tellSameNamesApart(items: UploadItem[]): void {
+  const sendable = items.filter((item) => item.open);
+  const groups = new Map<string, UploadItem[]>();
+  for (const item of sendable) {
+    const key = storedForm(item.name);
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  }
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const parents = group.map((item) => item.path.split("/").slice(0, -1));
+    const deepest = Math.max(...parents.map((p) => p.length));
+    const nameAt = (index: number, depth: number) => {
+      const own = depth === 0 ? [] : parents[index].slice(-depth);
+      return capName([...own, group[index].name].join(" - "));
+    };
+    let depth = 1;
+    while (depth < deepest && new Set(group.map((_, i) => storedForm(nameAt(i, depth)))).size < group.length) depth++;
+    const renamed = group.map((_, i) => nameAt(i, depth));
+    group.forEach((item, i) => {
+      item.name = renamed[i];
+    });
+  }
+  // Still the same (names with no letters the server keeps, the same folders under other zips, or a
+  // file already called "A - bill.pdf"): number the later ones, so no two sent names are equal.
+  const seen = new Map<string, number>();
+  for (const item of sendable) {
+    const key = storedForm(item.name);
+    const n = (seen.get(key) ?? 0) + 1;
+    seen.set(key, n);
+    if (n > 1) {
+      const dot = item.name.lastIndexOf(".");
+      const stem = dot > 0 ? item.name.slice(0, dot) : item.name;
+      const ext = dot > 0 ? item.name.slice(dot) : "";
+      item.name = capName(`${stem} (${n})${ext}`);
+      seen.set(storedForm(item.name), 1);
+    }
+  }
 }

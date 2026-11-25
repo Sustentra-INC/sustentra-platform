@@ -227,7 +227,10 @@ export function uploadDocumentWithProgress(
   file: File,
   onProgress: (fraction: number) => void,
   /** The batch this file is uploaded in with others (see api/documentBatches.ts). */
-  batchId?: string
+  batchId?: string,
+  /** A random id made once per file: sent on every attempt, so a retry after a dropped connection
+   *  gets the document already stored instead of a second copy. */
+  clientUploadId?: string
 ): Promise<BackendDocumentLike> {
   if (!isReadableUpload(file)) return Promise.reject(new UnreadableFileError(file.name));
   if (file.size > MAX_UPLOAD_BYTES) return Promise.reject(new FileTooLargeError());
@@ -235,6 +238,7 @@ export function uploadDocumentWithProgress(
   body.append("file", file);
   body.append("document_role", "source_evidence");
   if (batchId) body.append("batch_id", batchId);
+  if (clientUploadId) body.append("client_upload_id", clientUploadId);
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();

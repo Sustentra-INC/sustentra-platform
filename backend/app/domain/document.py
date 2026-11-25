@@ -20,3 +20,7 @@ class Document(BaseModel):
     org_id: str | None = None
     # The batch it was uploaded in (migration 0019), when it was uploaded as one of several files.
     batch_id: str | None = None
+    # A random id the browser makes once per file and sends on every attempt to upload it, so a retry
+    # after a dropped connection finds this document instead of storing a second copy. None = an
+    # older client (or a document made some other way).
+    client_upload_id: str | None = None

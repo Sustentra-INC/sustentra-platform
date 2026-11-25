@@ -47,9 +47,9 @@ describe("zips", () => {
     expect(r.summaries).toEqual(["4 files found in Evidence.zip, 2 can't be read, 5 system files skipped"]);
   });
 
-  it("keeps two files with the same name in different folders, each with its own path", async () => {
+  it("keeps two files with the same name in different folders, each with its own path and a name that tells them apart", async () => {
     const r = await expandUploads(pickOf(zipFile({ "A/bill.pdf": "1", "B/bill.pdf": "2" })));
-    expect(r.items.map((i) => [i.path, i.name])).toEqual([["A/bill.pdf", "bill.pdf"], ["B/bill.pdf", "bill.pdf"]]);
+    expect(r.items.map((i) => [i.path, i.name])).toEqual([["A/bill.pdf", "A - bill.pdf"], ["B/bill.pdf", "B - bill.pdf"]]);
     expect(await (await r.items[1].open!()).text()).toBe("2");
   });
 
@@ -198,11 +198,12 @@ describe("zips", () => {
     await expect(r2.items[1].open!()).rejects.toThrow(/more than/);
   });
 
-  it("stops unpacking when cancelled", async () => {
+  it("stops unpacking when cancelled: the signal is given when the file is opened", async () => {
     const c = new AbortController();
-    const r = await expandUploads(pickOf(zipFile({ "a.csv": "x".repeat(100) })), { signal: c.signal });
+    const r = await expandUploads(pickOf(zipFile({ "a.csv": "x".repeat(100) })));
     c.abort();
-    await expect(r.items[0].open!()).rejects.toThrow(/Cancelled/);
+    await expect(r.items[0].open!(c.signal)).rejects.toThrow(/Cancelled/);
+    await expect(r.items[0].open!(new AbortController().signal)).resolves.toBeInstanceOf(File); // a retry, fresh signal
     const stopped = await expandUploads(pickOf(zipFile({ "a.csv": "x" })), { signal: c.signal });
     expect(stopped.items).toHaveLength(0);
   });
@@ -258,5 +259,78 @@ describe("folders", () => {
   it("never sends a path: the name is the last part", async () => {
     const r = await expandUploads(folderPick({ "A/B/C/doc.pdf": "x" }));
     expect(r.items[0].name).toBe("doc.pdf");
+  });
+});
+
+describe("files with the same name", () => {
+  const names = async (paths: Record<string, string>) =>
+    Object.fromEntries((await expandUploads(folderPick(paths))).items.map((i) => [i.path, i.name]));
+
+  it("keep their own name when it is unique, exactly", async () => {
+    expect(await names({ "A/one.pdf": "x", "B/two.pdf": "x" })).toEqual({ "A/one.pdf": "one.pdf", "B/two.pdf": "two.pdf" });
+  });
+
+  it("are sent with the shortest parent folder that tells them apart, joined with ' - '", async () => {
+    expect(await names({ "Plant A/bill.pdf": "x", "Plant B/bill.pdf": "x", "Plant B/other.pdf": "x" })).toEqual({
+      "Plant A/bill.pdf": "Plant A - bill.pdf",
+      "Plant B/bill.pdf": "Plant B - bill.pdf",
+      "Plant B/other.pdf": "other.pdf",
+    });
+  });
+
+  it("go deeper only as far as needed: three levels, and the same parent names under different years", async () => {
+    expect(await names({ "2024/Plant A/bill.pdf": "x", "2025/Plant A/bill.pdf": "x" })).toEqual({
+      "2024/Plant A/bill.pdf": "2024 - Plant A - bill.pdf",
+      "2025/Plant A/bill.pdf": "2025 - Plant A - bill.pdf",
+    });
+    expect(await names({ "Site/2024/Plant A/bill.pdf": "x", "Site/2025/Plant A/bill.pdf": "x", "Site/2025/Plant B/bill.pdf": "x" })).toEqual({
+      "Site/2024/Plant A/bill.pdf": "2024 - Plant A - bill.pdf",
+      "Site/2025/Plant A/bill.pdf": "2025 - Plant A - bill.pdf",
+      "Site/2025/Plant B/bill.pdf": "2025 - Plant B - bill.pdf",
+    });
+  });
+
+  it("compare without regard to letter case", async () => {
+    expect(await names({ "A/Bill.PDF": "x", "B/bill.pdf": "x" })).toEqual({ "A/Bill.PDF": "A - Bill.PDF", "B/bill.pdf": "B - bill.pdf" });
+  });
+
+  it("compare as the server will store them (it replaces anything but A-Z a-z 0-9 . _ - with _)", async () => {
+    const out = await names({ "A/a b.pdf": "x", "B/a_b.pdf": "x", "C/電気.pdf": "x", "D/水.pdf": "x" });
+    const stored = Object.values(out).map((n) => n.replace(/[^A-Za-z0-9._-]+/g, "_").toLowerCase());
+    expect(new Set(stored).size).toBe(4);
+    expect(out["A/a b.pdf"]).toBe("A - a b.pdf");
+  });
+
+  it("never end up equal after the server's cleaning, even when nothing tells them apart", async () => {
+    const out = await names({ "電/電.pdf": "x", "水/水.pdf": "x", "火/火.pdf": "x" });
+    const stored = Object.values(out).map((n) => n.replace(/[^A-Za-z0-9._-]+/g, "_").toLowerCase());
+    expect(new Set(stored).size).toBe(3);
+  });
+
+  it("a loose file keeps its name when another of the same name sits in a folder", async () => {
+    expect(await names({ "bill.pdf": "x", "A/bill.pdf": "x" })).toEqual({ "bill.pdf": "bill.pdf", "A/bill.pdf": "A - bill.pdf" });
+  });
+
+  it("keeps the 200-character cap and the extension", async () => {
+    const long = `${"x".repeat(300)}.pdf`;
+    const out = Object.values(await names({ [`A/${long}`]: "x", [`B/${long}`]: "x" }));
+    for (const name of out) {
+      expect(name.length).toBeLessThanOrEqual(200);
+      expect(name.endsWith(".pdf")).toBe(true);
+    }
+    expect(new Set(out).size).toBe(2);
+  });
+
+  it("does the same inside zips, and the bytes sent carry the new name", async () => {
+    const r = await expandUploads(pickOf(zipFile({ "A/bill.pdf": "1", "B/bill.pdf": "2" })));
+    expect(r.items.map((i) => i.name)).toEqual(["A - bill.pdf", "B - bill.pdf"]);
+    const file = await r.items[1].open!();
+    expect(file.name).toBe("B - bill.pdf");
+    expect(await file.text()).toBe("2");
+  });
+
+  it("only files that will be sent are renamed", async () => {
+    const r = await expandUploads(folderPick({ "A/bill.pdf": "x", "B/bill.pdf": "" }));
+    expect(r.items.map((i) => i.name)).toEqual(["bill.pdf", "bill.pdf"]);
   });
 });

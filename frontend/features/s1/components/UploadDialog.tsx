@@ -416,12 +416,19 @@ function UploadProgress({
   );
 }
 
+/** The full path, and the name it is sent as when that is not simply its last part. */
+function rowTitle(t: UploadTask): string {
+  if (!t.path) return t.filename;
+  const last = t.path.split("/").pop();
+  return last === t.filename ? t.path : `${t.path}\nSent as: ${t.filename}`;
+}
+
 /** One file's row. Memoized: a progress tick on one file must not redraw a thousand rows. */
 const UploadRow = memo(function UploadRow({ task: t, outcome }: { task: UploadTask; outcome: EvidenceItem | undefined }) {
   const blocked = outcome?.processingState === "blocked";
   return (
     <li className={`s1-upq__row s1-upq__row--${t.stage}${blocked ? " s1-upq__row--needs" : ""}`}>
-      <BreakableName className="s1-upq__name" name={t.path ?? t.filename} title={t.path ?? t.filename} />
+      <BreakableName className="s1-upq__name" name={t.path ?? t.filename} title={rowTitle(t)} />
       <span className="s1-muted s1-upq__size">{formatSize(t.size)}</span>
       <span className="s1-upq__track" aria-hidden>
         <span
