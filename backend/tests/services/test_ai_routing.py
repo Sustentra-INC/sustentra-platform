@@ -292,16 +292,42 @@ def test_a_chunked_run_is_routed_on_the_merged_output_and_skipped_when_pages_1_2
 SHADOW_ARGS: dict[str, Any] = {"status": "classified", "primary": "CT-S1-FUELQTY"}
 
 
-def test_the_routing_client_has_a_short_timeout_and_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_quick_client_has_a_short_timeout_and_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, Any] = {}
 
-    def fake_get_claude(settings: Settings, *, timeout_s: float, max_retries: int) -> None:
-        seen.update(timeout_s=timeout_s, max_retries=max_retries)
+    def fake_get_claude(settings: Settings, **kw: Any) -> None:
+        seen.update(kw)
 
     monkeypatch.setattr(ai_routing, "get_claude", fake_get_claude)
     ai_routing.new_routing_client(settings())
     assert seen == {"timeout_s": ai_routing.REQUEST_TIMEOUT_S, "max_retries": 0}
     assert ai_routing.REQUEST_TIMEOUT_S <= 20  # the longest one double-check can hold a read up
+    seen.clear()
+    ai_routing.new_client(settings())  # an unplaced document keeps the default client: 90 s, one retry
+    assert seen == {}
+
+
+def test_only_the_double_check_uses_the_quick_client(tmp_path: Any) -> None:
+    built: list[str] = []
+    claude = FakeClaude(said("CT-S1-REFRSVC", "Refrigerant charge log and top-up record"))
+
+    def default(s: Settings) -> Any:
+        built.append("default")
+        return claude
+
+    def quick(s: Settings) -> Any:
+        built.append("quick")
+        return claude
+
+    def routed(**kw: Any) -> AiRouting:
+        return AiRouting(settings=settings(s1_ai_routing_shadow=True), client_factory=default,
+                         quick_client_factory=quick, ledger=FakeLedger(), **kw)
+
+    read(pipeline(routed()), tmp_path)  # the rules could not place it: the AI decides the type
+    assert built == ["default"]
+    built.clear()
+    read(pipeline(routed(), **SHADOW_ARGS), tmp_path)  # the rules placed it: the double-check
+    assert built == ["quick"]
 
 
 def test_a_slow_or_failing_double_check_keeps_the_rules_type_and_adds_a_warning_only(tmp_path: Any) -> None:
@@ -309,7 +335,9 @@ def test_a_slow_or_failing_double_check_keeps_the_rules_type_and_adds_a_warning_
         routing, _ = router(claude, s1_ai_routing_shadow=True)
         run = read(pipeline(routing, **SHADOW_ARGS), tmp_path)
         assert (run["canonical_type_id"], run["canonical_type_source"]) == ("CT-S1-FUELQTY", "classifier")
-        assert any(w.startswith("ai_unavailable") for w in run["warnings"]) and "ai_routing" not in run
+        assert "ai_routing" not in run
+        assert [w for w in run["warnings"] if w.startswith("ai_")] == [
+            "ai_double_check_skipped: The type was not double-checked by Sustentra's AI this time."]
 
 
 def test_a_double_check_over_the_monthly_cap_makes_no_call(tmp_path: Any) -> None:
@@ -317,7 +345,8 @@ def test_a_double_check_over_the_monthly_cap_makes_no_call(tmp_path: Any) -> Non
     routing, ledger = router(claude, FakeLedger(spent=1_000_000), s1_ai_routing_shadow=True)
     run = read(pipeline(routing, **SHADOW_ARGS), tmp_path)
     assert claude.calls == [] and ledger.rows == [] and run["canonical_type_source"] == "classifier"
-    assert any(w.startswith("ai_cap_reached") for w in run["warnings"])
+    assert [w for w in run["warnings"] if w.startswith("ai_")] == [
+        "ai_double_check_skipped: The type was not double-checked by Sustentra's AI this time."]
 
 
 def test_a_broken_ledger_does_not_stop_the_read(tmp_path: Any) -> None:
@@ -328,7 +357,7 @@ def test_a_broken_ledger_does_not_stop_the_read(tmp_path: Any) -> None:
     routing, _ = router(FakeClaude(said("CT-S1-REFRSVC", "Refrigerant charge log and top-up record")),
                         BrokenLedger(), s1_ai_routing_shadow=True)
     run = read(pipeline(routing, **SHADOW_ARGS), tmp_path)
-    assert run["canonical_type_source"] == "classifier" and any(w.startswith("ai_unavailable") for w in run["warnings"])
+    assert run["canonical_type_source"] == "classifier" and any(w.startswith("ai_double_check_skipped") for w in run["warnings"])
 
 
 def test_a_type_a_person_set_is_not_double_checked_on_a_re_read(tmp_path: Any) -> None:
