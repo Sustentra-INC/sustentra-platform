@@ -97,6 +97,9 @@ LAYOUT_EXTRACTOR_TYPE_IDS = FUEL_TYPE_IDS | {ELEC_TYPE_ID, REFRIGERANT_TYPE_ID, 
 FGAS_RELATED_TYPE_IDS = {"CT-S1-FGASINV", "CT-S1-EQUIPLEAK", "CT-S1-ELECSF6", "CT-S1-FGASPROC"}
 
 
+DOUBLE_CHECK_SKIPPED = "ai_double_check_skipped: The type was not double-checked by Sustentra's AI this time."
+
+
 class PipelineOrchestrationService:
     def __init__(
         self,
@@ -525,8 +528,11 @@ class PipelineOrchestrationService:
 
                 if canonical_type_source in ("classifier", "content_check") and self._ai_routing.shadow:
                     # Shadow mode: Claude reads the document too, and may only disagree in a warning.
-                    shadow = self._route(parser_output, org_id, engagement_id, include_optional, include_deprecated)
-                    warnings.extend(self._routing_warnings(shadow))
+                    shadow = self._route(parser_output, org_id, engagement_id, include_optional, include_deprecated,
+                                         quick=True)
+                    if shadow.status == "unavailable" or (shadow.status == "off" and shadow.warning):
+                        # The rules placed this type; a failed check is a plain note, never an alarm.
+                        warnings.append(DOUBLE_CHECK_SKIPPED)
                     if shadow.status == "suggested" and shadow.canonical_type_id != canonical_type_id:
                         warnings.append(
                             f"ai_type_disagrees: the rules chose {canonical_type_id}, Sustentra's AI read the first pages "
@@ -1041,15 +1047,16 @@ class PipelineOrchestrationService:
         return dumped
 
     def _route(self, parser_output: dict, org_id: str | None, engagement_id: str, include_optional: bool,
-               include_deprecated: bool) -> RoutingResult:
+               include_deprecated: bool, quick: bool = False) -> RoutingResult:
         """Claude's suggestion for the document's type (a no-op, ``off``, when AI is not enabled)."""
 
         def has_targets(type_id: str) -> bool:
             return bool(self._get_target_service().get_targets_for_canonical_type(
                 type_id, include_optional=include_optional, include_deprecated=include_deprecated))
 
+        extra = {"quick": True} if quick else {}  # only the optional double-check asks for the quick client
         result: RoutingResult = self._ai_routing.suggest(
-            parser_output, org_id=org_id, engagement_id=engagement_id, has_targets=has_targets)
+            parser_output, org_id=org_id, engagement_id=engagement_id, has_targets=has_targets, **extra)
         return result
 
     @staticmethod

@@ -530,6 +530,7 @@ class EngagementRecalculationService:
                 review = resolved.decision or {}
                 values.append({
                     "file_name": document.get("file_name"), "record_index": item.get("record_index"),
+                    "document_id": document_id, "candidate_id": item.get("candidate_id"),
                     "field": item.get("display_label") or item.get("field_name"),
                     "extracted": item.get("normalized_value"), "unit": item.get("unit"),
                     "decision": review.get("decision")

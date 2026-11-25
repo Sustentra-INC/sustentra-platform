@@ -82,7 +82,7 @@ _WARNING_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^Pipeline orchestration failed"), PIPELINE_FAILED),
 )
 # Codes whose text is already counts and ranges only; kept as written.
-_KEPT_CODES = ("pages_unread:", "ai_unavailable:", "ai_cap_reached:", "ai_pages_skipped:", "ai_time_budget:")
+_KEPT_CODES = ("pages_unread:", "ai_unavailable:", "ai_cap_reached:", "ai_double_check_skipped:", "ai_pages_skipped:", "ai_time_budget:")
 
 logger = logging.getLogger("sustentra.halt_text")
 

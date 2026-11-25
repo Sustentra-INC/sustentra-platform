@@ -26,7 +26,9 @@ export type ReviewStatus =
   | "unreviewed"
   | "accepted"
   | "corrected"
-  | "keyed_by_reviewer";
+  | "keyed_by_reviewer"
+  // A reviewer rejected the value (with a reason): it is never used in the calculation.
+  | "rejected";
 
 export type ValueProperty =
   | "estimated_read"

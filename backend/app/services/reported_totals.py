@@ -53,6 +53,7 @@ SCOPE_ROWS: dict[str, tuple[str, str]] = {
     "s3": ("scope3", "scope3_total"),
 }
 REPORTED_ONLY_PREFIX = "scope3"
+FIELD_ROW = "field:"
 
 
 def is_reported_only(field_id: str) -> bool:
@@ -125,9 +126,31 @@ _SCALES: tuple[tuple[re.Pattern[str], float], ...] = (
     (re.compile(r"(?i:\b(?:in\s+)?millions?\b)|\bMM\b|(?<![A-Za-z])m\s+(?=\x00)"), 1e6),
 )
 # A measure that is not an amount of emissions: an intensity ("tCO2e / $M revenue"), a ratio, "per" anything.
-_BAD_MEASURE = re.compile(r"(?i)intensity|\bper\b|revenue|/")
+_PER_WORDS = re.compile(r"(?i)intensity|\bper\b|revenue")
+_DATE = re.compile(r"\b\d{1,4}/\d{1,2}/\d{1,4}\b")  # "01/30/2026" is a date, not a denominator
+# What follows a "/" when it divides: a currency, a number or a unit of activity ("tCO2e / $M", "/ employee", "/MWh"),
+# as against "Method / notes".
+_DENOMINATOR = re.compile(
+    r"(?i)^\s*(?:[$\u20ac\u00a3]|\d|(?:units?|employees?|ftes?|head|sq|square|m2|m\u00b2|ft|ft\u00b2|hours?|hrs?|mwh|kwh|gwh|gj|mj|tj|mmbtu"
+    r"|tonnes?|tons?|t|kg|litres?|liters?|l|gallons?|barrels?|products?|production|output|sales|turnover|usd|eur|gbp"
+    r"|million|m|k|passengers?|km|miles?|days?|years?|yr|months?|patients?|beds?|rooms?|students?|items?|pieces?"
+    r"|vehicles?)\b)")
+
+
+def _other_measure(text: Any) -> bool:
+    """True for a header or caption about another measure than an amount of emissions: an intensity, a ratio, "per" or
+    a denominator after a slash ("tCO2e / $M revenue"). A slash between plain words ("Method / notes") or in a date
+    is not one."""
+
+    clean = _DATE.sub(" ", _text(text))
+    if _PER_WORDS.search(clean):
+        return True
+    return any(_DENOMINATOR.match(part) for part in clean.split("/")[1:])
+
+
 # Reasons a column is some other measure than the emissions total.
-_NOT_A_TOTAL = re.compile(r"(?i)intensity|\bper\b|revenue|/|biogenic|%|percent|change|target|baseline|reduction|share|ratio|yoy")
+_NOT_A_TOTAL = re.compile(r"(?i)intensity|\bper\b|revenue|biogenic|%|percent|change|target|baseline|reduction|share|ratio|yoy"
+                          r"|prior|previous|last\s+year")
 _NAMES_TOTAL = re.compile(r"(?i)\btotal\b|\bemissions?\b")
 # Unit-like words that are not unambiguous: a lowercase "mt", "tons" (short tons?), "short tons".
 _UNCLEAR = re.compile(r"(?i)(?<![a-z])(?:mt|tons?|short\s+tons?)\s?(?:of\s+)?(?:co2|carbon\s+dioxide)")
@@ -157,7 +180,7 @@ def read_unit(texts: Sequence[str]) -> tuple[str | None, str | None, str | None]
                 unclear = True
                 source = source or text
             continue
-        if _BAD_MEASURE.search(text):
+        if _other_measure(text):
             return None, text, "measure"
         labels |= found
         scales |= factors
@@ -260,6 +283,8 @@ def column_of(header: str) -> str | None:
 
 
 def field_for(row: str, column: str) -> str:
+    if row.startswith(FIELD_ROW):  # a row that already names its field ("field:fugitive_total")
+        return row[len(FIELD_ROW):]
     prefix, total = SCOPE_ROWS[row]
     return total if column == "total" else f"{prefix}_{column}"
 
@@ -350,7 +375,8 @@ def _total_ok(context: Sequence[str], unit: str | None) -> bool:
     unit is one of CO2e, and nothing there says it is another measure (intensity, biogenic, a change, a target...)."""
 
     joined = " ".join(context)
-    return bool(unit in CO2E_UNITS and _NAMES_TOTAL.search(joined) and not _NOT_A_TOTAL.search(joined))
+    return bool(unit in CO2E_UNITS and _NAMES_TOTAL.search(joined) and not _NOT_A_TOTAL.search(joined)
+                and not _other_measure(joined))
 
 
 def _segment(matched: list[tuple[list[_Cell], str]], texts: Sequence[_Cell], row_h: float
@@ -435,7 +461,7 @@ def _read_table_cells(group: list[tuple[list[_Cell], str]], texts: Sequence[_Cel
     headers = {id(cell): " ".join(c.text for c in sorted(column_cells(cell.cx, 0.5 * pitch), key=lambda c: c.cy))
                for cell in reference}
     # a column about another measure ("tCO2e / $M revenue") names nothing, and takes no part in the unit
-    named = {id(cell): (None if _BAD_MEASURE.search(headers[id(cell)]) else column_of(headers[id(cell)])) for cell in reference}
+    named = {id(cell): (None if _other_measure(headers[id(cell)]) else column_of(headers[id(cell)])) for cell in reference}
     band = [c for c in texts if floor < c.y1 <= top + 1e-4]
     if sum(1 for c in band if _is_year(c.text)) >= 2:
         return [], ["A table here has several year columns, so none of its figures were read: the document would "
@@ -447,7 +473,7 @@ def _read_table_cells(group: list[tuple[list[_Cell], str]], texts: Sequence[_Cel
     def near(c: _Cell) -> float:
         return top - c.y1 if c.y1 <= top else max(c.y0 - bottom, 0.0)
 
-    bad_headers = {id(c) for cell in reference for c in column_cells(cell.cx, 0.5 * pitch) if _BAD_MEASURE.search(headers[id(cell)])}
+    bad_headers = {id(c) for cell in reference for c in column_cells(cell.cx, 0.5 * pitch) if _other_measure(headers[id(cell)])}
     context = sorted((c for c in cells if id(c) not in value_ids and id(c) not in bad_headers
                       and max(previous, top - 0.3) <= c.y1 <= min(bottom + 0.05, following - 0.005)), key=near)
     unit, unit_text, problem = read_unit([c.text for c in context])
@@ -483,6 +509,9 @@ class TableRead:
     problem: str | None
     year: int | None
     notes: list[str]
+    at: list[tuple[int, int]] = field(default_factory=list)  # (row, column) of each cell, in the rows given; may be empty
+    year_at: tuple[int, int] | None = None  # the cell the year was read from
+    unit_texts: list[str | None] = field(default_factory=list)  # per cell, where columns print their own unit
 
 
 def _segments(grid: list[list[str]]) -> list[tuple[list[list[str]], list[list[str]]]]:
@@ -507,9 +536,9 @@ def _segments(grid: list[list[str]]) -> list[tuple[list[list[str]], list[list[st
     return out
 
 
-def read_tables(rows: Sequence[Sequence[Any]]) -> list[TableRead]:
-    """The tables in a grid of rows (a workbook sheet, a Textract table): each is read through its own header, and the
-    columns are the same position in every row."""
+def _read_scope_rows_tables(rows: Sequence[Sequence[Any]]) -> list[TableRead]:
+    """The older reader: scope rows by gas columns, each table read through its own header; the columns are the same
+    position in every row."""
 
     grid = [[_text(c) for c in row] for row in rows]
     reads: list[TableRead] = []
@@ -521,7 +550,7 @@ def read_tables(rows: Sequence[Sequence[Any]]) -> list[TableRead]:
         label_column = min((next((i for i, c in enumerate(r) if c), width) for r in body), default=0)
         for index in range(width):
             text = " ".join(row[index] for row in header[-4:] if index < len(row) and row[index])
-            if _BAD_MEASURE.search(text) and index != label_column:  # the label column's header is the caption
+            if _other_measure(text) and index != label_column:  # the label column's header is the caption
                 other_measure.add(index)
             names[index] = None if index in other_measure else column_of(text)
         header_texts = [c for row in header for c in row if c]
@@ -563,9 +592,425 @@ def read_tables(rows: Sequence[Sequence[Any]]) -> list[TableRead]:
 
 
 # =========================================================================================
+# A company's own workbook: scope rows with facility columns and a Total column, or facility rows and a Total row
+# =========================================================================================
+# Only a figure printed as the total is read. A cross-check that the parts add up may REFUSE a figure, never produce one.
+_SCOPE_LEAD = re.compile(r"scope\s*[123]\b")
+_COMBINED = re.compile(r"scope\s*1\s*(?:\+|and|&|,|-)\s*(?:scope\s*)?2\b|\b1\s*\+\s*2\b")
+_PREPARED = re.compile(r"(?i)prepared|status\s*:|as of|dated?\b|issued|generated|last updated|updated on")
+_TOTAL_ROW = re.compile(r"(?:(?:grand|company|corporate|organi[sz]ation|group|overall)[\s-]+)?total"
+                        r"(?:\s+(?:emissions?|ghg|co2e|all\s+facilities|all\s+sites))*")
+_CATEGORIES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"stationary(?:\s+combustion)?(?:\s*\(.*\))?"), "stationary_combustion_total"),
+    (re.compile(r"mobile(?:\s+combustion)?(?:\s*\(.*\))?"), "mobile_combustion_total"),
+    (re.compile(r"fugitive(?:\s+emissions?)?(?:\s*\(.*\))?"), "fugitive_total"),
+    (re.compile(r"process(?:\s+emissions?)?(?:\s*\(.*\))?"), "process_total"))
+_BASIS = re.compile(r"(location|market)[\s-]*based")
+_NOT_AN_INVENTORY = re.compile(r"(?i)\b(?:targets?|goals?|forecasts?|projected|projections?|budgets?|plan|planned|scenarios?"
+                               r"|pathways?|baseline|base\s+years?)\b")
+TARGET_NOTE = "A table here looks like a target, forecast or plan, not reported emissions, so none of its figures were read."
+NO_YEAR_NOTE = "A table here has several year columns, so none of its figures were read."
+MEASURE_NOTE = "A table here is about another measure (an intensity or a ratio), so none of its figures were read."
+
+
+@dataclass
+class _Block:
+    captions: list[int]  # single-cell rows above the table: a title, a unit line
+    header: list[int]
+    body: list[int]
+
+
+def _blocks(grid: list[list[str]]) -> list[_Block]:
+    """The tables of a sheet: a header (rows of text), then rows with figures, ending at a blank row or at the next
+    header. A single-cell row is a caption of the table below it."""
+
+    out: list[_Block] = []
+    captions: list[int] = []
+    header: list[int] = []
+    body: list[int] = []
+
+    def flush() -> None:
+        nonlocal captions, header, body
+        if body:
+            out.append(_Block(captions, header, body))
+            captions, header, body = [], [], []
+
+    for index, row in enumerate(grid):
+        cells = [c for c in row if c]
+        if not cells:
+            if body:
+                flush()
+            elif header:
+                captions, header = captions + header, []  # a header with no rows under it is only a caption
+            continue
+        if any(_value_cell(c) for c in row) or (any(_figure_cell(c) for c in row) and (header or body)):
+            body.append(index)  # a row of only year-like numbers is a header unless a header is already above it
+        elif any(_figure_cell(c) for c in row):
+            header.append(index)
+        elif len(cells) == 1:
+            if body:
+                flush()
+            captions.append(index)
+        elif body and _SCOPE_LEAD.match(cells[0].casefold()):
+            body.append(index)  # a scope row with a note and no figures stays in its table
+        else:
+            if body:
+                flush()
+            header.append(index)
+    flush()
+    return out
+
+
+def _figure_cell(text: Any) -> bool:
+    """A figure of a table's rows: a number (a whole number like 2025 is a figure here, not a year) or "not reported"."""
+
+    return number_of(text) is not None or is_not_reported(text)
+
+
+def _decimals(raw: str) -> int:
+    clean = _text(raw).replace(",", "")
+    return len(clean.split(".")[1]) if "." in clean else 0
+
+
+def _adds_up(parts: Sequence[str], total: str) -> bool:
+    """The printed parts add up to the printed total, within the rounding of the figures as printed."""
+
+    figure = number_of(total)
+    numbers = [number_of(p) for p in parts]
+    if figure is None or any(n is None for n in numbers):
+        return True
+    tolerance = 0.5 * 10 ** -_decimals(total) + sum(0.5 * 10 ** -_decimals(p) for p in parts) + 1e-9
+    return abs(sum(n for n in numbers if n is not None) - figure) <= tolerance
+
+
+def _strip_units(text: str) -> str:
+    """A header without its unit: "Scope 1 (tCO2e)" -> "scope 1"; "Scope 2 (location-based)" keeps its basis."""
+
+    def paren(match: re.Match[str]) -> str:
+        inner = match.group(0)
+        return " " if find_units(inner) or re.search(r"(?i)co2|ghg|tonn", inner) else inner
+
+    clean = _scan_units(re.sub(r"\([^)]*\)", paren, _text(text)))[1].replace("\x00", " ")
+    clean = re.sub(r"(?i)^total\s+(?=scope\s*[123](?!\s*[+&,]|\s*and))", "", clean.strip())
+    return " ".join(re.sub(r"[,:;]", " ", clean).split()).casefold().strip(" -")
+
+
+def _scope_of_header(text: str) -> str | None:
+    return scope_row(_strip_units(text)) if _text(text) and not _other_measure(text) else None
+
+
+def _row_label(row: Sequence[str]) -> tuple[list[tuple[int, str]], int | None]:
+    """The label cells of a row (text before its first figure) and the position of that first figure."""
+
+    first = next((i for i, c in enumerate(row) if _figure_cell(c)), None)
+    return ([(i, c) for i, c in enumerate(row) if c and (first is None or i < first)], first)
+
+
+@dataclass
+class _Row:
+    index: int
+    kind: str  # "total": a scope's total, "category", "sub": a subtotal, "combined": Scope 1+2, "other"
+    scope: int | None = None
+    key: str | None = None  # SCOPE_ROWS key of a total
+    field_id: str | None = None  # the target field of a category
+
+
+def _classify(labels: Sequence[tuple[int, str]], inherited: int | None) -> tuple[str, int | None, str | None, str | None]:
+    """(kind, scope, key, category field) of a scope-rows-table row, from its label cells. A scope that is not printed
+    in the row is the merged cell above it, and counts only for a category."""
+
+    texts = [t.casefold() for _, t in labels]
+    if not texts:
+        return "other", None, None, None
+    full = " ".join(texts)
+    if _COMBINED.search(full):
+        return "combined", None, None, None
+    lead = re.match(r"scope\s*([123])\b\s*(.*)", texts[0])
+    scope: int | None = int(lead.group(1)) if lead else None
+    core = " ".join(([lead.group(2)] if lead else [texts[0]]) + texts[1:]).strip()
+    printed = scope is not None
+    named = re.search(r"scope\s*([123])\b", core)
+    if named:
+        if scope is not None and int(named.group(1)) != scope:
+            return "other", None, None, None
+        scope, printed = int(named.group(1)), True
+    if scope is None:
+        scope = inherited
+    if re.search(r"\bsub-?\s?total\b", core):
+        return "sub", scope, None, None
+    has_total = re.search(r"\btotal\b", core) is not None
+    basis = _BASIS.search(core)
+    rest = re.sub(r"\btotal\b|scope\s*[123]\b|\bemissions?\b|\bghg\b|\bco2e\b|\bgross\b", " ", core)
+    rest = " ".join(re.sub(r"[()\-:,]", " ", _BASIS.sub(" ", rest)).split())
+    if scope is None:
+        return "other", None, None, None
+    if not rest:
+        if not (printed or (basis and scope == 2)):
+            return "other", scope, None, None
+        if scope == 1:
+            return ("total", 1, "s1", None) if not basis else ("other", 1, None, None)
+        if scope == 2:
+            return ("total", 2, f"s2_{basis.group(1)}", None) if basis else ("other", 2, None, None)
+        return "total", 3, "s3", None
+    if has_total:
+        return "sub", scope, None, None
+    if scope == 1:
+        for pattern, field_id in _CATEGORIES:
+            if pattern.fullmatch(core.strip()):
+                return "category", 1, None, field_id
+    return "category", scope, None, None
+
+
+class _Table:
+    """One block of a sheet with what is read around it: columns' header texts, the caption, the year and the unit."""
+
+    def __init__(self, grid: list[list[str]], block: _Block) -> None:
+        self.grid, self.block = grid, block
+        self.width = max(len(grid[i]) for i in [*block.captions, *block.header, *block.body])
+        self.header_rows = block.header[-4:]
+        self.captions = [(i, c) for i in block.captions for c in grid[i] if c]
+
+    def column_texts(self, j: int) -> list[str]:  # nearest the rows first
+        return [self.grid[i][j] for i in reversed(self.header_rows) if j < len(self.grid[i]) and self.grid[i][j]]
+
+    def column_text(self, j: int) -> str:
+        return " ".join(reversed(self.column_texts(j)))
+
+    def cell(self, i: int, j: int) -> str:
+        return self.grid[i][j] if j < len(self.grid[i]) else ""
+
+    def value_columns(self) -> list[int]:
+        start = min((_row_label(self.grid[i])[1] or self.width) for i in self.block.body)
+        return [j for j in range(start, self.width) if any(_figure_cell(self.cell(i, j)) for i in self.block.body)]
+
+    def year(self) -> tuple[int | None, tuple[int, int] | None, bool]:
+        """(the one year named, the caption cell it is read from, whether the header names several). A preparation
+        date or a status line names no reporting year."""
+
+        header_years = years_in(c for j in range(self.width) for c in self.column_texts(j))
+        if len(header_years) > 1:
+            return None, None, True
+        caption_cells = [(i, c) for i, c in self.captions if not _PREPARED.search(c)]
+        years = header_years | years_in(c for _, c in caption_cells)
+        if len(years) != 1:
+            return None, None, False
+        year = next(iter(years))
+        at = next(((i, self.grid[i].index(c)) for i, c in caption_cells if year in years_in([c])), None)
+        return year, at, False
+
+    def unit(self, texts: Sequence[str]) -> tuple[str | None, str | None, str | None]:
+        return read_unit([*texts, *[c for _, c in reversed(self.captions)]])
+
+
+def _refuse(*notes: str) -> TableRead:
+    return TableRead([], None, None, None, None, list(notes))
+
+
+def _read_scope_rows_block(table: _Table) -> TableRead | None:
+    """Scope rows (a Scope column and a Category column) with facility columns and ONE Total column. None: not that."""
+
+    grid, body = table.grid, table.block.body
+    classified: list[_Row] = []
+    scope: int | None = None
+    recognised = False
+    for i in body:
+        labels, first = _row_label(grid[i])
+        if first is None or not labels:
+            continue
+        if len(labels) >= 2 and _SCOPE_LEAD.match(labels[0][1].casefold()):
+            recognised = True
+        kind, row_scope, key, field_id = _classify(labels, scope)
+        if _SCOPE_LEAD.match(labels[0][1].casefold()):
+            scope = None if kind == "combined" else row_scope
+        classified.append(_Row(i, kind, row_scope, key, field_id))
+    columns = table.value_columns()
+    total_named = [j for j in columns if re.search(r"(?i)\btotal\b", table.column_text(j))]
+    if not recognised and not (total_named and any(scope_row(next((c for c in grid[i] if c), "")) for i in body)
+                               and all(column_of(table.column_text(j)) is None for j in total_named)):
+        return None
+    notes: list[str] = []
+    excluded = {j for j in columns if _NOT_A_TOTAL.search(table.column_text(j)) or _other_measure(table.column_text(j))}
+    total_cols = [j for j in total_named if j not in excluded]
+    if len(total_cols) > 1:
+        return _refuse("A table here has more than one Total column (two years or two units), so none of its figures "
+                       "were read.")
+    year, year_at, several = table.year()
+    if several:
+        return _refuse(NO_YEAR_NOTE)
+    pool = [j for j in columns if j not in excluded]
+    single = False
+    if total_cols:
+        total_col = total_cols[0]
+    elif len(pool) == 1:
+        total_col, single = pool[0], True
+    else:
+        return _refuse("A table here has several columns and no Total column, so none of its figures were read "
+                       "(nothing is added up).")
+    parts_cols = [j for j in pool if j != total_col]
+    caption_texts = [c for _, c in table.captions]
+    heads = [t for j in range(table.width) if j not in excluded for t in table.column_texts(j)]
+    own = table.column_texts(total_col)
+    unit, unit_text, problem = table.unit(own + [t for t in heads if t not in own])
+    if problem == "measure":
+        return _refuse(MEASURE_NOTE)
+    if single and not _total_ok([*heads, *caption_texts], unit):
+        return _refuse("A table here has one value column that is not named as a total in a CO2e unit, so it was not read.")
+    refused: set[int] = set()
+    for row in classified:
+        cell = table.cell(row.index, total_col)
+        if row.kind not in ("total", "category") or not _figure_cell(cell):
+            continue
+        parts = [table.cell(row.index, j) for j in parts_cols if number_of(table.cell(row.index, j)) is not None]
+        if parts and not _adds_up(parts, cell):
+            refused.add(row.index)
+            notes.append("A row here does not add up to its printed total, so it was not read.")
+    # the Scope 1 total against its category rows
+    s1_total = [r for r in classified if r.kind == "total" and r.key == "s1" and number_of(table.cell(r.index, total_col)) is not None]
+    s1_cats = [r for r in classified if r.kind == "category" and r.scope == 1]
+    figures = [table.cell(r.index, total_col) for r in s1_cats if number_of(table.cell(r.index, total_col)) is not None]
+    if s1_total and figures and not _adds_up(figures, table.cell(s1_total[0].index, total_col)):
+        refused |= {r.index for r in (*s1_total, *s1_cats)}
+        notes.append("Scope 1 here does not add up to its categories, so it was not read.")
+    cells: list[tuple[str, str, str]] = []
+    at: list[tuple[int, int]] = []
+    for row in classified:
+        cell = table.cell(row.index, total_col)
+        if row.index in refused or row.kind not in ("total", "category") or not _figure_cell(cell):
+            continue
+        if row.kind == "total" and row.key:
+            cells.append((row.key, "total", cell))
+        elif row.kind == "category" and row.field_id:
+            cells.append((f"{FIELD_ROW}{row.field_id}", "total", cell))
+        else:
+            continue
+        at.append((row.index, total_col))
+    return TableRead(cells, unit, unit_text, problem, year, list(dict.fromkeys(notes)), at, year_at if cells else None)
+
+
+def _read_facility_rows_block(table: _Table) -> TableRead | None:
+    """Facility rows with scope columns and ONE Total row. None: not that."""
+
+    grid, body = table.grid, table.block.body
+    columns = table.value_columns()
+    mapped = {j: next((s for s in map(_scope_of_header, table.column_texts(j)) if s), None) for j in columns}
+    if not any(mapped.values()):
+        return None
+    labelled: list[tuple[int, str]] = []
+    for i in body:
+        labels, first = _row_label(grid[i])
+        if first is None or not labels:
+            continue
+        if _SCOPE_LEAD.match(labels[0][1].casefold()):
+            return None  # scope rows, not facility rows
+        labelled.append((i, " ".join(t for _, t in labels).casefold()))
+    year, year_at, several = table.year()
+    if several:
+        return _refuse(NO_YEAR_NOTE)
+    totals = [i for i, t in labelled if _TOTAL_ROW.fullmatch(t)]
+    if not totals:
+        return _refuse("A table here has facility rows and no Total row, so none of its figures were read "
+                       "(nothing is added up).")
+    if len(totals) > 1:
+        return _refuse("A table here has more than one Total row, so none of its figures were read.")
+    parts_rows = [i for i, t in labelled if i != totals[0] and not re.match(r"(?:sub-?\s?)?total\b", t)]
+    cells: list[tuple[str, str, str]] = []
+    at: list[tuple[int, int]] = []
+    texts: list[str | None] = []
+    notes: list[str] = []
+    unit: str | None = None
+    unit_text: str | None = None
+    problem: str | None = None
+    for key in dict.fromkeys(k for k in mapped.values() if k):
+        cols = [j for j, k in mapped.items() if k == key]
+        if len(cols) > 1:
+            notes.append("A scope is printed in more than one column here, so it was not read.")
+            continue
+        j = cols[0]
+        cell = table.cell(totals[0], j)
+        if not _figure_cell(cell):
+            continue
+        parts = [table.cell(i, j) for i in parts_rows if number_of(table.cell(i, j)) is not None]
+        if parts and not _adds_up(parts, cell):
+            notes.append("A Total here does not add up to its facilities, so it was not read.")
+            continue
+        col_unit, col_text, col_problem = table.unit(table.column_texts(j))
+        if col_problem == "measure":
+            notes.append(MEASURE_NOTE)
+            continue
+        if cells and (col_unit, col_problem) != (unit, problem):
+            return _refuse("A table here prints its scope columns in different units, so none of its figures were read.")
+        if not cells:
+            unit, unit_text, problem = col_unit, col_text, col_problem
+        cells.append((key, "total", cell))
+        at.append((totals[0], j))
+        texts.append(col_text)
+    return TableRead(cells, unit, unit_text, problem, year, list(dict.fromkeys(notes)), at, year_at if cells else None, texts)
+
+
+def read_tables(rows: Sequence[Sequence[Any]], sheet_name: str | None = None) -> list[TableRead]:
+    """The tables in a grid of rows (a workbook sheet, a Textract table): each is read through its own header, and the
+    columns are the same position in every row. A company workbook's layouts (scope rows by facility columns with one
+    Total column; facility rows with scope columns and one Total row) are read from the printed Total only; any other
+    table goes to the older reader."""
+
+    grid = [[_text(c) for c in row] for row in rows]
+    reads: list[TableRead] = []
+    for block in _blocks(grid):
+        table = _Table(grid, block)
+        own = [sheet_name or "", *(c for i in [*block.captions, *block.header] for c in grid[i] if c)]
+        if any(_NOT_AN_INVENTORY.search(t) for t in own):  # the table's own title, captions, header or sheet name
+            reads.append(_refuse(TARGET_NOTE))
+            continue
+        read = _read_scope_rows_block(table)
+        if read is None:
+            read = _read_facility_rows_block(table)
+        if read is not None:
+            reads.append(read)
+            continue
+        start = min([*block.captions, *block.header, *block.body])
+        reads.extend(_read_scope_rows_tables(rows[start:block.body[-1] + 1]))
+    return reads
+
+
+# =========================================================================================
 # The extractor
 # =========================================================================================
 CONFIDENCE = 0.8  # a figure read from a printed table cell; a reviewer still accepts it
+
+
+def _column_letters(index: int) -> str:
+    name = ""
+    index += 1
+    while index:
+        index, rest = divmod(index - 1, 26)
+        name = chr(65 + rest) + name
+    return name
+
+
+class _CellIndex:
+    """The source reference of a workbook cell by its place in a table's rows. The rows start at A1 only when every
+    cell of the table is found at that place with the text it holds; otherwise no place is claimed."""
+
+    def __init__(self, parser_output: Mapping[str, Any], table: Mapping[str, Any]) -> None:
+        sheet = table.get("sheet_name")
+        blocks = {b.get("block_id"): _text(b.get("text")) for b in parser_output.get("text_blocks") or [] if isinstance(b, dict)}
+        by_cell: dict[str, tuple[dict[str, Any], str]] = {}
+        for ref in parser_output.get("source_references") or []:
+            if isinstance(ref, dict) and sheet is not None and ref.get("sheet_name") == sheet and ref.get("cell_or_range"):
+                ids = ref.get("parser_block_ids") or []
+                by_cell[str(ref["cell_or_range"])] = (ref, blocks.get(ids[0], "") if ids else "")
+        self._by_cell = by_cell
+        self.ok = bool(by_cell)
+        for r, row in enumerate(table.get("rows") or []):
+            for c, value in enumerate(row):
+                if _text(value) and by_cell.get(f"{_column_letters(c)}{r + 1}", (None, None))[1] != _text(value):
+                    self.ok = False
+
+    def reference(self, at: tuple[int, int], raw: str | None) -> dict[str, Any] | None:
+        found = self._by_cell.get(f"{_column_letters(at[1])}{at[0] + 1}") if self.ok else None
+        if found is None or (raw is not None and found[1] != _text(raw)):
+            return None
+        return dict(found[0])
 
 
 class ReportedTotalsExtractor:
@@ -612,17 +1057,23 @@ class ReportedTotalsExtractor:
             if not isinstance(table, dict):
                 continue
             reference = self._service._source_reference_for_table(parser_output, table, document_id)
-            for read in read_tables(table.get("rows") or []):
+            rows = table.get("rows") or []
+            exact = _CellIndex(parser_output, table)
+            for read in read_tables(rows, table.get("sheet_name")):
                 notes.extend(read.notes)
-                for row, column, raw in read.cells:
+                for n, (row, column, raw) in enumerate(read.cells):
                     number = number_of(raw)
-                    located = self._service._with_position(parser_output, reference, raw, {"row_text": raw})
+                    # a cell the reader pointed at is outlined as that very cell; else the cell is looked for by its text
+                    located = (exact.reference(read.at[n], raw) if n < len(read.at) else None) \
+                        or self._service._with_position(parser_output, reference, raw, {"row_text": raw})
+                    unit_text = read.unit_texts[n] if n < len(read.unit_texts) else read.unit_text
                     hits.append(Hit(field_for(row, column), raw, number, read.unit if number is not None else None,
-                                    read.unit_text if number is not None else None, located,
+                                    unit_text if number is not None else None, located,
                                     {"page_number": table.get("page_number")}, read.year if number is not None else None,
                                     read.problem if number is not None else None))
                 if read.cells and read.year is not None:
-                    hits.append(Hit("reporting_year", str(read.year), float(read.year), None, None, reference,
+                    year_ref = (exact.reference(read.year_at, None) if read.year_at else None) or reference
+                    hits.append(Hit("reporting_year", str(read.year), float(read.year), None, None, year_ref,
                                     {"page_number": table.get("page_number")}, read.year))
         return hits, list(dict.fromkeys(notes))
 

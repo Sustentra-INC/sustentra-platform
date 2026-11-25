@@ -309,6 +309,7 @@ describe("extraction review: compact cards", () => {
       expect.stringMatching(/^\d+Corrected$/),
       // Every value added to requests, sent or not: "Requests", not "Requested".
       expect.stringMatching(/^\d+Requests$/),
+      expect.stringMatching(/^\d+Rejected$/),
     ]);
   });
 });
@@ -388,7 +389,7 @@ describe("extraction review: the document's key, pinned with the cards", () => {
     );
     const key = screen.getByRole("group", { name: "Highlights on the document" });
     expect(key.textContent).toContain("2 values read · 1 not found");
-    expect(Array.from(key.querySelectorAll(".s1-dd-key")).map((k) => k.textContent)).toEqual(["To review", "Accepted", "Corrected", "Requests", "Not found"]);
+    expect(Array.from(key.querySelectorAll(".s1-dd-key")).map((k) => k.textContent)).toEqual(["To review", "Accepted", "Corrected", "Requests", "Rejected", "Not found"]);
     // Adding a value is not saved on staging yet: no switch to highlight a figure.
     expect(within(key).queryByRole("button")).toBeNull();
     // The page is drawn once per render, with the document's marks.

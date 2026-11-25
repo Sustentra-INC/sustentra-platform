@@ -68,7 +68,8 @@ _MAX_SNIPPET = 240
 # labelled service / delivery / ship-to block. The company that is billed (bill to, sold to, customer) is
 # only a last resort: a ship-to block that repeats it names the site on its next line.
 FACILITY_LABELS: tuple[tuple[str, ...], ...] = (
-    ("facility name", "facility", "site name", "site", "premises name", "premises", "plant", "location name"),
+    ("facility name", "facility", "site name", "site", "premises name", "premises", "premise name", "premise", "plant",
+     "location name"),
 )
 SITE_LOCATION_LABELS: tuple[tuple[str, ...], ...] = (
     ("service location", "service site", "delivery location", "delivery site", "site location",
@@ -641,6 +642,31 @@ def _is_customer(name: str, customers: Sequence[str]) -> bool:
         if words and theirs and words[0] == theirs[0] and len(words[0]) >= 4 and not _names_a_utility(name):
             return True
     return False
+
+
+# What a bill prints beside a label that is not a place: a meter or piece of equipment ("Steam Meter", "Electric Meter 2",
+# "Meter No."), a commodity or rate line ("Electric Service", "Natural Gas", "Rate Schedule LGS-3"), a section heading
+# ("Billing Details"). Matched on the whole value, so a site that merely contains one of the words ("Meter Street Plant")
+# is still a site. No two choices match the same word, so a long hostile value cannot make it slow.
+_NOT_A_SITE = re.compile(
+    r"^(?:"
+    r"(?:(?:steam|gas|electric(?:ity)?|water|chilled water|hot water|heat|btu|utility|service|demand|generator|equipment|"
+    r"boiler|main|sub|net|check|solar|primary|secondary|totali[sz]er|revenue)\s+)*meters?(?:\s+(?:no|number|nbr|num|id|#\s*\w+|[a-z]{0,3}-?\d[\w-]*))*"
+    r"|(?:rate|tariff|billing|service|account|usage|consumption|charges?)\s+(?:schedule|class|code|summary|details?|history|"
+    r"information|period|type|plan|rider)(?:\s.*)?"
+    r"|(?:electric(?:ity)?|natural gas|gas|steam|chilled water|hot water|water|propane|diesel|fuel oil)"
+    r"(?:\s+(?:service|charges?|usage|consumption|statement|bill|supply|delivery))?"
+    r"|(?:billing|account|statement|service|customer|usage|payment|contact)\s+(?:details?|summary|information|info)"
+    r")$", re.IGNORECASE)
+
+
+def _is_a_site_name(value: str) -> bool:
+    """Whether a value read where a site is expected can be one: it has letters and is not a meter, a commodity,
+    a rate or a heading (``_NOT_A_SITE``). The name before any address ("Riverside Plant, 410 Mill Road") is judged."""
+
+    name = " ".join(value.split()).strip(" :;,.")
+    head = name.split(",")[0].strip(" :;,.")
+    return _has_letters(value) and not _NOT_A_SITE.match(head) and not _NOT_A_SITE.match(name)
 
 
 def _has_letters(value: str) -> bool:
@@ -1330,7 +1356,8 @@ class StationaryCombustionExtractor:
                 field_id = str(target.get("field_id") or "")
                 if field_id in DOCUMENT_FIELDS:
                     located = document_values.get(field_id)
-                    if field_id == "facility_name" and record is not None and record.extra.get("site") is not None:
+                    if (field_id == "facility_name" and record is not None and record.extra.get("site") is not None
+                            and _is_a_site_name(record.extra["site"].raw)):
                         located = record.extra["site"]
                     if (field_id == "facility_name" and located is not None and located.last_resort and record is not None
                             and record.extra.get("address") is not None):
@@ -1761,11 +1788,11 @@ class StationaryCombustionExtractor:
         bill-to, as a ship-to block's company line does, is never taken for the site.
         """
 
-        bill_to = self._party_key(rows, BILL_TO_LABELS)
-        located = self._find_labeled(rows, FACILITY_LABELS, accept=_has_letters, inline=True, inline_gap=True)
+        bill_to = self._party_key(rows, BILL_TO_LABELS, beside=True)
+        located = self._find_labeled(rows, FACILITY_LABELS, accept=_is_a_site_name, inline=True, inline_gap=True)
         if located is not None and _name_key(located.raw.split(",")[0]) != bill_to:
             return self._split_name_address(located)
-        for label_cell, row, lines in self._label_blocks(rows, SITE_LOCATION_LABELS):
+        for label_cell, row, lines in self._label_blocks(rows, SITE_LOCATION_LABELS, beside=True):
             name, address = self._site_in_block(lines, bill_to)
             if name is None:
                 continue
@@ -1799,19 +1826,24 @@ class StationaryCombustionExtractor:
             return name, address
         return located, None
 
-    def _party_key(self, rows: Sequence[Row], groups: Sequence[Sequence[str]]) -> str:
+    def _party_key(self, rows: Sequence[Row], groups: Sequence[Sequence[str]], *, beside: bool = False) -> str:
         """The name a billing-party label gives, as a comparison key ("" when the document has none)."""
 
-        for _, _, lines in self._label_blocks(rows, groups):
+        for _, _, lines in self._label_blocks(rows, groups, beside=beside):
             for _, text in lines:
                 if not _is_attention_line(text) and _has_letters(text):
                     return _name_key(text.split(",")[0])
         return ""
 
-    def _label_blocks(self, rows: Sequence[Row], groups: Sequence[Sequence[str]]) -> list[tuple[Cell, Row, list[tuple[Cell, str]]]]:
+    def _label_blocks(self, rows: Sequence[Row], groups: Sequence[Sequence[str]], *,
+                      beside: bool = False) -> list[tuple[Cell, Row, list[tuple[Cell, str]]]]:
         """Each label of ``groups`` with the text lines of the block that follows it: the value on the
         label's own line, then the lines beneath it (same column, tightly spaced) or, in plain text,
-        the single-cell lines after it. A line that is itself a label ends the block."""
+        the single-cell lines after it. A line that is itself a label ends the block.
+
+        With ``beside``, a label whose value is the next cell of its row (a two-column "Service Location | Riverside
+        Plant, 410 Mill Road" layout) has that cell and the lines beneath it as its block: what sits under the
+        label itself is the next label of the column ("Steam Meter"), never its value."""
 
         found: list[tuple[Cell, Row, list[tuple[Cell, str]]]] = []
         for labels in groups:
@@ -1823,9 +1855,41 @@ class StationaryCombustionExtractor:
                     lines: list[tuple[Cell, str]] = []
                     if prefix[1]:
                         lines.append((cell, self._trim_value(prefix[1])))
-                    lines.extend(self._lines_below(rows, row, cell))
+                    side = self._beside_value(row, cell) if beside and not prefix[1] else None
+                    if side is not None:
+                        lines.append((side, self._trim_value(side.text)))
+                        lines.extend(self._wrapped_beside(rows, row, cell, side))
+                    else:
+                        lines.extend(self._lines_below(rows, row, cell))
                     found.append((cell, row, lines))
         return found
+
+    def _beside_value(self, row: Row, cell: Cell) -> Cell | None:
+        """The value of a two-column key / value row ("Service Location | Riverside Plant, 410 Mill Road"): the row's
+        second cell, when the row has just the label and it. A row of several columns ("Delivered To: | Invoice #:") is
+        headings over their own blocks, so the cell beside a label there is another label, not its value."""
+
+        if len(row.cells) != 2 or row.cells[0] is not cell:
+            return None
+        nxt = row.cells[1]
+        if not nxt.text.strip() or nxt.text.rstrip().endswith((":", "#")) or self._label_prefix(nxt.text, self.ALL_LABELS) is not None:
+            return None
+        if cell.box is not None and nxt.box is not None and nxt.left - cell.right > 0.25:
+            return None
+        return nxt
+
+    def _wrapped_beside(self, rows: Sequence[Row], row: Row, label: Cell, side: Cell) -> list[tuple[Cell, str]]:
+        """The lines under a value that sits beside its label, up to the next row that has a label of its own
+        (the right-hand column below a value is the values of the labels below, not more of this one)."""
+
+        room = 0
+        for following in rows[row.index + 1:row.index + 7]:
+            if following.page != row.page or any(
+                    c.box is not None and label.box is not None and abs(c.left - label.left) < _BLOCK_COLUMN_TOLERANCE
+                    for c in following.cells):
+                break
+            room += 1
+        return self._lines_below(rows, row, side)[:room]
 
     def _lines_below(self, rows: Sequence[Row], row: Row, cell: Cell) -> list[tuple[Cell, str]]:
         out: list[tuple[Cell, str]] = []
@@ -1869,7 +1933,7 @@ class StationaryCombustionExtractor:
             if text[:1].isdigit():
                 street = street or text
                 continue
-            if name is None and _has_letters(text):
+            if name is None and _is_a_site_name(text):
                 name = (cell, text)
         address = ", ".join(part for part in (street, city) if part) if street else None
         return name, address
