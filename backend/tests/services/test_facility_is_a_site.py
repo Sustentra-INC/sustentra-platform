@@ -7,12 +7,14 @@ puts emissions on the wrong calculation line; an empty one is asked of the revie
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import pytest
 
 from backend.app.services.electricity_extractor import ElectricityExtractor
 from backend.app.services.extraction_target_service import ExtractionTargetService
+from backend.app.services.stationary_combustion_extractor import _is_a_site_name
 from backend.app.services.thermal_extractor import ThermalExtractor
 from backend.tests.services.test_statement_bundles import (
     MONTHS, SUPPLIER, Line, _detail, _output, _page, _summary,
@@ -138,3 +140,11 @@ def test_a_delivered_to_heading_beside_another_label_keeps_its_block_below(elec_
         [("Billing Period:", 0.07), ("01/01/2025 - 01/31/2025", 0.3)], [("Total kWh Used:", 0.07), ("12,000 kWh", 0.3)]])
     outcome = ElectricityExtractor().extract(_output(blocks), elec_targets, "EV-1")
     assert _values(outcome, "facility_name") == ["Riverside Plant"]
+
+
+@pytest.mark.parametrize("value", ["Meter " + "1 " * 2000 + "!x", "steam " * 2000 + "x", "Meter " + "# 1 " * 2000 + "!",
+                                   "Meter " + "a-1-1 " * 2000 + "!", "Rate schedule " + " " * 5000 + "\n"])
+def test_a_long_hostile_value_is_judged_quickly(value: str) -> None:
+    started = time.perf_counter()
+    _is_a_site_name(value)
+    assert time.perf_counter() - started < 1

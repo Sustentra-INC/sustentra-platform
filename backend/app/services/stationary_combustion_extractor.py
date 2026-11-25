@@ -647,11 +647,11 @@ def _is_customer(name: str, customers: Sequence[str]) -> bool:
 # What a bill prints beside a label that is not a place: a meter or piece of equipment ("Steam Meter", "Electric Meter 2",
 # "Meter No."), a commodity or rate line ("Electric Service", "Natural Gas", "Rate Schedule LGS-3"), a section heading
 # ("Billing Details"). Matched on the whole value, so a site that merely contains one of the words ("Meter Street Plant")
-# is still a site.
+# is still a site. No two choices match the same word, so a long hostile value cannot make it slow.
 _NOT_A_SITE = re.compile(
     r"^(?:"
     r"(?:(?:steam|gas|electric(?:ity)?|water|chilled water|hot water|heat|btu|utility|service|demand|generator|equipment|"
-    r"boiler|main|sub|net|check|solar|primary|secondary|totali[sz]er|revenue)\s+)*meters?(?:\s+(?:no|number|nbr|num|id|#\s*\w+|\d+|[a-z]{0,3}-?\d[\w-]*))*"
+    r"boiler|main|sub|net|check|solar|primary|secondary|totali[sz]er|revenue)\s+)*meters?(?:\s+(?:no|number|nbr|num|id|#\s*\w+|[a-z]{0,3}-?\d[\w-]*))*"
     r"|(?:rate|tariff|billing|service|account|usage|consumption|charges?)\s+(?:schedule|class|code|summary|details?|history|"
     r"information|period|type|plan|rider)(?:\s.*)?"
     r"|(?:electric(?:ity)?|natural gas|gas|steam|chilled water|hot water|water|propane|diesel|fuel oil)"
