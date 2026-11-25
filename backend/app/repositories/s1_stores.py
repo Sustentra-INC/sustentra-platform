@@ -41,8 +41,8 @@ class MirroredRepository:
         self._primary = primary
         self._mirror = mirror
 
-    def save(self, record: Any) -> dict:
-        saved = self._primary.save(record)
+    def save(self, record: Any, **kwargs: Any) -> dict:
+        saved = self._primary.save(record, **kwargs)
         try:
             self._mirror.save(saved)
         except Exception:

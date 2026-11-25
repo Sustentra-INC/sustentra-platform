@@ -183,7 +183,8 @@ def _import_s1_stores(args: argparse.Namespace) -> int:
     print("Would import (nothing written):" if report.dry_run else "Imported into Postgres:")
     for name, counts in report.stores.items():
         print(f"  {name}: {counts.lines} lines - {counts.inserted} new, {counts.updated} updated, "
-              f"{counts.unchanged} unchanged")
+              f"{counts.unchanged} unchanged"
+              + (f", {counts.differs} changed since imported (kept as imported)" if counts.differs else ""))
     print(f"  uploaded files: {report.files_copied} copied, {report.files_unchanged} already there, "
           f"{len(report.files_missing)} missing on disk, {len(report.files_conflicting)} differ from the copy")
     for uri in report.files_conflicting:

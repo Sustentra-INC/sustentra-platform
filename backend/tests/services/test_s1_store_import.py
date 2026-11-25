@@ -181,6 +181,25 @@ def test_a_later_import_catches_up_new_lines_and_claimed_records(
         assert evidence_owner_status("EV-OLD", app_engine) == "own"
 
 
+def test_review_decisions_are_never_updated_by_a_later_import(admin: Any, app_engine: Any, data_root: Path) -> None:
+    """0025: the app role may not UPDATE s1_review_decisions, so a line changed after it was imported
+    (a claim stamping an owner, say) is reported and the stored row is kept, not rewritten."""
+    import_stores(data_root, engine=app_engine)
+    path = data_root / STORES["review_decisions"][0]
+    lines = [json.loads(line) for line in path.read_text().splitlines()]
+    lines[0]["decision"] = "rejected"
+    _write(data_root, "review_decisions", [*lines, {"review_decision_id": "V3", "org_id": A, "candidate_id": "C1",
+                                                    "evidence_id": "EV1", "document_id": "D1",
+                                                    "field_name": "quantity", "decision": "accepted"}])
+    report = import_stores(data_root, engine=app_engine)
+    counts = report.stores["review_decisions"]
+    assert (counts.inserted, counts.updated, counts.unchanged, counts.differs) == (1, 0, 1, 1)
+    with admin.begin() as connection:
+        decisions = {r.review_decision_id: r.record["decision"] for r in connection.execute(
+            text("SELECT review_decision_id, record FROM s1_review_decisions"))}
+    assert decisions == {"V1": "accepted", "V2": "overridden", "V3": "accepted"}
+
+
 def test_a_dry_run_writes_nothing(admin: Any, app_engine: Any, data_root: Path) -> None:
     report = import_stores(data_root, dry_run=True, engine=app_engine)
     assert report.stores["review_decisions"].inserted == 2 and report.files_copied == 1
