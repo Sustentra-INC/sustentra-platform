@@ -3,6 +3,19 @@ import { describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, render } from "@testing-library/react";
 
+// Each row draws its name once per redraw: counting names counts redrawn rows.
+const drawn = vi.hoisted(() => ({ rows: 0 }));
+vi.mock("../components/BreakableName", async (original) => {
+  const real = await original<typeof import("../components/BreakableName")>();
+  return {
+    ...real,
+    BreakableName: (props: Parameters<typeof real.BreakableName>[0]) => {
+      drawn.rows += 1;
+      return real.BreakableName(props);
+    },
+  };
+});
+
 import { UploadDialog, type UploadTask } from "../components/UploadDialog";
 
 const tasks = (n: number): UploadTask[] =>
@@ -26,26 +39,16 @@ function dialog(list: UploadTask[]) {
 }
 
 describe("a long upload list stays responsive", () => {
-  it.each([1000, 4000])("%i rows: one progress tick costs a few milliseconds, not a redraw of every row", (n) => {
-    let list = tasks(n);
+  it("redraws only the row that moved on a progress tick, with 1,000 rows", () => {
+    let list = tasks(1000);
     const { rerender } = render(dialog(list));
-    expect(document.querySelectorAll(".s1-upq__row")).toHaveLength(n);
-
-    const patchStart = performance.now();
-    for (let i = 1; i <= 100; i++) list = tick(list, "t0", i / 100);
-    const patchMs = (performance.now() - patchStart) / 100;
-
-    const start = performance.now();
-    for (let i = 1; i <= 20; i++) {
-      list = tick(list, "t0", Math.min(1, 0.5 + i / 50));
+    expect(document.querySelectorAll(".s1-upq__row")).toHaveLength(1000);
+    drawn.rows = 0;
+    for (let i = 1; i <= 10; i++) {
+      list = tick(list, "t0", i / 20);
       act(() => rerender(dialog(list)));
     }
-    const perTick = (performance.now() - start) / 20;
-    console.info(`${n} rows: patch ${patchMs.toFixed(3)} ms, patch + render ${perTick.toFixed(1)} ms per tick`);
-    // Ticks are throttled to one per 150 ms, so even 100 ms here would be well inside the frame budget
-    // of the work the page does between ticks; the bound is generous to stay stable on a slow runner.
-    expect(patchMs).toBeLessThan(5);
-    expect(perTick).toBeLessThan(400);
+    expect(drawn.rows).toBe(10);
   });
 
   it("shows the sent name in a row's title when it differs from the path's last part", () => {
