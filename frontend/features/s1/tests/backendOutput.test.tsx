@@ -190,8 +190,8 @@ describe("the live statement", () => {
       [finding]
     );
     await screen.findByText("Draft working paper · not an assurance opinion");
-    const download = screen.getByRole("link", { name: /Download workpaper \(Excel\)/ });
-    expect(download.getAttribute("href")).toBe("/api/v1/engagements/ENG-1/export");
+    // A button that fetches the file (so a refusal shows its words), not a plain link.
+    expect(screen.getByRole("button", { name: /Download workpaper \(Excel\)/ })).toBeTruthy();
     // The demo's toast-only exports are not offered here.
     expect(screen.queryByRole("button", { name: /Corrections register|Evidence index|Download statement/ })).toBeNull();
     expect(screen.getByText("Operational control")).toBeTruthy();

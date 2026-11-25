@@ -232,7 +232,7 @@ async def download_workpaper_copy(
         raise HTTPException(
             status_code=500,
             detail="This saved workpaper no longer matches its checksum, so it was not sent. "
-                   "Support has been notified.") from None
+                   "Please contact support.") from None
     if found is None:
         raise HTTPException(status_code=404, detail="No such saved workpaper.")
     copy, content = found

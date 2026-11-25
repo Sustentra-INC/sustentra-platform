@@ -25,7 +25,18 @@ function size(bytes: number): string {
  * Every workpaper downloaded for this engagement is kept as it was. This lists them, newest first, so what
  * the figures were on the day a file was sent can be fetched again. `refreshKey` changes after a download.
  */
-export function SavedCopies({ engagementId, refreshKey }: { engagementId: string; refreshKey: number }) {
+export function SavedCopies({
+  engagementId,
+  refreshKey,
+  busyId,
+  onDownload,
+}: {
+  engagementId: string;
+  refreshKey: number;
+  /** The download in progress (a copy's id, or "live" for the button above): no other can start. */
+  busyId: string | null;
+  onDownload: (copyId: string, url: string) => void;
+}) {
   const [state, setState] = useState<{ key: string; items: WorkpaperCopy[]; total: number } | null>(null);
   const [limit, setLimit] = useState(PAGE);
   const [error, setError] = useState<string | null>(null);
@@ -84,10 +95,16 @@ export function SavedCopies({ engagementId, refreshKey }: { engagementId: string
                       {copy.sha256.slice(0, 12)}
                     </td>
                     <td className="s1-out-num">
-                      <a className="s1-linklike" href={workpaperCopyHref(engagementId, copy.id)} download>
-                        Download
+                      <button
+                        className="s1-linklike"
+                        type="button"
+                        disabled={busyId !== null}
+                        aria-busy={busyId === copy.id}
+                        onClick={() => onDownload(copy.id, workpaperCopyHref(engagementId, copy.id))}
+                      >
+                        {busyId === copy.id ? "Preparing…" : "Download"}
                         <span className="s1-sr-only"> the copy saved {when(copy.created_at)}</span>
-                      </a>
+                      </button>
                     </td>
                   </tr>
                 ))}

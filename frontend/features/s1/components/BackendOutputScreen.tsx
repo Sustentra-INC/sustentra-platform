@@ -98,7 +98,7 @@ export function BackendOutputScreen({
       engagement={engagement}
       lines={output.lines}
       figures={dashboardFigures({ evidence, values, asks, findings, coverage: coverageFromRecalculation(current) })}
-      live={output.live}
+      live={{ ...output.live, onError }}
     />
   );
 }
