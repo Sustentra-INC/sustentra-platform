@@ -767,3 +767,137 @@ def test_the_workpaper_labels_claudes_unreviewed_readings_and_counts_them_apart(
                              register=register, items=[], exported_by="m@x.test")
     rows = list(load_workbook(BytesIO(content))["Evidence"].iter_rows(values_only=True))
     assert tuple(rows[0][-2:]) == ("Values extracted", "Suggested by Sustentra's AI") and tuple(rows[1][-2:]) == (4, 2)
+
+
+# --- workbooks: one line per row, the reference is the cell ---------------------------------------
+
+def _sheet(rows: dict[tuple[str, int], list[str | None]], document_id: str = "DOC-1") -> dict[str, Any]:
+    """A parser_output shaped like the Excel reader's: one block per filled cell, in sheet and row order."""
+    from backend.app.adapters.parsers.base import build_source_reference, build_text_block
+
+    blocks, references = [], []
+    for (sheet, row), cells in rows.items():
+        for index, text in enumerate(cells):
+            if text is None:
+                continue
+            coordinate = f"{'ABCDEFGHIJ'[index]}{row}"
+            reference_id = f"SRC-{sheet}-{coordinate}"
+            references.append(build_source_reference(reference_id, document_id, sheet_name=sheet,
+                                                     cell_or_range=coordinate, text_snippet=text,
+                                                     parser_block_ids=[f"x-{sheet}-{coordinate}"],
+                                                     source_kind="excel_cell"))
+            blocks.append(build_text_block(f"x-{sheet}-{coordinate}", text, source_reference_id=reference_id))
+    return {"document_id": document_id, "text_blocks": blocks, "source_references": references, "status": "parsed",
+            "pages": [], "tables": [], "key_value_pairs": [], "warnings": []}
+
+
+SHEET = {
+    ("Energy", 1): ["Source", "Quantity", "Unit"],
+    ("Energy", 2): ["Total Scope 1 fuel", "1307.6", "t"],
+    ("Energy", 3): ["Boiler gas", "55", "55"],
+    ("Energy", 4): ["Notes", "see a | 12 here", None, "12"],
+    ("Other", 2): ["Diesel fleet", "88.2", "kWh"],
+}
+
+
+def _assist_sheet(claude: FakeClaude, output: dict[str, Any] | None = None, **over: Any) -> ai_extraction.AssistOutcome:
+    service = AiExtraction(settings=settings(**over), client_factory=lambda s: claude, ledger=FakeLedger())
+    return service.assist(parser_output=output or _sheet(SHEET), extraction_result=result(candidate("account_number")),
+                          extraction_targets=TARGETS, canonical_type_id=TYPE, file_name="f.xlsx", org_id=ORG,
+                          engagement_id="ENG-1")
+
+
+def test_a_workbook_is_shown_one_line_per_row_with_separators() -> None:
+    claude = FakeClaude([])
+    _assist_sheet(claude)
+    content = claude.calls[0]["content"]
+    assert "L1: Source | Quantity | Unit" in content and "L2: Total Scope 1 fuel | 1307.6 | t" in content
+    assert "L5: Diesel fleet | 88.2 | kWh" in content and "L6" not in content
+    assert "spreadsheet line is one sheet row" in claude.calls[0]["system"]
+
+
+def test_a_short_number_in_a_row_is_kept_and_points_at_its_cell() -> None:
+    claude = FakeClaude([read("account_number", "1307.6", "Total Scope 1 fuel | 1307.6", "L2")])
+    outcome = _assist_sheet(claude)
+    (filled,) = by_field(outcome, "account_number")
+    ref = filled["source_reference"]
+    assert (ref["sheet_name"], ref["cell_or_range"], ref["parser_block_ids"]) == ("Energy", "B2", ["x-Energy-B2"])
+    assert ref["text_snippet"] == "1307.6" and filled["validation_flags"] == ["ai_suggested"]
+
+
+def test_a_thousands_separator_in_the_quote_still_finds_the_cell() -> None:
+    output = _sheet({("Energy", 2): ["Total Scope 1 fuel", "1,307.6", "t"]})
+    claude = FakeClaude([read("account_number", "1307.6", "Total Scope 1 fuel | 1,307.6", "L1")])
+    outcome = _assist_sheet(claude, output)
+    assert by_field(outcome, "account_number")[0]["source_reference"]["cell_or_range"] == "B2"
+
+
+def test_the_same_row_number_on_two_sheets_stays_apart() -> None:
+    claude = FakeClaude([read("account_number", "88.2", "Diesel fleet | 88.2", "L5")])
+    ref = by_field(_assist_sheet(claude), "account_number")[0]["source_reference"]
+    assert (ref["sheet_name"], ref["cell_or_range"]) == ("Other", "B2")
+
+
+def test_a_value_in_two_cells_of_the_quoted_row_is_dropped_as_ambiguous() -> None:
+    claude = FakeClaude([read("account_number", "55", "Boiler gas | 55 | 55", "L3")])
+    outcome = _assist_sheet(claude)
+    assert outcome.dropped == {"ambiguous_quote": 1}
+    assert by_field(outcome, "account_number")[0]["normalized_value"] is None
+
+
+def test_the_quote_can_settle_which_cell_holds_the_value() -> None:
+    claude = FakeClaude([read("account_number", "55", "Boiler gas | 55", "L3")])
+    ref = by_field(_assist_sheet(claude), "account_number")[0]["source_reference"]
+    assert ref["cell_or_range"] == "B3"
+
+
+def test_a_value_is_never_matched_across_cells() -> None:
+    claude = FakeClaude([read("account_number", "1307.6 | t", "Total Scope 1 fuel | 1307.6 | t", "L2"),
+                         read("account_number", "1 | 1307", "Total Scope 1 fuel | 1307.6 | t", "L2")])
+    outcome = _assist_sheet(claude)
+    assert sum(outcome.dropped.values()) == 2 and outcome.suggested == 0
+
+
+def test_a_cell_that_holds_the_separator_cannot_move_the_value() -> None:
+    claude = FakeClaude([read("account_number", "12", "Notes | see a | 12 here | 12", "L4")])
+    outcome = _assist_sheet(claude)
+    assert outcome.dropped == {"ambiguous_quote": 1}  # "12" is in two cells; nothing is guessed
+    claude = FakeClaude([read("account_number", "12", "Notes | see a | 12 here", "L4")])
+    ref = by_field(_assist_sheet(claude), "account_number")[0]["source_reference"]
+    assert ref["cell_or_range"] == "B4"
+
+
+def test_a_value_alone_on_the_row_is_still_too_short_a_quote() -> None:
+    claude = FakeClaude([read("account_number", "1307.6", "1307.6", "L2")])
+    assert _assist_sheet(claude).dropped == {"quote_not_on_document": 1}
+
+
+def test_a_long_row_is_shown_in_pieces_and_each_value_keeps_its_cell() -> None:
+    cells: list[str | None] = ["Label"] + [f"col{n} " + "x" * 400 for n in range(1, 9)] + ["Total t | 4401.5"]
+    output = _sheet({("Wide", 1): cells})
+    from backend.app.services.ai_locator import ROW_MAX_CHARS, RowLine, row_lines
+
+    lines = row_lines(output)
+    assert len(lines) > 1 and all(isinstance(line, RowLine) and len(line.text) <= ROW_MAX_CHARS for line in lines)
+    assert [c.text for line in lines for c in line.cells] == [c for c in cells if c]
+
+
+def test_a_window_that_starts_down_the_sheet_still_shows_the_header_row() -> None:
+    rows: dict[tuple[str, int], list[str | None]] = {("S", 1): ["Item", "Tonnes"]}
+    rows.update({("S", n): [f"Row label {n}", f"{n}.5"] for n in range(2, 251)})
+    claude = FakeClaude([])
+    _assist_sheet(claude, _sheet(rows))
+    assert "L1: Item | Tonnes" in claude.calls[0]["content"]
+    units = ai_extraction.page_units(ai_extraction.row_lines(_sheet(rows)))
+    first_rows = ai_extraction.sheet_first_rows(ai_extraction.row_lines(_sheet(rows)))
+    shown = ai_extraction.with_sheet_headers(list(units[1].lines), first_rows)
+    assert shown[0].text == "Item | Tonnes" and shown[1].text.startswith("Row label")
+
+
+def test_pdf_lines_are_the_same_as_before() -> None:
+    from backend.app.services.ai_locator import RowLine, row_lines
+
+    assert row_lines(parsed()) == document_lines(parsed()) and not any(isinstance(x, RowLine) for x in row_lines(parsed()))
+    claude = FakeClaude([])
+    assist(claude, [candidate("account_number")])
+    assert "spreadsheet" not in claude.calls[0]["system"]

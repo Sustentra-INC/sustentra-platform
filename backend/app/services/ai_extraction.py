@@ -57,10 +57,12 @@ from backend.app.services.ai_locator import (
     DocumentLine,
     Located,
     NotLocated,
+    RowLine,
     Suggestion,
-    document_lines,
     locate,
+    locate_cell,
     norm,
+    row_lines,
 )
 from backend.app.services.ai_routing import CAP_REACHED, UNAVAILABLE, DbLedger, Ledger, new_client
 from backend.app.services.extraction_candidate_service import ExtractionCandidateService
@@ -124,7 +126,14 @@ def reading_output(names: tuple[str, ...]) -> type[BaseModel]:
     return create_model("ReadingOutput", __base__=_Strict, readings=(list[reading], ...))  # type: ignore[valid-type]
 
 
-def system_prompt(fields: Sequence[AskField]) -> str:
+SHEET_RULE = """\
+- A spreadsheet line is one sheet row: its cells from left to right, separated by " | ". A value
+  is read from one cell. Quote the cell with its label (the words next to it on the row), copied exactly.
+  The sheet's first row is repeated above its rows as the likely column headers.
+"""
+
+
+def system_prompt(fields: Sequence[AskField], sheets: bool = False) -> str:
     asked = "\n".join(
         f"- {f.name}: {f.label}" + (f" (unit, one of: {', '.join(f.units)})" if f.units else "") for f in fields)
     return f"""\
@@ -147,7 +156,7 @@ Rules
   with the value printed inside it. line: that line's alias (L1, L2, ...), as shown. A reading whose
   quote cannot be found on that line is discarded.
 - The header tells you what the document is and what was already read; it is context, not a window line.
-
+{SHEET_RULE if sheets else ""}
 Fields to read
 {asked}
 """
@@ -236,6 +245,39 @@ def make_windows(units: Sequence[Unit], size: int, max_windows: int) -> tuple[li
     kept = windows[:max_windows]
     skipped = list(units[(len(kept) - 1) * step + size:]) if len(kept) < len(windows) else []
     return kept, skipped
+
+
+def _sheet_of(line: DocumentLine) -> str | None:
+    return str(line.source_reference.get("sheet_name")) if isinstance(line, RowLine) else None
+
+
+def sheet_first_rows(lines: Sequence[DocumentLine]) -> dict[str, DocumentLine]:
+    """The first row line of each sheet: the likely column headers, kept in view of later windows."""
+
+    first: dict[str, DocumentLine] = {}
+    for line in lines:
+        sheet = _sheet_of(line)
+        if sheet is not None:
+            first.setdefault(sheet, line)
+    return first
+
+
+def with_sheet_headers(window_lines: list[DocumentLine], first_rows: Mapping[str, DocumentLine]) -> list[DocumentLine]:
+    """``window_lines``, with a sheet's first row put before its first line in the window when the window
+    starts further down the sheet. The same line (alias) as elsewhere, so a quote on it is checked as usual."""
+
+    present = {id(line) for line in window_lines}
+    shown: set[str] = set()
+    out: list[DocumentLine] = []
+    for line in window_lines:
+        sheet = _sheet_of(line)
+        if sheet is not None and sheet not in shown:
+            shown.add(sheet)
+            header = first_rows.get(sheet)
+            if header is not None and id(header) not in present:
+                out.append(header)
+        out.append(line)
+    return out
 
 
 def describe(units: Sequence[Unit]) -> str:
@@ -339,6 +381,11 @@ def verify_reading(reading: Any, by_name: Mapping[str, AskField], lines: Sequenc
                    lines)
     if isinstance(found, NotLocated):
         return found.reason
+    if isinstance(found.line, RowLine):  # a sheet row: the reference is the one cell that holds the value
+        cell = locate_cell(found.line, reading.quote, reading.value)
+        if isinstance(cell, NotLocated):
+            return cell.reason
+        found = Located(line=cell, source_reference=copy.deepcopy(cell.source_reference))
     return _checked(field_, reading, found, confidence_of)
 
 
@@ -550,7 +597,7 @@ class AiExtraction:
                 gap_targets: Callable[[], Sequence[Mapping[str, Any]]]) -> AssistOutcome:
         org_id = uuid.UUID(org_text)
         client = self._client_factory(settings)
-        lines = document_lines(parser_output)
+        lines = row_lines(parser_output)
         if client is None or not lines:
             return AssistOutcome(extraction_result)
         items: list[dict[str, Any]] = list(extraction_result.get("items") or [])
@@ -586,7 +633,8 @@ class AiExtraction:
             warnings.append(f"ai_pages_skipped: {describe(skipped)} were not read by Sustentra's AI "
                             f"(at most {max_windows} windows).")
         by_name = {f.name: f for f in asked}
-        system, output_type = system_prompt(asked), reading_output(tuple(by_name))
+        system = system_prompt(asked, sheets=any(isinstance(line, RowLine) for line in lines))
+        output_type = reading_output(tuple(by_name))
         header = document_header(canonical_type_id, file_name, items)
         confidences = {str(b.get("block_id")): b.get("confidence") for b in parser_output.get("text_blocks") or []
                        if isinstance(b, Mapping)}
@@ -600,6 +648,7 @@ class AiExtraction:
         hard_limit = started + settings.s1_reader_max_run_seconds
         stop_starting = started + (settings.ai_inline_budget_seconds if inline
                                    else BUDGET_FRACTION * settings.s1_reader_max_run_seconds)
+        first_rows = sheet_first_rows(lines)
         found: dict[str, list[Verified]] = {}
         dropped: Counter[str] = Counter()
         cost = cut = read = 0
@@ -614,7 +663,7 @@ class AiExtraction:
                 warnings.append(f"{CAP_REACHED}: this month's limit on Sustentra's AI suggestions was reached after "
                                 f"{read} of {len(windows)} windows.")
                 break
-            window_lines = [line for unit in window for line in unit.lines]
+            window_lines = with_sheet_headers([line for unit in window for line in unit.lines], first_rows)
             content, cut_here = render_window(header, f"Window {index} of {len(windows)}: {describe(window)}",
                                               window_lines)
             cut += cut_here
