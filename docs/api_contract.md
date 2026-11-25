@@ -31,6 +31,13 @@ Upload a file and register it as a document (multipart: `file`, `document_role`,
 exist, is another organization's, or belongs to another engagement is a 404 ("Batch not found."), and nothing is
 stored. The document then carries `batch_id`; without one it is `null`.
 
+`client_upload_id` (optional) is a UUID the client makes once per file and sends on every attempt to upload it. If
+this organization's engagement already stored a document with that id, the upload answers with that document (and its
+read, if one was asked for) instead of storing a second copy, so a retry after a dropped connection is safe; two
+attempts at once are run one after the other (Postgres advisory lock). The existing document is returned whatever
+state it is in since. An id that is not a UUID is a 422; an id used in another organization or engagement matches
+nothing there. Without one, every upload is a new document, as before.
+
 Refusals are unchanged: 400, 404 (unknown evidence), 413 (file over the size limit) and 415 (a file type no reader opens).
 
 ### GET /v1/engagements/{engagement_id}/documents

@@ -1,5 +1,6 @@
 import { EXACT_COPY } from "../constants/copy";
-import { UPLOAD_ACCEPT } from "../constants/uploads";
+import { UPLOAD_PICKER_ACCEPT } from "../constants/uploads";
+import { pickFromDrop, pickFromFileList, type UploadPick } from "../utils/uploadSources";
 import { expectedDocuments } from "../fixtures/states/empty";
 import type { ContainerState } from "../types";
 
@@ -7,7 +8,7 @@ interface ContainerStateSurfaceProps {
   state: ContainerState;
   totalDocuments?: number;
   onClearFilter?: () => void;
-  onUploadFiles?: (files: FileList) => void;
+  onUploadFiles?: (pick: UploadPick) => void;
   isUploading?: boolean;
   /** What the loading state says. */
   label?: string;
@@ -37,7 +38,7 @@ export function ContainerStateSurface({
             onDrop={(event) => {
               event.preventDefault();
               if (event.dataTransfer.files.length > 0) {
-                onUploadFiles?.(event.dataTransfer.files);
+                void pickFromDrop(event.dataTransfer).then((pick) => onUploadFiles?.(pick));
               }
             }}
           >
@@ -55,10 +56,10 @@ export function ContainerStateSurface({
               className="s1-file-input"
               type="file"
               multiple
-              accept={UPLOAD_ACCEPT}
+              accept={UPLOAD_PICKER_ACCEPT}
               onChange={(event) => {
                 if (event.target.files && event.target.files.length > 0) {
-                  onUploadFiles?.(event.target.files);
+                  onUploadFiles?.(pickFromFileList(event.target.files));
                   event.target.value = "";
                 }
               }}

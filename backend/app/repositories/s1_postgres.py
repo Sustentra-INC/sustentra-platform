@@ -18,7 +18,9 @@ refused, even though RLS hides the owner's records from it.
 from __future__ import annotations
 
 import json
+import threading
 import uuid
+from contextlib import contextmanager
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -94,6 +96,30 @@ def evidence_owner_status(evidence_id: str, engine: Engine | None = None) -> Lit
         return "free" if claimed is not None else "taken"
 
 
+_UPLOAD_LOCK_HOLDERS = threading.BoundedSemaphore(4)  # of a pool of 5 + 5 connections
+
+
+def upload_lock(key: str, engine: Engine | None = None):  # noqa: ANN201 - a context manager
+    """Holds a Postgres advisory lock for ``key`` until the block ends, in its own short-lived
+    connection. Two requests with the same key (a retried upload arriving while the first attempt
+    is still being stored) run one after the other, across every server process. The lock is
+    transaction-level, so it is released even if the process dies."""
+
+    @contextmanager
+    def held():  # noqa: ANN202
+        # A holder keeps one pooled connection for the whole upload while the store uses others, so at
+        # most a few may hold at once: waiting here costs no connection, and the store can never be
+        # starved of the connection it needs to finish (which would hold the lock until timeout).
+        with _UPLOAD_LOCK_HOLDERS:
+            with tenant_transaction(current_scope(), engine or get_sync_engine()) as connection:
+                # never wait for ever on another server process: past this the request fails and is retried by hand
+                connection.execute(text("SELECT set_config('lock_timeout', '20s', true)"))
+                connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": key})
+                yield
+
+    return held()
+
+
 class S1Table:
     """One S1 store table. ``unique`` names the column whose row a save replaces (documents
     keep one row per document); without it every save adds a row."""
@@ -109,6 +135,10 @@ class S1Table:
     @property
     def name(self) -> str:
         return self._name
+
+    @property
+    def engine(self) -> Engine | None:
+        return self._engine
 
     def _transaction(self):  # noqa: ANN202 - a context manager yielding a Connection
         return tenant_transaction(current_scope(), self._engine or get_sync_engine())
@@ -142,6 +172,28 @@ class S1Table:
     def latest(self, **where: Any) -> dict[str, Any] | None:
         rows = self._query(where, "ORDER BY seq DESC LIMIT 1")
         return rows[0] if rows else None
+
+    def find_in_record(self, key: str, value: str, **where: Any) -> dict[str, Any] | None:
+        """The newest row whose record has ``record->>key = value`` and the given column values
+        (``org_id`` too: RLS already limits the call to the bound organization, this keeps the
+        match exact for provider scope)."""
+
+        unknown = set(where) - set(self._columns) - {"org_id"}
+        if unknown or not key.isidentifier():
+            raise ValueError(f"{self._name} cannot be searched by {sorted(unknown) or key}")
+        params: dict[str, Any] = {"value": value}
+        clauses = ["record->>CAST(:key AS text) = :value"]
+        params["key"] = key
+        for column, wanted in where.items():
+            if wanted is None:
+                clauses.append(f"{column} IS NULL")
+            else:
+                params[column] = _column_value(wanted)
+                clauses.append(f"{column}::text = lower(:{column})" if column == "org_id" else f"{column} = :{column}")
+        statement = f"SELECT record FROM {self._name} WHERE {' AND '.join(clauses)} ORDER BY seq DESC LIMIT 1"
+        with self._transaction() as connection:
+            row = connection.execute(text(statement), params).first()
+        return row.record if row is not None else None
 
     def _query(self, where: dict[str, Any], tail: str) -> list[dict[str, Any]]:
         unknown = set(where) - set(self._columns)

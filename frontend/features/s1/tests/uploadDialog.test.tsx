@@ -5,7 +5,7 @@ import { render, screen } from "@testing-library/react";
 
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { UploadDialog, uploadTasksFor, type UploadTask } from "../components/UploadDialog";
-import { isReadableUpload, UPLOAD_ACCEPT, uploadProblemTitle } from "../constants/uploads";
+import { isReadableUpload, UPLOAD_ACCEPT, UPLOAD_PICKER_ACCEPT, uploadProblemTitle } from "../constants/uploads";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
 
@@ -70,7 +70,9 @@ describe("upload: files no parser can read", () => {
   it("lets the file picker offer only what can be read", () => {
     renderDialog([]);
     const input = document.querySelector('input[type="file"]');
-    expect(input).toHaveAttribute("accept", UPLOAD_ACCEPT);
+    // Files may also be a .zip, which is opened in the browser.
+    expect(input).toHaveAttribute("accept", UPLOAD_PICKER_ACCEPT);
+    expect(UPLOAD_PICKER_ACCEPT).toBe(`${UPLOAD_ACCEPT},.zip`);
     // The same formats the refusal names: PDF, Word, Excel, CSV, text, email, and PNG, JPG or TIFF.
     expect(UPLOAD_ACCEPT.split(",")).toEqual([
       ".pdf", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".txt", ".md", ".markdown", ".eml", ".png", ".jpg", ".jpeg",

@@ -58,6 +58,24 @@ export const UNREADABLE_EXTENSIONS: readonly string[] = [".gif", ".bmp", ".webp"
 /** The file pickers' `accept` list. */
 export const UPLOAD_ACCEPT = READABLE_UPLOAD_EXTENSIONS.join(",");
 
+/** The same, plus .zip: a zip is opened in the browser and each file inside goes up on its own. */
+export const UPLOAD_PICKER_ACCEPT = `${UPLOAD_ACCEPT},.zip`;
+
+/**
+ * Folders and zips (MVP-158). The browser unpacks a zip; the server only ever sees one file at a
+ * time, each within MAX_UPLOAD_MB. All the limits live here.
+ */
+export const MAX_ZIP_MB = 500;
+export const MAX_ZIP_BYTES = MAX_ZIP_MB * 1024 * 1024;
+/** Files in one upload, counting every file inside any folder or zip. */
+export const MAX_UPLOAD_FILES = 1000;
+export const MAX_UNPACKED_GB = 2;
+export const MAX_UNPACKED_BYTES = MAX_UNPACKED_GB * 1024 * 1024 * 1024;
+/** A file that unpacks to more than this many times its packed size (once past 1 MB) is refused. */
+export const MAX_COMPRESSION_RATIO = 200;
+/** Entries (files and folders) a zip's index may list before it is refused as unreasonable. */
+export const MAX_ZIP_ENTRIES = MAX_UPLOAD_FILES * 10;
+
 /** Whether a reader can open this file: by its extension first, then its media type. */
 export function isReadableUpload(file: { name: string; type?: string }): boolean {
   const dot = file.name.lastIndexOf(".");

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -47,6 +48,7 @@ class DocumentUploadService:
         document_type: str | None = None,
         org_id: str | None = None,
         batch_id: str | None = None,
+        client_upload_id: str | None = None,
     ) -> dict:
         self._require_non_empty(engagement_id, "engagement_id")
         self._require_non_empty(file_name, "file_name")
@@ -80,8 +82,22 @@ class DocumentUploadService:
             processing_status="not_started",
             org_id=org_id,
             batch_id=batch_id,
+            client_upload_id=client_upload_id,
         )
         return self._document_repository.save(model.model_dump())
+
+    def upload_guard(self, *, org_id: str | None, engagement_id: str, client_upload_id: str) -> Any:
+        """A context manager that runs one upload id's look-up-and-store one at a time. The Postgres
+        store holds an advisory lock; the file and in-memory stores need none (the route does the
+        look-up and store without yielding, so one process cannot interleave two of them)."""
+
+        guard = getattr(self._document_repository, "upload_guard", None)
+        return guard(f"upload:{org_id}:{engagement_id}:{client_upload_id}") if guard else nullcontext()
+
+    def find_by_client_upload_id(self, *, engagement_id: str, org_id: str | None, client_upload_id: str) -> dict | None:
+        """The document already stored for this upload id in this organization's engagement."""
+
+        return self._document_repository.get_by_client_upload_id(engagement_id, org_id, client_upload_id)
 
     def create_document_metadata(
         self,

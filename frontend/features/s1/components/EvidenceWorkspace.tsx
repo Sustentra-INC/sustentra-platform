@@ -21,7 +21,8 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { AiTypeNote } from "./AiTypeNote";
 import { EvidenceTree,type EvidenceTreeProps } from "./EvidenceTree";
 import { formatPeriod } from "../utils/formatPeriod";
-import { UPLOAD_ACCEPT } from "../constants/uploads";
+import { UPLOAD_PICKER_ACCEPT } from "../constants/uploads";
+import { pickFromDrop, pickFromFileList, type UploadPick } from "../utils/uploadSources";
 import { andThen, NOT_SAVED_TITLE, problemText, settle, useStillOpen, type MaybePromise } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 
@@ -101,7 +102,7 @@ interface EvidenceWorkspaceProps {
   onOpenRequests?: () => void;
   onOpenSetup?: () => void;
   onOpenMethodology?: () => void;
-  onUploadFiles?: (files: FileList) => void;
+  onUploadFiles?: (pick: UploadPick) => void;
   /** Opens the upload pop-up. */
   onOpenUpload?: () => void;
   isUploading?: boolean;
@@ -396,7 +397,7 @@ export function EvidenceWorkspace({
         if (!onUploadFiles || !e.dataTransfer.files.length) return;
         e.preventDefault();
         setDragging(false);
-        onUploadFiles(e.dataTransfer.files);
+        void pickFromDrop(e.dataTransfer).then(onUploadFiles);
       }}
     >
       {dragging ? (
@@ -1118,7 +1119,7 @@ function workspaceTarget(item: EvidenceItem): AddToRequestsTarget {
 
 /* =============================== states =============================== */
 
-function FirstDayEmpty({ onUploadFiles, isUploading }: { onUploadFiles?: (files: FileList) => void; isUploading: boolean }) {
+function FirstDayEmpty({ onUploadFiles, isUploading }: { onUploadFiles?: (pick: UploadPick) => void; isUploading: boolean }) {
   const [drag, setDrag] = useState(false);
   return (
     <div
@@ -1131,7 +1132,7 @@ function FirstDayEmpty({ onUploadFiles, isUploading }: { onUploadFiles?: (files:
       onDrop={(e) => {
         e.preventDefault();
         setDrag(false);
-        if (e.dataTransfer.files.length && onUploadFiles) onUploadFiles(e.dataTransfer.files);
+        if (e.dataTransfer.files.length && onUploadFiles) void pickFromDrop(e.dataTransfer).then(onUploadFiles);
       }}
     >
       <div>
@@ -1144,9 +1145,9 @@ function FirstDayEmpty({ onUploadFiles, isUploading }: { onUploadFiles?: (files:
           className="s1-file-input"
           type="file"
           multiple
-          accept={UPLOAD_ACCEPT}
+          accept={UPLOAD_PICKER_ACCEPT}
           onChange={(e) => {
-            if (e.target.files?.length && onUploadFiles) onUploadFiles(e.target.files);
+            if (e.target.files?.length && onUploadFiles) onUploadFiles(pickFromFileList(e.target.files));
           }}
         />
       </label>
