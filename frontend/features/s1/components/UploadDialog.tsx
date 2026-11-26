@@ -91,6 +91,7 @@ export function UploadDialog({
   const scripting = !!script && script.stage !== "done";
   const busy = scripting || tasks.some((t) => t.stage === "waiting" || t.stage === "uploading" || t.stage === "reading");
   const anything = added.length > 0 || tasks.length > 0;
+  const hasRightContent = anything || !!batchNote || (!!batchProgress && batchProgress.items.length > 0);
   const notUploaded = tasks.filter((t) => t.stage === "not_uploaded").length;
   const doneHint =
     notUploaded === 0
@@ -115,115 +116,155 @@ export function UploadDialog({
     <div className="s1-updlg-scrim" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="s1-updlg" role="dialog" aria-modal="true" aria-labelledby="s1-updlg-title">
         <div className="s1-updlg__head">
-          <h2 id="s1-updlg-title">Upload evidence</h2>
+          <span className="s1-updlg__icon" aria-hidden="true">
+            <CloudUpload />
+          </span>
+          <div className="s1-updlg__title">
+            <h2 id="s1-updlg-title">Upload evidence</h2>
+          </div>
           <button className="s1-updlg__close" type="button" aria-label="Close" onClick={onClose}>
             <X aria-hidden />
           </button>
         </div>
 
-        {script ? (
-          <div className="s1-analyze" aria-live="polite">
-            <div className="s1-analyze__head">
-              <span className="s1-analyze__fn">{script.filename}</span>
-              <span className="s1-analyze__stage">{stageHeadline(script.stage)}</span>
-            </div>
-            <div className="s1-analyze__bar">
-              <div className="s1-analyze__bar-fill" style={{ width: `${Math.round(script.progress * 100)}%` }} />
-            </div>
-            {script.classified ? (
-              <div className="s1-analyze__classified">
-                <span className="s1-state s1-state--resolved">Recognized</span> {script.classified}
+        <div className="s1-updlg__body">
+          {/* Left column: drop zone or script analysis */}
+          <div className="s1-updlg__left">
+            {script ? (
+              <div className="s1-analyze" aria-live="polite">
+                <div className="s1-analyze__head">
+                  <span className="s1-analyze__fn">{script.filename}</span>
+                  <span className="s1-analyze__stage">{stageHeadline(script.stage)}</span>
+                </div>
+                <div className="s1-analyze__bar">
+                  <div className="s1-analyze__bar-fill" style={{ width: `${Math.round(script.progress * 100)}%` }} />
+                </div>
+                {script.classified ? (
+                  <div className="s1-analyze__classified">
+                    <span className="s1-state s1-state--resolved">Recognized</span> {script.classified}
+                  </div>
+                ) : null}
+                {script.found.length > 0 ? (
+                  <ul className="s1-analyze__found">
+                    {script.found.map((f) => (
+                      <li key={f}>
+                        <span className="s1-analyze__tick">✓</span> {f}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : (
+              <label
+                className={`s1-updlg__drop${drag ? " is-drag" : ""}`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDrag(true);
+                }}
+                onDragLeave={(e) => {
+                  if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                  setDrag(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDrag(false);
+                  pick(e.dataTransfer.files);
+                }}
+              >
+                <span className="s1-updlg__drop-icon" aria-hidden="true">
+                  <CloudUpload />
+                </span>
+                <strong className="s1-updlg__drophead">Drag files here</strong>
+                <span className="s1-updlg__hint">Up to {MAX_UPLOAD_MB} MB per file</span>
+                <span className="s1-button s1-button--pri" aria-hidden="true">Choose files</span>
+                <div className="s1-updlg__chips" aria-hidden="true">
+                  <span className="s1-updlg__chip s1-updlg__chip--pdf">PDF</span>
+                  <span className="s1-updlg__chip s1-updlg__chip--docx">DOCX</span>
+                  <span className="s1-updlg__chip s1-updlg__chip--xlsx">XLSX</span>
+                  <span className="s1-updlg__chip s1-updlg__chip--csv">CSV</span>
+                  <span className="s1-updlg__chip s1-updlg__chip--eml">EML</span>
+                  <span className="s1-updlg__chip s1-updlg__chip--img">
+                    <span className="s1-updlg__chip-dot" aria-hidden="true" />JPG / PNG
+                  </span>
+                </div>
+                <input
+                  className="s1-file-input"
+                  type="file"
+                  multiple
+                  accept={UPLOAD_ACCEPT}
+                  aria-label="Choose files to upload"
+                  onChange={(e) => {
+                    pick(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
+
+            {!script && onUploadSample && sampleFilename ? (
+              <div className="s1-updlg__sample">
+                <span className="s1-updlg__pdf" aria-hidden="true">PDF</span>
+                <span className="s1-updlg__samplename">
+                  <span>{sampleFilename}</span>
+                  <span className="s1-updlg__hint">A bill from the client, ready to try</span>
+                </span>
+                <button className="s1-button s1-button--pri" type="button" onClick={onUploadSample}>
+                  Upload sample
+                </button>
               </div>
             ) : null}
-            {script.found.length > 0 ? (
-              <ul className="s1-analyze__found">
-                {script.found.map((f) => (
-                  <li key={f}>
-                    <span className="s1-analyze__tick">✓</span> {f}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
           </div>
-        ) : (
-          <label
-            className={`s1-updlg__drop${drag ? " is-drag" : ""}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDrag(true);
-            }}
-            onDragLeave={(e) => {
-              if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-              setDrag(false);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDrag(false);
-              pick(e.dataTransfer.files);
-            }}
-          >
-            <CloudUpload className="s1-updlg__dropicon" aria-hidden />
-            <span className="s1-updlg__droptext">
-              <strong>Drop files here</strong> or <span className="s1-updlg__browse">choose files</span>
-            </span>
-            <span className="s1-updlg__hint">PDF, Word, Excel, CSV, emails, scans and photos · up to {MAX_UPLOAD_MB} MB each</span>
-            <input
-              className="s1-file-input"
-              type="file"
-              multiple
-              accept={UPLOAD_ACCEPT}
-              onChange={(e) => {
-                pick(e.target.files);
-                e.target.value = "";
-              }}
-            />
-          </label>
-        )}
 
-        {!script && onUploadSample && sampleFilename ? (
-          <div className="s1-updlg__sample">
-            <span className="s1-updlg__pdf" aria-hidden>
-              PDF
-            </span>
-            <span className="s1-updlg__samplename">
-              <span>{sampleFilename}</span>
-              <span className="s1-updlg__hint">A bill from the client, ready to try</span>
-            </span>
-            <button className="s1-button s1-button--pri" type="button" onClick={onUploadSample}>
-              Upload sample
-            </button>
+          {/* Right column: uploads panel */}
+          <div className="s1-updlg__right">
+            <div className="s1-updlg__right-head">
+              <span className="s1-updlg__right-title">Uploads</span>
+              {anything ? (
+                <span className="s1-updlg__right-count">{added.length + tasks.length}</span>
+              ) : null}
+            </div>
+            <div className="s1-updlg__right-body">
+              {!hasRightContent ? (
+                <div className="s1-updlg__empty">
+                  <div className="s1-updlg__empty-bars" aria-hidden="true">
+                    <span /><span /><span />
+                  </div>
+                  <span className="s1-updlg__empty-text">No files yet</span>
+                </div>
+              ) : (
+                <>
+                  {tasks.length > 0 ? <UploadProgress tasks={tasks} items={items} /> : null}
+                  {batchNote ? (
+                    <p className="s1-muted s1-batch__notice" aria-live="polite">{batchNote}</p>
+                  ) : null}
+                  {batchProgress && batchProgress.items.length > 0 && onOpenDocument ? (
+                    <BatchProgress batch={batchProgress} onOpenDocument={onOpenDocument} />
+                  ) : null}
+                  {added.length > 0 && !script ? (
+                    <ul className="s1-updlg__list" aria-live="polite">
+                      {added.map((item) => {
+                        const stage = uploadStage(item);
+                        return (
+                          <li key={item.documentId}>
+                            <span className="s1-updlg__fn">{item.filename}</span>
+                            <span className={`s1-state s1-state--${stage.role}`}>{stage.label}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
+                </>
+              )}
+            </div>
           </div>
-        ) : null}
+        </div>
 
-        {tasks.length > 0 ? <UploadProgress tasks={tasks} items={items} /> : null}
-
-        {batchNote ? (
-          <p className="s1-muted s1-batch__notice" aria-live="polite">
-            {batchNote}
-          </p>
-        ) : null}
-
-        {batchProgress && batchProgress.items.length > 0 && onOpenDocument ? (
-          <BatchProgress batch={batchProgress} onOpenDocument={onOpenDocument} />
-        ) : null}
-
-        {added.length > 0 && !script ? (
-          <ul className="s1-updlg__list" aria-live="polite">
-            {added.map((item) => {
-              const stage = uploadStage(item);
-              return (
-                <li key={item.documentId}>
-                  <span className="s1-updlg__fn">{item.filename}</span>
-                  <span className={`s1-state s1-state--${stage.role}`}>{stage.label}</span>
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-
-        {anything && !scripting ? (
-          <div className="s1-updlg__foot">
+        <div className="s1-updlg__foot">
+          {anything && !scripting ? (
             <span className="s1-updlg__hint">{busy ? "You can close this; reading carries on." : doneHint}</span>
+          ) : null}
+          <button className="s1-button" type="button" onClick={onClose}>Close</button>
+          {anything && !scripting ? (
             <button
               className="s1-button s1-button--pri"
               type="button"
@@ -232,10 +273,10 @@ export function UploadDialog({
                 onClose();
               }}
             >
-              View in Evidence
+              Go to Evidence
             </button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
     </div>,
     document.querySelector(".s1-app") ?? document.body

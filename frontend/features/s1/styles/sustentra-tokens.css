@@ -301,6 +301,19 @@
   --points-col-ev: 110px;     /* evidence / checked-by column width */
   --scope2-chip-bg: #E3F1FB;  /* scope 2 category chip background (sky tint) */
   --scope2-chip-fg: #165A8A;  /* scope 2 category chip text */
+  /* Upload modal */
+  --modal-upload-w: 1120px;        /* large upload modal max width */
+  --modal-upload-h: 800px;         /* large upload modal max height */
+  --shadow-modal: 0 32px 80px rgba(10, 12, 40, 0.35);   /* large modal drop shadow */
+  --shadow-dz-icon: 0 6px 18px rgba(46, 50, 153, 0.14); /* drop zone icon tile shadow */
+  --r-drop: 20px;                  /* drop zone and right panel corner radius */
+  --eml-chip-bg: #F3E5F7;          /* EML file type chip background (purple tint) */
+  --eml-chip-fg: #6B2A80;          /* EML file type chip text (purple) */
+  --chip-h-file: 24px;             /* file type chip height */
+  --updlg-icon-tile: 44px;         /* upload modal header icon tile size */
+  --updlg-close-size: 38px;        /* upload modal close button size */
+  --updlg-dz-icon: 64px;           /* upload modal drop zone icon tile size */
+  --updlg-empty-bars-max: 240px;   /* upload modal empty state bars max width */
   --hairline-width: 1px;
   --ring-width: 1.5px;
   --active-row-marker-width: 3px;
