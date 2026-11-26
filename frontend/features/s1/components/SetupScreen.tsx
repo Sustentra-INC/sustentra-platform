@@ -1,10 +1,11 @@
 "use client";
 
 import { Plus, X } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { EngagementConfig, FacilityOption } from "../types";
 import type { InScopeField } from "../types/scope";
+import { CountBadge } from "./CountBadge";
 import { DateRangePicker } from "./DateRangePicker";
 import { Dropdown } from "./Dropdown";
 import { InfoTip } from "./InfoTip";
@@ -81,6 +82,8 @@ export function SetupScreen({
   // Live data: the rows are the workbook's data points, each with its workbook row.
   const live = inScopeFields.some((f) => f.workbookRow !== undefined);
   const team = engagement.engagementTeam ?? [];
+  const [tab, setTab] = useState<"engagement" | "people" | "points">("engagement");
+  const inScope = inScopeFields.filter((f) => f.inScope).length;
 
   function addFacility(seed?: { name: string; address: string | null }) {
     const id = newFacilityId();
@@ -119,318 +122,387 @@ export function SetupScreen({
 
       {picker}
 
-      {/* Engagement basics. In backend mode they belong to the picked engagement. */}
+      {/* Tabs and section cards. Only shown once an engagement is selected in backend mode. */}
       {picker && !engagement.engagementId ? null : (
-      <>
-      <div className="s1-setup-card">
-        <h2>{picker ? "Details" : "Engagement"}</h2>
-        <div className="s1-setup-grid">
-          {picker ? (
-            <label className="s1-setup-field">
-              <span>Engagement name</span>
-              <input
-                value={engagement.engagementName ?? ""}
-                maxLength={200}
-                onChange={(e) => set({ engagementName: e.target.value })}
-              />
-            </label>
-          ) : null}
-          <label className="s1-setup-field">
-            <span>Company name</span>
-            <input value={engagement.clientName} onChange={(e) => set({ clientName: e.target.value })} />
-          </label>
-          <div className="s1-setup-field">
-            <span id="setup-rp-label">Reporting period</span>
-            <DateRangePicker
-              start={engagement.reportingPeriod.start}
-              end={engagement.reportingPeriod.end}
-              onChange={(s, e) => set({ reportingPeriod: { start: s, end: e } })}
-              labelId="setup-rp-label"
-            />
+        <>
+          <div role="tablist" aria-label="Setup sections" className="s1-setup-tabs">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "engagement"}
+              className="s1-setup-tab"
+              onClick={() => setTab("engagement")}
+            >
+              Engagement
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "people"}
+              className="s1-setup-tab"
+              onClick={() => setTab("people")}
+            >
+              Facilities and people
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "points"}
+              className="s1-setup-tab"
+              onClick={() => setTab("points")}
+            >
+              In-scope data points
+              <CountBadge variant="indigo">{inScope}/{inScopeFields.length}</CountBadge>
+            </button>
           </div>
-          <div className="s1-setup-field">
-            <span id="setup-regulation-label">Regulation</span>
-            <Dropdown
-              value={engagement.regulation ?? ""}
-              onChange={(v) => {
-                const opt = REGULATION_OPTIONS.find((o) => o.short === v);
-                if (opt) set({ regulation: opt.short, regulationJurisdiction: opt.full });
-              }}
-              options={REGULATION_OPTIONS.map((o) => ({ value: o.short, label: o.short, description: o.full }))}
-              placeholder="Choose a regulation"
-              labelId="setup-regulation-label"
-            />
-          </div>
-          <div className="s1-setup-field">
-            <span id="setup-methodology-label">Methodology</span>
-            <Dropdown
-              value={engagement.methodology ?? METHODOLOGY_OPTIONS[0]}
-              onChange={(v) => set({ methodology: v })}
-              options={METHODOLOGY_OPTIONS.map((m) => ({ value: m, label: m }))}
-              labelId="setup-methodology-label"
-            />
-          </div>
-        </div>
-      </div>
 
-      {/* Scope & assurance */}
-      <div className="s1-setup-card">
-        <h2>
-          Scope &amp; assurance
-          <InfoTip label="Scope and assurance">
-            The coverage and the standard the opinion is issued under. They set the in-scope data points and the
-            statement.
-          </InfoTip>
-        </h2>
-        <div className="s1-setup-grid">
-          <div className="s1-setup-field">
-            <span id="setup-datascope-label">Data scope</span>
-            <Dropdown
-              value={engagement.dataScope ?? DATA_SCOPE_OPTIONS[0]}
-              onChange={(v) => set({ dataScope: v })}
-              options={DATA_SCOPE_OPTIONS.map((o) => ({ value: o, label: o }))}
-              labelId="setup-datascope-label"
-            />
-          </div>
-          <div className="s1-setup-field">
-            <span id="setup-standard-label">Assurance standard</span>
-            <Dropdown
-              value={engagement.assuranceStandard ?? ASSURANCE_STANDARD_OPTIONS[0]}
-              onChange={(v) => set({ assuranceStandard: v })}
-              options={ASSURANCE_STANDARD_OPTIONS.map((o) => ({ value: o, label: o }))}
-              labelId="setup-standard-label"
-            />
-          </div>
-          <div className="s1-setup-field">
-            <span id="setup-level-label">Assurance level</span>
-            <Dropdown
-              value={engagement.assuranceLevel ?? ""}
-              onChange={(v) => set({ assuranceLevel: v })}
-              options={ASSURANCE_LEVEL_OPTIONS.map((o) => ({ value: o, label: o }))}
-              placeholder="Choose a level"
-              labelId="setup-level-label"
-            />
-          </div>
-          <div className="s1-setup-field">
-            <span id="setup-materiality-label">Materiality threshold</span>
-            <Dropdown
-              value={engagement.materialityThreshold ?? MATERIALITY_OPTIONS[0]}
-              onChange={(v) => set({ materialityThreshold: v })}
-              options={MATERIALITY_OPTIONS.map((o) => ({ value: o, label: `${o} of total` }))}
-              labelId="setup-materiality-label"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Facilities */}
-      <div className="s1-setup-card">
-        <h2>
-          Facilities
-          <InfoTip label="Facilities">
-            Bills are matched to a facility by its name or street address. The grid region sets the factor for its
-            electricity (Scope 2, location-based).
-          </InfoTip>
-        </h2>
-        {engagement.facilities.length ? (
-          <div className={`s1-fac${gridRegions ? " s1-fac--regions" : ""}`}>
-            <div className="s1-fac__head" aria-hidden>
-              <span>Name</span>
-              <span>Street address</span>
-              {gridRegions ? <span>Grid region (eGRID)</span> : null}
-              <span />
-            </div>
-            {engagement.facilities.map((f) => (
-              <div className="s1-fac__row" key={f.facilityId}>
-                <input aria-label="Facility name" value={f.name} onChange={(e) => renameFacility(f.facilityId, e.target.value)} />
-                <input
-                  className="s1-fac__address"
-                  aria-label="Street address"
-                  placeholder="e.g. 15 State Street, Albany, NY"
-                  value={f.address ?? ""}
-                  onChange={(e) => patchFacility(f.facilityId, { address: e.target.value })}
-                />
-                {gridRegions ? (
-                  <select
-                    className="s1-fac__region"
-                    aria-label="Grid region"
-                    value={f.gridRegion ?? ""}
-                    onChange={(e) => patchFacility(f.facilityId, { gridRegion: e.target.value || undefined })}
-                  >
-                    <option value="">Not set</option>
-                    {gridRegions.map((r) => (
-                      <option key={r.code} value={r.code}>
-                        {r.code} · {r.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                <RemoveButton label={`Remove ${f.name || "facility"}`} onClick={() => removeFacility(f.facilityId)} />
-                {gridRegions && lookupZip ? (
-                  <ZipRegionHint
-                    address={f.address}
-                    region={f.gridRegion}
-                    lookup={lookupZip}
-                    onUse={(code) => patchFacility(f.facilityId, { gridRegion: code })}
-                  />
-                ) : null}
+          {tab === "engagement" && (
+            <>
+              {/* Engagement basics. In backend mode they belong to the picked engagement. */}
+              <div className="s1-setup-card">
+                <div className="s1-setup-card__col-left">
+                  <h2>
+                    {picker ? "Details" : "Engagement"}
+                    <InfoTip label={picker ? "Details" : "Engagement"}>
+                      The company being assured, the period it reports on, and the rules it reports under.
+                    </InfoTip>
+                  </h2>
+                </div>
+                <div className="s1-setup-card__col-right">
+                  <div className="s1-setup-grid">
+                    {picker ? (
+                      <label className="s1-setup-field">
+                        <span>Engagement name</span>
+                        <input
+                          value={engagement.engagementName ?? ""}
+                          maxLength={200}
+                          onChange={(e) => set({ engagementName: e.target.value })}
+                        />
+                      </label>
+                    ) : null}
+                    <label className="s1-setup-field">
+                      <span>Company name</span>
+                      <input value={engagement.clientName} onChange={(e) => set({ clientName: e.target.value })} />
+                    </label>
+                    <div className="s1-setup-field">
+                      <span id="setup-rp-label">Reporting period</span>
+                      <DateRangePicker
+                        start={engagement.reportingPeriod.start}
+                        end={engagement.reportingPeriod.end}
+                        onChange={(s, e) => set({ reportingPeriod: { start: s, end: e } })}
+                        labelId="setup-rp-label"
+                      />
+                    </div>
+                    <div className="s1-setup-field">
+                      <span id="setup-regulation-label">Regulation</span>
+                      <Dropdown
+                        value={engagement.regulation ?? ""}
+                        onChange={(v) => {
+                          const opt = REGULATION_OPTIONS.find((o) => o.short === v);
+                          if (opt) set({ regulation: opt.short, regulationJurisdiction: opt.full });
+                        }}
+                        options={REGULATION_OPTIONS.map((o) => ({ value: o.short, label: o.short, description: o.full }))}
+                        placeholder="Choose a regulation"
+                        labelId="setup-regulation-label"
+                      />
+                    </div>
+                    <div className="s1-setup-field">
+                      <span id="setup-methodology-label">Methodology</span>
+                      <Dropdown
+                        value={engagement.methodology ?? METHODOLOGY_OPTIONS[0]}
+                        onChange={(v) => set({ methodology: v })}
+                        options={METHODOLOGY_OPTIONS.map((m) => ({ value: m, label: m }))}
+                        labelId="setup-methodology-label"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
-            ))}
-          </div>
-        ) : null}
-        {foundFacilities.length ? (
-          <div className="s1-fac__found">
-            <strong>Found on uploaded bills</strong>
-            <span className="s1-muted"> · not matched to a facility yet</span>
-            <ul>
-              {foundFacilities.map((found) => (
-                <li key={`${found.name}|${found.address ?? ""}`}>
-                  <span>
-                    {found.name}
-                    {found.address ? <span className="s1-muted"> · {found.address}</span> : null}
+
+              {/* Scope & assurance */}
+              <div className="s1-setup-card">
+                <div className="s1-setup-card__col-left">
+                  <h2>
+                    Scope &amp; assurance
+                    <InfoTip label="Scope and assurance">
+                      The coverage and the standard the opinion is issued under. They set the in-scope data points and the
+                      statement.
+                    </InfoTip>
+                  </h2>
+                </div>
+                <div className="s1-setup-card__col-right">
+                  <div className="s1-setup-grid">
+                    <div className="s1-setup-field">
+                      <span id="setup-datascope-label">Data scope</span>
+                      <Dropdown
+                        value={engagement.dataScope ?? DATA_SCOPE_OPTIONS[0]}
+                        onChange={(v) => set({ dataScope: v })}
+                        options={DATA_SCOPE_OPTIONS.map((o) => ({ value: o, label: o }))}
+                        labelId="setup-datascope-label"
+                      />
+                    </div>
+                    <div className="s1-setup-field">
+                      <span id="setup-standard-label">Assurance standard</span>
+                      <Dropdown
+                        value={engagement.assuranceStandard ?? ASSURANCE_STANDARD_OPTIONS[0]}
+                        onChange={(v) => set({ assuranceStandard: v })}
+                        options={ASSURANCE_STANDARD_OPTIONS.map((o) => ({ value: o, label: o }))}
+                        labelId="setup-standard-label"
+                      />
+                    </div>
+                    <div className="s1-setup-field">
+                      <span id="setup-level-label">Assurance level</span>
+                      <Dropdown
+                        value={engagement.assuranceLevel ?? ""}
+                        onChange={(v) => set({ assuranceLevel: v })}
+                        options={ASSURANCE_LEVEL_OPTIONS.map((o) => ({ value: o, label: o }))}
+                        placeholder="Choose a level"
+                        labelId="setup-level-label"
+                      />
+                    </div>
+                    <div className="s1-setup-field">
+                      <span id="setup-materiality-label">Materiality threshold</span>
+                      <Dropdown
+                        value={engagement.materialityThreshold ?? MATERIALITY_OPTIONS[0]}
+                        onChange={(v) => set({ materialityThreshold: v })}
+                        options={MATERIALITY_OPTIONS.map((o) => ({ value: o, label: `${o} of total` }))}
+                        labelId="setup-materiality-label"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {tab === "people" && (
+            <>
+              {/* Facilities */}
+              <div className="s1-setup-card">
+                <div className="s1-setup-card__col-left">
+                  <h2>
+                    Facilities
+                    <InfoTip label="Facilities">
+                      Bills are matched to a facility by its name or street address. The grid region sets the factor for its
+                      electricity (Scope 2, location-based).
+                    </InfoTip>
+                  </h2>
+                </div>
+                <div className="s1-setup-card__col-right">
+                  {engagement.facilities.length ? (
+                    <div className={`s1-fac${gridRegions ? " s1-fac--regions" : ""}`}>
+                      <div className="s1-fac__head" aria-hidden>
+                        <span>Name</span>
+                        <span>Street address</span>
+                        {gridRegions ? <span>Grid region (eGRID)</span> : null}
+                        <span />
+                      </div>
+                      {engagement.facilities.map((f) => (
+                        <div className="s1-fac__row" key={f.facilityId}>
+                          <input aria-label="Facility name" value={f.name} onChange={(e) => renameFacility(f.facilityId, e.target.value)} />
+                          <input
+                            className="s1-fac__address"
+                            aria-label="Street address"
+                            placeholder="e.g. 15 State Street, Albany, NY"
+                            value={f.address ?? ""}
+                            onChange={(e) => patchFacility(f.facilityId, { address: e.target.value })}
+                          />
+                          {gridRegions ? (
+                            <select
+                              className="s1-fac__region"
+                              aria-label="Grid region"
+                              value={f.gridRegion ?? ""}
+                              onChange={(e) => patchFacility(f.facilityId, { gridRegion: e.target.value || undefined })}
+                            >
+                              <option value="">Not set</option>
+                              {gridRegions.map((r) => (
+                                <option key={r.code} value={r.code}>
+                                  {r.code} · {r.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : null}
+                          <RemoveButton label={`Remove ${f.name || "facility"}`} onClick={() => removeFacility(f.facilityId)} />
+                          {gridRegions && lookupZip ? (
+                            <ZipRegionHint
+                              address={f.address}
+                              region={f.gridRegion}
+                              lookup={lookupZip}
+                              onUse={(code) => patchFacility(f.facilityId, { gridRegion: code })}
+                            />
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {foundFacilities.length ? (
+                    <div className="s1-fac__found">
+                      <strong>Found on uploaded bills</strong>
+                      <span className="s1-muted"> · not matched to a facility yet</span>
+                      <ul>
+                        {foundFacilities.map((found) => (
+                          <li key={`${found.name}|${found.address ?? ""}`}>
+                            <span>
+                              {found.name}
+                              {found.address ? <span className="s1-muted"> · {found.address}</span> : null}
+                            </span>
+                            <button className="s1-linklike" type="button" onClick={() => addFacility(found)}>
+                              Add as facility
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  <AddButton onClick={() => addFacility()}>Add facility</AddButton>
+                </div>
+              </div>
+
+              {/* Client contact */}
+              <div className="s1-setup-card">
+                <div className="s1-setup-card__col-left">
+                  <h2>
+                    Client contact
+                    <InfoTip label="Client contact">One recipient for the whole engagement. Requests are sent to this address.</InfoTip>
+                  </h2>
+                </div>
+                <div className="s1-setup-card__col-right">
+                  <div className="s1-setup-grid">
+                    <label className="s1-setup-field">
+                      <span>Name</span>
+                      <input
+                        value={engagement.clientContact?.name ?? ""}
+                        onChange={(e) => set({ clientContact: { ...contact(engagement), name: e.target.value } })}
+                      />
+                    </label>
+                    <label className="s1-setup-field">
+                      <span>Email</span>
+                      <input
+                        type="email"
+                        value={engagement.clientContact?.email ?? ""}
+                        onChange={(e) => set({ clientContact: { ...contact(engagement), email: e.target.value } })}
+                      />
+                    </label>
+                    <label className="s1-setup-field">
+                      <span>Company</span>
+                      <input
+                        value={engagement.clientContact?.company ?? ""}
+                        onChange={(e) => set({ clientContact: { ...contact(engagement), company: e.target.value } })}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Engagement team */}
+              <div className="s1-setup-card">
+                <div className="s1-setup-card__col-left">
+                  <h2>
+                    Engagement team
+                    <InfoTip label="Engagement team">Who can raise a request or examine a result. Typically up to four people.</InfoTip>
+                  </h2>
+                </div>
+                <div className="s1-setup-card__col-right">
+                  <div className="s1-setup-list">
+                    <div className="s1-setup-row s1-setup-row--head" aria-hidden>
+                      <span>Name</span>
+                      <span>Login</span>
+                      <span />
+                    </div>
+                    {team.map((m, i) => (
+                      <div className="s1-setup-row" key={m.login}>
+                        <input
+                          aria-label="Name"
+                          value={m.name}
+                          onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, name: e.target.value } : t)))}
+                        />
+                        <input
+                          aria-label="Login"
+                          className="s1-num s1-setup-row__login"
+                          value={m.login}
+                          onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, login: e.target.value } : t)))}
+                        />
+                        <RemoveButton label={`Remove ${m.name}`} onClick={() => setTeam(team.filter((_, j) => j !== i))} />
+                      </div>
+                    ))}
+                  </div>
+                  <AddButton onClick={() => setTeam([...team, { name: "New member", login: `login${team.length + 1}` }])}>
+                    Add member
+                  </AddButton>
+                </div>
+              </div>
+            </>
+          )}
+
+          {tab === "points" && (
+            <>
+              {/* In-scope data points: the workbook's reported data points (live), placeholders (demo) */}
+              <div className="s1-setup-card s1-setup-card--wide">
+                <div className="s1-setup-card__head">
+                  <h2>
+                    In-scope data points
+                    <InfoTip label="In-scope data points">
+                      The reported data points of the client&rsquo;s inventory. Untick one the client does not report: it then
+                      shows as not in scope on Verification results and is left out of coverage and materiality.
+                    </InfoTip>
+                  </h2>
+                  <span className="s1-state s1-state--resolved">
+                    {inScope} of {inScopeFields.length} in scope
                   </span>
-                  <button className="s1-linklike" type="button" onClick={() => addFacility(found)}>
-                    Add as facility
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-        <AddButton onClick={() => addFacility()}>Add facility</AddButton>
-      </div>
-
-      {/* Client contact */}
-      <div className="s1-setup-card">
-        <h2>
-          Client contact
-          <InfoTip label="Client contact">One recipient for the whole engagement. Requests are sent to this address.</InfoTip>
-        </h2>
-        <div className="s1-setup-grid">
-          <label className="s1-setup-field">
-            <span>Name</span>
-            <input
-              value={engagement.clientContact?.name ?? ""}
-              onChange={(e) => set({ clientContact: { ...contact(engagement), name: e.target.value } })}
-            />
-          </label>
-          <label className="s1-setup-field">
-            <span>Email</span>
-            <input
-              type="email"
-              value={engagement.clientContact?.email ?? ""}
-              onChange={(e) => set({ clientContact: { ...contact(engagement), email: e.target.value } })}
-            />
-          </label>
-          <label className="s1-setup-field">
-            <span>Company</span>
-            <input
-              value={engagement.clientContact?.company ?? ""}
-              onChange={(e) => set({ clientContact: { ...contact(engagement), company: e.target.value } })}
-            />
-          </label>
-        </div>
-      </div>
-
-      {/* Engagement team */}
-      <div className="s1-setup-card">
-        <h2>
-          Engagement team
-          <InfoTip label="Engagement team">Who can raise a request or examine a result. Typically up to four people.</InfoTip>
-        </h2>
-        <div className="s1-setup-list">
-          <div className="s1-setup-row s1-setup-row--head" aria-hidden>
-            <span>Name</span>
-            <span>Login</span>
-            <span />
-          </div>
-          {team.map((m, i) => (
-            <div className="s1-setup-row" key={m.login}>
-              <input
-                aria-label="Name"
-                value={m.name}
-                onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, name: e.target.value } : t)))}
-              />
-              <input
-                aria-label="Login"
-                className="s1-num s1-setup-row__login"
-                value={m.login}
-                onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, login: e.target.value } : t)))}
-              />
-              <RemoveButton label={`Remove ${m.name}`} onClick={() => setTeam(team.filter((_, j) => j !== i))} />
-            </div>
-          ))}
-        </div>
-        <AddButton onClick={() => setTeam([...team, { name: "New member", login: `login${team.length + 1}` }])}>
-          Add member
-        </AddButton>
-      </div>
-
-      {/* In-scope data points: the workbook's reported data points (live), placeholders (demo) */}
-      <div className="s1-setup-card">
-        <div className="s1-setup-card__head">
-          <h2>
-            In-scope data points
-            <InfoTip label="In-scope data points">
-              The reported data points of the client&rsquo;s inventory. Untick one the client does not report: it then
-              shows as not in scope on Verification results and is left out of coverage and materiality.
-            </InfoTip>
-          </h2>
-          <span className="s1-state s1-state--resolved">
-            {inScopeFields.filter((f) => f.inScope).length} of {inScopeFields.length} in scope
-          </span>
-        </div>
-        <div className="s1-table-wrap">
-          <table className="s1-table">
-            <colgroup>
-              <col style={{ width: "7%" }} />
-              <col />
-              <col style={{ width: "11%" }} />
-              <col style={{ width: "13%" }} />
-              {live ? <col style={{ width: "13%" }} /> : null}
-              <col style={{ width: live ? "22%" : "16%" }} />
-            </colgroup>
-            <thead>
-              <tr>
-                <th>In scope</th>
-                <th>Data point</th>
-                <th>Scope</th>
-                <th>Requirement</th>
-                {live ? <th>Workbook row</th> : null}
-                <th>{live ? "How it is checked" : "Evidence"}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {inScopeFields.map((field, i) => (
-                <tr key={field.methodologyFieldId}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={field.inScope}
-                      aria-label={`In scope: ${field.label}`}
-                      onChange={(e) =>
-                        onInScopeChange(inScopeFields.map((f, j) => (j === i ? { ...f, inScope: e.target.checked } : f)))
-                      }
-                    />
-                  </td>
-                  <td>{field.label}</td>
-                  <td>{LAYER_LABEL[field.layer]}</td>
-                  <td>{field.requirementLevel ?? "None"}</td>
-                  {live ? (
-                    <>
-                      <td className="s1-num s1-muted">{field.workbookRow}</td>
-                      <td className="s1-muted">{field.checkedBy}</td>
-                    </>
-                  ) : (
-                    <td>{field.completenessStatus ?? "Pending"}</td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      </>
+                </div>
+                <div className="s1-table-wrap">
+                  <table className="s1-table">
+                    <colgroup>
+                      <col style={{ width: "7%" }} />
+                      <col />
+                      <col style={{ width: "11%" }} />
+                      <col style={{ width: "13%" }} />
+                      {live ? <col style={{ width: "13%" }} /> : null}
+                      <col style={{ width: live ? "22%" : "16%" }} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>In scope</th>
+                        <th>Data point</th>
+                        <th>Scope</th>
+                        <th>Requirement</th>
+                        {live ? <th>Workbook row</th> : null}
+                        <th>{live ? "How it is checked" : "Evidence"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inScopeFields.map((field, i) => (
+                        <tr key={field.methodologyFieldId}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={field.inScope}
+                              aria-label={`In scope: ${field.label}`}
+                              onChange={(e) =>
+                                onInScopeChange(inScopeFields.map((f, j) => (j === i ? { ...f, inScope: e.target.checked } : f)))
+                              }
+                            />
+                          </td>
+                          <td>{field.label}</td>
+                          <td>{LAYER_LABEL[field.layer]}</td>
+                          <td>{field.requirementLevel ?? "None"}</td>
+                          {live ? (
+                            <>
+                              <td className="s1-num s1-muted">{field.workbookRow}</td>
+                              <td className="s1-muted">{field.checkedBy}</td>
+                            </>
+                          ) : (
+                            <td>{field.completenessStatus ?? "Pending"}</td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </>
       )}
     </section>
   );

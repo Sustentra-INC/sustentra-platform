@@ -2768,7 +2768,7 @@ html, body { margin: 0; padding: 0; }
   display: flex; align-items: center;
   margin: 0 var(--sp-3) var(--sp-3);
   background: var(--sf-card); border: 0; border-radius: var(--r-card);
-  box-shadow: inset 0 0 0 1.5px var(--line-strong);
+  box-shadow: inset 0 0 0 var(--ring-width) var(--line-strong);
   padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
   gap: var(--sp-2);
   transition: box-shadow 0.15s ease;
@@ -3676,6 +3676,44 @@ html, body { margin: 0; padding: 0; }
   .s1-fac__address, .s1-fac__region, .s1-setup-row__login { grid-column: 1 / -1; }
   .s1-setup-row:not(.s1-setup-row--head) { row-gap: var(--sp-2); padding-bottom: var(--sp-2); border-bottom: var(--border-hairline); }
   .s1-setup-row--head { display: none; }
+}
+
+/* Page header: display-size title for the Setup screen */
+.s1-setup .s1-ws-header__id h1 { font-size: var(--text-display); font-weight: var(--weight-bold); }
+
+/* Page tabs track and tab buttons (MVP-267) */
+.s1-setup-tabs {
+  display: flex; flex-wrap: wrap; gap: var(--sp-1); padding: var(--sp-1);
+  border-radius: var(--r-card); background: var(--sf-track); align-self: flex-start;
+}
+.s1-setup-tab {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  height: 2.375rem; padding: 0 var(--sp-4);
+  border: 0; border-radius: var(--r-ctl);
+  background: transparent; color: var(--ink-2);
+  font: inherit; font-size: var(--text-md); font-weight: var(--weight-medium);
+  cursor: pointer; white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.s1-setup-tab:hover:not([aria-selected="true"]) {
+  background: color-mix(in srgb, var(--sf-card) 60%, transparent); color: var(--ink);
+}
+.s1-setup-tab[aria-selected="true"] {
+  background: var(--sf-card); color: var(--ink); font-weight: var(--weight-strong);
+  box-shadow: var(--shadow-card-soft);
+}
+.s1-setup-tab:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+/* Two-column card shells: left = section title + tip, right = fields */
+.s1-setup-card { flex-direction: row; flex-wrap: wrap; gap: var(--sp-4) var(--sp-6); }
+.s1-setup-card--wide { flex-direction: column; gap: var(--sp-3); }
+.s1-setup-card__col-left {
+  flex: 1 1 10.625rem; max-width: 13.75rem;
+  display: flex; flex-direction: column; gap: var(--sp-1-5);
+}
+.s1-setup-card__col-right { flex: 999 1 26.25rem; min-width: 0; }
+@media (max-width: 48rem) {
+  .s1-setup-card__col-left, .s1-setup-card__col-right { flex: 1 1 100%; max-width: none; }
 }
 
 /* ===================================================================

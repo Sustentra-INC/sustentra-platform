@@ -280,6 +280,7 @@
   --selected-source-max-height: 8rem;
   --source-notice-max-width: 280px;
   --hairline-width: 1px;
+  --ring-width: 1.5px;
   --active-row-marker-width: 3px;
   --nav-current-marker-width: 2px;
   --shadow-subtle: none;

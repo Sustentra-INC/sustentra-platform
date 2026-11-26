@@ -39,6 +39,7 @@ describe("in-scope data points", () => {
       <SetupScreen engagement={engagementConfig} onChange={vi.fn()} inScopeFields={inScopeFieldsFrom(POINTS, [])}
         onInScopeChange={onInScopeChange} />
     );
+    fireEvent.click(screen.getByRole("tab", { name: /In-scope data points/ }));
     expect(screen.getByText("3 of 3 in scope")).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Workbook row" })).toBeTruthy();
     const row = screen.getByText("Indirect emissions from purchased steam").closest("tr")!;
