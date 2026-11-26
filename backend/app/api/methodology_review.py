@@ -318,7 +318,7 @@ async def _locked(db: AsyncSession, engagement: dict[str, Any], field_id: str, u
 
 async def _update_meta(db: AsyncSession, engagement: dict[str, Any], user: _HasId, *,
                        prefill_ran_at: str | None = None, covered: list[str] | None = None,
-                       reveal: str | None = None, auto_read: dict[str, Any] | None = None) -> None:
+                       fingerprint: str | None = None, reveal: str | None = None, auto_read: dict[str, Any] | None = None) -> None:
     """The page-state item (prefill marker, revealed rows), created on first use and locked while
     it is changed."""
 
@@ -330,6 +330,7 @@ async def _update_meta(db: AsyncSession, engagement: dict[str, Any], user: _HasI
     if prefill_ran_at:
         meta["prefill_ran_at"] = prefill_ran_at
         meta["prefill_covered"] = covered or []
+        meta["prefill_fingerprint"] = fingerprint  # what this read depended on; None: never reused
     if reveal and reveal not in meta["revealed"]:
         meta["revealed"] = [*meta["revealed"], reveal]
     if auto_read is not None:
@@ -917,12 +918,51 @@ async def prefill_methodology(
         return await _prefill(request, user, engagement, db, sessions, get_settings())
 
 
+async def _reuse_last_read(request: Request | None, user: CurrentUser | _Caller, engagement: dict[str, Any],
+                           db: AsyncSession, candidates: list[dict[str, Any]], fingerprint: str | None
+                           ) -> dict[str, Any] | None:
+    """The answer for a click when nothing the last successful read depended on has changed: no AI call,
+    no usage row, one audit event (no document content). None when there is no such read."""
+
+    if fingerprint is None:
+        return None
+    found = await workpaper_item_service.get_items(db, engagement["id"], KIND, [rules.META_KEY])
+    meta = found[0]["payload"] if found else {}
+    if meta.get("prefill_fingerprint") != fingerprint or not meta.get("prefill_ran_at"):
+        return None
+    metadata: dict[str, Any] = {"read_at": meta["prefill_ran_at"], "documents": len(candidates)}
+    if request is None:
+        metadata = {**metadata, "actor": AUTOMATIC_ACTOR, "automatic": True}
+    await write_audit_event(
+        db, "methodology_prefill_reused", org_id=engagement["org_id"], actor_user_id=user.id, actor_role=user.role,
+        target_type="engagement", target_id=str(engagement["id"]),
+        request_id=getattr(request.state, "request_id", None) if request else None,
+        ip_address=(request.client.host if request.client else None) if request else None,
+        user_agent=request.headers.get("user-agent") if request else None, metadata=metadata)
+    await db.commit()
+    read = [{"document_id": str(d["document_id"]), "file_name": str(d.get("file_name") or ""), "truncated": False}
+            for d in candidates]
+    return {"reused": True, "read_at": meta["prefill_ran_at"], "suggested": 0, "dropped": {}, "dropped_detail": [],
+            "kept_reviewer_decision": 0, "documents_read": read, "cost_usd": 0.0, "model": None,
+            "failed_sections": []}
+
+
 async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagement: dict[str, Any],
                    db: AsyncSession, sessions: async_sessionmaker[AsyncSession], settings: Settings) -> Any:
     org_id = engagement["org_id"]
+    candidates = await _candidates(db, engagement, user)
+    storage = documents_api.current_upload_service().storage_service
+    fingerprint: str | None = None
+    if settings.ai_suggestions_enabled and candidates:
+        # Hashing reads the files' bytes only (or uses the stored hash): no parsing, no AI call.
+        fingerprint = await asyncio.to_thread(
+            prefill.read_fingerprint, candidates, storage=storage, provider=settings.ai_provider,
+            model=settings.ai_model)
+        reused = await _reuse_last_read(request, user, engagement, db, candidates, fingerprint)
+        if reused is not None:
+            return reused
     if not await ai_usage.try_lock_org(db, org_id):
         raise _Declined("busy", _BUSY)
-    candidates = await _candidates(db, engagement, user)
     code, reason = _gate(settings, await ai_usage.month_spend_microusd(db, org_id), candidates)
     if code is not None:
         raise _Declined(code, str(reason))
@@ -931,8 +971,7 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
     await db.commit()  # releases the connection and the lock before the slow part
 
     documents = await asyncio.to_thread(
-        prefill.read_documents, candidates, storage=documents_api.current_upload_service().storage_service,
-        parser=ParserService())
+        prefill.read_documents, candidates, storage=storage, parser=ParserService())
     if not any(d.lines for d in documents):
         raise HTTPException(status_code=409, detail="The company's summary documents could not be read. "
                                                     "Upload a readable copy of the report or methodology document.")
@@ -975,6 +1014,8 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
                 work, engagement, user, verified, dropped, read_groups, frozenset(d.document_id for d in documents))
             await _update_meta(work, engagement, user, prefill_ran_at=stamp(_now()),
                                covered=[f["field_id"] for f in rules.CATALOG],
+                               # a read with a failed part is not reusable: the next click tries again
+                               fingerprint=None if failed_sections else fingerprint,
                                auto_read={"state": "done", "file_names": [], "reason": None, "at": stamp(_now())})
             await _audit_prefill(work, request, user, engagement, {
                 "outcome": "ok", "documents": len(documents), "suggested": suggested,
