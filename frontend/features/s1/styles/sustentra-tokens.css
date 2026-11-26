@@ -230,6 +230,7 @@
   --sp-1-5:   6px;
   --sp-2:     8px;
   --sp-3:    12px;
+  --sp-3-5:  14px;
   --sp-4:    16px;
   --sp-5:    24px;
   --sp-6:    32px;
@@ -252,7 +253,11 @@
   --badge-h: 20px;
   --tooltip-min-width: 180px;
   --tooltip-max-width: 280px;
-  --icon-button-size: 32px;
+  --icon-button-size: 34px;
+  --icon-btn-quiet-size: 28px;
+  --button-h: 36px;
+  --button-h-sm: 32px;
+  --button-h-lg: 48px;
   --compact-button-padding-block: 2px;
   --hidden-input-size: 1px;
   --provisional-marker-padding-block: 1px;

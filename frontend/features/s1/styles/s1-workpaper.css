@@ -340,7 +340,7 @@
 .s1-linklike {
   border: 0;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--accent);
   cursor: pointer;
   font: inherit;
   padding: 0;
@@ -350,14 +350,23 @@
 }
 
 .s1-linklike:disabled {
-  color: var(--text-muted);
+  opacity: 0.45;
   cursor: not-allowed;
   text-decoration: none;
 }
 
 .s1-doc-link:hover,
 .s1-linklike:hover:not(:disabled) {
-  color: var(--text-secondary);
+  color: var(--accent-strong);
+}
+
+.s1-linklike--danger {
+  color: var(--state-blocking-fg);
+}
+
+.s1-linklike--danger:hover:not(:disabled) {
+  color: var(--state-blocking-fg);
+  opacity: 0.8;
 }
 
 .s1-muted {
@@ -539,37 +548,103 @@
 }
 
 .s1-button {
-  border: var(--hairline-width) solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-primary);
-  color: var(--text-primary);
-  cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: var(--sp-2);
+  height: var(--button-h);
+  padding: 0 var(--sp-3-5);
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--sf-inset);
+  color: var(--ink);
   font: inherit;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  transition: background 120ms ease, border-color 120ms ease;
+  font-size: var(--text-base);
+  font-weight: var(--weight-strong);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease;
 }
 
 .s1-button:hover:not(:disabled) {
-  border-color: var(--border-strong);
-  background: var(--surface-muted);
+  background: color-mix(in srgb, var(--ink) 6%, var(--sf-inset));
 }
 
-.s1-button--compact {
-  margin-top: var(--spacing-xs);
-  padding: var(--compact-button-padding-block) var(--spacing-xs);
+.s1-button:active:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 10%, var(--sf-inset));
+}
+
+.s1-button--pri:active:not(:disabled) {
+  background: var(--accent-strong);
+  filter: brightness(0.94);
+}
+
+.s1-button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .s1-button:disabled {
-  color: var(--text-muted);
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
+/* Primary */
+.s1-button--pri {
+  background: var(--accent-solid);
+  color: var(--sf-card);
+  padding: 0 var(--sp-4);
+}
+
+.s1-button--pri:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+/* Soft indigo */
+.s1-button--soft {
+  background: var(--accent-softer);
+  color: var(--brand-dark);
+}
+
+.s1-button--soft:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+/* Small */
+.s1-button--compact {
+  height: var(--button-h-sm);
+  padding: 0 var(--sp-3);
+  font-size: var(--text-sm);
+}
+
+/* Large (sign-in, full-width) */
+.s1-button--lg {
+  height: var(--button-h-lg);
+  border-radius: var(--r-card-sm);
+  font-size: var(--text-title);
+  box-shadow: var(--shadow-primary-lg);
+}
+
+/* Default icon button: 34 × 34 sq, --r-md, --sf-inset bg */
 .s1-button--icon {
-  min-inline-size: var(--icon-button-size);
-  padding-inline: var(--spacing-xs);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  padding: 0;
+  color: var(--ink-2);
+}
+
+/* Primary icon button: 34 × 34 sq, --r-ctl, --accent-solid bg */
+.s1-button--icon-pri {
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  padding: 0;
+  border-radius: var(--r-ctl);
+  background: var(--accent-solid);
+  color: var(--sf-card);
+}
+
+.s1-button--icon-pri:hover:not(:disabled) {
+  background: var(--accent-strong);
 }
 
 .s1-menu {
@@ -1512,9 +1587,7 @@ select:focus-visible,
 .s1-xr-src-body { padding: var(--sp-4); }
 .s1-xr-doc { padding: var(--sp-3) 0; }
 
-/* Buttons a touch bigger so they don't feel pinched — but icon buttons stay
-   square, or they overflow their table column */
-.s1-button { padding: var(--sp-2) var(--sp-4); border-radius: 0.5rem; }
+/* Icon buttons stay square so they don't overflow their table column */
 .s1-button--icon { width: var(--icon-button-size); height: var(--icon-button-size); padding: 0; }
 
 /* Cards / panels rounder and roomier */
@@ -1572,8 +1645,7 @@ select:focus-visible,
 .s1-signin__brand { display: flex; }
 .s1-signin__logo { height: 1.9rem; width: auto; display: block; }
 
-.s1-button--pri { background: var(--brand-ink); border-color: var(--brand-ink); color: var(--sf-card); }
-.s1-button--pri:hover { filter: brightness(1.12); }
+/* .s1-button--pri base + hover defined in the shared button section above */
 .s1-signin__submit { background: var(--brand-ink); border-color: var(--brand-ink); }
 
 /* ===================================================================
@@ -1583,26 +1655,29 @@ select:focus-visible,
    ========================================================================== */
 
 /* ---- Press-motion: everything clickable answers the finger ---- */
-.s1-button, .s1-tab, .s1-ws-count, .s1-req-typechip,
+/* .s1-button has its own 120ms transition defined above; only non-button elements here */
+.s1-tab, .s1-ws-count, .s1-req-typechip,
 .s1-linklike, .s1-add-note, .s1-ws-setup, .s1-doc-link {
   transition: transform 0.16s var(--ease-out), background-color 0.16s var(--ease-out),
               border-color 0.16s var(--ease-out), color 0.16s var(--ease-out),
               box-shadow 0.16s var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
-  .s1-button:hover:not(:disabled), .s1-ws-count:hover,
+  .s1-ws-count:hover,
   .s1-req-typechip:hover, .s1-add-note:hover, .s1-ws-setup:hover { transform: translateY(-0.0625rem); }
 }
-.s1-button:active:not(:disabled), .s1-tab:active:not(:disabled), .s1-ws-count:active,
+.s1-tab:active:not(:disabled), .s1-ws-count:active,
 .s1-req-typechip:active, .s1-add-note:active,
 .s1-ws-setup:active, .s1-button--icon:active { transform: scale(0.96); }
 @media (prefers-reduced-motion: reduce) {
-  .s1-button, .s1-tab, .s1-ws-count, .s1-req-typechip,
+  .s1-button { transition: none; transform: none !important; }
+  .s1-tab, .s1-ws-count, .s1-req-typechip,
   .s1-add-note, .s1-ws-setup { transition: background-color 0.16s ease, color 0.16s ease; transform: none !important; }
 }
 
 /* ---- Focus: one accent ring everywhere ---- */
-.s1-button:focus-visible, .s1-tab:focus-visible, .s1-ws-count:focus-visible,
+/* .s1-button:focus-visible uses --shadow-focus (defined in button base above) */
+.s1-tab:focus-visible, .s1-ws-count:focus-visible,
 .s1-ws-factab:focus-visible, .s1-req-typechip:focus-visible, .s1-add-note:focus-visible,
 .s1-ws-setup:focus-visible, .s1-doc-link:focus-visible, .s1-linklike:focus-visible,
 input:focus-visible, select:focus-visible, textarea:focus-visible {
@@ -1948,7 +2023,7 @@ html { font-size: 82%; }
 .s1-table td { overflow-wrap: anywhere; }
 
 /* Primary button keeps white text even when disabled (was greying out). */
-.s1-button--pri:disabled { color: var(--sf-card); opacity: 0.5; }
+/* .s1-button--pri:disabled handled by unified .s1-button:disabled (opacity 0.45, cursor not-allowed) */
 
 /* Clickable document highlights map back to the value cards. */
 
@@ -3616,12 +3691,21 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-et-add svg { width: 1rem; height: 1rem; }
 .s1-et-add:hover { color: var(--accent-strong); }
 .s1-icon-button {
-  display: inline-grid; place-items: center; width: 2rem; height: 2rem; border: 0; border-radius: var(--radius-input);
-  background: none; color: var(--accent); cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-btn-quiet-size);
+  height: var(--icon-btn-quiet-size);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background 120ms ease;
 }
-.s1-icon-button svg { width: 1.125rem; height: 1.125rem; }
-.s1-icon-button:hover { background: var(--accent-soft); }
-.s1-icon-button:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-icon-button svg { width: 1rem; height: 1rem; }
+.s1-icon-button:hover:not(:disabled) { background: var(--sf-inset); }
+.s1-icon-button:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 @media (max-width: 64rem) {
   .s1-et-head { grid-template-columns: 1fr auto; }
   .s1-et-n, .s1-et-bar-track, .s1-et-fill { display: none; }
