@@ -8,13 +8,14 @@
 .authLayout {
   min-height: 100vh;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   background: var(--sf-card);
   color: var(--ink);
 }
 
 .brandPanel {
-  flex: 1 1 520px;
+  flex: 1 1 360px;
+  min-width: 360px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -24,16 +25,21 @@
   /* 56px top/bottom: calc(--sp-7 + --sp-2) = 48+8; 48px sides: --sp-7 */
   padding: calc(var(--sp-7) + var(--sp-2)) var(--sp-7);
   margin: var(--sp-3);                  /* 12px */
-  border-radius: var(--r-xl);           /* 24px — new token */
+  border-radius: var(--r-xl);           /* 24px */
   background: var(--accent-solid);
-  color: #fff;                          /* white on indigo — no --on-brand token yet */
+  color: var(--on-brand);
   text-align: center;
 }
 
 /* Mobile: stacks as a shorter logo band above the form */
 @media (max-width: 899px) {
+  .authLayout {
+    flex-wrap: wrap;
+  }
+
   .brandPanel {
     flex-basis: 100%;
+    min-width: 0;
     justify-content: center;
     gap: var(--sp-4);                   /* 16px */
     padding: var(--sp-6) var(--sp-5);  /* 32px 24px per spec */
@@ -80,7 +86,7 @@
 .brandTagline {
   margin: 0;
   font-size: var(--text-md);            /* 14px */
-  color: rgba(255, 255, 255, 0.78);     /* ~78% white — no --on-brand-muted token yet */
+  color: var(--on-brand-muted);
 }
 
 .formSide {

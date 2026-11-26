@@ -125,7 +125,6 @@ export function AcceptInviteForm({ onAccepted }: { onAccepted?: (path: string) =
             className="s1-input s1-input--lg"
             value={`${invite.first_name} ${invite.last_name}`}
             readOnly
-            style={{ background: "var(--sf-card)", color: "var(--ink)", cursor: "default" }}
           />
         </div>
         <div className={styles.field}>
@@ -134,11 +133,9 @@ export function AcceptInviteForm({ onAccepted }: { onAccepted?: (path: string) =
           </label>
           <input
             id="invitee-email"
-            className="s1-input s1-input--lg"
+            className="s1-input s1-input--lg s1-input--locked"
             value={invite.email}
             readOnly
-            tabIndex={-1}
-            style={{ borderColor: "var(--line)", color: "var(--ink-2)" }}
           />
         </div>
         <div className={styles.field}>

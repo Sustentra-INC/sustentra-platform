@@ -670,6 +670,12 @@
   height: var(--input-h-lg); border-radius: var(--r-card-sm);
   padding: 0 var(--sp-3-5); font-size: var(--text-title);
 }
+.s1-input.s1-input--locked {
+  background: var(--sf-sunken);
+  border-color: var(--line);
+  color: var(--ink-2);
+  cursor: default;
+}
 
 .s1-textarea {
   display: block; width: 100%; box-sizing: border-box;

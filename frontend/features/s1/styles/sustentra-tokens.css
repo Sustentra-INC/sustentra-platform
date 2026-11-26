@@ -37,6 +37,8 @@
      states are always indigo, never black. */
   --brand-ink:      #282870;   /* primary indigo */
   --brand-dark:     #282870;   /* text on indigo tint, avatar initials */
+  --on-brand:       #FFFFFF;              /* text directly on the indigo brand panel */
+  --on-brand-muted: rgba(255, 255, 255, 0.78); /* muted text on the brand panel */
 
   /* --- Interactive accent — indigo ----------------------------------------
      Brand and action are unified. --accent-solid / --accent are the same as
