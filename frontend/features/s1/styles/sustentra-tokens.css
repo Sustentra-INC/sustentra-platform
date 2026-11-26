@@ -23,6 +23,7 @@
   --sf-card:        #FFFFFF;   /* cards, tables, panels */
   --sf-sunken:      #F7F8FA;   /* nested / recessed areas, expanded rows */
   --sf-inset:       #F1F2F6;   /* code, verbatim statute text, quoted blocks */
+  --sf-track:       #E9EAF0;   /* page-tabs track background */
 
   --ink:            #14151A;   /* primary text */
   --ink-2:          #3B3D46;   /* secondary text, values in tables */
@@ -292,6 +293,7 @@
   /* New radius scale (use these for new components). */
   --r-xs:      4px;    /* checkboxes */
   --r-sm:      8px;    /* small chips */
+  --r-seg:     9px;    /* segmented-control segments */
   --r-md:     10px;    /* avatars, small buttons, standard inputs */
   --r-ctl:    11px;    /* buttons, search fields, nav items */
   --r-card-sm: 12px;   /* small cards, large auth inputs */
