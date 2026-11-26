@@ -1,88 +1,178 @@
-/* Scoped styles for the MVP auth pages. Uses the global design tokens from
-   sustentra-tokens.css; CSS-Module-scoped so it never leaks into the workpaper. */
+/* Scoped styles for the auth pages. Uses the global design tokens from
+   sustentra-tokens.css; CSS-Module-scoped so it never leaks into the workpaper.
+   Note: auth.module.css is not checked by the contract test; raw px/rgba() values
+   used here for layout dimensions without matching tokens (noted in report). */
 
-.page {
+/* ---- Split layout (MVP-273) ---------------------------------------------- */
+
+.authLayout {
   min-height: 100vh;
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--sf-card);
+  color: var(--ink);
+}
+
+.brandPanel {
+  flex: 1 1 520px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--sp-6) + var(--sp-1)); /* 36px */
+  /* 56px top/bottom: calc(--sp-7 + --sp-2) = 48+8; 48px sides: --sp-7 */
+  padding: calc(var(--sp-7) + var(--sp-2)) var(--sp-7);
+  margin: var(--sp-3);                  /* 12px */
+  border-radius: var(--r-xl);           /* 24px — new token */
+  background: var(--accent-solid);
+  color: #fff;                          /* white on indigo — no --on-brand token yet */
+  text-align: center;
+}
+
+/* Mobile: stacks as a shorter logo band above the form */
+@media (max-width: 899px) {
+  .brandPanel {
+    flex-basis: 100%;
+    justify-content: center;
+    gap: var(--sp-4);                   /* 16px */
+    padding: var(--sp-6) var(--sp-5);  /* 32px 24px per spec */
+    margin: var(--sp-2) var(--sp-2) 0;
+    border-radius: var(--r-lg);
+  }
+}
+
+.brandLogo {
+  width: min(240px, 70%);
+  height: auto;
+  display: block;
+  /* FLAG: no white logo in /public — dark PNG inverted with CSS filter */
+  filter: brightness(0) invert(1);
+}
+
+@media (max-width: 899px) {
+  .brandLogo {
+    width: 140px;
+  }
+}
+
+.brandCopy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2-5); /* 10px */
+}
+
+@media (max-width: 899px) {
+  .brandCopy {
+    display: none; /* hide on mobile to keep form above the fold */
+  }
+}
+
+.brandHeadline {
+  margin: 0;
+  font-size: var(--text-lg);            /* 20px — clamp(14px,1.45vw,21px) ≈ 20px at 1440px */
+  line-height: 1.25;
+  font-weight: var(--weight-strong);    /* 600 */
+  letter-spacing: -0.01em;
+}
+
+.brandTagline {
+  margin: 0;
+  font-size: var(--text-md);            /* 14px */
+  color: rgba(255, 255, 255, 0.78);     /* ~78% white — no --on-brand-muted token yet */
+}
+
+.formSide {
+  flex: 1.2 1 460px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem;
-  background: var(--sf-page, #fbfaf6);
+  padding: var(--sp-7) var(--sp-5);    /* 48px 24px */
 }
 
-.card {
+@media (max-width: 899px) {
+  .formSide {
+    padding: var(--sp-6) var(--sp-5);
+  }
+}
+
+.formInner {
   width: 100%;
-  max-width: 24rem;
-  background: var(--sf-card, #ffffff);
-  border: 0.0625rem solid var(--border-default, #e4e2da);
-  border-radius: var(--radius-card, 0.75rem);
-  box-shadow: 0 0.5rem 1.75rem rgba(40, 40, 112, 0.08);
-  padding: 2rem 1.75rem;
+  max-width: 400px;                     /* no matching token — reported as layout gap */
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: calc(var(--sp-5) + var(--sp-1)); /* 28px */
 }
 
-.logo {
-  height: 1.5rem;
-  width: auto;
-  align-self: flex-start;
-}
+/* ---- Form heading --------------------------------------------------------- */
 
 .heading {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--sp-2);
 }
 
 .title {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 650;
-  color: var(--ink, #1b1b17);
-  letter-spacing: -0.01em;
+  font-size: var(--text-display);       /* 30px */
+  line-height: 1.15;
+  font-weight: var(--weight-bold);      /* 700 */
+  color: var(--ink);
+  letter-spacing: -0.02em;
 }
 
 .subtitle {
   margin: 0;
-  font-size: 0.85rem;
-  color: var(--ink-3, #6b6b63);
+  font-size: var(--text-sm);
+  color: var(--ink-3);
 }
+
+/* ---- Shared form primitives (used by all auth forms) --------------------- */
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--sp-4);                     /* 16px — base for all auth forms */
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: var(--sp-1-5);                   /* 6px */
 }
 
 .label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--ink-2, #3a3a33);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+  color: var(--ink-3);
 }
 
 .input {
   width: 100%;
   box-sizing: border-box;
   font: inherit;
-  font-size: 0.95rem;
-  color: var(--ink, #1b1b17);
-  background: var(--sf-page, #fbfaf6);
-  border: 0.0625rem solid var(--border-default, #d7d5cc);
-  border-radius: var(--radius-input, 0.5rem);
-  padding: 0.6rem 0.7rem;
+  font-size: var(--text-md);
+  color: var(--ink);
+  background: var(--sf-card);
+  border: var(--border-strong);
+  border-radius: var(--r-card-sm);
+  padding: 0 var(--sp-3-5);
+  height: var(--input-h-lg);
 }
 
 .input:focus {
   outline: none;
-  border-color: var(--accent, #2c6fb3);
-  box-shadow: 0 0 0 0.1875rem var(--accent-line, #bfdbf4);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+
+.input:disabled,
+.input[readonly] {
+  background: var(--sf-sunken);
+  color: var(--ink-3);
+  cursor: not-allowed;
 }
 
 .inputWrap {
@@ -97,96 +187,97 @@
 
 .reveal {
   position: absolute;
-  right: 0.5rem;
+  right: var(--sp-2);
   font: inherit;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--accent, #2c6fb3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+  color: var(--accent);
   background: none;
   border: 0;
   cursor: pointer;
-  padding: 0.25rem 0.4rem;
+  padding: var(--sp-1) var(--sp-1-5);
 }
 
 .otp {
   width: 100%;
   box-sizing: border-box;
   font: inherit;
-  font-size: 1.5rem;
+  font-size: var(--text-display);
   letter-spacing: 0.5rem;
   text-align: center;
-  color: var(--ink, #1b1b17);
-  background: var(--sf-page, #fbfaf6);
-  border: 0.0625rem solid var(--border-default, #d7d5cc);
-  border-radius: var(--radius-input, 0.5rem);
-  padding: 0.7rem;
+  color: var(--ink);
+  background: var(--sf-card);
+  border: var(--border-strong);
+  border-radius: var(--r-card-sm);
+  padding: var(--sp-3);
   font-variant-numeric: tabular-nums;
 }
 
 .otp:focus {
   outline: none;
-  border-color: var(--accent, #2c6fb3);
-  box-shadow: 0 0 0 0.1875rem var(--accent-line, #bfdbf4);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
 }
 
 .button {
   font: inherit;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #ffffff;
-  background: var(--accent, #2c6fb3);
+  font-size: var(--text-md);
+  font-weight: var(--weight-strong);
+  color: var(--sf-card);
+  background: var(--accent-solid);
   border: 0;
-  border-radius: var(--radius-input, 0.5rem);
-  padding: 0.65rem 1rem;
+  border-radius: var(--r-card-sm);
+  padding: 0 var(--sp-4);
+  height: var(--button-h-lg);
   cursor: pointer;
 }
 
 .button:hover {
-  background: var(--accent-strong, #255d97);
+  background: var(--accent-strong);
 }
 
 .button:disabled {
-  opacity: 0.6;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .error {
-  font-size: 0.85rem;
-  color: var(--state-blocking-fg, #a12d2d);
-  background: var(--state-blocking-bg, #fbeceb);
-  border: 0.0625rem solid var(--state-blocking-line, #f0cfcd);
-  border-radius: var(--radius-input, 0.5rem);
-  padding: 0.5rem 0.65rem;
+  font-size: var(--text-sm);
+  color: var(--state-blocking-fg);
+  background: var(--state-blocking-bg);
+  border: 1px solid var(--state-blocking-line);
+  border-radius: var(--r-card-sm);
+  padding: var(--sp-2) var(--sp-3);
   margin: 0;
 }
 
 .notice {
-  font-size: 0.85rem;
-  color: var(--ink-2, #3a3a33);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
   margin: 0;
 }
 
 .hints {
   margin: 0;
   padding-left: 1.1rem;
-  font-size: 0.78rem;
-  color: var(--ink-3, #6b6b63);
+  font-size: var(--text-sm);
+  color: var(--ink-3);
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: var(--sp-half);
 }
 
 .row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--sp-2);
 }
 
 .link {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--accent, #2c6fb3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+  color: var(--accent);
   background: none;
   border: 0;
   cursor: pointer;
@@ -199,14 +290,87 @@
 }
 
 .muted {
-  font-size: 0.82rem;
-  color: var(--ink-3, #6b6b63);
+  font-size: var(--text-sm);
+  color: var(--ink-3);
 }
 
 .footer {
   display: flex;
   justify-content: center;
-  gap: 0.35rem;
-  font-size: 0.82rem;
-  color: var(--ink-3, #6b6b63);
+  gap: var(--sp-1-5);
+  font-size: var(--text-sm);
+  color: var(--ink-3);
+}
+
+/* ---- Sign-in form restyling (MVP-274) ------------------------------------- */
+
+.signinForm {
+  gap: calc(var(--sp-4) + var(--sp-half)); /* 18px */
+}
+
+/* Password label row: label on left, Forgot password link on right */
+.labelRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+/* Password field wrapper — mimics s1-input--lg but holds input + Show button */
+.pwWrap {
+  display: flex;
+  align-items: center;
+  height: var(--input-h-lg);            /* 46px */
+  padding: 0 var(--sp-1-5) 0 var(--sp-3-5); /* 0 6px 0 14px */
+  border: var(--border-strong);
+  border-radius: var(--r-card-sm);      /* 12px */
+  background: var(--sf-card);
+  box-sizing: border-box;
+}
+
+.pwWrap:focus-within {
+  border: 2px solid var(--accent);
+  box-shadow: var(--shadow-focus);
+  padding-inline-start: calc(var(--sp-3-5) - 1px); /* compensate for 2→1px border delta */
+}
+
+.pwInput {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-title);         /* 16px — matches s1-input--lg */
+  color: var(--ink);
+  outline: none;
+}
+
+.pwShow {
+  flex: none;
+  height: 34px;
+  padding: 0 var(--sp-2-5);            /* 0 10px */
+  border: 0;
+  border-radius: var(--r-sm);           /* 8px */
+  background: var(--sf-inset);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--text-sm);            /* 12px */
+  font-weight: var(--weight-strong);    /* 600 */
+  cursor: pointer;
+}
+
+/* Keep me signed in checkbox + label */
+.keepSignedIn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2-5);                   /* 10px */
+  font-size: var(--text-md);            /* 14px */
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+/* Full-width submit button override */
+.submitBtn {
+  width: 100%;
 }

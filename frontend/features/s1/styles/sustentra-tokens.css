@@ -300,6 +300,7 @@
   --r-card:   14px;    /* cards */
   --r-pop:    16px;    /* floating dropdown panels */
   --r-lg:     18px;    /* large cards, modals */
+  --r-xl:     24px;    /* auth brand panel */
   --r-pill:  999px;    /* pills, badges */
 
   --input-h:    40px;   /* standard form input height */
