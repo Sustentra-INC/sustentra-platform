@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from backend.app.adapters.llm.claude import StructuredReply, TokenUsage
+from backend.app.adapters.llm.base import StructuredReply, TokenUsage
 from backend.app.core.config import Settings
 from backend.app.reference.extraction_config_loader import load_default_extraction_configs
 from backend.app.repositories.pipeline_repository import InMemoryPipelineRunRepository

@@ -1,4 +1,4 @@
-"""The Claude adapter, with the HTTP layer faked: no test reaches the network."""
+"""The AI adapters (Anthropic API, Bedrock), with the HTTP layer faked: no test reaches the network."""
 
 from __future__ import annotations
 
@@ -11,15 +11,20 @@ import httpx2
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.app.adapters.llm import claude
-from backend.app.adapters.llm.claude import (
-    AiNotConfiguredError,
-    SdkClaude,
+from backend.app.adapters.llm import _claude_sdk, anthropic_api, bedrock
+from backend.app.adapters.llm.anthropic_api import AnthropicApiClient
+from backend.app.adapters.llm.base import (
+    MAX_RETRIES,
+    REQUEST_TIMEOUT_S,
+    LlmNotConfigured,
+    LlmRequestRejected,
+    LlmUnavailable,
+    StructuredReply,
     TokenUsage,
-    UnknownModelError,
-    cost_microusd,
-    get_claude,
 )
+from backend.app.adapters.llm.bedrock import BedrockClient
+from backend.app.adapters.llm.factory import get_llm
+from backend.app.adapters.llm.pricing import UnknownModelError, cost_microusd
 from backend.app.core.config import Settings
 
 TEST_KEY = "sk-ant-test-0123456789-never-real"
@@ -76,12 +81,12 @@ class FakeApi:
         return json.loads(self.requests[-1].content)
 
 
-def _anthropic_claude(api: FakeApi, model: str = "claude-sonnet-5-5") -> SdkClaude:
+def _anthropic_claude(api: FakeApi, model: str = "claude-sonnet-5-5") -> AnthropicApiClient:
     sdk = anthropic.Anthropic(api_key=TEST_KEY, http_client=api.http_client(), max_retries=0)
-    return SdkClaude(sdk, provider="anthropic", model=model, effort="low")
+    return AnthropicApiClient(sdk, model=model, effort="low")
 
 
-def _ask(client: SdkClaude) -> claude.StructuredReply[Answer]:
+def _ask(client: AnthropicApiClient) -> StructuredReply[Answer]:
     return client.structured(system="Rules.", content="Document lines.", output_type=Answer, max_tokens=8_000)
 
 
@@ -89,24 +94,24 @@ def _ask(client: SdkClaude) -> claude.StructuredReply[Answer]:
 
 
 def test_no_key_means_no_client() -> None:
-    assert get_claude(_settings()) is None
+    assert get_llm(_settings()) is None
 
 
 def test_key_gives_an_anthropic_client() -> None:
-    client = get_claude(_settings(anthropic_api_key=TEST_KEY))
+    client = get_llm(_settings(anthropic_api_key=TEST_KEY))
     assert client is not None
     assert (client.provider, client.model) == ("anthropic", "claude-sonnet-5-5")
-    sdk = claude.build_sdk_client(_settings(anthropic_api_key=TEST_KEY))
+    sdk = anthropic_api.build_sdk_client(_settings(anthropic_api_key=TEST_KEY))
     assert isinstance(sdk, anthropic.Anthropic)
-    assert (sdk.timeout, sdk.max_retries) == (claude.REQUEST_TIMEOUT_S, claude.MAX_RETRIES)
+    assert (sdk.timeout, sdk.max_retries) == (REQUEST_TIMEOUT_S, MAX_RETRIES)
 
 
 def test_unknown_model_is_refused() -> None:
     with pytest.raises(UnknownModelError):
-        get_claude(_settings(anthropic_api_key=TEST_KEY, ai_model="claude-made-up-9"))
+        get_llm(_settings(anthropic_api_key=TEST_KEY, ai_model="claude-made-up-9"))
     # Even before a key exists, so a typo shows up on staging before the key does.
     with pytest.raises(UnknownModelError):
-        get_claude(_settings(ai_model="claude-made-up-9"))
+        get_llm(_settings(ai_model="claude-made-up-9"))
 
 
 @pytest.fixture
@@ -124,17 +129,17 @@ def fake_aws(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> pytest.MonkeyPat
 
 def test_bedrock_needs_no_key(fake_aws: pytest.MonkeyPatch) -> None:
     fake_aws.setenv("AWS_REGION", "us-east-1")
-    client = get_claude(_settings(ai_provider="bedrock"))
+    client = get_llm(_settings(ai_provider="bedrock"))
     assert client is not None
     assert (client.provider, client.model) == ("bedrock", "claude-sonnet-5-5")
-    sdk = claude.build_sdk_client(_settings(ai_provider="bedrock"))
+    sdk = bedrock.build_sdk_client()
     assert isinstance(sdk, anthropic.AnthropicBedrockMantle)
-    assert (sdk.timeout, sdk.max_retries) == (claude.REQUEST_TIMEOUT_S, claude.MAX_RETRIES)
+    assert (sdk.timeout, sdk.max_retries) == (REQUEST_TIMEOUT_S, MAX_RETRIES)
 
 
 def test_bedrock_without_a_region_is_a_config_error(fake_aws: pytest.MonkeyPatch) -> None:
-    with pytest.raises(AiNotConfiguredError, match="Bedrock"):
-        get_claude(_settings(ai_provider="bedrock"))
+    with pytest.raises(LlmNotConfigured, match="Bedrock"):
+        get_llm(_settings(ai_provider="bedrock"))
 
 
 # --- cost ------------------------------------------------------------------------------------
@@ -162,32 +167,33 @@ ONE_MILLION_EACH = TokenUsage(
         ("claude-haiku-5-5", 0.50 + 2.50 + 0.05 + 0.625 + 1),
     ],
 )
-def test_cost_per_model(model: str, usd: float) -> None:
-    assert cost_microusd(model, ONE_MILLION_EACH) == round(usd * 1_000_000)
+@pytest.mark.parametrize("provider", ["anthropic", "bedrock"])
+def test_cost_per_model(provider: Any, model: str, usd: float) -> None:
+    assert cost_microusd(provider, model, ONE_MILLION_EACH) == round(usd * 1_000_000)
 
 
 def test_cost_of_one_bill() -> None:
     # 3,000 input, 2,500 written to the 5-minute cache, 1,200 output on Claude Sonnet 5.5:
     # 3,000 x $2 + 2,500 x $2.50 + 1,200 x $10 per million = $0.02425.
     usage = TokenUsage(input_tokens=3_000, output_tokens=1_200, cache_write_5m_tokens=2_500)
-    assert cost_microusd("claude-sonnet-5-5", usage) == 24_250
+    assert cost_microusd("anthropic", "claude-sonnet-5-5", usage) == 24_250
     # A cache hit on the same prompt: 3,000 x $2 + 2,500 x $0.10 + 1,200 x $10 = $0.01825.
     usage = TokenUsage(input_tokens=3_000, output_tokens=1_200, cache_read_tokens=2_500)
-    assert cost_microusd("claude-sonnet-5-5", usage) == 18_250
+    assert cost_microusd("anthropic", "claude-sonnet-5-5", usage) == 18_250
 
 
 def test_haiku_switches_rate_card_above_100k_prompt_tokens() -> None:
     at_limit = TokenUsage(input_tokens=90_000, cache_read_tokens=10_000, output_tokens=1_000)
     over = TokenUsage(input_tokens=90_001, cache_read_tokens=10_000, output_tokens=1_000)
     # 90,000 x 0.10 + 10,000 x 0.01 + 1,000 x 0.50 = 9,600 micro-USD.
-    assert cost_microusd("claude-haiku-5-5", at_limit) == 9_600
+    assert cost_microusd("anthropic", "claude-haiku-5-5", at_limit) == 9_600
     # 90,001 x 0.50 + 10,000 x 0.05 + 1,000 x 2.50 = 48,000.5 -> 48,001.
-    assert cost_microusd("claude-haiku-5-5", over) == 48_001
+    assert cost_microusd("anthropic", "claude-haiku-5-5", over) == 48_001
 
 
 def test_cost_of_an_unknown_model_raises() -> None:
     with pytest.raises(UnknownModelError):
-        cost_microusd("gpt-4o", TokenUsage(input_tokens=1))
+        cost_microusd("anthropic", "gpt-4o", TokenUsage(input_tokens=1))
 
 
 # --- structured() ----------------------------------------------------------------------------
@@ -210,7 +216,7 @@ def test_structured_request_and_reply() -> None:
     request = api.requests[-1]
     assert request.url.path == "/v1/messages"
     assert request.headers["anthropic-version"] == "2026-10-21"
-    assert claude.FALLBACK_BETA in request.headers["anthropic-beta"]
+    assert anthropic_api.FALLBACK_BETA in request.headers["anthropic-beta"]
     body = api.sent
     assert body["model"] == "claude-sonnet-5-5"
     assert body["max_tokens"] == 8_000
@@ -239,7 +245,7 @@ def test_bedrock_request_uses_the_prefixed_model_and_no_fallback() -> None:
         aws_region="us-east-1", aws_access_key="AKIDEXAMPLE", aws_secret_key="not-a-real-secret",
         http_client=api.http_client(), max_retries=0,
     )
-    reply = SdkClaude(sdk, provider="bedrock", model="claude-sonnet-5-5", effort="low").structured(
+    reply = BedrockClient(sdk, model="claude-sonnet-5-5", effort="low").structured(
         system="Rules.", content="Document lines.", output_type=Answer, max_tokens=8_000
     )
     assert reply.outcome == "ok"
@@ -257,21 +263,21 @@ def test_bedrock_model_id_override_is_sent_verbatim_and_pricing_keeps_the_api_id
         aws_region="us-east-1", aws_access_key="AKIDEXAMPLE", aws_secret_key="not-a-real-secret",
         http_client=api.http_client(), max_retries=0,
     )
-    claude = SdkClaude(sdk, provider="bedrock", model="claude-sonnet-5-5", effort="low",
-                       bedrock_model_id="anthropic.claude-sonnet-5-5-custom")
-    reply = claude.structured(system="Rules.", content="Doc.", output_type=Answer, max_tokens=8_000)
+    client = BedrockClient(sdk, model="claude-sonnet-5-5", effort="low",
+                           bedrock_model_id="anthropic.claude-sonnet-5-5-custom")
+    reply = client.structured(system="Rules.", content="Doc.", output_type=Answer, max_tokens=8_000)
     assert api.sent["model"] == "anthropic.claude-sonnet-5-5-custom"
-    assert claude.model == "claude-sonnet-5-5"
+    assert client.model == "claude-sonnet-5-5"
     assert reply.cost_microusd == 1_000 * 2 + 200 * 10
 
 
-def test_override_is_ignored_for_the_claude_api() -> None:
+def test_the_claude_api_sends_the_model_id_as_configured() -> None:
     api = FakeApi(_message())
-    claude = SdkClaude(
+    client = AnthropicApiClient(
         anthropic.Anthropic(api_key="k", http_client=api.http_client(), max_retries=0),
-        provider="anthropic", model="claude-sonnet-5-5", effort="low", bedrock_model_id="anthropic.x",
+        model="claude-sonnet-5-5", effort="low",
     )
-    claude.structured(system="Rules.", content="Doc.", output_type=Answer, max_tokens=8_000)
+    client.structured(system="Rules.", content="Doc.", output_type=Answer, max_tokens=8_000)
     assert api.sent["model"] == "claude-sonnet-5-5"
 
 
@@ -328,12 +334,75 @@ def test_key_and_prompt_never_reach_the_logs(caplog: pytest.LogCaptureFixture, m
     monkeypatch.setenv("ANTHROPIC_API_KEY", TEST_KEY)
     caplog.set_level(logging.DEBUG)  # root at DEBUG; the adapter keeps the SDK's logger at INFO
     settings = Settings()
-    assert get_claude(settings) is not None
+    assert get_llm(settings) is not None
     for body in (_message(), _message(text="not json"), _message(model="claude-future-1")):
         _ask(_anthropic_claude(FakeApi(body)))
-    logging.getLogger(claude.__name__).info("settings %s %r", settings, settings)
+    logging.getLogger(_claude_sdk.__name__).info("settings %s %r", settings, settings)
     assert "api.anthropic.com" in caplog.text  # the HTTP layer's request line was captured
     assert TEST_KEY not in caplog.text
     assert "Document lines." not in caplog.text and "Rules." not in caplog.text
     # The SDK logs whole request bodies at DEBUG; that logger stays at INFO.
     assert logging.getLogger("anthropic").getEffectiveLevel() == logging.INFO
+
+
+# --- neutral errors ---------------------------------------------------------------------------
+
+
+def _error_client(status: int, body: dict[str, Any]) -> AnthropicApiClient:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(status, headers={"request-id": "req_err"}, json=body)
+
+    http = httpx2.Client(transport=httpx2.MockTransport(handler))
+    sdk = anthropic.Anthropic(api_key=TEST_KEY, http_client=http, max_retries=0)
+    return AnthropicApiClient(sdk, model="claude-sonnet-5-5", effort="low")
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 422])
+def test_a_refused_request_raises_request_rejected(status: int) -> None:
+    body = {"type": "error", "error": {"type": "invalid_request_error", "message": "Grammar too large."}}
+    with pytest.raises(LlmRequestRejected) as caught:
+        _ask(_error_client(status, body))
+    err = caught.value
+    assert (err.status_code, err.error_type, err.message, err.request_id) == (
+        status, "invalid_request_error", "Grammar too large.", "req_err")
+
+
+@pytest.mark.parametrize("status", [429, 500, 529])
+def test_a_provider_outage_raises_unavailable(status: int) -> None:
+    body = {"type": "error", "error": {"type": "overloaded_error", "message": "Busy."}}
+    with pytest.raises(LlmUnavailable) as caught:
+        _ask(_error_client(status, body))
+    assert caught.value.status_code == status
+    assert not isinstance(caught.value, LlmRequestRejected)
+
+
+def test_a_network_failure_raises_unavailable() -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        raise httpx2.ConnectError("down", request=request)
+
+    sdk = anthropic.Anthropic(api_key=TEST_KEY, http_client=httpx2.Client(transport=httpx2.MockTransport(handler)),
+                              max_retries=0)
+    with pytest.raises(LlmUnavailable) as caught:
+        _ask(AnthropicApiClient(sdk, model="claude-sonnet-5-5", effort="low"))
+    assert caught.value.status_code is None and caught.value.cause_name == "APIConnectionError"
+
+
+# --- per-provider prices -----------------------------------------------------------------------
+
+
+def test_each_provider_has_its_own_price_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.adapters.llm import pricing
+
+    usage = TokenUsage(input_tokens=1_000_000)
+    monkeypatch.setitem(pricing.BEDROCK_PRICES, "claude-sonnet-5-5", pricing._usd("3", "15", "0.3", "3.75", "6"))
+    assert cost_microusd("bedrock", "claude-sonnet-5-5", usage) == 3_000_000
+    assert cost_microusd("anthropic", "claude-sonnet-5-5", usage) == 2_000_000
+
+
+def test_a_model_without_a_price_on_this_provider_is_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.adapters.llm import pricing
+
+    monkeypatch.delitem(pricing.BEDROCK_PRICES, "claude-haiku-5-5")
+    with pytest.raises(LlmNotConfigured):
+        cost_microusd("bedrock", "claude-haiku-5-5", TokenUsage(input_tokens=1))
+    assert cost_microusd("anthropic", "claude-haiku-5-5", TokenUsage(input_tokens=1)) == 0

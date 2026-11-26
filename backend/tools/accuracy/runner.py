@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from backend.app.adapters.llm.claude import ClaudeClient
+from backend.app.adapters.llm.base import LlmClient
 from backend.app.core.config import Settings, get_settings
 from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
 from backend.app.repositories.pipeline_repository import InMemoryPipelineRunRepository
@@ -40,7 +40,7 @@ def _env(**values: str) -> Iterator[None]:
                 os.environ[key] = old
 
 
-def build_service(ai_client: ClaudeClient | None = None) -> tuple[PipelineOrchestrationService, str | None]:
+def build_service(ai_client: LlmClient | None = None) -> tuple[PipelineOrchestrationService, str | None]:
     """The pipeline, with AI off (``ai_client`` None) or answering from ``ai_client``. Returns (service, org_id)."""
 
     base = get_settings()
@@ -51,7 +51,7 @@ def build_service(ai_client: ClaudeClient | None = None) -> tuple[PipelineOrches
         org_id = None
     else:
         on: Settings = base.model_copy(update={"ai_suggestions_enabled": True, "s1_ai_routing_shadow": False})
-        factory: Callable[[Settings], ClaudeClient | None] = lambda _settings: ai_client  # noqa: E731
+        factory: Callable[[Settings], LlmClient | None] = lambda _settings: ai_client  # noqa: E731
         routing = AiRouting(settings=on, client_factory=factory, ledger=NullLedger())
         extraction = AiExtraction(settings=on, client_factory=factory, ledger=NullLedger())
         org_id = HARNESS_ORG_ID

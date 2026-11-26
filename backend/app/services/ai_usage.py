@@ -12,7 +12,7 @@ import uuid
 from sqlalchemy import Connection, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.adapters.llm.claude import StructuredReply
+from backend.app.adapters.llm.base import StructuredReply
 
 MICRO = 1_000_000
 

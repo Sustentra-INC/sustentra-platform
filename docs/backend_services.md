@@ -21,7 +21,7 @@
 ## Adapter Layer Stubs
 
 - parsers: textract/pdf/excel/image parser entry points.
-- llm: Claude adapter (`llm/claude.py`) for AI suggestions; see below.
+- llm: provider-neutral AI adapter (`llm/base.py`, one module per provider) for AI suggestions; see below.
 - storage: S3 read/write shell.
 - persistence: SQLAlchemy session/bootstrap shell.
 
@@ -96,14 +96,19 @@ AI suggests a type or values for documents the system cannot read on its own; a 
 accepts or corrects every suggestion. This part is the foundation only: no route calls
 Claude yet, and the feature is off everywhere.
 
-`backend/app/adapters/llm/claude.py`:
+`backend/app/adapters/llm/` (nothing outside it imports `anthropic`; a test enforces that):
 
-- `get_claude()` returns a `ClaudeClient`, or `None` when `AI_PROVIDER=anthropic` has no key.
-- `ClaudeClient.structured()` sends one request whose reply must match a pydantic model
+- `base.py`: the neutral interface. `LlmClient` (abstract), `StructuredReply`, `TokenUsage`, and
+  the errors `LlmNotConfigured`, `LlmRequestRejected` and `LlmUnavailable`.
+- `anthropic_api.py` and `bedrock.py`: one module per provider, sharing `_claude_sdk.py`.
+- `factory.py`: `get_llm()` picks the provider from `AI_PROVIDER` and returns an `LlmClient`, or
+  `None` when `AI_PROVIDER=anthropic` has no key.
+- `LlmClient.structured()` sends one request whose reply must match a pydantic model
   (structured outputs). A refusal, a cut-off reply or a reply that does not match the model
   gives no output. On the Claude API, Claude Opus 5.5 and Claude Sonnet 5.5 requests carry
   `fallbacks: "default"` (server-side refusal fallback); Bedrock has no such fallback.
-- `PRICES` and `cost_microusd()`: Anthropic's prices per million tokens. A model without a
+- `pricing.py`: one price table per provider and `cost_microusd(provider, model, usage)`, in
+  USD per million tokens. A model without a
   price is refused, so changing `AI_MODEL` means checking the
   [price list](https://platform.claude.com/docs/en/about-claude/pricing) first. On Bedrock
   the cost is an estimate; AWS bills at its own rates.
@@ -146,7 +151,7 @@ classifier. Claude reads pages 1-2 (at most 200 lines and 12,000 characters, fro
 - The quote must locate on the parser's lines (`locate_quote`). Otherwise the answer is
   ignored and counted: warning `ai_routing_ignored: <reason>` (`quote_not_on_document`,
   `unknown_line`, `ambiguous_quote`, `no_targets`). The page never comes from the model.
-- Gate as prefill: `AI_SUGGESTIONS_ENABLED`, a client from `get_claude()`, and
+- Gate as prefill: `AI_SUGGESTIONS_ENABLED`, a client from `get_llm()`, and
   `ai_usage.cap_reached`. Every call that returns a reply is recorded in `ai_usage`
   (feature `routing`, no user) in its own short transaction after the call; no connection is
   held while Claude answers. A failed call (network, refusal, bad reply) adds the warning
@@ -274,10 +279,10 @@ when they exist.
      ```bash
      docker compose -f docker-compose.prod.yml --env-file .env exec api python -c "
      from pydantic import BaseModel
-     from backend.app.adapters.llm.claude import get_claude
+     from backend.app.adapters.llm.factory import get_llm
      class Pong(BaseModel):
          word: str
-     c = get_claude()
+     c = get_llm()
      r = c.structured(system='Reply with JSON.', content='Set word to pong.', output_type=Pong, max_tokens=200)
      print(c.provider, c.model, r.outcome, r.output, r.cost_microusd)"
      ```

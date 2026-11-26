@@ -30,7 +30,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from backend.app.adapters.llm.claude import ClaudeClient, StructuredReply
+from backend.app.adapters.llm.base import LlmClient, StructuredReply
 from backend.app.services.ai_reason import clean_reason
 from backend.app.services import methodology_review as rules
 from backend.app.services.methodology_gwp import EMBEDDED, GENERAL, REFRIGERANTS, use_of
@@ -1282,7 +1282,7 @@ class PartResult:
     error: BaseException | None = None
 
 
-def run_parts(client: ClaudeClient, documents: Sequence[PrefillDocument]) -> list[PartResult]:
+def run_parts(client: LlmClient, documents: Sequence[PrefillDocument]) -> list[PartResult]:
     """Ask the three questions at once (one thread each) and say how each went. A call that raises
     does not stop the others. Runs in a worker thread: the client is synchronous."""
 

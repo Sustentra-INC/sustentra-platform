@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 
-from backend.app.adapters.llm.claude import StructuredReply, TokenUsage
+from backend.app.adapters.llm.base import StructuredReply, TokenUsage
 from backend.tools.accuracy import cli
 from backend.tools.accuracy.ai_replay import RecordingClaude, ReplayClaude, request_key
 

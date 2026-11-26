@@ -1333,7 +1333,7 @@ class _Parts:
         self.fail, self.calls = fail, []
 
     def structured(self, *, system: str, content: Any, output_type: Any, max_tokens: int) -> Any:
-        from backend.app.adapters.llm.claude import StructuredReply, TokenUsage
+        from backend.app.adapters.llm.base import StructuredReply, TokenUsage
 
         self.calls.append(output_type)
         if output_type in self.fail:
@@ -1355,7 +1355,7 @@ def test_three_calls_run_and_one_failing_call_leaves_the_others() -> None:
 
 
 def test_prefill_has_a_timeout_that_fits_a_long_reply() -> None:
-    from backend.app.adapters.llm.claude import REQUEST_TIMEOUT_S
+    from backend.app.adapters.llm.base import REQUEST_TIMEOUT_S
 
     assert mp.REQUEST_TIMEOUT_S > REQUEST_TIMEOUT_S
 

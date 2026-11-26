@@ -16,7 +16,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "staging", "prod"]
 # Who serves Claude: the Anthropic API (ANTHROPIC_API_KEY) or Amazon Bedrock (the
-# instance role, no key). See backend/app/adapters/llm/claude.py.
+# instance role, no key). See backend/app/adapters/llm/.
 AiProvider = Literal["anthropic", "bedrock"]
 AiEffort = Literal["low", "medium", "high"]
 
@@ -109,7 +109,7 @@ class Settings(BaseSettings):
     # Only for AI_PROVIDER=anthropic. Bedrock signs with the instance role instead.
     anthropic_api_key: SecretStr | None = None
     # Claude API model id. On Bedrock the adapter adds the "anthropic." prefix. A model the
-    # adapter has no price for is refused (claude.py PRICES), so a switch forces a price check.
+    # adapter has no price for is refused (adapters/llm/pricing.py), so a switch forces a price check.
     ai_model: str = "claude-sonnet-5-5"
     # Only for AI_PROVIDER=bedrock: the full Bedrock model id, sent as given. Unset, the
     # adapter sends "anthropic." + AI_MODEL. Prices still come from AI_MODEL.
