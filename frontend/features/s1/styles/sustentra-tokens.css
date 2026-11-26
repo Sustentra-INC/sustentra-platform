@@ -34,19 +34,19 @@
   /* Brand and action are the same colour: indigo. The nav, logo, primary
      buttons, links and selected states all draw from it. Active and selected
      states are always indigo, never black. */
-  --brand-ink:      #3A40C0;   /* primary indigo */
-  --brand-dark:     #2E3299;   /* text on indigo tint, avatar initials */
+  --brand-ink:      #282870;   /* primary indigo */
+  --brand-dark:     #282870;   /* text on indigo tint, avatar initials */
 
   /* --- Interactive accent — indigo ----------------------------------------
      Brand and action are unified. --accent-solid / --accent are the same as
      --brand-ink so there is one colour for all interactive elements.
      ---------------------------------------------------------------------- */
-  --accent-solid:   #3A40C0;   /* solid fills: primary buttons, active tab; white text on it is 7.9:1 */
-  --accent:         #3A40C0;   /* links, icons, active labels */
-  --accent-strong:  #2B3099;   /* hover / pressed on solids */
-  --accent-soft:    #E8E9FB;   /* tint: active chip / selected row */
-  --accent-softer:  #F1F2FD;   /* tint: row hover */
-  --accent-line:    #D9DBF6;   /* border on a tinted surface */
+  --accent-solid:   #282870;   /* solid fills: primary buttons, active tab; white text on it is 11.5:1 */
+  --accent:         #282870;   /* links, icons, active labels */
+  --accent-strong:  #1E1E58;   /* hover / pressed on solids */
+  --accent-soft:    #E9E9F6;   /* tint: active chip / selected row */
+  --accent-softer:  #F4F4FB;   /* tint: row hover */
+  --accent-line:    #D4D4EC;   /* border on a tinted surface */
 
   /* Motion — one strong ease-out for the whole product. */
   --ease-out:       cubic-bezier(0.23, 1, 0.32, 1);
@@ -123,9 +123,9 @@
 
   /* In progress — the system or a human is partway through. Neutral, not good
      or bad. Use for processing states and "under review". */
-  --state-active-fg:     #2E3299;
-  --state-active-bg:     #E8E9FB;
-  --state-active-line:   #D9DBF6;
+  --state-active-fg:     #282870;
+  --state-active-bg:     #E9E9F6;
+  --state-active-line:   #D4D4EC;
 
   /* Checked, and cannot be verified from any client document. This is an
      honest scope boundary, NOT a failure. It must never share a treatment with
@@ -148,7 +148,7 @@
   --dot-success:  #1F8A55;   /* resolved / done */
   --dot-warning:  #E9A23B;   /* open / needs attention */
   --dot-danger:   #D9473A;   /* blocking */
-  --dot-progress: #3A40C0;   /* active / in progress */
+  --dot-progress: #282870;   /* active / in progress */
   --dot-neutral:  #8A8D96;   /* unverifiable / not applicable */
 
 
@@ -305,9 +305,9 @@
 
   --shadow-card:        0 1px 2px rgba(20, 21, 26, 0.05);
   --shadow-card-soft:   0 1px 2px rgba(20, 21, 26, 0.04);
-  --shadow-primary:     0 4px 12px rgba(58, 64, 192, 0.25);
-  --shadow-primary-lg:  0 6px 16px rgba(58, 64, 192, 0.28);
-  --shadow-focus:       0 0 0 4px #E8E9FB;
+  --shadow-primary:     0 4px 12px rgba(40, 40, 112, 0.25);
+  --shadow-primary-lg:  0 6px 16px rgba(40, 40, 112, 0.28);
+  --shadow-focus:       0 0 0 3px #D4D4EC;
   --shadow-inset:       inset 0 0 0 1px #DCDEE6;
   --shadow-pop:         0 0 0 1px rgba(20, 21, 26, 0.06), 0 24px 48px rgba(20, 21, 26, 0.16);
   --shadow-subtle: none;   /* kept for backward compat */

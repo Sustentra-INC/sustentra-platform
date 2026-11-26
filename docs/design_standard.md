@@ -65,7 +65,7 @@ rendered).
 ## 4. Colour means something
 
 - **Text** uses the ink ramp: `--ink` (primary), `--ink-2` (secondary), `--ink-3` (labels).
-- **Indigo** (`--brand-ink`, `#3A40C0`) is both brand and action. The nav, logo, primary
+- **Indigo** (`--brand-ink`, `#282870`) is both brand and action. The nav, logo, primary
   buttons, links, focus rings and selected states all use it. Active and selected states are
   always indigo — never black.
 - **Surfaces** are cool grey: `--sf-page` (#F3F4F8) for the app background, `--sf-card`

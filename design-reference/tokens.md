@@ -5,11 +5,11 @@ Exact values pulled from the design source files in `source/`. Use these names (
 ## Brand
 | Token | Value | Use |
 |---|---|---|
-| indigo-500 (primary) | #3A40C0 | Primary buttons, active nav, selected states, links |
-| indigo-600 (hover) | #2B3099 | Hover on primary and links |
-| indigo-700 (dark) | #2E3299 | Text on indigo tint, avatar initials |
-| indigo-100 (tint) | #E8E9FB | Soft indigo backgrounds, focus ring |
-| indigo-50 | #F1F2FD | Very light indigo surfaces |
+| indigo-500 (primary) | #282870 | Primary buttons, active nav, selected states, links |
+| indigo-600 (hover) | #1E1E58 | Hover on primary and links |
+| indigo-700 (dark) | #282870 | Text on indigo tint, avatar initials |
+| indigo-100 (tint) | #E9E9F6 | Soft indigo backgrounds, focus ring |
+| indigo-50 | #F4F4FB | Very light indigo surfaces |
 
 Active and selected states always use indigo, never black.
 
@@ -33,7 +33,7 @@ Active and selected states always use indigo, never black.
 | Status | Text | Background | Dot / accent |
 |---|---|---|---|
 | Success / done | #19663E | #E3F5EA | #1F8A55 |
-| In progress | #2E3299 | #E8E9FB | #3A40C0 |
+| In progress | #282870 | #E9E9F6 | #282870 |
 | Warning / needs attention | #8A4B12 | #FFF1DE | #E9A23B |
 | Danger / blocked | #A8281C | #FDE7E4 | #D9473A |
 | Neutral / not applicable | #55585F | #F1F2F6 | #8A8D96 |
@@ -46,9 +46,9 @@ Active and selected states always use indigo, never black.
 |---|---|
 | card | 0 1px 2px rgba(20,21,26,0.05) |
 | card-soft | 0 1px 2px rgba(20,21,26,0.04) |
-| primary-button | 0 4px 12px rgba(58,64,192,0.25) |
-| primary-button-lg | 0 6px 16px rgba(58,64,192,0.28) |
-| focus-ring | 0 0 0 4px #E8E9FB |
+| primary-button | 0 4px 12px rgba(40,40,112,0.25) |
+| primary-button-lg | 0 6px 16px rgba(40,40,112,0.28) |
+| focus-ring | 0 0 0 3px #D4D4EC |
 | inset-border | inset 0 0 0 1px #DCDEE6 |
 | modal / popover | 0 0 0 1px rgba(20,21,26,0.06), 0 24px 48px rgba(20,21,26,0.16) |
 

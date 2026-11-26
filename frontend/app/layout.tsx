@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#3A40C0", // brand indigo
+  themeColor: "#282870", // brand indigo
 };
 
 // The interface font: Inter, loaded from Google Fonts via next/font and exposed as
