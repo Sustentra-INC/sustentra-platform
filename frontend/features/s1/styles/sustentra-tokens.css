@@ -284,6 +284,8 @@
   --setup-col-left-max: 13.75rem;   /* setup two-col: left column max width (220px) */
   --setup-col-right-min: 26.25rem;  /* setup two-col: right column min basis (420px) */
   --setup-grid-col-min: 17.5rem;    /* setup field grid: column min (280px) */
+  --fac-name-min: 140px;            /* facility name input: min flex basis before wrapping */
+  --fac-addr-min: 240px;            /* facility address wrapper: min flex basis before wrapping */
   --hairline-width: 1px;
   --ring-width: 1.5px;
   --active-row-marker-width: 3px;
