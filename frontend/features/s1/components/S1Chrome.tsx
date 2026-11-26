@@ -48,6 +48,8 @@ interface S1ChromeProps {
   assistant?: AssistantConnection;
   /** Destinations this data mode does not have yet. */
   hiddenNav?: NavKey[];
+  /** Live counts shown as badges on nav items. */
+  navCounts?: Partial<Record<"evidence" | "requests" | "results", number>>;
 }
 
 const DESTINATIONS: Array<{ key: NavKey; label: string }> = [
@@ -61,6 +63,9 @@ const DESTINATIONS: Array<{ key: NavKey; label: string }> = [
   { key: "output", label: "Output" },
 ];
 
+const WORKFLOW_KEYS: NavKey[] = ["dashboard", "setup", "upload", "evidence", "requests"];
+const ASSURANCE_KEYS: NavKey[] = ["methodology", "results", "output"];
+
 export function S1Chrome({
   engagement,
   user,
@@ -73,6 +78,7 @@ export function S1Chrome({
   onReset,
   assistant,
   hiddenNav,
+  navCounts,
 }: S1ChromeProps) {
   const [navExpanded, setNavExpanded] = useState(true);
   const [ctxExpanded, setCtxExpanded] = useState(false);
@@ -84,6 +90,11 @@ export function S1Chrome({
         hidden={hiddenNav}
         expanded={navExpanded}
         onToggle={() => setNavExpanded((v) => !v)}
+        engagement={engagement}
+        user={user}
+        onOpenActivity={onOpenActivity}
+        onOpenGlossary={onOpenGlossary}
+        navCounts={navCounts}
       />
       <section className="s1-main">
         <ContextBar
@@ -112,34 +123,162 @@ function Sidebar({
   hidden,
   expanded,
   onToggle,
+  engagement,
+  user,
+  onOpenActivity,
+  onOpenGlossary,
+  navCounts,
 }: {
   current?: NavKey;
   onNavigate?: (key: NavKey) => void;
   hidden?: NavKey[];
   expanded: boolean;
   onToggle: () => void;
+  engagement: EngagementConfig;
+  user?: WorkpaperUser;
+  onOpenActivity?: () => void;
+  onOpenGlossary?: () => void;
+  navCounts?: Partial<Record<"evidence" | "requests" | "results", number>>;
 }) {
+  const initials = engagement.clientName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0] ?? "")
+    .join("")
+    .toUpperCase() || "?";
+
+  const workflowDests = DESTINATIONS.filter(
+    (d) => WORKFLOW_KEYS.includes(d.key) && !hidden?.includes(d.key),
+  );
+  const assuranceDests = DESTINATIONS.filter(
+    (d) => ASSURANCE_KEYS.includes(d.key) && !hidden?.includes(d.key),
+  );
+
   return (
     <aside className={`s1-side${expanded ? "" : " s1-side--min"}`}>
+      {/* Logo */}
       <div className="s1-side__top">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="s1-side__logo" src={expanded ? "/sustentra-logo.png" : "/sustentra-mark.png"} alt="Sustentra" />
+        <img
+          className="s1-side__logo"
+          src={expanded ? "/sustentra-logo.png" : "/sustentra-mark.png"}
+          alt="Sustentra"
+        />
       </div>
+
+      {/* Engagement switcher */}
+      <button className="s1-side__switcher" type="button" aria-label="Switch engagement">
+        <span className="s1-side__switcher-av" aria-hidden="true">{initials}</span>
+        <span className="s1-side__switcher-body">
+          <span className="s1-side__switcher-name">{engagement.clientName}</span>
+          <span className="s1-side__switcher-sub">
+            {engagement.reportingPeriod.start
+              ? `FY ${engagement.reportingPeriod.start.slice(0, 4)}`
+              : engagement.assuranceLevel || engagement.regulation}
+          </span>
+        </span>
+        <span className="s1-side__switcher-arr" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M8 9l4-4 4 4M8 15l4 4 4-4" />
+          </svg>
+        </span>
+      </button>
+
+      {/* Main nav */}
       <nav className="s1-side__nav" aria-label="Primary">
-        {DESTINATIONS.filter((dest) => !hidden?.includes(dest.key)).map((dest) => (
-          <button
-            key={dest.key}
-            className={`s1-side__item${current === dest.key ? " is-on" : ""}`}
-            type="button"
-            title={dest.label}
-            aria-current={current === dest.key ? "page" : undefined}
-            onClick={() => onNavigate?.(dest.key)}
-          >
-            <span className="s1-side__icon"><NavIcon nav={dest.key} /></span>
-            <span className="s1-side__label">{dest.label}</span>
-          </button>
-        ))}
+        {workflowDests.length > 0 && (
+          <span className="s1-side__group" aria-hidden="true">WORKFLOW</span>
+        )}
+        {workflowDests.map((dest) => {
+          const count =
+            dest.key === "evidence" || dest.key === "requests"
+              ? navCounts?.[dest.key]
+              : undefined;
+          return (
+            <button
+              key={dest.key}
+              className={`s1-side__item${current === dest.key ? " is-on" : ""}`}
+              type="button"
+              title={dest.label}
+              aria-current={current === dest.key ? "page" : undefined}
+              onClick={() => onNavigate?.(dest.key)}
+            >
+              <span className="s1-side__icon"><NavIcon nav={dest.key} /></span>
+              <span className="s1-side__label">{dest.label}</span>
+              {count != null && count > 0 && (
+                <span className="s1-side__badge" aria-label={`${count} items`}>{count}</span>
+              )}
+            </button>
+          );
+        })}
+        {assuranceDests.length > 0 && (
+          <span className="s1-side__group s1-side__group--mt" aria-hidden="true">ASSURANCE</span>
+        )}
+        {assuranceDests.map((dest) => {
+          const count = dest.key === "results" ? navCounts?.results : undefined;
+          return (
+            <button
+              key={dest.key}
+              className={`s1-side__item${current === dest.key ? " is-on" : ""}`}
+              type="button"
+              title={dest.label}
+              aria-current={current === dest.key ? "page" : undefined}
+              onClick={() => onNavigate?.(dest.key)}
+            >
+              <span className="s1-side__icon"><NavIcon nav={dest.key} /></span>
+              <span className="s1-side__label">{dest.label}</span>
+              {count != null && count > 0 && (
+                <span className="s1-side__badge" aria-label={`${count} items`}>{count}</span>
+              )}
+            </button>
+          );
+        })}
       </nav>
+
+      {/* Spacer */}
+      <div className="s1-side__spacer" aria-hidden="true" />
+
+      {/* Footer links — Activity log and Glossary */}
+      {(onOpenActivity || onOpenGlossary) && (
+        <div className="s1-side__footer">
+          {onOpenActivity && (
+            <button className="s1-side__item" type="button" onClick={onOpenActivity}>
+              <span className="s1-side__icon"><ActivityIcon /></span>
+              <span className="s1-side__label">Activity log</span>
+            </button>
+          )}
+          {onOpenGlossary && (
+            <button className="s1-side__item" type="button" onClick={onOpenGlossary}>
+              <span className="s1-side__icon"><GlossaryIcon /></span>
+              <span className="s1-side__label">Glossary</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Account card */}
+      {user && (
+        <button className="s1-side__account" type="button" aria-label="Account menu">
+          <span className="s1-side__account-av" aria-hidden="true">
+            {(user.firstName || user.email)[0]?.toUpperCase() ?? "?"}
+          </span>
+          <span className="s1-side__account-body">
+            <span className="s1-side__account-name">
+              {user.firstName || ROLE_LABEL[user.role]}
+            </span>
+            {user.firstName && (
+              <span className="s1-side__account-email">{user.email}</span>
+            )}
+          </span>
+          <span className="s1-side__account-arr" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </span>
+        </button>
+      )}
+
+      {/* Collapse toggle */}
       <button
         className="s1-side__toggle"
         type="button"
@@ -278,26 +417,132 @@ function ResetIcon() {
   );
 }
 
+function ActivityIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <defs>
+        <mask id="s1-nav-clock" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+          <rect width="24" height="24" fill="#fff" />
+          <path d="M12 7.5V12l3 2" stroke="#000" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </mask>
+      </defs>
+      <g mask="url(#s1-nav-clock)">
+        <circle cx="12" cy="12" r="9.5" fill="currentColor" />
+      </g>
+    </svg>
+  );
+}
+
+function GlossaryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <defs>
+        <mask id="s1-nav-book" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+          <rect width="24" height="24" fill="#fff" />
+          <path d="M9 7.5h6" stroke="#000" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </mask>
+      </defs>
+      <g mask="url(#s1-nav-book)">
+        <path d="M6.5 2.5H19a1 1 0 0 1 1 1V18H6.5a1.5 1.5 0 0 0 0 3H20v.5a1 1 0 0 1-1 1H6.5A2.5 2.5 0 0 1 4 20V5a2.5 2.5 0 0 1 2.5-2.5z" fill="currentColor" />
+        <rect x="5" y="18" width="15" height="3" rx="1.5" fill="currentColor" fillOpacity=".38" />
+      </g>
+    </svg>
+  );
+}
+
 function NavIcon({ nav }: { nav: NavKey }) {
-  const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   switch (nav) {
     case "dashboard":
-      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" /></svg>;
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3" y="3" width="8" height="8" rx="2.6" fill="currentColor" />
+          <rect x="13" y="3" width="8" height="8" rx="2.6" fill="currentColor" fillOpacity=".38" />
+          <rect x="3" y="13" width="8" height="8" rx="2.6" fill="currentColor" fillOpacity=".38" />
+          <rect x="13" y="13" width="8" height="8" rx="2.6" fill="currentColor" />
+        </svg>
+      );
     case "setup":
-      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>;
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3" y="6" width="18" height="2.6" rx="1.3" fill="currentColor" fillOpacity=".38" />
+          <rect x="3" y="15.4" width="18" height="2.6" rx="1.3" fill="currentColor" fillOpacity=".38" />
+          <circle cx="15.5" cy="7.3" r="3.4" fill="currentColor" />
+          <circle cx="8.5" cy="16.7" r="3.4" fill="currentColor" />
+        </svg>
+      );
     case "upload":
-      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M12 15V4m0 0 4 4m-4-4-4 4" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></svg>;
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M3 13.5a1.5 1.5 0 0 1 3 0V18h12v-4.5a1.5 1.5 0 0 1 3 0v5A2.5 2.5 0 0 1 18.5 21h-13A2.5 2.5 0 0 1 3 18.5z" fill="currentColor" fillOpacity=".38" />
+          <path d="M11 3.6a1.4 1.4 0 0 1 2 0l4.2 4.2c.9.9.3 2.2-.9 2.2H14v4.5a2 2 0 0 1-4 0V10H7.7c-1.2 0-1.8-1.3-.9-2.2z" fill="currentColor" />
+        </svg>
+      );
     case "evidence":
-      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M4 4h6l2 2h8v12a2 2 0 0 1-2 2H4z" /><path d="M8 13h8M8 17h5" /></svg>;
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <defs>
+            <mask id="s1-nav-doc" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+              <rect width="24" height="24" fill="#fff" />
+              <path d="M8.5 13h7M8.5 17h4.5" stroke="#000" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            </mask>
+          </defs>
+          <g mask="url(#s1-nav-doc)">
+            <path d="M6.5 2H14v4a2.5 2.5 0 0 0 2.5 2.5H20v11A2.5 2.5 0 0 1 17.5 22h-11A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" fill="currentColor" />
+            <path d="M15.5 2.4L19.6 6.5H16.5a1 1 0 0 1-1-1z" fill="currentColor" fillOpacity=".38" />
+          </g>
+        </svg>
+      );
     case "requests":
-      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3.5 7 8.5 6 8.5-6" /></svg>;
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M6.3 3.5h11.4a2 2 0 0 1 1.9 1.4L21 9.5H3l1.4-4.6a2 2 0 0 1 1.9-1.4z" fill="currentColor" fillOpacity=".38" />
+          <path d="M2.5 11h5.2a1 1 0 0 1 .9.6l.7 1.4a1 1 0 0 0 .9.6h3.6a1 1 0 0 0 .9-.6l.7-1.4a1 1 0 0 1 .9-.6h5.2v7.5A2.5 2.5 0 0 1 19 21H5a2.5 2.5 0 0 1-2.5-2.5z" fill="currentColor" />
+        </svg>
+      );
     case "coverage":
-      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M12 3.2 5 6v5.2c0 4.3 2.9 7.2 7 8.6 4.1-1.4 7-4.3 7-8.6V6z" /><path d="m9 12 2.1 2.1L15.2 10" /></svg>;
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M12 3.2 5 6v5.2c0 4.3 2.9 7.2 7 8.6 4.1-1.4 7-4.3 7-8.6V6z" />
+          <path d="m9 12 2.1 2.1L15.2 10" />
+        </svg>
+      );
     case "methodology":
-      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M9 4h6v3H9z" /><path d="M15 5.5h2a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2h2" /><path d="M8.5 12h7M8.5 16h4.5" /></svg>;
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <defs>
+            <mask id="s1-nav-clip" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+              <rect width="24" height="24" fill="#fff" />
+              <path d="M8.5 13.5l2.5 2.5 4.5-5" stroke="#000" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            </mask>
+          </defs>
+          <g mask="url(#s1-nav-clip)">
+            <rect x="4" y="4" width="16" height="18" rx="3" fill="currentColor" />
+            <rect x="8" y="2" width="8" height="4.5" rx="1.8" fill="currentColor" fillOpacity=".38" />
+          </g>
+        </svg>
+      );
     case "results":
-      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M4 20V4M4 20h16" /><path d="M8 16v-4M12 16V8M16 16v-6" /></svg>;
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3.5" y="12" width="4.6" height="9" rx="1.8" fill="currentColor" fillOpacity=".38" />
+          <rect x="9.7" y="4" width="4.6" height="17" rx="1.8" fill="currentColor" />
+          <rect x="15.9" y="8.5" width="4.6" height="12.5" rx="1.8" fill="currentColor" fillOpacity=".38" />
+        </svg>
+      );
     case "output":
-      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></svg>;
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <defs>
+            <mask id="s1-nav-out" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+              <rect width="24" height="24" fill="#fff" />
+              <path d="M12 11v6M9.5 14.5L12 17l2.5-2.5" stroke="#000" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            </mask>
+          </defs>
+          <g mask="url(#s1-nav-out)">
+            <path d="M6.5 2H14v4a2.5 2.5 0 0 0 2.5 2.5H20v11A2.5 2.5 0 0 1 17.5 22h-11A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" fill="currentColor" />
+            <path d="M15.5 2.4L19.6 6.5H16.5a1 1 0 0 1-1-1z" fill="currentColor" fillOpacity=".38" />
+          </g>
+        </svg>
+      );
   }
 }
