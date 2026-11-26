@@ -476,7 +476,7 @@ export function AssistantWidget({
             <span className="s1-ai__headactions">
               {assistant && chat.length ? (
                 <button
-                  className="s1-ai__new"
+                  className="s1-button s1-button--icon s1-ai__new"
                   type="button"
                   aria-label="New chat"
                   onClick={() => {
@@ -489,7 +489,7 @@ export function AssistantWidget({
                   <IconCompose aria-hidden />
                 </button>
               ) : null}
-              <button className="s1-ai__close" type="button" aria-label="Close" onClick={() => setOpen(false)}>
+              <button className="s1-button s1-button--icon s1-ai__close" type="button" aria-label="Close" onClick={() => setOpen(false)}>
                 <IconClose aria-hidden />
               </button>
             </span>
