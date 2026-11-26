@@ -286,6 +286,10 @@
   --setup-grid-col-min: 17.5rem;    /* setup field grid: column min (280px) */
   --fac-name-min: 140px;            /* facility name input: min flex basis before wrapping */
   --fac-addr-min: 240px;            /* facility address wrapper: min flex basis before wrapping */
+  --contact-fields-min: 360px;      /* contact panel: fields area min flex basis */
+  --contact-field-min: 160px;       /* contact panel: field grid column min */
+  --team-card-min: 176px;           /* team member card: grid column min */
+  --avatar-team: 38px;              /* team member avatar diameter */
   --hairline-width: 1px;
   --ring-width: 1.5px;
   --active-row-marker-width: 3px;

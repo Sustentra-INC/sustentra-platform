@@ -1,6 +1,5 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
 import { IconBuilding, IconPin, IconPlus, IconTrash } from "./icons";
@@ -388,29 +387,37 @@ export function SetupScreen({
                   </h2>
                 </div>
                 <div className="s1-setup-card__col-right">
-                  <div className="s1-setup-grid">
-                    <label className="s1-setup-field">
-                      <span className="s1-field-label">Name</span>
-                      <input
-                        value={engagement.clientContact?.name ?? ""}
-                        onChange={(e) => set({ clientContact: { ...contact(engagement), name: e.target.value } })}
-                      />
-                    </label>
-                    <label className="s1-setup-field">
-                      <span className="s1-field-label">Email</span>
-                      <input
-                        type="email"
-                        value={engagement.clientContact?.email ?? ""}
-                        onChange={(e) => set({ clientContact: { ...contact(engagement), email: e.target.value } })}
-                      />
-                    </label>
-                    <label className="s1-setup-field">
-                      <span className="s1-field-label">Company</span>
-                      <input
-                        value={engagement.clientContact?.company ?? ""}
-                        onChange={(e) => set({ clientContact: { ...contact(engagement), company: e.target.value } })}
-                      />
-                    </label>
+                  <div className="s1-contact-panel">
+                    <span className="s1-contact-avatar" aria-hidden="true">
+                      {initials(engagement.clientContact?.name)}
+                    </span>
+                    <div className="s1-contact-fields">
+                      <label className="s1-contact-field">
+                        <span className="s1-field-label">Name</span>
+                        <input
+                          className="s1-input"
+                          value={engagement.clientContact?.name ?? ""}
+                          onChange={(e) => set({ clientContact: { ...contact(engagement), name: e.target.value } })}
+                        />
+                      </label>
+                      <label className="s1-contact-field">
+                        <span className="s1-field-label">Email</span>
+                        <input
+                          className="s1-input"
+                          type="email"
+                          value={engagement.clientContact?.email ?? ""}
+                          onChange={(e) => set({ clientContact: { ...contact(engagement), email: e.target.value } })}
+                        />
+                      </label>
+                      <label className="s1-contact-field">
+                        <span className="s1-field-label">Company</span>
+                        <input
+                          className="s1-input"
+                          value={engagement.clientContact?.company ?? ""}
+                          onChange={(e) => set({ clientContact: { ...contact(engagement), company: e.target.value } })}
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -419,37 +426,57 @@ export function SetupScreen({
               <div className="s1-setup-card">
                 <div className="s1-setup-card__col-left">
                   <h2>
-                    Engagement team
+                    Engagement team{" "}
+                    <span className="s1-heading-count">{team.length}</span>
                     <InfoTip label="Engagement team">Who can raise a request or examine a result. Typically up to four people.</InfoTip>
                   </h2>
                 </div>
                 <div className="s1-setup-card__col-right">
-                  <div className="s1-setup-list">
-                    <div className="s1-setup-row s1-setup-row--head" aria-hidden>
-                      <span>Name</span>
-                      <span>Login</span>
-                      <span />
+                  {team.length > 0 && (
+                    <div className="s1-team-grid">
+                      {team.map((m, i) => (
+                        <div className="s1-team-card" key={m.login}>
+                          <span className={`s1-team-avatar s1-team-avatar--${i % 4}`} aria-hidden="true">
+                            {initials(m.name)}
+                          </span>
+                          <span className="s1-team-info">
+                            <input
+                              className="s1-team-name"
+                              aria-label="Name"
+                              value={m.name}
+                              placeholder="Name"
+                              onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, name: e.target.value } : t)))}
+                            />
+                            <span className="s1-team-login-row">
+                              <span className="s1-team-login-label">Login</span>
+                              <input
+                                className="s1-num s1-setup-row__login s1-team-login"
+                                aria-label="Login"
+                                value={m.login}
+                                placeholder="login"
+                                onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, login: e.target.value } : t)))}
+                              />
+                            </span>
+                          </span>
+                          <button
+                            className="s1-team-remove"
+                            type="button"
+                            aria-label={`Remove ${m.name}`}
+                            onClick={() => setTeam(team.filter((_, j) => j !== i))}
+                          >
+                            <IconTrash size={16} aria-hidden="true" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                    {team.map((m, i) => (
-                      <div className="s1-setup-row" key={m.login}>
-                        <input
-                          aria-label="Name"
-                          value={m.name}
-                          onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, name: e.target.value } : t)))}
-                        />
-                        <input
-                          aria-label="Login"
-                          className="s1-num s1-setup-row__login"
-                          value={m.login}
-                          onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, login: e.target.value } : t)))}
-                        />
-                        <RemoveButton label={`Remove ${m.name}`} onClick={() => setTeam(team.filter((_, j) => j !== i))} />
-                      </div>
-                    ))}
-                  </div>
-                  <AddButton onClick={() => setTeam([...team, { name: "New member", login: `login${team.length + 1}` }])}>
-                    Add member
-                  </AddButton>
+                  )}
+                  <button
+                    className="s1-button s1-button--soft s1-team-add"
+                    type="button"
+                    onClick={() => setTeam([...team, { name: "New member", login: `login${team.length + 1}` }])}
+                  >
+                    <IconPlus size={15} aria-hidden="true" /> Add member
+                  </button>
                 </div>
               </div>
             </>
@@ -529,24 +556,16 @@ export function SetupScreen({
   );
 }
 
-function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button className="s1-setup-remove" type="button" aria-label={label} title={label} onClick={onClick}>
-      <X aria-hidden />
-    </button>
-  );
-}
-
-function AddButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-  return (
-    <button className="s1-setup-add" type="button" onClick={onClick}>
-      <Plus aria-hidden /> {children}
-    </button>
-  );
-}
-
 function contact(engagement: EngagementConfig) {
   return engagement.clientContact ?? { name: "", email: "", company: engagement.clientName };
+}
+
+function initials(name: string | null | undefined): string {
+  if (!name?.trim()) return "";
+  const words = name.trim().split(/\s+/);
+  const first = words[0][0];
+  const last = words.length > 1 ? words[words.length - 1][0] : "";
+  return (first + last).toUpperCase();
 }
 
 function SegmentedField({

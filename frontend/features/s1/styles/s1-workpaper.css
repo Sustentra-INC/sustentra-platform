@@ -3691,6 +3691,34 @@ html, body { margin: 0; padding: 0; }
 .s1-setup-add:hover { background: var(--accent-softer); border-color: var(--accent-solid); }
 .s1-setup-add:active { transform: scale(0.98); }
 .s1-setup-add svg { width: 0.95rem; height: 0.95rem; }
+/* Client contact panel */
+.s1-contact-panel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4); padding: var(--sp-3-5); border-radius: var(--r-card); background: var(--sf-sunken); }
+.s1-contact-avatar { flex: none; width: var(--button-h-lg); height: var(--button-h-lg); border-radius: 50%; background: var(--state-open-bg); color: var(--state-open-fg); display: inline-flex; align-items: center; justify-content: center; font-size: var(--text-md); font-weight: var(--weight-bold); }
+.s1-contact-fields { flex: 1 1 var(--contact-fields-min); min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(var(--contact-field-min), 100%), 1fr)); gap: var(--sp-3); }
+.s1-contact-field { display: flex; flex-direction: column; gap: var(--sp-1-5); }
+.s1-contact-field .s1-field-label { color: var(--ink-2); }
+/* Engagement team cards */
+.s1-team-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(var(--team-card-min), 100%), 1fr)); gap: var(--sp-2-5); }
+.s1-team-card { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2-5) var(--sp-2-5) var(--sp-2-5) var(--sp-3); border-radius: var(--r-card); background: var(--sf-sunken); }
+.s1-team-avatar { flex: none; width: var(--avatar-team); height: var(--avatar-team); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: var(--text-sm); font-weight: var(--weight-bold); }
+.s1-team-avatar--0 { background: var(--accent-soft); color: var(--brand-dark); }
+.s1-team-avatar--1 { background: var(--state-open-bg); color: var(--state-open-fg); }
+.s1-team-avatar--2 { background: var(--state-resolved-bg); color: var(--state-resolved-fg); }
+.s1-team-avatar--3 { background: var(--sf-track); color: var(--ink-2); }
+.s1-team-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.s1-team-name { width: 100%; height: auto; padding: 0; border: 0; border-radius: 0; background: transparent; font: inherit; font-size: var(--text-md); font-weight: var(--weight-strong); color: var(--ink); line-height: 1.4; cursor: text; }
+.s1-team-name:hover { background: var(--sf-card); border-radius: var(--r-sm); }
+.s1-team-name:focus { background: var(--sf-card); border-radius: var(--r-sm); box-shadow: var(--shadow-focus); outline: none; }
+.s1-team-name::placeholder { color: var(--ink-3); }
+.s1-team-login-row { display: flex; align-items: center; gap: var(--sp-1); font-size: var(--text-sm); color: var(--ink-3); }
+.s1-team-login { flex: 1; min-width: 0; height: auto; padding: 0; border: 0; border-radius: 0; background: transparent; font: inherit; font-size: var(--text-sm); color: var(--ink-3); line-height: 1.4; cursor: text; }
+.s1-team-login:hover { background: var(--sf-card); border-radius: var(--r-sm); }
+.s1-team-login:focus { background: var(--sf-card); border-radius: var(--r-sm); box-shadow: var(--shadow-focus); outline: none; }
+.s1-team-login::placeholder { color: var(--ink-3); }
+.s1-team-remove { flex: none; width: var(--button-h-sm); height: var(--button-h-sm); padding: 0; border: 0; border-radius: var(--r-md); background: none; color: var(--ink-3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: color 0.15s ease; }
+.s1-team-remove:hover { color: var(--state-blocking-fg); }
+.s1-team-remove:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-team-add { align-self: flex-start; }
 /* Narrow: team rows (.s1-fac__row uses flex-wrap so handles responsive natively). */
 @media (max-width: 48rem) {
   .s1-setup-row { grid-template-columns: minmax(0, 1fr) 2.5rem; }
