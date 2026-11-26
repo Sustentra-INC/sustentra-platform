@@ -1,6 +1,8 @@
 "use client";
 
 import { ChevronRight, PanelsTopLeft, Plus } from "lucide-react";
+
+import { Dropdown } from "./Dropdown";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
@@ -273,17 +275,18 @@ export function EvidenceTree(props: EvidenceTreeProps) {
   return (
     <div className="s1-et">
       <div className="s1-et-bar">
-        <label className="s1-et-facility">
-          <span>Facility</span>
-          <select value={facilityId ?? ""} onChange={(e) => changeFacility(e.target.value || null)} aria-label="Facility">
-            <option value="">All facilities</option>
-            {tree.facilities.map((f) => (
-              <option key={f.facility_id} value={f.facility_id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="s1-et-facility">
+          <span id="et-facility-label">Facility</span>
+          <Dropdown
+            value={facilityId ?? ""}
+            onChange={(v) => changeFacility(v || null)}
+            options={[
+              { value: "", label: "All facilities" },
+              ...tree.facilities.map((f) => ({ value: f.facility_id, label: f.name })),
+            ]}
+            labelId="et-facility-label"
+          />
+        </div>
         <span className="s1-et-bar__fold">
           <button className="s1-linklike" type="button" onClick={() => setOpen(collectIds(tree))}>
             Expand all

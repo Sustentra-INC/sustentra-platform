@@ -871,69 +871,100 @@ exports[`request screens: fixture parity > draws the Add to requests window for 
         <div
           class="s1-atr__row"
         >
-          <label
+          <div
             class="s1-modal__field"
           >
-            <span>
+            <span
+              id="atr-type-label"
+            >
               Request type
             </span>
-            <select>
-              <option
-                value="missing_document"
+            <div
+              class="s1-dd"
+            >
+              <button
+                aria-controls="_r_1_-panel"
+                aria-expanded="false"
+                aria-haspopup="listbox"
+                aria-labelledby="atr-type-label"
+                class="s1-dd__trigger"
+                type="button"
               >
-                Missing document
-              </option>
-              <option
-                value="replace_document"
-              >
-                Replace document
-              </option>
-              <option
-                value="missing_data"
-              >
-                Missing data
-              </option>
-              <option
-                value="clarify"
-              >
-                Clarify
-              </option>
-              <option
-                value="confirm_or_restate"
-              >
-                Confirm or restate
-              </option>
-            </select>
-          </label>
-          <label
+                <span
+                  class="s1-dd__label"
+                >
+                  <span
+                    class="s1-dd__primary"
+                  >
+                    Replace document
+                  </span>
+                </span>
+                <svg
+                  aria-hidden="true"
+                  class="s1-dd__chevron"
+                  fill="none"
+                  height="16"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="16"
+                >
+                  <path
+                    d="M6 9l6 6 6-6"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div
             class="s1-modal__field"
           >
-            <span>
+            <span
+              id="atr-raisedby-label"
+            >
               Raised by
             </span>
-            <select>
-              <option
-                value="mosei"
+            <div
+              class="s1-dd"
+            >
+              <button
+                aria-controls="_r_2_-panel"
+                aria-expanded="false"
+                aria-haspopup="listbox"
+                aria-labelledby="atr-raisedby-label"
+                class="s1-dd__trigger"
+                type="button"
               >
-                M. Osei
-              </option>
-              <option
-                value="riqbal"
-              >
-                R. Iqbal
-              </option>
-              <option
-                value="tbrandt"
-              >
-                T. Brandt
-              </option>
-              <option
-                value="lchen"
-              >
-                L. Chen
-              </option>
-            </select>
-          </label>
+                <span
+                  class="s1-dd__label"
+                >
+                  <span
+                    class="s1-dd__primary"
+                  >
+                    M. Osei
+                  </span>
+                </span>
+                <svg
+                  aria-hidden="true"
+                  class="s1-dd__chevron"
+                  fill="none"
+                  height="16"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="16"
+                >
+                  <path
+                    d="M6 9l6 6 6-6"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
         <label
           class="s1-modal__field"

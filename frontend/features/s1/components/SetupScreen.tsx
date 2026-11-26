@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import type { EngagementConfig, FacilityOption } from "../types";
 import type { InScopeField } from "../types/scope";
+import { Dropdown } from "./Dropdown";
 import { InfoTip } from "./InfoTip";
 import { ZipRegionHint } from "./ZipRegionHint";
 
@@ -152,38 +153,28 @@ export function SetupScreen({
               />
             </div>
           </label>
-          <label className="s1-setup-field">
-            <span>Regulation</span>
-            <select
+          <div className="s1-setup-field">
+            <span id="setup-regulation-label">Regulation</span>
+            <Dropdown
               value={engagement.regulation ?? ""}
-              onChange={(e) => {
-                const opt = REGULATION_OPTIONS.find((o) => o.short === e.target.value);
+              onChange={(v) => {
+                const opt = REGULATION_OPTIONS.find((o) => o.short === v);
                 if (opt) set({ regulation: opt.short, regulationJurisdiction: opt.full });
               }}
-            >
-              {/* An unset regulation shows as unset, not as the first option. */}
-              {engagement.regulation ? null : (
-                <option value="" disabled>
-                  Choose a regulation
-                </option>
-              )}
-              {REGULATION_OPTIONS.map((o) => (
-                <option key={o.short} value={o.short}>
-                  {o.full}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="s1-setup-field">
-            <span>Methodology</span>
-            <select value={engagement.methodology ?? METHODOLOGY_OPTIONS[0]} onChange={(e) => set({ methodology: e.target.value })}>
-              {METHODOLOGY_OPTIONS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </label>
+              options={REGULATION_OPTIONS.map((o) => ({ value: o.short, label: o.short, description: o.full }))}
+              placeholder="Choose a regulation"
+              labelId="setup-regulation-label"
+            />
+          </div>
+          <div className="s1-setup-field">
+            <span id="setup-methodology-label">Methodology</span>
+            <Dropdown
+              value={engagement.methodology ?? METHODOLOGY_OPTIONS[0]}
+              onChange={(v) => set({ methodology: v })}
+              options={METHODOLOGY_OPTIONS.map((m) => ({ value: m, label: m }))}
+              labelId="setup-methodology-label"
+            />
+          </div>
         </div>
       </div>
 
@@ -197,51 +188,43 @@ export function SetupScreen({
           </InfoTip>
         </h2>
         <div className="s1-setup-grid">
-          <label className="s1-setup-field">
-            <span>Data scope</span>
-            <select value={engagement.dataScope ?? DATA_SCOPE_OPTIONS[0]} onChange={(e) => set({ dataScope: e.target.value })}>
-              {DATA_SCOPE_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="s1-setup-field">
-            <span>Assurance standard</span>
-            <select value={engagement.assuranceStandard ?? ASSURANCE_STANDARD_OPTIONS[0]} onChange={(e) => set({ assuranceStandard: e.target.value })}>
-              {ASSURANCE_STANDARD_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="s1-setup-field">
-            <span>Assurance level</span>
-            <select value={engagement.assuranceLevel ?? ""} onChange={(e) => set({ assuranceLevel: e.target.value })}>
-              {engagement.assuranceLevel ? null : (
-                <option value="" disabled>
-                  Choose a level
-                </option>
-              )}
-              {ASSURANCE_LEVEL_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="s1-setup-field">
-            <span>Materiality threshold</span>
-            <select value={engagement.materialityThreshold ?? MATERIALITY_OPTIONS[0]} onChange={(e) => set({ materialityThreshold: e.target.value })}>
-              {MATERIALITY_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o} of total
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="s1-setup-field">
+            <span id="setup-datascope-label">Data scope</span>
+            <Dropdown
+              value={engagement.dataScope ?? DATA_SCOPE_OPTIONS[0]}
+              onChange={(v) => set({ dataScope: v })}
+              options={DATA_SCOPE_OPTIONS.map((o) => ({ value: o, label: o }))}
+              labelId="setup-datascope-label"
+            />
+          </div>
+          <div className="s1-setup-field">
+            <span id="setup-standard-label">Assurance standard</span>
+            <Dropdown
+              value={engagement.assuranceStandard ?? ASSURANCE_STANDARD_OPTIONS[0]}
+              onChange={(v) => set({ assuranceStandard: v })}
+              options={ASSURANCE_STANDARD_OPTIONS.map((o) => ({ value: o, label: o }))}
+              labelId="setup-standard-label"
+            />
+          </div>
+          <div className="s1-setup-field">
+            <span id="setup-level-label">Assurance level</span>
+            <Dropdown
+              value={engagement.assuranceLevel ?? ""}
+              onChange={(v) => set({ assuranceLevel: v })}
+              options={ASSURANCE_LEVEL_OPTIONS.map((o) => ({ value: o, label: o }))}
+              placeholder="Choose a level"
+              labelId="setup-level-label"
+            />
+          </div>
+          <div className="s1-setup-field">
+            <span id="setup-materiality-label">Materiality threshold</span>
+            <Dropdown
+              value={engagement.materialityThreshold ?? MATERIALITY_OPTIONS[0]}
+              onChange={(v) => set({ materialityThreshold: v })}
+              options={MATERIALITY_OPTIONS.map((o) => ({ value: o, label: `${o} of total` }))}
+              labelId="setup-materiality-label"
+            />
+          </div>
         </div>
       </div>
 

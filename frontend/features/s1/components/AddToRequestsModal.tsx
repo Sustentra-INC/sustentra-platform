@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { EngagementConfig } from "../types";
 import type { AskOrigin, RequestType } from "../types/requests";
 import { REQUEST_TYPES } from "../types/requests";
+import { Dropdown } from "./Dropdown";
 import { problemText, settle, type MaybePromise } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 import { readablePeriod } from "../utils/formatPeriod";
@@ -143,27 +144,25 @@ export function AddToRequestsModal({
           }}
         >
           <div className="s1-atr__row">
-            <label className="s1-modal__field">
-              <span>Request type</span>
-              <select value={type} onChange={(e) => setType(e.target.value as RequestType)}>
-                {REQUEST_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="s1-modal__field">
+              <span id="atr-type-label">Request type</span>
+              <Dropdown
+                value={type}
+                onChange={(v) => setType(v as RequestType)}
+                options={REQUEST_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+                labelId="atr-type-label"
+              />
+            </div>
             {serverRecordsActor ? null : (
-              <label className="s1-modal__field">
-                <span>Raised by</span>
-                <select value={raisedBy} onChange={(e) => setRaisedBy(e.target.value)}>
-                  {(team.length ? team : [signed]).map((m) => (
-                    <option key={m.login} value={m.login}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="s1-modal__field">
+                <span id="atr-raisedby-label">Raised by</span>
+                <Dropdown
+                  value={raisedBy}
+                  onChange={(v) => setRaisedBy(v)}
+                  options={(team.length ? team : [signed]).map((m) => ({ value: m.login, label: m.name }))}
+                  labelId="atr-raisedby-label"
+                />
+              </div>
             )}
           </div>
 

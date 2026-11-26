@@ -218,7 +218,9 @@ describe("the Add to requests window: who raised it", () => {
   it("asks who raised it without the prop, and uses the person picked", () => {
     const onAdd = vi.fn();
     render(<AddToRequestsModal target={target} engagement={engagementConfig} onCancel={vi.fn()} onAdd={onAdd} />);
-    fireEvent.change(screen.getByLabelText("Raised by"), { target: { value: "riqbal" } });
+    // Open the Raised by Dropdown and pick R. Iqbal
+    fireEvent.click(screen.getByLabelText("Raised by"));
+    fireEvent.click(screen.getByRole("option", { name: "R. Iqbal" }));
     fireEvent.click(screen.getByRole("button", { name: "Add to requests" }));
     expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ raisedByName: "R. Iqbal", raisedByLogin: "riqbal" }));
   });

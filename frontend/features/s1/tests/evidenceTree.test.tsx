@@ -331,7 +331,9 @@ describe("the Evidence tree", () => {
     }
     render(<Filtered />);
     await screen.findByText("Supporting evidence");
-    fireEvent.change(screen.getByLabelText("Facility"), { target: { value: "FAC-PL02" } });
+    // Open the Dropdown and select a facility option
+    fireEvent.click(screen.getByLabelText("Facility"));
+    fireEvent.click(screen.getByRole("option", { name: "Plant 2" }));
     expect(await screen.findByRole("button", { name: "mar.pdf" })).toBeInTheDocument();
     expect(mocks.calls.some((c) => c.path === `${TREE_PATH}?facility_id=FAC-PL02`)).toBe(true);
     expect(screen.queryByRole("button", { name: "feb.pdf" })).toBeNull();
