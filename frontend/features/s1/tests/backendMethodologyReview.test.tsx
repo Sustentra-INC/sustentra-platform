@@ -335,6 +335,25 @@ describe("Methodology review on real data", () => {
     expect(calls()).toContainEqual([`${BASE}/prefill`, expect.objectContaining({ method: "POST" })]);
   });
 
+  it("says so when nothing changed since the last read and the AI was not asked again", async () => {
+    await open();
+    mock.fail.prefillResult = {
+      suggested: 0,
+      dropped: {},
+      kept_reviewer_decision: 0,
+      documents_read: [],
+      cost_usd: 0,
+      model: null,
+      reused: true,
+      read_at: "2026-11-20T10:00:00Z",
+    };
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
+    const note = await screen.findByText(/Nothing changed since/);
+    expect(note.textContent).toMatch(/^Already read by Sustentra's AI on Nov 20, 2026\. Nothing changed since, so it was not read again\.$/);
+    expect(note.textContent).not.toMatch(/Claude/);
+  });
+
   it("words every drop code M2 sends", () => {
     const words: Record<string, string> = {
       empty_value: "No value given",

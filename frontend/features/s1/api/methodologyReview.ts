@@ -191,7 +191,11 @@ export interface PrefillResult {
   kept_reviewer_decision: number;
   documents_read: { document_id: string; file_name: string; truncated: boolean }[];
   cost_usd: number;
-  model: string;
+  model: string | null;
+  /** True when nothing changed since the last successful read, so the AI was not asked again. */
+  reused?: boolean;
+  /** When that last read ran (set with `reused`). */
+  read_at?: string;
 }
 
 const base = (engagementId: string) => `/engagements/${encodeURIComponent(engagementId)}/methodology-review`;

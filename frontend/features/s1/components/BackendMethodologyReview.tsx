@@ -1256,6 +1256,11 @@ export function BackendMethodologyReview({
           Not read automatically: {data.autoRead.reason}
         </p>
       ) : null}
+      {result?.reused ? (
+        <p className="s1-mb-result" role="status">
+          Already read by Sustentra&apos;s AI{result.read_at ? ` on ${requestedOn(result.read_at)}` : ""}. Nothing changed since, so it was not read again.
+        </p>
+      ) : null}
       {/* A finished read shows as the summary below (MethodologySummary), built from the stored suggestions. */}
 
       {notice ? (

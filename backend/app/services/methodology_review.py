@@ -900,7 +900,7 @@ LEGACY_PREFILL_COVERED = frozenset({
 
 
 def new_meta() -> dict[str, Any]:
-    return {"prefill_ran_at": None, "prefill_covered": [], "revealed": []}
+    return {"prefill_ran_at": None, "prefill_covered": [], "prefill_fingerprint": None, "revealed": []}
 
 
 def has_value(record: Mapping[str, Any]) -> bool:

@@ -1014,3 +1014,111 @@ def test_a_refused_read_removes_nothing_and_the_fixed_fields_are_replaced_as_bef
     assert prefill(eid).status_code == 200
     assert record(eid, "category:scope1:stationary")["suggestion"]["value"] == "No"  # a fixed field: replaced in place
     assert set(factor_rows(eid)) == {"U.S. EPA GHG Emission Factors Hub | 2024", "EPA eGRID | 2022", "UK DESNZ conversion factors | 2021"}
+
+
+# --- reusing the last read (AI-008) -----------------------------------------------------------------
+
+def hashed(monkeypatch: pytest.MonkeyPatch, *hashes: str) -> None:
+    """The engagement's candidate documents, each with a stored content hash (so no file is read)."""
+
+    monkeypatch.setattr(api, "_candidates", _async_candidates(
+        [{"document_id": f"DOC-{i}", "file_name": "report.pdf", "sha256": h} for i, h in enumerate(hashes, 1)]))
+
+
+def reuse_events() -> list[Any]:
+    return asyncio.run(_admin("SELECT metadata::text AS metadata FROM audit_logs "
+                              "WHERE event_type = 'methodology_prefill_reused'"))
+
+
+def test_the_same_inputs_are_not_read_again(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    hashed(monkeypatch, "aaa", "bbb")
+    first = prefill(eid)
+    assert first.status_code == 200 and "reused" not in first.json()
+    assert len(claude.calls) == 4 and len(ledger()) == 1
+    second = prefill(eid)
+    assert second.status_code == 200, second.text
+    body = second.json()
+    assert body["reused"] is True and body["read_at"] and body["cost_usd"] == 0.0
+    assert [d["document_id"] for d in body["documents_read"]] == ["DOC-1", "DOC-2"]
+    assert len(claude.calls) == 4 and len(ledger()) == 1  # no call, no usage row
+    [event] = reuse_events()
+    assert json.loads(event["metadata"])["documents"] == 2 and "operational control" not in event["metadata"]
+
+
+def test_the_order_of_documents_does_not_matter(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    hashed(monkeypatch, "aaa", "bbb")
+    prefill(eid)
+    hashed(monkeypatch, "bbb", "aaa")
+    assert prefill(eid).json()["reused"] is True and len(claude.calls) == 4
+
+
+@pytest.mark.parametrize("after", [("aaa", "ccc"), ("aaa",), ("aaa", "bbb", "ddd")])
+def test_a_changed_added_or_removed_document_reads_again(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch,
+                                                         after: tuple[str, ...]) -> None:
+    eid = create()["id"]
+    hashed(monkeypatch, "aaa", "bbb")
+    prefill(eid)
+    hashed(monkeypatch, *after)
+    body = prefill(eid).json()
+    assert "reused" not in body and len(claude.calls) == 8 and len(ledger()) == 2
+
+
+def test_a_new_prompt_version_reads_again(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    hashed(monkeypatch, "aaa")
+    prefill(eid)
+    monkeypatch.setattr(mp, "PREFILL_PROMPT_VERSION", "next")
+    assert "reused" not in prefill(eid).json() and len(claude.calls) == 8
+    assert prefill(eid).json()["reused"] is True and len(claude.calls) == 8  # and that read is reusable
+
+
+def test_a_different_model_reads_again(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    hashed(monkeypatch, "aaa")
+    prefill(eid)
+    monkeypatch.setattr(api, "get_settings", lambda: ON.model_copy(update={"ai_model": "claude-haiku-4-5"}))
+    assert "reused" not in prefill(eid).json() and len(claude.calls) == 8
+
+
+def test_a_failed_read_is_not_reused(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    hashed(monkeypatch, "aaa")
+    claude.fail = True
+    assert prefill(eid).status_code == 502
+    claude.fail = False
+    claude.outcome = "refused"
+    assert prefill(eid).status_code == 409
+    claude.outcome = "ok"
+    body = prefill(eid).json()
+    assert body["suggested"] > 0 and "reused" not in body
+    assert reuse_events() == []
+
+
+def test_a_read_with_a_failed_part_is_not_reused(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    hashed(monkeypatch, "aaa")
+    claude.fail_parts = ("BoundaryPart",)
+    assert prefill(eid).json()["failed_sections"]
+    claude.fail_parts = ()
+    calls = len(claude.calls)
+    assert "reused" not in prefill(eid).json() and len(claude.calls) > calls
+
+
+def test_documents_without_a_hash_are_hashed_from_their_bytes(tmp_path: Any) -> None:
+    class Storage:
+        def is_owned_by(self, uri: str, org: str) -> bool:
+            return True
+
+        def resolve_storage_uri(self, uri: str) -> Any:
+            return tmp_path / uri
+
+    (tmp_path / "one.pdf").write_bytes(b"first")
+    storage, doc_one = Storage(), [{"document_id": "1", "storage_uri": "one.pdf"}]
+    a = mp.read_fingerprint(doc_one, storage=storage, provider="p", model="m")
+    assert a is not None
+    (tmp_path / "one.pdf").write_bytes(b"second")
+    assert mp.read_fingerprint(doc_one, storage=storage, provider="p", model="m") != a
+    missing = [{"document_id": "1", "storage_uri": "missing.pdf"}]
+    assert mp.read_fingerprint(missing, storage=storage, provider="p", model="m") is None  # never reused
