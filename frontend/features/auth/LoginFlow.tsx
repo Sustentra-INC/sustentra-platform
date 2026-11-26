@@ -7,6 +7,8 @@ import { ApiError, login, resendOtp, verifyOtp } from "./api";
 import { forgotPath, homePath, type Realm } from "./realm";
 import { rememberRealm, safeNext } from "./lastRealm";
 import { AuthShell } from "./AuthShell";
+import { OtpInput } from "./OtpInput";
+import { IconCheck, IconMail } from "../s1/components/icons";
 import styles from "./auth.module.css";
 
 const OTP_LENGTH = 6;
@@ -146,35 +148,68 @@ export function LoginFlow({
   }
 
   if (step === "otp") {
+    const isInitialNotice = notice === `Enter the ${OTP_LENGTH}-digit code we sent to ${email}.`;
+    const otpSubtitle = isInitialNotice ? (
+      <>
+        Enter the {OTP_LENGTH}-digit code we sent to{" "}
+        <strong className={styles.emailHighlight}>{email}</strong>.
+      </>
+    ) : (notice ?? undefined);
+
     return (
-      <AuthShell title="Check your email" subtitle={notice ?? undefined}>
-        <form className={styles.form} onSubmit={(e) => e.preventDefault()}>
+      <AuthShell
+        title="Check your email"
+        header={
+          <div className={styles.iconTile}>
+            <IconMail size={26} />
+          </div>
+        }
+        subtitle={otpSubtitle}
+      >
+        <form
+          className={`${styles.form} ${styles.verifyForm}`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (code.length === OTP_LENGTH) void submitOtp(code);
+          }}
+          noValidate
+        >
           {error ? (
             <p className={styles.error} role="alert">
               {error}
             </p>
           ) : null}
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="otp">
-              6-digit code
-            </label>
-            <input
-              id="otp"
-              className={styles.otp}
-              value={code}
-              onChange={(e) => onCodeChange(e.target.value)}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              autoFocus
-              maxLength={OTP_LENGTH}
-              disabled={submitting}
-            />
-          </div>
-          <div className={styles.row}>
-            <button type="button" className={styles.link} onClick={onResend} disabled={resendIn > 0}>
-              {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
-            </button>
-            <button type="button" className={styles.link} onClick={() => backToPassword("")}>
+          <OtpInput
+            length={OTP_LENGTH}
+            value={code}
+            onChange={onCodeChange}
+            disabled={submitting}
+            hasError={!!error}
+          />
+          <button
+            type="submit"
+            className={`s1-button s1-button--pri s1-button--lg ${styles.submitBtn}`}
+            disabled={submitting || code.length < OTP_LENGTH}
+          >
+            {submitting ? "Verifying…" : "Verify"}
+          </button>
+          <div className={styles.otpLinks}>
+            <span>
+              Didn&apos;t get it?{" "}
+              <button
+                type="button"
+                className={styles.otpResend}
+                onClick={onResend}
+                disabled={resendIn > 0}
+              >
+                {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
+              </button>
+            </span>
+            <button
+              type="button"
+              className={styles.otpDiffAccount}
+              onClick={() => backToPassword("")}
+            >
               Use a different account
             </button>
           </div>
@@ -183,9 +218,19 @@ export function LoginFlow({
     );
   }
 
+  const isReadyBanner = notice === ACCOUNT_READY_NOTICE;
+
   return (
-    <AuthShell title="Sign in" subtitle={notice ?? undefined}>
+    <AuthShell title="Sign in" subtitle={isReadyBanner ? undefined : (notice ?? undefined)}>
       <form className={`${styles.form} ${styles.signinForm}`} onSubmit={onPasswordSubmit} noValidate>
+        {isReadyBanner && (
+          <div className={styles.readyBanner} role="status">
+            <span className={styles.readyDot} aria-hidden="true">
+              <IconCheck size={14} />
+            </span>
+            {ACCOUNT_READY_NOTICE}
+          </div>
+        )}
         {error ? (
           <p className={styles.error} role="alert">
             {error}

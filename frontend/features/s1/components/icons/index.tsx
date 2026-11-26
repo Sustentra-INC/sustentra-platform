@@ -949,6 +949,37 @@ export function IconLayoutSplit(props: IconProps) {
   );
 }
 
+/** Envelope — used on the verify-email / OTP screen. */
+export function IconMail({ size = 18, ...props }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden={props["aria-label"] ? undefined : true}
+      {...props}
+    >
+      <defs>
+        <mask id="icon-mail-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+          <rect width="24" height="24" fill="#fff" />
+          <path
+            d="M6 8.5l6 4.2 6-4.2"
+            stroke="#000"
+            strokeWidth="2.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </mask>
+      </defs>
+      <g mask="url(#icon-mail-mask)">
+        <rect x="2.5" y="4.5" width="19" height="15" rx="3" fill="currentColor" />
+      </g>
+    </svg>
+  );
+}
+
 /** Pen / highlight edit tool — document annotation. */
 export function IconHighlighter(props: IconProps) {
   return (

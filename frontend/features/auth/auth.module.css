@@ -456,3 +456,138 @@
 .activateSubmit {
   margin-top: var(--sp-1);              /* 4px */
 }
+
+/* ---- Verification code screen (MVP-276) ----------------------------------- */
+
+/* 56px icon tile (--sp-7 + --sp-2 = 48+8) using --r-pop per ticket spec */
+.iconTile {
+  width: calc(var(--sp-7) + var(--sp-2));
+  height: calc(var(--sp-7) + var(--sp-2));
+  border-radius: var(--r-pop);
+  background: var(--accent-soft);
+  color: var(--brand-dark);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+}
+
+/* Bold email address in the OTP subtitle */
+.emailHighlight {
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+}
+
+/* Tighter gap for the verify form */
+.verifyForm {
+  gap: calc(var(--sp-4) + var(--sp-1)); /* 20px */
+}
+
+/* OTP multi-box fieldset */
+.otpFieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.otpLegend {
+  margin-bottom: var(--sp-2-5); /* 10px */
+}
+
+.otpGrid {
+  display: grid;
+  grid-template-columns: repeat(var(--otp-cols, 6), minmax(0, 1fr));
+  gap: var(--sp-2-5); /* 10px */
+}
+
+.otpBox {
+  height: calc(var(--sp-7) + var(--sp-3)); /* 60px */
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  border: var(--border-strong);
+  border-radius: var(--r-card-sm);
+  background: var(--sf-card);
+  font: inherit;
+  font-size: var(--text-xl); /* 26px */
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+  outline: none;
+}
+
+.otpBox:focus {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+
+.otpBoxEmpty {
+  background: var(--sf-sunken);
+}
+
+.otpBoxError,
+.otpBoxError:focus {
+  border-color: var(--state-blocking-fg);
+}
+
+/* Resend / change-account links row */
+.otpLinks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: var(--text-md);
+  color: var(--ink-2);
+}
+
+.otpResend {
+  font-weight: var(--weight-strong);
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+.otpResend:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.otpDiffAccount {
+  font-weight: var(--weight-medium);
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+/* Account-ready banner shown on the sign-in screen after activation */
+.readyBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2-5); /* 10px */
+  padding: var(--sp-3) var(--sp-3-5); /* 12px 14px */
+  border-radius: var(--r-card-sm);
+  background: var(--state-resolved-bg);
+  color: var(--state-resolved-fg);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
+/* 22px green dot with check icon */
+.readyDot {
+  width: calc(var(--sp-4) + var(--sp-1-5)); /* 22px */
+  height: calc(var(--sp-4) + var(--sp-1-5));
+  flex: none;
+  border-radius: var(--r-pill);
+  background: var(--dot-success);
+  color: var(--sf-card);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

@@ -11,7 +11,7 @@ export function AuthShell({
   footer,
 }: {
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   /** Optional content rendered above the title (e.g. invite chip on the activate screen). */
   header?: ReactNode;
   children: ReactNode;
