@@ -1,5 +1,7 @@
 # Sustentra design standard
 
+**Updated Nov 25, 2026: UI redesign approved (Debo, Vivian). Font, type scale, colour and parts updated.**
+
 One page of rules for every screen of the workpaper, written by hand or by an AI tool.
 It comes from the design reviews with Vivian and Claire (October 2026). When a rule and a
 screen disagree, the screen changes. When a rule is wrong, change it here first.
@@ -16,29 +18,35 @@ colour or spacing rules.
 
 The screen must make sense with no tip, tour or tooltip open.
 
-## 2. Type: one family, three sizes, two weights
+## 2. Type: one family, eight sizes, four weights
 
 | Token | Size | Use |
 |---|---|---|
+| `--text-xs` | 11px | Group labels, badges |
 | `--text-sm` | 12px | Labels, column headers, metadata, chips, timestamps, helper text, and the text inside form fields (inputs, selects, text areas) |
-| `--text-md` | 14px | Body, table cells, buttons, values; section titles in the strong weight |
-| `--text-lg` | 20px | The page title, and the few key figures a page leads with |
+| `--text-base` | 13px | Secondary body text |
+| `--text-md` | 14px | Body, table cells, buttons, values |
+| `--text-title` | 16px | Card titles |
+| `--text-lg` | 20px | Section titles, key figures |
+| `--text-xl` | 26px | Page titles |
+| `--text-display` | 30px | Key figures, big numbers on the page |
 
-- **One family**: `--font-sans`, which is **IBM Plex Sans** (font files committed in
-  `app/fonts`, loaded with `next/font/local` in `app/layout.tsx`). It was chosen with
-  Vivian (22 October 2026) over Helvetica Neue, Inter, Source Sans 3 and Manrope: it reads
-  as institutional rather than generic, and it is narrow enough for dense tables. No
-  monospace in the interface. Digits that line up use tabular figures (`.s1-num`), in the
+- **One family**: `--font-sans`, which resolves to **Inter** (loaded via `next/font/google`
+  in `app/layout.tsx` and exposed as `--font-inter`). The full stack is
+  `-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter, "Helvetica Neue", Arial, sans-serif`.
+  No monospace in the interface. Digits that line up use tabular figures (`.s1-num`), in the
   same font.
-- **Two weights**: `--weight-regular` (400) for content and `--weight-strong` (600,
-  Plex SemiBold) for titles, labels and emphasis. Only these two weights are loaded.
+- **Four weights**: `--weight-regular` (400) for content, `--weight-medium` (500) for nav,
+  pills and buttons, `--weight-strong` (600) for titles, labels and emphasis,
+  `--weight-bold` (700) for page titles and big numbers.
 - **Hierarchy comes from placement, grouping, contrast (`--ink`, `--ink-2`, `--ink-3`) and
   weight, before size or colour.** A section title is `--text-md` in the strong weight, not
-  a fourth size: it matches the text in its fields in size and outranks it in weight.
-- **The text in a field is smaller than the section title above it** (Vivian, 22 October
-  2026): fields use `--text-sm`, so a form reads title, then label, then value. The contract
-  test checks every input, select and text area rule.
-- Uppercase only for column headers and small group labels, with 0.03em tracking.
+  an extra size: it matches the text in its fields in size and outranks it in weight.
+- **The text in a field is smaller than the section title above it**: fields use `--text-sm`,
+  so a form reads title, then label, then value. The contract test checks every input, select
+  and text area rule.
+- Uppercase only for column headers and small group labels, with 0.06em tracking and
+  `--text-sm`.
 - Exception: the demo's client documents (bills, letters, photos) look like the real thing.
 
 ## 3. Spacing
@@ -57,9 +65,11 @@ rendered).
 ## 4. Colour means something
 
 - **Text** uses the ink ramp: `--ink` (primary), `--ink-2` (secondary), `--ink-3` (labels).
-- **Indigo** (`--brand-ink`) is the brand: the navigation and the logo.
-- **Blue** (`--accent-solid`, `--accent`) is for action: the primary button, links, focus,
-  the selected row.
+- **Indigo** (`--brand-ink`, `#3A40C0`) is both brand and action. The nav, logo, primary
+  buttons, links, focus rings and selected states all use it. Active and selected states are
+  always indigo — never black.
+- **Surfaces** are cool grey: `--sf-page` (#F3F4F8) for the app background, `--sf-card`
+  (#FFFFFF) for cards and panels, `--sf-sunken` and `--sf-inset` for nested areas.
 - **State colours** are only for state:
 
   | State | Colour |
@@ -67,7 +77,7 @@ rendered).
   | Blocking | red |
   | To review, open | amber |
   | Done, accepted | green |
-  | Requested, in progress | blue |
+  | Requested, in progress | indigo |
   | Cannot verify | slate |
 
   Never use them for decoration.
@@ -77,13 +87,14 @@ rendered).
 
 | Part | Rule |
 |---|---|
-| **Primary button** (`.s1-button--pri`) | Solid blue. One per work area. |
+| **Primary button** (`.s1-button--pri`) | Solid indigo (`--accent-solid`). One per work area. `--shadow-primary` on hover. |
 | **Secondary button** (`.s1-button`) | Outline, quieter. |
 | **Text button** | For Revert, Cancel, low-stakes links. |
 | **Row menu** (`ActionMenu`, "⋯") | Everything else a row can do, including destructive actions (Withdraw). |
-| **State chip** | Small, fits its words, pill-shaped: *Requested · #2*. |
+| **State chip** | Fully round pill (`--r-pill`), 6px coloured dot (`--dot-*`), soft tint background, matching dark text at `--text-sm` / `--weight-medium`. Short labels. Example: *● Requested*. |
+| **Icons** | Solid two-tone: filled shape (`fill="currentColor"`) with second tone at `fill-opacity=".38"`. Default 18px. No outline icons inside tinted squares. |
 | **Table** | Small uppercase headers in `--ink-3`, body-size cells. |
-| **Panel** | Hairline border and 10px radius. A header with a title and, at most, a count or a red flag count. Groups fold from their header. |
+| **Panel** | `--shadow-card`, `--r-card` (14px) radius. A header with a title and, at most, a count or a red flag count. Groups fold from their header. |
 | **InfoTip** (ⓘ) | For explanations. No paragraphs on the page. |
 | **Change line** | A reversible change shows one line: *Adjusted by M. Osei · Oct 21, 3:57 PM · Revert*. |
 
@@ -133,19 +144,21 @@ Prompts for Emergent, Claude or any other tool include this file. A generated sc
 - uses the tokens and parts above, not new ones;
 - passes `npm run lint`, `npm run typecheck` and the contract test before review.
 
-## Where we are (22 October 2026)
+## Where we are (25 November 2026)
 
 - **Enforced by the contract test:**
-  - type: one family (IBM Plex Sans), three sizes, two weights, no monospace;
-  - tokens only, no raw hex or px;
+  - type: one family (Inter / system stack), eight sizes, four weights, no monospace;
+  - tokens only, no raw hex or px in component stylesheets;
   - stylesheets that parse.
 - **In place:**
+  - redesign tokens, font and design standard (MVP-262);
   - the shared row menu (Evidence, Coverage & requests);
   - state chips;
   - change lines with Revert (Methodology review);
   - progressive disclosure in Extraction review.
 - **To build:**
+  - component restyling against new tokens (next tickets);
   - the AI / system / human labels (section 7);
   - the guidance dot (section 8).
-- **To reconcile:** Methodology review's buttons follow Claire's mockup (indigo) rather
-  than the shared primary button.
+- **To update in their own tickets:** chart palette (`--chart-*`), document highlights
+  (`--hl-*`), status marks (`--mark-*`).

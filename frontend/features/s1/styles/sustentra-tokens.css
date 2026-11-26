@@ -1,6 +1,6 @@
 /* ==========================================================================
-   Sustentra front-end design tokens — v0.1
-   Owner: Claire Qiu. Date: 27 July 2026.
+   Sustentra front-end design tokens — v0.2
+   Owner: Claire Qiu. Date: 27 July 2026. Updated: 25 Nov 2026 (UI redesign).
 
    These are the only values. Do not introduce a hex code, a font size, or a
    spacing value that is not in this file. If something you are building has no
@@ -16,36 +16,37 @@
 :root {
 
   /* --- Base surfaces and ink ---------------------------------------------
-     Warm neutral. This is a workpaper, and it is read for hours at a time.
+     Cool neutral. Clear, light and fast to scan.
      ---------------------------------------------------------------------- */
 
-  --sf-page:        #FBFAF6;   /* application background */
+  --sf-page:        #F3F4F8;   /* application background */
   --sf-card:        #FFFFFF;   /* cards, tables, panels */
-  --sf-sunken:      #F7F5EF;   /* nested / recessed areas, expanded rows */
-  --sf-inset:       #EFEDE4;   /* code, verbatim statute text, quoted blocks */
+  --sf-sunken:      #F7F8FA;   /* nested / recessed areas, expanded rows */
+  --sf-inset:       #F1F2F6;   /* code, verbatim statute text, quoted blocks */
 
-  --ink:            #23231F;   /* primary text */
-  --ink-2:          #57564F;   /* secondary text, values in tables */
-  --ink-3:          #6A6961;   /* labels, metadata, column headers; 4.5:1 or better on every surface */
+  --ink:            #14151A;   /* primary text */
+  --ink-2:          #3B3D46;   /* secondary text, values in tables */
+  --ink-3:          #63666F;   /* labels, metadata, column headers; 4.5:1 or better on every surface */
 
-  --line:           #E0DDD3;   /* default hairline */
-  --line-strong:    #C9C5B8;   /* emphasised border, hover, focus ring base */
+  --line:           #E6E7EC;   /* default hairline */
+  --line-strong:    #DCDEE6;   /* emphasised border, hover, focus ring base */
 
-  /* Brand ink, sampled from the Sustentra wordmark. The deep anchor; the logo
-     and the deepest UI accents draw from it. */
-  --brand-ink:      #282870;
+  /* Brand and action are the same colour: indigo. The nav, logo, primary
+     buttons, links and selected states all draw from it. Active and selected
+     states are always indigo, never black. */
+  --brand-ink:      #3A40C0;   /* primary indigo */
+  --brand-dark:     #2E3299;   /* text on indigo tint, avatar initials */
 
-  /* --- Interactive accent — "baby blue", matched to the warm paper ----------
-     The one interactive colour: tabs, filters, links, primary buttons, focus.
-     Warm tan ground + soft blue accent is a deliberate complementary pairing,
-     not the generic corporate blue. Kept distinct from the engagement STATES
-     below, which stay semantic. ------------------------------------------- */
-  --accent-solid:   #2C6FB3;   /* solid fills: primary buttons, active tab; white text on it is 5.2:1 */
-  --accent:         #2C6FB3;   /* links, icons, active labels on paper */
-  --accent-strong:  #24588F;   /* hover / pressed on solids */
-  --accent-soft:    #EAF3FC;   /* tint: active chip / selected row */
-  --accent-softer:  #F4F8FD;   /* tint: row hover */
-  --accent-line:    #BFDBF4;   /* border on a tinted surface */
+  /* --- Interactive accent — indigo ----------------------------------------
+     Brand and action are unified. --accent-solid / --accent are the same as
+     --brand-ink so there is one colour for all interactive elements.
+     ---------------------------------------------------------------------- */
+  --accent-solid:   #3A40C0;   /* solid fills: primary buttons, active tab; white text on it is 7.9:1 */
+  --accent:         #3A40C0;   /* links, icons, active labels */
+  --accent-strong:  #2B3099;   /* hover / pressed on solids */
+  --accent-soft:    #E8E9FB;   /* tint: active chip / selected row */
+  --accent-softer:  #F1F2FD;   /* tint: row hover */
+  --accent-line:    #D9DBF6;   /* border on a tinted surface */
 
   /* Motion — one strong ease-out for the whole product. */
   --ease-out:       cubic-bezier(0.23, 1, 0.32, 1);
@@ -106,33 +107,33 @@
      ---------------------------------------------------------------------- */
 
   /* Prevents conclusion. The engagement cannot be signed while this exists. */
-  --state-blocking-fg:   #A32D2D;
-  --state-blocking-bg:   #FBEAEA;
-  --state-blocking-line: #E8C4C4;
+  --state-blocking-fg:   #A8281C;
+  --state-blocking-bg:   #FDE7E4;
+  --state-blocking-line: #F6D3CD;
 
   /* Needs action, does not prevent conclusion. */
-  --state-open-fg:       #8A5108;
-  --state-open-bg:       #FAEFDC;
-  --state-open-line:     #EBD5AC;
+  --state-open-fg:       #8A4B12;
+  --state-open-bg:       #FFF1DE;
+  --state-open-line:     #FFE7BF;
 
   /* Done — judgment recorded, request closed, field verified. */
-  --state-resolved-fg:   #3B6D11;
-  --state-resolved-bg:   #EDF4E2;
-  --state-resolved-line: #CFE0B4;
+  --state-resolved-fg:   #19663E;
+  --state-resolved-bg:   #E3F5EA;
+  --state-resolved-line: #C6E8D3;
 
   /* In progress — the system or a human is partway through. Neutral, not good
      or bad. Use for processing states and "under review". */
-  --state-active-fg:     #185FA5;
-  --state-active-bg:     #E8F1FB;
-  --state-active-line:   #C3DAF2;
+  --state-active-fg:     #2E3299;
+  --state-active-bg:     #E8E9FB;
+  --state-active-line:   #D9DBF6;
 
   /* Checked, and cannot be verified from any client document. This is an
      honest scope boundary, NOT a failure. It must never share a treatment with
      --state-blocking. Applies to `limit`-type rules and to any assertion the
      system does not evaluate. */
-  --state-unverifiable-fg:   #4E5D6C;
-  --state-unverifiable-bg:   #EDF1F4;
-  --state-unverifiable-line: #D0D8DF;
+  --state-unverifiable-fg:   #55585F;
+  --state-unverifiable-bg:   #F1F2F6;
+  --state-unverifiable-line: #DCDEE6;
 
   /* Not applicable under an unmet condition. Deliberately colourless: this is
      an absence of obligation, not a state with weight. Render as muted text on
@@ -140,6 +141,15 @@
   --state-na-fg:         #6A6961;
   --state-na-bg:         transparent;
   --state-na-line:       #D6D3C8;   /* use dashed */
+
+  /* --- Status pill dots ---------------------------------------------------
+     The colored dot inside fully-round status pills. One dot per state.
+     ---------------------------------------------------------------------- */
+  --dot-success:  #1F8A55;   /* resolved / done */
+  --dot-warning:  #E9A23B;   /* open / needs attention */
+  --dot-danger:   #D9473A;   /* blocking */
+  --dot-progress: #3A40C0;   /* active / in progress */
+  --dot-neutral:  #8A8D96;   /* unverifiable / not applicable */
 
 
   /* --- Modifiers ---------------------------------------------------------
@@ -166,21 +176,27 @@
 
 
   /* --- Typography --------------------------------------------------------
-     Four sizes. Two weights. No exceptions.
+     Eight sizes. Four weights. One family. No exceptions.
      ---------------------------------------------------------------------- */
 
-  /* The interface uses one family and three sizes (docs/design_standard.md). */
-  --font-sans: var(--font-plex, "IBM Plex Sans"), "Helvetica Neue", Helvetica, Arial, sans-serif;   /* IBM Plex Sans, self-hosted (app/layout.tsx) */
+  /* System font stack — Inter loaded by next/font and exposed as --font-inter. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", var(--font-inter, "Inter"), "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;   /* client documents only */
 
-  --text-lg:   20px;   /* the page title, and the few key figures a page leads with */
-  --text-md:   14px;   /* everything people read or type; section titles in medium weight */
-  --text-sm:   12px;   /* labels, column headers, metadata, chips, timestamps */
-  --text-xs:   11px;   /* client documents only (the small print of a drawn bill) */
+  /* Type scale — smallest to largest. Use --text-md as the base. */
+  --text-xs:      11px;   /* group labels, badges */
+  --text-sm:      12px;   /* labels, column headers, metadata, chips, timestamps, form fields */
+  --text-base:    13px;   /* secondary body text */
+  --text-md:      14px;   /* body, table cells, buttons, values */
+  --text-title:   16px;   /* card titles */
+  --text-lg:      20px;   /* section titles, key figures */
+  --text-xl:      26px;   /* page titles */
+  --text-display: 30px;   /* key figures, big numbers on the page */
 
-  --weight-regular: 400;
-  --weight-strong:  600;   /* the interface's second weight: titles, labels, emphasis (Plex SemiBold) */
-  --weight-medium:  500;   /* client documents only */
+  --weight-regular: 400;   /* content */
+  --weight-medium:  500;   /* nav, pills, buttons */
+  --weight-strong:  600;   /* titles, labels, emphasis */
+  --weight-bold:    700;   /* page titles, big numbers */
 
   --leading-tight: 1.35;   /* table rows, chips */
   --leading-body:  1.6;    /* prose, explanations, statute text */
@@ -209,13 +225,15 @@
      4px base. Dense by design: a reviewer scans hundreds of rows.
      ---------------------------------------------------------------------- */
 
-  --sp-1:   4px;
-  --sp-2:   8px;
-  --sp-3:  12px;
-  --sp-4:  16px;
-  --sp-5:  24px;
-  --sp-6:  32px;
-  --sp-7:  48px;
+  --sp-half:  2px;
+  --sp-1:     4px;
+  --sp-1-5:   6px;
+  --sp-2:     8px;
+  --sp-3:    12px;
+  --sp-4:    16px;
+  --sp-5:    24px;
+  --sp-6:    32px;
+  --sp-7:    48px;
 
   --row-height-compact: 36px;   /* evidence tables, coverage matrix */
   --row-height-default: 44px;   /* register rows, queue rows */
@@ -259,21 +277,55 @@
 
   /* --- Shape -------------------------------------------------------------- */
 
+  /* Legacy radius tokens — kept so existing components don't break. */
   --radius-chip:  6px;
   --radius-card: 10px;
   --radius-input: 6px;
+
+  /* New radius scale (use these for new components). */
+  --r-sm:      8px;    /* small chips, checkboxes */
+  --r-md:     10px;    /* avatars, small buttons */
+  --r-ctl:    11px;    /* buttons, inputs, nav items */
+  --r-card-sm: 12px;   /* small cards */
+  --r-card:   14px;    /* cards, dropdown panels */
+  --r-lg:     18px;    /* large cards, modals */
+  --r-pill:  999px;    /* pills, badges */
 
   --border-hairline: 1px solid var(--line);
   --border-strong:   1px solid var(--line-strong);
   --border-dashed:   1px dashed var(--line-strong);
 
-  /* No shadows. No gradients. This is a document, not an interface. */
+  /* --- Shadows ------------------------------------------------------------ */
+
+  --shadow-card:        0 1px 2px rgba(20, 21, 26, 0.05);
+  --shadow-card-soft:   0 1px 2px rgba(20, 21, 26, 0.04);
+  --shadow-primary:     0 4px 12px rgba(58, 64, 192, 0.25);
+  --shadow-primary-lg:  0 6px 16px rgba(58, 64, 192, 0.28);
+  --shadow-focus:       0 0 0 4px #E8E9FB;
+  --shadow-inset:       inset 0 0 0 1px #DCDEE6;
+  --shadow-pop:         0 0 0 1px rgba(20, 21, 26, 0.06), 0 24px 48px rgba(20, 21, 26, 0.16);
+  --shadow-subtle: none;   /* kept for backward compat */
 
 
   /* --- Focus and interaction ---------------------------------------------- */
 
-  --focus-ring: 2px solid var(--state-active-fg);
+  --focus-ring: 2px solid var(--accent);
   --focus-offset: 2px;
+}
+
+
+/* ==========================================================================
+   Base document styles — travel with the tokens, applied globally.
+   ========================================================================== */
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  color: var(--ink);
+  background: var(--sf-page);
 }
 
 
