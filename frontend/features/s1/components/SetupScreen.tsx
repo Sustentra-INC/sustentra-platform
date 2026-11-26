@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, X } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import type { EngagementConfig, FacilityOption } from "../types";
 import type { InScopeField } from "../types/scope";
@@ -39,8 +39,12 @@ const REGULATION_OPTIONS = [
 const METHODOLOGY_OPTIONS = ["GHG Protocol Corporate Standard"];
 const DATA_SCOPE_OPTIONS = ["Scope 1 & 2", "Scope 1, 2, and 3"];
 const ASSURANCE_STANDARD_OPTIONS = ["ISO 14064-3"];
-const ASSURANCE_LEVEL_OPTIONS = ["Limited assurance", "Reasonable assurance"];
+const ASSURANCE_LEVEL_SEG = [
+  { value: "Limited assurance", label: "Limited" },
+  { value: "Reasonable assurance", label: "Reasonable" },
+];
 const MATERIALITY_OPTIONS = ["5%", "10%"];
+const MATERIALITY_SEG = MATERIALITY_OPTIONS.map((v) => ({ value: v, label: v }));
 
 const LAYER_LABEL: Record<InScopeField["layer"], string> = {
   general: "General",
@@ -172,7 +176,7 @@ export function SetupScreen({
                   <div className="s1-setup-grid">
                     {picker ? (
                       <label className="s1-setup-field">
-                        <span>Engagement name</span>
+                        <span className="s1-field-label">Engagement name</span>
                         <input
                           value={engagement.engagementName ?? ""}
                           maxLength={200}
@@ -181,11 +185,11 @@ export function SetupScreen({
                       </label>
                     ) : null}
                     <label className="s1-setup-field">
-                      <span>Company name</span>
+                      <span className="s1-field-label">Company name</span>
                       <input value={engagement.clientName} onChange={(e) => set({ clientName: e.target.value })} />
                     </label>
                     <div className="s1-setup-field">
-                      <span id="setup-rp-label">Reporting period</span>
+                      <span id="setup-rp-label" className="s1-field-label">Reporting period</span>
                       <DateRangePicker
                         start={engagement.reportingPeriod.start}
                         end={engagement.reportingPeriod.end}
@@ -194,7 +198,7 @@ export function SetupScreen({
                       />
                     </div>
                     <div className="s1-setup-field">
-                      <span id="setup-regulation-label">Regulation</span>
+                      <span id="setup-regulation-label" className="s1-field-label">Regulation</span>
                       <Dropdown
                         value={engagement.regulation ?? ""}
                         onChange={(v) => {
@@ -207,7 +211,7 @@ export function SetupScreen({
                       />
                     </div>
                     <div className="s1-setup-field">
-                      <span id="setup-methodology-label">Methodology</span>
+                      <span id="setup-methodology-label" className="s1-field-label">Methodology</span>
                       <Dropdown
                         value={engagement.methodology ?? METHODOLOGY_OPTIONS[0]}
                         onChange={(v) => set({ methodology: v })}
@@ -232,17 +236,15 @@ export function SetupScreen({
                 </div>
                 <div className="s1-setup-card__col-right">
                   <div className="s1-setup-grid">
+                    <SegmentedField
+                      id="setup-datascope-label"
+                      label="Data scope"
+                      options={DATA_SCOPE_OPTIONS.map((v) => ({ value: v, label: v }))}
+                      value={engagement.dataScope ?? DATA_SCOPE_OPTIONS[0]}
+                      onChange={(v) => set({ dataScope: v })}
+                    />
                     <div className="s1-setup-field">
-                      <span id="setup-datascope-label">Data scope</span>
-                      <Dropdown
-                        value={engagement.dataScope ?? DATA_SCOPE_OPTIONS[0]}
-                        onChange={(v) => set({ dataScope: v })}
-                        options={DATA_SCOPE_OPTIONS.map((o) => ({ value: o, label: o }))}
-                        labelId="setup-datascope-label"
-                      />
-                    </div>
-                    <div className="s1-setup-field">
-                      <span id="setup-standard-label">Assurance standard</span>
+                      <span id="setup-standard-label" className="s1-field-label">Assurance standard</span>
                       <Dropdown
                         value={engagement.assuranceStandard ?? ASSURANCE_STANDARD_OPTIONS[0]}
                         onChange={(v) => set({ assuranceStandard: v })}
@@ -250,25 +252,20 @@ export function SetupScreen({
                         labelId="setup-standard-label"
                       />
                     </div>
-                    <div className="s1-setup-field">
-                      <span id="setup-level-label">Assurance level</span>
-                      <Dropdown
-                        value={engagement.assuranceLevel ?? ""}
-                        onChange={(v) => set({ assuranceLevel: v })}
-                        options={ASSURANCE_LEVEL_OPTIONS.map((o) => ({ value: o, label: o }))}
-                        placeholder="Choose a level"
-                        labelId="setup-level-label"
-                      />
-                    </div>
-                    <div className="s1-setup-field">
-                      <span id="setup-materiality-label">Materiality threshold</span>
-                      <Dropdown
-                        value={engagement.materialityThreshold ?? MATERIALITY_OPTIONS[0]}
-                        onChange={(v) => set({ materialityThreshold: v })}
-                        options={MATERIALITY_OPTIONS.map((o) => ({ value: o, label: `${o} of total` }))}
-                        labelId="setup-materiality-label"
-                      />
-                    </div>
+                    <SegmentedField
+                      id="setup-level-label"
+                      label="Assurance level"
+                      options={ASSURANCE_LEVEL_SEG}
+                      value={engagement.assuranceLevel ?? ""}
+                      onChange={(v) => set({ assuranceLevel: v })}
+                    />
+                    <SegmentedField
+                      id="setup-materiality-label"
+                      label="Materiality threshold"
+                      options={MATERIALITY_SEG}
+                      value={engagement.materialityThreshold ?? MATERIALITY_OPTIONS[0]}
+                      onChange={(v) => set({ materialityThreshold: v })}
+                    />
                   </div>
                 </div>
               </div>
@@ -369,14 +366,14 @@ export function SetupScreen({
                 <div className="s1-setup-card__col-right">
                   <div className="s1-setup-grid">
                     <label className="s1-setup-field">
-                      <span>Name</span>
+                      <span className="s1-field-label">Name</span>
                       <input
                         value={engagement.clientContact?.name ?? ""}
                         onChange={(e) => set({ clientContact: { ...contact(engagement), name: e.target.value } })}
                       />
                     </label>
                     <label className="s1-setup-field">
-                      <span>Email</span>
+                      <span className="s1-field-label">Email</span>
                       <input
                         type="email"
                         value={engagement.clientContact?.email ?? ""}
@@ -384,7 +381,7 @@ export function SetupScreen({
                       />
                     </label>
                     <label className="s1-setup-field">
-                      <span>Company</span>
+                      <span className="s1-field-label">Company</span>
                       <input
                         value={engagement.clientContact?.company ?? ""}
                         onChange={(e) => set({ clientContact: { ...contact(engagement), company: e.target.value } })}
@@ -526,4 +523,59 @@ function AddButton({ onClick, children }: { onClick: () => void; children: React
 
 function contact(engagement: EngagementConfig) {
   return engagement.clientContact ?? { name: "", email: "", company: engagement.clientName };
+}
+
+function SegmentedField({
+  id,
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const selectedIdx = options.findIndex((o) => o.value === value);
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    const cur = selectedIdx < 0 ? 0 : selectedIdx;
+    let next = -1;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (cur + 1) % options.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (cur - 1 + options.length) % options.length;
+    if (next < 0) return;
+    e.preventDefault();
+    onChange(options[next].value);
+    refs.current[next]?.focus();
+  }
+
+  return (
+    <div className="s1-setup-field">
+      <span id={id} className="s1-field-label">{label}</span>
+      <div
+        className="s1-ws-factabs s1-ws-factabs--seg"
+        role="radiogroup"
+        aria-labelledby={id}
+        onKeyDown={handleKeyDown}
+      >
+        {options.map((opt, i) => (
+          <button
+            key={opt.value}
+            ref={(el) => { refs.current[i] = el; }}
+            type="button"
+            role="radio"
+            aria-checked={opt.value === value}
+            className={`s1-ws-factab${opt.value === value ? " is-on" : ""}`}
+            tabIndex={i === selectedIdx || (selectedIdx < 0 && i === 0) ? 0 : -1}
+            onClick={() => onChange(opt.value)}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }

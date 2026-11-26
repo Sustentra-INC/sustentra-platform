@@ -680,6 +680,9 @@ button.s1-state:focus-visible { outline: none; box-shadow: var(--shadow-focus); 
   height: var(--input-h-lg); border-radius: var(--r-card-sm);
   padding: 0 var(--sp-3-5); font-size: var(--text-title);
 }
+.s1-input--md {
+  height: var(--input-h-md); border-radius: var(--r-card-sm); padding: 0 var(--sp-3-5);
+}
 .s1-input.s1-input--locked {
   background: var(--sf-sunken);
   border-color: var(--line);
@@ -1587,7 +1590,7 @@ select:focus-visible,
 .s1-setup-card h2 { font-size: var(--text-md); font-weight: var(--weight-strong); margin: 0; }
 .s1-setup-card__head { display: flex; align-items: baseline; gap: var(--sp-3); justify-content: space-between; }
 .s1-setup-card p { margin: 0; }
-.s1-setup-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.s1-setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(var(--setup-grid-col-min), 100%), 1fr)); gap: var(--sp-4-5) var(--sp-4); }
 .s1-setup-field { display: flex; flex-direction: column; gap: var(--sp-1-5); font-size: var(--text-sm); color: var(--ink-3); }
 .s1-setup-inline { display: flex; gap: var(--sp-2); }
 .s1-setup-field input, .s1-setup-field select, .s1-setup-row input {
@@ -3639,10 +3642,17 @@ html, body { margin: 0; padding: 0; }
    Setup clean-up: info-tips instead of grey paragraphs, one grid for every row.
    ========================================================================== */
 .s1-setup-card h2 { display: inline-flex; align-items: center; gap: var(--sp-1); }
-.s1-setup-field input, .s1-setup-field select, .s1-setup-row input, .s1-fac__row input, .s1-fac__row select {
-  box-sizing: border-box; height: var(--input-h); width: 100%;
-  background: var(--sf-card); border: var(--border-strong); border-radius: var(--r-md);
-  padding: 0 var(--sp-3); font: inherit; font-size: var(--text-md); color: var(--ink);
+.s1-setup-field input, .s1-setup-field select,
+.s1-setup-row input, .s1-fac__row input, .s1-fac__row select {
+  box-sizing: border-box; width: 100%;
+  background: var(--sf-card); border: var(--border-strong);
+  font: inherit; font-size: var(--text-md); color: var(--ink);
+}
+.s1-setup-field input, .s1-setup-field select {
+  height: var(--input-h-md); border-radius: var(--r-card-sm); padding: 0 var(--sp-3-5);
+}
+.s1-setup-row input, .s1-fac__row input, .s1-fac__row select {
+  height: var(--input-h); border-radius: var(--r-md); padding: 0 var(--sp-3);
 }
 .s1-setup-row input:focus, .s1-fac__row input:focus, .s1-fac__row select:focus { outline: none; border-color: var(--accent); box-shadow: var(--shadow-focus); }
 .s1-setup-inline > input { flex: 1; min-width: 0; }
@@ -4369,6 +4379,7 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-dd { display: inline-block; vertical-align: top; }
 .s1-setup-field .s1-dd,
 .s1-modal__field .s1-dd { display: block; width: 100%; }
+.s1-setup-field .s1-dd__trigger { height: var(--input-h-md); border-radius: var(--r-card-sm); }
 .s1-dd__trigger {
   display: flex; align-items: center; gap: var(--sp-2-5); text-align: left; cursor: pointer;
   height: var(--input-h); padding: 0 var(--sp-3) 0 var(--sp-3-5); width: 100%; box-sizing: border-box;
@@ -4438,6 +4449,7 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-drp__trigger:hover { border-color: color-mix(in srgb, var(--line-strong) 88%, var(--ink) 12%); }
 .s1-drp__trigger:focus { border-color: var(--accent); outline: none; box-shadow: var(--shadow-focus); }
 .s1-drp__trigger[aria-expanded="true"] { border-color: var(--accent); box-shadow: var(--shadow-focus); }
+.s1-setup-field .s1-drp__trigger { height: var(--input-h-md); }
 
 .s1-drp__cal-icon { color: var(--ink-3); flex-shrink: 0; }
 .s1-drp__arrow { color: var(--ink-3); flex-shrink: 0; }
