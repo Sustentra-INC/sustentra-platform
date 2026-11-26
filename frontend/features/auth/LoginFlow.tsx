@@ -185,19 +185,19 @@ export function LoginFlow({
 
   return (
     <AuthShell title="Sign in" subtitle={notice ?? undefined}>
-      <form className={styles.form} onSubmit={onPasswordSubmit} noValidate>
+      <form className={`${styles.form} ${styles.signinForm}`} onSubmit={onPasswordSubmit} noValidate>
         {error ? (
           <p className={styles.error} role="alert">
             {error}
           </p>
         ) : null}
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="email">
+          <label className="s1-field-label" htmlFor="email">
             Email
           </label>
           <input
             id="email"
-            className={styles.input}
+            className="s1-input s1-input--lg"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -206,13 +206,18 @@ export function LoginFlow({
           />
         </div>
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="password">
-            Password
-          </label>
-          <div className={styles.inputWrap}>
+          <div className={styles.labelRow}>
+            <label className="s1-field-label" htmlFor="password">
+              Password
+            </label>
+            <Link className={styles.link} href={forgotPath(realm)}>
+              Forgot password?
+            </Link>
+          </div>
+          <div className={styles.pwWrap}>
             <input
               id="password"
-              className={styles.input}
+              className={styles.pwInput}
               type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -220,7 +225,7 @@ export function LoginFlow({
             />
             <button
               type="button"
-              className={styles.reveal}
+              className={styles.pwShow}
               onClick={() => setShowPassword((v) => !v)}
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
@@ -228,12 +233,23 @@ export function LoginFlow({
             </button>
           </div>
         </div>
-        <button type="submit" className={styles.button} disabled={submitting}>
+        {/* FLAG: Keep me signed in is visual-only, checked by default — not wired */}
+        <label className={styles.keepSignedIn}>
+          <input
+            type="checkbox"
+            className="s1-checkbox"
+            defaultChecked
+            aria-label="Keep me signed in"
+          />
+          Keep me signed in
+        </label>
+        <button
+          type="submit"
+          className={`s1-button s1-button--pri s1-button--lg ${styles.submitBtn}`}
+          disabled={submitting}
+        >
           {submitting ? "Signing in…" : "Sign in"}
         </button>
-        <Link className={styles.link} href={forgotPath(realm)}>
-          Forgot password?
-        </Link>
       </form>
     </AuthShell>
   );
