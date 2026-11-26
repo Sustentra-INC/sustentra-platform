@@ -100,7 +100,7 @@
 
 .formInner {
   width: 100%;
-  max-width: 400px;                     /* no matching token — reported as layout gap */
+  max-width: var(--auth-form-w);
   display: flex;
   flex-direction: column;
   gap: calc(var(--sp-5) + var(--sp-1)); /* 28px */
@@ -373,4 +373,80 @@
 /* Full-width submit button override */
 .submitBtn {
   width: 100%;
+}
+
+/* ---- Activate account form (MVP-275) -------------------------------------- */
+
+/* Invite chip: shown above the title on the activate screen */
+.inviteChip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);                      /* 8px */
+  height: 30px;
+  padding: 0 var(--sp-3) 0 var(--sp-1); /* 0 12px 0 4px */
+  border-radius: var(--r-pill);
+  background: var(--sf-inset);
+  font-size: var(--text-base);           /* 13px */
+  font-weight: var(--weight-medium);     /* 500 */
+  color: var(--ink-2);
+}
+
+/* Circle avatar inside the chip showing org initials */
+.inviteAvatar {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--brand-dark);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);            /* 11px — nearest to design's 10px */
+  font-weight: var(--weight-bold);       /* 700 */
+}
+
+/* Live password rules checklist */
+.hintList {
+  list-style: none;
+  margin: var(--sp-1) 0 0;              /* 4px top gap from input */
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1-5) var(--sp-4);       /* 6px row, 16px col */
+}
+
+.hintItem {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);                    /* 6px */
+  font-size: var(--text-base);           /* 13px */
+  color: var(--ink-3);
+}
+
+.hintMet {
+  color: var(--state-resolved-fg);
+}
+
+/* Confirm password match/mismatch indicator */
+.confirmFeedback {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);                    /* 6px */
+  font-size: var(--text-base);           /* 13px */
+  margin-top: var(--sp-1);              /* 4px */
+}
+
+.confirmMatch {
+  color: var(--state-resolved-fg);
+}
+
+.confirmMismatch {
+  color: var(--state-blocking-fg);
+}
+
+/* Extra top gap before the activate submit button */
+.activateSubmit {
+  margin-top: var(--sp-1);              /* 4px */
 }

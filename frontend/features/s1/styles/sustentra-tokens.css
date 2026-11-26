@@ -303,6 +303,8 @@
   --r-xl:     24px;    /* auth brand panel */
   --r-pill:  999px;    /* pills, badges */
 
+  --auth-form-w: 400px; /* activate / sign-in form inner max-width */
+
   --input-h:    40px;   /* standard form input height */
   --input-h-lg: 46px;   /* large auth input height */
   --panel-max-h: 320px;  /* floating dropdown panel max height */

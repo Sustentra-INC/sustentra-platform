@@ -6,11 +6,14 @@ import styles from "./auth.module.css";
 export function AuthShell({
   title,
   subtitle,
+  header,
   children,
   footer,
 }: {
   title: string;
   subtitle?: string;
+  /** Optional content rendered above the title (e.g. invite chip on the activate screen). */
+  header?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
 }) {
@@ -29,6 +32,7 @@ export function AuthShell({
       <main className={styles.formSide}>
         <div className={styles.formInner}>
           <div className={styles.heading}>
+            {header}
             <h1 className={styles.title}>{title}</h1>
             {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
           </div>
