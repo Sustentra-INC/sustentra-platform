@@ -246,9 +246,10 @@
   --upload-min-height: 72px;
   --table-min-width: 1180px;
   --viewport-full-height: 100vh;
-  --state-chip-min-height: 24px;
+  --state-chip-min-height: 22px;
   --state-chip-radius: 999px;
-  --state-chip-padding-block: 3px;
+  --state-chip-padding-block: 2px;
+  --badge-h: 20px;
   --tooltip-min-width: 180px;
   --tooltip-max-width: 280px;
   --icon-button-size: 32px;

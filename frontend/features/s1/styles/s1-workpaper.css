@@ -401,12 +401,27 @@
   display: inline-flex;
   width: fit-content;
   align-items: center;
+  gap: var(--sp-1-5);
   min-height: var(--state-chip-min-height);
-  border: var(--hairline-width) solid;
-  border-radius: var(--state-chip-radius);
+  border-radius: var(--r-pill);
   font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   line-height: var(--leading-tight);
-  padding: var(--state-chip-padding-block) var(--spacing-sm);
+  padding: var(--state-chip-padding-block) var(--sp-3) var(--state-chip-padding-block) var(--sp-2);
+  white-space: nowrap;
+}
+
+.s1-state::before {
+  content: '';
+  flex: none;
+  display: block;
+  width: var(--sp-1-5);
+  height: var(--sp-1-5);
+  border-radius: 50%;
+}
+
+.s1-state:has(svg)::before {
+  display: none;
 }
 
 .s1-tooltip {
@@ -434,46 +449,83 @@
 }
 
 .s1-state--blocking {
-  border-color: var(--role-blocking-border);
-  background: var(--role-blocking-surface);
-  color: var(--role-blocking-text);
+  background: var(--state-blocking-bg);
+  color: var(--state-blocking-fg);
 }
+.s1-state--blocking::before { background: var(--dot-danger); }
 
 .s1-state--open {
-  border-color: var(--role-open-border);
-  background: var(--role-open-surface);
-  color: var(--role-open-text);
+  background: var(--state-open-bg);
+  color: var(--state-open-fg);
 }
+.s1-state--open::before { background: var(--dot-warning); }
 
 .s1-state--resolved {
-  border-color: var(--role-resolved-border);
-  background: var(--role-resolved-surface);
-  color: var(--role-resolved-text);
+  background: var(--state-resolved-bg);
+  color: var(--state-resolved-fg);
 }
+.s1-state--resolved::before { background: var(--dot-success); }
 
 .s1-state--active {
-  border-color: var(--role-active-border);
-  background: var(--role-active-surface);
-  color: var(--role-active-text);
+  background: var(--state-active-bg);
+  color: var(--state-active-fg);
 }
+.s1-state--active::before { background: var(--dot-progress); }
 
 .s1-state--unverifiable {
-  border-color: var(--role-unverifiable-border);
-  background: var(--role-unverifiable-surface);
-  color: var(--role-unverifiable-text);
+  background: var(--state-unverifiable-bg);
+  color: var(--state-unverifiable-fg);
 }
+.s1-state--unverifiable::before { background: var(--dot-neutral); }
 
+/* n/a uses grey treatment (same as unverifiable) per MVP-264 redesign */
 .s1-state--na {
-  border-style: dashed;
-  border-color: var(--role-na-border);
-  background: var(--role-na-surface);
-  color: var(--role-na-text);
+  background: var(--state-unverifiable-bg);
+  color: var(--state-unverifiable-fg);
 }
+.s1-state--na::before { background: var(--dot-neutral); }
 
 .s1-state--unmapped {
-  border-color: var(--role-unmapped-border);
-  background: var(--role-unmapped-surface);
-  color: var(--role-unmapped-text);
+  background: var(--ink);
+  color: var(--sf-card);
+}
+.s1-state--unmapped::before { background: currentColor; }
+
+/* Count badge — small pill showing a number. Use CountBadge component. */
+.s1-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--badge-h);
+  min-width: var(--badge-h);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-strong);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.s1-badge--indigo {
+  background: var(--accent-soft);
+  color: var(--brand-dark);
+}
+
+.s1-badge--on-indigo {
+  background: rgba(255, 255, 255, 0.22);
+  color: var(--sf-card);
+}
+
+.s1-badge--neutral {
+  background: var(--sf-inset);
+  color: var(--ink-2);
+}
+
+.s1-badge--danger {
+  background: var(--state-blocking-bg);
+  color: var(--state-blocking-fg);
 }
 
 .s1-bulk {
@@ -1033,7 +1085,11 @@ select:focus-visible,
   .s1-state {
     color: var(--ink);
     background: transparent;
-    border-color: var(--ink-2);
+    border: var(--hairline-width) solid var(--ink-2);
+  }
+
+  .s1-state::before {
+    display: none;
   }
 
   .s1-state--na {
