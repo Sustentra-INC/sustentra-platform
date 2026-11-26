@@ -44,7 +44,7 @@ describe("in-scope data points", () => {
     expect(screen.getByRole("columnheader", { name: "Workbook row" })).toBeTruthy();
     const row = screen.getByText("Indirect emissions from purchased steam").closest("tr")!;
     expect(within(row).getByText("Not recalculated yet")).toBeTruthy();
-    fireEvent.click(within(row).getByRole("checkbox"));
+    fireEvent.click(within(row).getByRole("switch"));
     expect(onInScopeChange.mock.calls[0][0].filter((f: { inScope: boolean }) => !f.inScope)
       .map((f: { methodologyFieldId: string }) => f.methodologyFieldId)).toEqual(["purchased_steam_total"]);
   });

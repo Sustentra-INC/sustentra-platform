@@ -3719,6 +3719,28 @@ html, body { margin: 0; padding: 0; }
 .s1-team-remove:hover { color: var(--state-blocking-fg); }
 .s1-team-remove:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .s1-team-add { align-self: flex-start; }
+/* In-scope data points count chip */
+.s1-points-chip { display: inline-flex; align-items: center; gap: var(--sp-2-5); height: var(--chip-count-h); padding: 0 var(--sp-3); border-radius: var(--r-pill); background: var(--accent-softer); color: var(--brand-dark); font-size: var(--text-base); font-weight: var(--weight-strong); }
+.s1-points-chip__bar { flex: none; width: var(--chip-bar-w); height: var(--sp-1-5); border-radius: var(--r-pill); background: var(--accent-line); display: flex; }
+.s1-points-chip__fill { border-radius: var(--r-pill); background: var(--accent-solid); }
+/* In-scope table */
+.s1-points-wrap { overflow-x: auto; }
+.s1-points-table { width: 100%; min-width: var(--points-table-min); border-collapse: collapse; }
+.s1-points-table th { padding: 0 var(--sp-3) var(--sp-2); text-align: left; font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+.s1-points-table td { padding: var(--sp-2-5) var(--sp-3); font-size: var(--text-md); color: var(--ink); vertical-align: middle; }
+.s1-points-table tbody tr { min-height: var(--sp-7); }
+.s1-points-table tbody tr.is-off td { background: var(--sf-sunken); color: var(--ink-3); }
+.s1-points-table tbody tr.is-off td:first-child { border-radius: var(--r-card-sm) 0 0 var(--r-card-sm); }
+.s1-points-table tbody tr.is-off td:last-child { border-radius: 0 var(--r-card-sm) var(--r-card-sm) 0; }
+/* Scope chip */
+.s1-scope-chip { display: inline-flex; align-items: center; gap: var(--sp-1-5); height: var(--sp-5); padding: 0 var(--sp-2-5) 0 var(--sp-2); border-radius: var(--r-pill); font-size: var(--text-sm); font-weight: var(--weight-strong); }
+.s1-scope-chip__dot { flex: none; width: var(--dot-sm); height: var(--dot-sm); border-radius: var(--r-pill); background: currentColor; }
+.s1-scope-chip--scope1 { background: var(--accent-soft); color: var(--brand-dark); }
+.s1-scope-chip--scope2 { background: var(--scope2-chip-bg); color: var(--scope2-chip-fg); }
+.s1-scope-chip--general { background: var(--sf-inset); color: var(--ink-2); }
+/* Evidence dot */
+.s1-evidence { display: inline-flex; align-items: center; gap: var(--sp-1-5); font-size: var(--text-base); }
+.s1-evidence__dot { flex: none; width: var(--dot-sm); height: var(--dot-sm); border-radius: var(--r-pill); background: var(--dot-neutral); }
 /* Narrow: team rows (.s1-fac__row uses flex-wrap so handles responsive natively). */
 @media (max-width: 48rem) {
   .s1-setup-row { grid-template-columns: minmax(0, 1fr) 2.5rem; }

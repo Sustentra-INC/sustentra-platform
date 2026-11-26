@@ -290,6 +290,17 @@
   --contact-field-min: 160px;       /* contact panel: field grid column min */
   --team-card-min: 176px;           /* team member card: grid column min */
   --avatar-team: 38px;              /* team member avatar diameter */
+  /* In-scope data points table */
+  --dot-sm: 7px;              /* small inline dot: scope chip, evidence indicator */
+  --chip-count-h: 34px;       /* in-scope count chip height */
+  --chip-bar-w: 60px;         /* in-scope count chip progress bar width */
+  --points-table-min: 680px;  /* in-scope table minimum scrollable width */
+  --points-col-toggle: 64px;  /* in-scope toggle column width */
+  --points-col-scope: 110px;  /* scope chip column width */
+  --points-col-req: 120px;    /* requirement level column width */
+  --points-col-ev: 110px;     /* evidence / checked-by column width */
+  --scope2-chip-bg: #E3F1FB;  /* scope 2 category chip background (sky tint) */
+  --scope2-chip-fg: #165A8A;  /* scope 2 category chip text */
   --hairline-width: 1px;
   --ring-width: 1.5px;
   --active-row-marker-width: 3px;

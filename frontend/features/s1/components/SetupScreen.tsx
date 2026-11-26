@@ -490,23 +490,29 @@ export function SetupScreen({
                   <h2>
                     In-scope data points
                     <InfoTip label="In-scope data points">
-                      The reported data points of the client&rsquo;s inventory. Untick one the client does not report: it then
+                      The reported data points of the client&rsquo;s inventory. Turn one off if the client doesn&rsquo;t report it: it then
                       shows as not in scope on Verification results and is left out of coverage and materiality.
                     </InfoTip>
                   </h2>
-                  <span className="s1-state s1-state--resolved">
+                  <span className="s1-points-chip">
+                    <span className="s1-points-chip__bar" aria-hidden="true">
+                      <span
+                        className="s1-points-chip__fill"
+                        style={{ width: `${Math.round((inScope / inScopeFields.length) * 100)}%` }}
+                      />
+                    </span>
                     {inScope} of {inScopeFields.length} in scope
                   </span>
                 </div>
-                <div className="s1-table-wrap">
-                  <table className="s1-table">
+                <div className="s1-points-wrap">
+                  <table className="s1-points-table">
                     <colgroup>
-                      <col style={{ width: "7%" }} />
+                      <col style={{ width: "var(--points-col-toggle)" }} />
                       <col />
-                      <col style={{ width: "11%" }} />
-                      <col style={{ width: "13%" }} />
-                      {live ? <col style={{ width: "13%" }} /> : null}
-                      <col style={{ width: live ? "22%" : "16%" }} />
+                      <col style={{ width: "var(--points-col-scope)" }} />
+                      <col style={{ width: "var(--points-col-req)" }} />
+                      {live ? <col style={{ width: "var(--points-col-ev)" }} /> : null}
+                      <col style={{ width: "var(--points-col-ev)" }} />
                     </colgroup>
                     <thead>
                       <tr>
@@ -520,19 +526,28 @@ export function SetupScreen({
                     </thead>
                     <tbody>
                       {inScopeFields.map((field, i) => (
-                        <tr key={field.methodologyFieldId}>
+                        <tr key={field.methodologyFieldId} className={field.inScope ? undefined : "is-off"}>
                           <td>
-                            <input
-                              type="checkbox"
-                              checked={field.inScope}
-                              aria-label={`In scope: ${field.label}`}
-                              onChange={(e) =>
-                                onInScopeChange(inScopeFields.map((f, j) => (j === i ? { ...f, inScope: e.target.checked } : f)))
-                              }
-                            />
+                            <label className="s1-switch">
+                              <input
+                                type="checkbox"
+                                role="switch"
+                                checked={field.inScope}
+                                aria-label={`In scope: ${field.label}`}
+                                onChange={(e) =>
+                                  onInScopeChange(inScopeFields.map((f, j) => (j === i ? { ...f, inScope: e.target.checked } : f)))
+                                }
+                              />
+                              <span className="s1-switch__track" aria-hidden="true" />
+                            </label>
                           </td>
                           <td>{field.label}</td>
-                          <td>{LAYER_LABEL[field.layer]}</td>
+                          <td>
+                            <span className={`s1-scope-chip s1-scope-chip--${field.layer}`}>
+                              <span className="s1-scope-chip__dot" aria-hidden="true" />
+                              {LAYER_LABEL[field.layer]}
+                            </span>
+                          </td>
                           <td>{field.requirementLevel ?? "None"}</td>
                           {live ? (
                             <>
@@ -540,7 +555,12 @@ export function SetupScreen({
                               <td className="s1-muted">{field.checkedBy}</td>
                             </>
                           ) : (
-                            <td>{field.completenessStatus ?? "Pending"}</td>
+                            <td>
+                              <span className="s1-evidence">
+                                <span className="s1-evidence__dot" aria-hidden="true" />
+                                {field.completenessStatus ?? "Pending"}
+                              </span>
+                            </td>
                           )}
                         </tr>
                       ))}
