@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import type { EngagementConfig, FacilityOption } from "../types";
 import type { InScopeField } from "../types/scope";
+import { DateRangePicker } from "./DateRangePicker";
 import { Dropdown } from "./Dropdown";
 import { InfoTip } from "./InfoTip";
 import { ZipRegionHint } from "./ZipRegionHint";
@@ -138,21 +139,15 @@ export function SetupScreen({
             <span>Company name</span>
             <input value={engagement.clientName} onChange={(e) => set({ clientName: e.target.value })} />
           </label>
-          <label className="s1-setup-field">
-            <span>Reporting period</span>
-            <div className="s1-setup-inline">
-              <input
-                type="date"
-                value={engagement.reportingPeriod.start}
-                onChange={(e) => set({ reportingPeriod: { ...engagement.reportingPeriod, start: e.target.value } })}
-              />
-              <input
-                type="date"
-                value={engagement.reportingPeriod.end}
-                onChange={(e) => set({ reportingPeriod: { ...engagement.reportingPeriod, end: e.target.value } })}
-              />
-            </div>
-          </label>
+          <div className="s1-setup-field">
+            <span id="setup-rp-label">Reporting period</span>
+            <DateRangePicker
+              start={engagement.reportingPeriod.start}
+              end={engagement.reportingPeriod.end}
+              onChange={(s, e) => set({ reportingPeriod: { start: s, end: e } })}
+              labelId="setup-rp-label"
+            />
+          </div>
           <div className="s1-setup-field">
             <span id="setup-regulation-label">Regulation</span>
             <Dropdown

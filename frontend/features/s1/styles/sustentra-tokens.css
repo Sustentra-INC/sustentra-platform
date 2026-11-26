@@ -305,6 +305,7 @@
   --input-h:    40px;   /* standard form input height */
   --input-h-lg: 46px;   /* large auth input height */
   --panel-max-h: 320px;  /* floating dropdown panel max height */
+  --drp-panel-w: 640px;  /* date range picker panel width */
   --checkbox-size: 16px;  /* native checkbox width/height */
 
   --border-hairline: 1px solid var(--line);
