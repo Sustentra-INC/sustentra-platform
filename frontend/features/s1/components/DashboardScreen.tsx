@@ -524,11 +524,11 @@ function buildPhases(hasEngagement: boolean, f: DashboardFigures): Phase[] {
     { key: "assessment", status: assessment,                         nav: "results" },
     { key: "opinion",    status: "pending",                          nav: "output" },
   ];
-  // Only the first unfinished phase is current; later ones keep their computed status.
+  // Only the first unfinished phase is current; later ones revert to pending.
   let seenOpen = false;
   return phases.map((phase) => {
     if (phase.status === "done") return phase;
-    if (seenOpen) return phase;
+    if (seenOpen) return { ...phase, status: "pending" };
     seenOpen = true;
     return { ...phase, status: "active" };
   });

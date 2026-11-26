@@ -57,6 +57,16 @@ describe("dashboard: progress only", () => {
     expect(onNavigate).toHaveBeenCalledWith("requests");
   });
 
+  it("only the first unfinished stage shows In progress", () => {
+    // FIGURES has intake/review/assessment all with open work — only intake should be active
+    render(<DashboardScreen engagement={engagementConfig} figures={FIGURES} onNavigate={vi.fn()} />);
+    const progress = screen.getByRole("region", { name: "Engagement progress" });
+    const cards = within(progress).getAllByRole("button");
+    expect(cards[0]).toHaveTextContent("In progress");
+    expect(cards[1]).not.toHaveTextContent("In progress");
+    expect(cards[2]).not.toHaveTextContent("In progress");
+  });
+
   it("says so when nothing needs anyone", () => {
     render(
       <DashboardScreen
