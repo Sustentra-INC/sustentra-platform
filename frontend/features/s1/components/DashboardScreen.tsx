@@ -39,6 +39,11 @@ export function DashboardScreen({
   const hasEngagement = Boolean(engagement.clientName);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const attention = attentionItems(figures);
+  const phases = buildPhases(hasEngagement, figures);
+  const intakeStage = phases[1].status;
+  const reviewStage = phases[2].status;
+  const assessStage = phases[3].status;
+  const opinionStage = phases[4].status;
 
   // Evidence intake card
   const coverage = figures.coverage;
@@ -133,10 +138,14 @@ export function DashboardScreen({
 
       <section aria-label="Engagement progress" className="s1-stage-cards">
         {/* A: Evidence intake */}
-        <button type="button" className="s1-stage-card" onClick={go("evidence")}>
+        <button type="button" className={`s1-stage-card${intakeStage === "active" ? " s1-stage-card--current" : ""}`} onClick={go("evidence")}>
           <span className="s1-stage-card__top">
             <span className="s1-stage-card__name">Evidence intake</span>
-            <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>
+            {intakeStage === "done"
+              ? <span className="s1-state s1-state--resolved">Done</span>
+              : intakeStage === "active"
+                ? <span className="s1-state s1-state--active">In progress</span>
+                : <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>}
           </span>
           <span className="s1-stage-card__big">{evidencePct}%</span>
           <span className="s1-stage-card__bar-track" aria-hidden>
@@ -149,7 +158,11 @@ export function DashboardScreen({
                   ? `${evidenceDone} of ${evidenceTotal} data points`
                   : `${evidenceDone} of ${evidenceTotal} documents`}
                 {evidenceMissing > 0 && (
-                  <> · <span className="s1-stage-card__missing">{evidenceMissing} missing</span></>
+                  <> · <span
+                    className="s1-stage-card__missing s1-stage-card__missing--nav"
+                    onClick={(e) => { e.stopPropagation(); onNavigate?.("requests"); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); onNavigate?.("requests"); } }}
+                  >{evidenceMissing} missing</span></>
                 )}
               </>
             ) : "No evidence yet"}
@@ -157,10 +170,14 @@ export function DashboardScreen({
         </button>
 
         {/* B: Review */}
-        <button type="button" className="s1-stage-card" onClick={go("evidence")}>
+        <button type="button" className={`s1-stage-card${reviewStage === "active" ? " s1-stage-card--current" : ""}`} onClick={go("evidence")}>
           <span className="s1-stage-card__top">
             <span className="s1-stage-card__name">Review</span>
-            <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>
+            {reviewStage === "done"
+              ? <span className="s1-state s1-state--resolved">Done</span>
+              : reviewStage === "active"
+                ? <span className="s1-state s1-state--active">In progress</span>
+                : <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>}
           </span>
           <span className="s1-stage-card__ring-wrap">
             <span className="s1-stage-card__ring">
@@ -187,10 +204,14 @@ export function DashboardScreen({
         </button>
 
         {/* C: Assessment */}
-        <button type="button" className="s1-stage-card" onClick={go("results")}>
+        <button type="button" className={`s1-stage-card${assessStage === "active" ? " s1-stage-card--current" : ""}`} onClick={go("results")}>
           <span className="s1-stage-card__top">
             <span className="s1-stage-card__name">Assessment</span>
-            <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>
+            {assessStage === "done"
+              ? <span className="s1-state s1-state--resolved">Done</span>
+              : assessStage === "active"
+                ? <span className="s1-state s1-state--active">In progress</span>
+                : <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>}
           </span>
           <span className="s1-stage-card__big">
             {assessDone}
@@ -217,11 +238,15 @@ export function DashboardScreen({
           <span className="s1-stage-card__caption">results examined · {assessStatus}</span>
         </button>
 
-        {/* D: Opinion */}
+        {/* D: Opinion — always pending */}
         <button type="button" className="s1-stage-card" onClick={go("output")}>
           <span className="s1-stage-card__top">
             <span className="s1-stage-card__name">Opinion</span>
-            <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>
+            {opinionStage === "done"
+              ? <span className="s1-state s1-state--resolved">Done</span>
+              : opinionStage === "active"
+                ? <span className="s1-state s1-state--active">In progress</span>
+                : <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>}
           </span>
           <span className="s1-stage-card__state">Not issued</span>
           <span className="s1-stage-card__bar-striped" aria-hidden />
@@ -362,6 +387,55 @@ function attentionItems(f: DashboardFigures): Attention[] {
     },
   ];
   return items.filter((item) => item.n > 0);
+}
+
+/* =============================== timeline =============================== */
+
+type PhaseStatus = "done" | "active" | "pending";
+interface Phase {
+  key: string;
+  status: PhaseStatus;
+  nav: NavKey;
+}
+
+function buildPhases(hasEngagement: boolean, f: DashboardFigures): Phase[] {
+  const hasEvidence = f.documents > 0;
+  const reviewable = f.valuesReviewed + f.valuesToReview;
+  const missing = f.coverage?.missing ?? 0;
+
+  const intake: PhaseStatus = !hasEvidence
+    ? hasEngagement ? "active" : "pending"
+    : f.blockedDocuments || f.documentsNeedingYou || missing || f.requestsAwaitingClient || f.requestsNotSent
+      ? "active"
+      : "done";
+  const review: PhaseStatus = !reviewable ? "pending" : f.valuesToReview ? "active" : "done";
+  const assessment: PhaseStatus =
+    f.dataPointsCalculated === 0 && !f.coverage?.present
+      ? "pending"
+      : f.dataPointsCalculated > 0 &&
+          f.dataPointsExamined >= f.dataPointsCalculated &&
+          missing === 0 &&
+          !f.reportedTotalsMissing
+        ? "done"
+        : review === "pending"
+          ? "pending"
+          : "active";
+
+  const phases: Phase[] = [
+    { key: "setup",      status: hasEngagement ? "done" : "active", nav: "setup" },
+    { key: "intake",     status: intake,                             nav: "evidence" },
+    { key: "review",     status: review,                             nav: "evidence" },
+    { key: "assessment", status: assessment,                         nav: "results" },
+    { key: "opinion",    status: "pending",                          nav: "output" },
+  ];
+  // Only the first unfinished phase is current; later ones keep their computed status.
+  let seenOpen = false;
+  return phases.map((phase) => {
+    if (phase.status === "done") return phase;
+    if (seenOpen) return phase;
+    seenOpen = true;
+    return { ...phase, status: "active" };
+  });
 }
 
 /* =============================== helpers =============================== */
