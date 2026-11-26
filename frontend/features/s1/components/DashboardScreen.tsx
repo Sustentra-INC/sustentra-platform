@@ -13,12 +13,13 @@ import {
   Send,
   ShieldAlert,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
 import type { DashboardFigures } from "../utils/engagementActivity";
 import { formatReportingPeriod } from "../utils/formatPeriod";
 import type { NavKey } from "./S1Chrome";
+import { IconCheckCircle, IconChevronDown } from "./icons";
 
 /**
  * Dashboard: progress only, at a glance. The engagement timeline, how much of the
@@ -36,6 +37,7 @@ export function DashboardScreen({
 }) {
   const go = (key: NavKey) => () => onNavigate?.(key);
   const hasEngagement = Boolean(engagement.clientName);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const phases = buildPhases(hasEngagement, figures);
   const coverage = figures.coverage;
   const covered = coverage ? coverage.present + coverage.missing : 0;
@@ -44,23 +46,71 @@ export function DashboardScreen({
   const reviewable = figures.valuesReviewed + figures.valuesToReview;
   const attention = attentionItems(figures);
 
+  const statusText = hasEngagement
+    ? [
+        engagement.regulation ? shortRegulation(engagement.regulation) : null,
+        formatReportingPeriod(engagement.reportingPeriod.start, engagement.reportingPeriod.end),
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : null;
+
   return (
     <section className="s1-content s1-dash">
       <header className="s1-dash__head">
-        <div className="s1-dash__id">
-          <h1>{hasEngagement ? engagement.clientName : "New engagement"}</h1>
-          <p className="s1-dash__meta">
-            {hasEngagement
-              ? [
-                  engagement.regulation ? shortRegulation(engagement.regulation) : null,
-                  formatReportingPeriod(engagement.reportingPeriod.start, engagement.reportingPeriod.end),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")
-              : "Set up the engagement to begin"}
-          </p>
+        <h1 className="s1-dash__title">
+          {hasEngagement ? engagement.clientName : "New engagement"}
+        </h1>
+        <div className="s1-dash__status-line">
+          {statusText ? <span className="s1-dash__status-text">{statusText}</span> : null}
+          <button
+            type="button"
+            className={`s1-state ${hasEngagement ? "s1-state--resolved" : "s1-state--open"}`}
+            onClick={go("setup")}
+          >
+            {hasEngagement ? <IconCheckCircle size={13} aria-hidden /> : null}
+            {hasEngagement ? "Setup complete" : "Setup incomplete"}
+          </button>
+          {hasEngagement && (
+            <button
+              type="button"
+              className="s1-dash__details-btn"
+              aria-expanded={detailsOpen}
+              onClick={() => setDetailsOpen((v) => !v)}
+            >
+              {detailsOpen ? "Hide details" : "Details"}
+              <IconChevronDown size={14} aria-hidden />
+            </button>
+          )}
         </div>
       </header>
+
+      {detailsOpen && hasEngagement && (
+        <section aria-label="Engagement details" className="s1-dash__details-card">
+          <div className="s1-dash__detail-item">
+            <span className="s1-dash__detail-label">Engagement ID</span>
+            <span className="s1-dash__detail-value">{engagement.engagementId}</span>
+          </div>
+          <div className="s1-dash__detail-item">
+            <span className="s1-dash__detail-label">Reporting period</span>
+            <span className="s1-dash__detail-value">
+              {formatReportingPeriod(engagement.reportingPeriod.start, engagement.reportingPeriod.end)}
+            </span>
+          </div>
+          <div className="s1-dash__detail-item">
+            <span className="s1-dash__detail-label">Regulation</span>
+            <span className="s1-dash__detail-value">{engagement.regulation}</span>
+          </div>
+          <div className="s1-dash__detail-item">
+            <span className="s1-dash__detail-label">Assurance level</span>
+            <span className="s1-dash__detail-value">{engagement.assuranceLevel}</span>
+          </div>
+          <div className="s1-dash__detail-item">
+            <span className="s1-dash__detail-label">Boundary approach</span>
+            <span className="s1-dash__detail-value">{engagement.boundaryApproach}</span>
+          </div>
+        </section>
+      )}
 
       <ol className="s1-timeline" aria-label="Engagement timeline">
         {phases.map((phase, index) => (

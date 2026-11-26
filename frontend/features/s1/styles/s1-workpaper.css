@@ -2978,9 +2978,30 @@ html, body { margin: 0; padding: 0; }
    Dashboard: progress only. Timeline, two meters, what needs attention.
    ========================================================================== */
 .s1-dash { display: flex; flex-direction: column; gap: var(--sp-5); }
-.s1-dash__head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; }
-.s1-dash__id h1 { margin: 0; font-size: var(--text-lg); letter-spacing: -0.02em; font-weight: var(--weight-strong); }
-.s1-dash__meta { margin: var(--sp-1) 0 0; color: var(--ink-2); font-size: var(--text-md); }
+.s1-dash__head { display: flex; flex-direction: column; gap: var(--sp-2-5); padding: var(--sp-2) var(--sp-1) 0; }
+.s1-dash__title { margin: 0; font-size: var(--text-display); line-height: 1.15; font-weight: var(--weight-bold); letter-spacing: -0.02em; }
+.s1-dash__status-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-2-5); }
+.s1-dash__status-text { font-size: var(--text-md); color: var(--ink-2); }
+.s1-dash__details-btn {
+  display: inline-flex; align-items: center; gap: var(--sp-1);
+  height: calc(var(--sp-5) + var(--sp-half));
+  padding: 0 var(--sp-2) 0 var(--sp-2-5);
+  border-radius: var(--r-pill); border: 0; background: transparent;
+  font: inherit; font-size: var(--text-base); font-weight: var(--weight-medium); color: var(--ink-2); cursor: pointer;
+}
+.s1-dash__details-btn:hover { background: var(--sf-sunken); }
+.s1-dash__details-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+.s1-dash__details-card {
+  --s1-dcol: calc(var(--sp-7) + var(--sp-7) + var(--sp-7) + var(--sp-4) + var(--sp-2-5));
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(var(--s1-dcol), 100%), 1fr));
+  gap: var(--sp-4) var(--sp-5);
+  padding: calc(var(--sp-4) + var(--sp-1)) var(--sp-5);
+  border-radius: var(--r-lg); background: var(--sf-card); box-shadow: var(--shadow-card-soft);
+}
+.s1-dash__detail-item { display: flex; flex-direction: column; gap: var(--sp-1); }
+.s1-dash__detail-label { font-size: var(--text-sm); color: var(--ink-3); }
+.s1-dash__detail-value { font-size: var(--text-md); font-weight: var(--weight-strong); }
 
 /* timeline */
 .s1-timeline {
