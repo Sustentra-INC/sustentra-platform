@@ -424,6 +424,16 @@
   white-space: nowrap;
 }
 
+button.s1-state {
+  appearance: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+button.s1-state:focus:not(:focus-visible) { outline: none; }
+button.s1-state:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
 .s1-state::before {
   content: '';
   flex: none;
