@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Coverage and requests</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3A40C0;text-decoration:none}a:hover{color:#2B3099}
+button,input,textarea{font-family:inherit}
+.nav:hover{background:#E9EAF2}
+</style>
+</helmet>
+<div style="position: relative; min-height: 100vh; display: flex; flex-wrap: wrap; background: #F3F4F8; color: #14151A; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', Inter, 'Helvetica Neue', Arial, sans-serif; font-size: 14px; line-height: 1.45; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased">
+<!-- SIDEBAR -->
+<aside style="flex: 1 1 248px; max-width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 22px; padding: 24px 16px 18px">
+  <div style="padding: 0 10px; height: 28px; display: flex; align-items: center"><img src="/_blob/5f2aadbf3b3ff6f7ae2b58a5318be625" alt="Sustentra" style="width: 124px; height: auto; display: block"></div>
+
+  <button aria-label="Switch engagement" style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 14px; border: 0; background: #FFFFFF; box-shadow: 0 1px 2px rgba(20,21,26,0.05); text-align: left; color: #14151A; cursor: pointer">
+    <span aria-hidden="true" style="flex: none; width: 34px; height: 34px; border-radius: 10px; background: #E8E9FB; color: #2E3299; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">CP</span>
+    <span style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <span style="font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Cascade Provisions Co.</span>
+      <span style="font-size: 12px; color: #63666F">2025 GHG assurance</span>
+    </span>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#63666F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>
+  </button>
+
+  <nav aria-label="Engagement" style="display: flex; flex-direction: column; gap: 2px">
+    <span style="padding: 0 12px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: #6B6E78">WORKFLOW</span>
+    <a href="#" class="nav" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 11px; color: #3B3D46">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2.6" fill="currentColor"/><rect x="13" y="3" width="8" height="8" rx="2.6" fill="currentColor" fill-opacity=".38"/><rect x="3" y="13" width="8" height="8" rx="2.6" fill="currentColor" fill-opacity=".38"/><rect x="13" y="13" width="8" height="8" rx="2.6" fill="currentColor"/></svg>Dashboard</a>
+    <a href="#" class="nav" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 11px; color: #3B3D46">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="6" width="18" height="2.6" rx="1.3" fill="currentColor" fill-opacity=".38"/><rect x="3" y="15.4" width="18" height="2.6" rx="1.3" fill="currentColor" fill-opacity=".38"/><circle cx="15.5" cy="7.3" r="3.4" fill="currentColor"/><circle cx="8.5" cy="16.7" r="3.4" fill="currentColor"/></svg>Setup</a>
+    <a href="#" class="nav" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 11px; color: #3B3D46">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 13.5a1.5 1.5 0 0 1 3 0V18h12v-4.5a1.5 1.5 0 0 1 3 0v5A2.5 2.5 0 0 1 18.5 21h-13A2.5 2.5 0 0 1 3 18.5z" fill="currentColor" fill-opacity=".38"/><path d="M11 3.6a1.4 1.4 0 0 1 2 0l4.2 4.2c.9.9.3 2.2-.9 2.2H14v4.5a2 2 0 0 1-4 0V10H7.7c-1.2 0-1.8-1.3-.9-2.2z" fill="currentColor"/></svg>Upload</a>
+    <a href="#" class="nav" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 11px; color: #3B3D46">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-doc" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M8.5 13h7M8.5 17h4.5" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-doc)"><path d="M6.5 2H14v4a2.5 2.5 0 0 0 2.5 2.5H20v11A2.5 2.5 0 0 1 17.5 22h-11A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" fill="currentColor"/><path d="M15.5 2.4L19.6 6.5H16.5a1 1 0 0 1-1-1z" fill="currentColor" fill-opacity=".38"/></g></svg><span style="flex: 1">Evidence</span><span style="height: 20px; min-width: 20px; padding: 0 7px; box-sizing: border-box; border-radius: 999px; background: #FDE7E4; color: #A8281C; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center">53</span></a>
+    <a href="#" aria-current="page" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 11px; background: #3A40C0; color: #FFFFFF; font-weight: 500; box-shadow: 0 4px 12px rgba(58,64,192,0.25)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.3 3.5h11.4a2 2 0 0 1 1.9 1.4L21 9.5H3l1.4-4.6a2 2 0 0 1 1.9-1.4z" fill="currentColor" fill-opacity=".38"/><path d="M2.5 11h5.2a1 1 0 0 1 .9.6l.7 1.4a1 1 0 0 0 .9.6h3.6a1 1 0 0 0 .9-.6l.7-1.4a1 1 0 0 1 .9-.6h5.2v7.5A2.5 2.5 0 0 1 19 21H5a2.5 2.5 0 0 1-2.5-2.5z" fill="currentColor"/></svg><span style="flex: 1">Coverage &amp; requests</span><span style="height: 20px; min-width: 20px; padding: 0 7px; box-sizing: border-box; border-radius: 10px; background: #FFFFFF; color: #2E3299; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center">2</span></a>
+    <span style="padding: 16px 12px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: #6B6E78">ASSURANCE</span>
+    <a href="#" class="nav" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 11px; color: #3B3D46">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-clip" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M8.5 13.5l2.5 2.5 4.5-5" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-clip)"><rect x="4" y="4" width="16" height="18" rx="3" fill="currentColor"/><rect x="8" y="2" width="8" height="4.5" rx="1.8" fill="currentColor" fill-opacity=".38"/></g></svg>Methodology review</a>
+    <a href="#" class="nav" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 11px; color: #3B3D46">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="12" width="4.6" height="9" rx="1.8" fill="currentColor" fill-opacity=".38"/><rect x="9.7" y="4" width="4.6" height="17" rx="1.8" fill="currentColor"/><rect x="15.9" y="8.5" width="4.6" height="12.5" rx="1.8" fill="currentColor" fill-opacity=".38"/></svg><span style="flex: 1">Verification results</span><span style="height: 20px; min-width: 20px; padding: 0 7px; box-sizing: border-box; border-radius: 999px; background: #E8E9FB; color: #2E3299; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center">10</span></a>
+    <a href="#" class="nav" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 11px; color: #3B3D46">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-output" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M12 11v6M9.5 14.5L12 17l2.5-2.5" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-output)"><path d="M6.5 2H14v4a2.5 2.5 0 0 0 2.5 2.5H20v11A2.5 2.5 0 0 1 17.5 22h-11A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" fill="currentColor"/><path d="M15.5 2.4L19.6 6.5H16.5a1 1 0 0 1-1-1z" fill="currentColor" fill-opacity=".38"/></g></svg>Output</a>
+  </nav>
+
+  <div style="flex: 1"></div>
+
+  <div style="display: flex; flex-direction: column; gap: 2px">
+    <a href="#" class="nav" style="display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 11px; color: #3B3D46">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-clock" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M12 7.5V12l3 2" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-clock)"><circle cx="12" cy="12" r="9.5" fill="currentColor"/></g></svg>Activity log</a>
+    <a href="#" class="nav" style="display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 11px; color: #3B3D46">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-book" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M9 7.5h6" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-book)"><path d="M6.5 2.5H19a1 1 0 0 1 1 1V18H6.5a1.5 1.5 0 0 0 0 3H20v.5a1 1 0 0 1-1 1H6.5A2.5 2.5 0 0 1 4 20V5a2.5 2.5 0 0 1 2.5-2.5z" fill="currentColor"/><rect x="5" y="18" width="15" height="3" rx="1.5" fill="currentColor" fill-opacity=".38"/></g></svg>Glossary</a>
+  </div>
+
+  <button aria-label="Account menu" style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 14px; border: 0; background: #FFFFFF; box-shadow: 0 1px 2px rgba(20,21,26,0.05); text-align: left; color: #14151A; cursor: pointer">
+    <span aria-hidden="true" style="flex: none; width: 32px; height: 32px; border-radius: 16px; background: #14151A; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">D</span>
+    <span style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+      <span style="font-size: 13px; font-weight: 600">Demo user</span>
+      <span style="font-size: 12px; color: #63666F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">demo@sustentra.com</span>
+    </span>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#63666F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+</aside>
+
+
+<!-- MAIN -->
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 24px 32px 32px 16px">
+  <div style="max-width: 1180px; display: flex; flex-direction: column; gap: 18px">
+
+    <!-- top row -->
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+      <button style="flex: 1 1 280px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border-radius: 14px; border: 0; background: #FFFFFF; box-shadow: 0 1px 2px rgba(20,21,26,0.05); color: #6B6E78; font-size: 14px; text-align: left; cursor: pointer">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="currentColor" fill-opacity=".38" fill-rule="evenodd" d="M10.5 3a7.5 7.5 0 1 1 0 15 7.5 7.5 0 0 1 0-15zm0 3a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"/><rect x="16" y="14.2" width="3.2" height="8" rx="1.6" transform="rotate(-45 17.6 18.2)" fill="currentColor"/></svg>
+        <span style="flex: 1">Search documents, facilities, pages</span>
+        <span style="font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 6px; background: #F1F2F6; color: #63666F">⌘K</span>
+      </button>
+      <button style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 14px; border: 0; background: #FFFFFF; color: #14151A; box-shadow: 0 1px 2px rgba(20,21,26,0.05); font-size: 14px; font-weight: 600; cursor: pointer">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-chat" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M8.5 9.5h7M8.5 12.5h4.5" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-chat)"><path d="M12 3c5 0 9 3.4 9 7.7s-4 7.7-9 7.7c-1 0-2-.1-2.9-.4L4.6 20c-.7.3-1.4-.4-1.1-1.1l1.2-3C3.6 14.4 3 12.6 3 10.7 3 6.4 7 3 12 3z" fill="currentColor"/></g></svg>
+        Ask Sustentra
+      </button>
+      <button aria-label="More actions" style="width: 44px; height: 44px; border-radius: 14px; border: 0; background: #FFFFFF; box-shadow: 0 1px 2px rgba(20,21,26,0.05); color: #3B3D46; display: inline-flex; align-items: center; justify-content: center; cursor: pointer">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></svg>
+      </button>
+    </div>
+
+    
+
+    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; padding: 4px 4px 0">
+      <div style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 6px">
+        <h1 style="margin: 0; font-size: 30px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em">Coverage &amp; requests</h1>
+      </div>
+      <a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 10px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(20,21,26,0.05); color: #14151A">
+        <span aria-hidden="true" style="flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; color: #8A4B12"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="10" y="5.5" width="11" height="3" rx="1.5" fill="currentColor" fill-opacity=".38"/><rect x="10" y="15.5" width="11" height="3" rx="1.5" fill="currentColor" fill-opacity=".38"/><rect x="2.5" y="3" width="6" height="6" rx="2" fill="currentColor"/><rect x="2.5" y="14" width="6" height="6" rx="2" fill="currentColor"/></svg></span>
+        <span style="font-size: 14px; font-weight: 700">56 values waiting for review</span>
+        <span style="margin-left: 6px; height: 34px; padding: 0 12px; border-radius: 10px; background: #3A40C0; color: #FFFFFF; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px">Review now<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+    </div>
+
+    <!-- CHECKS -->
+    <section aria-labelledby="ck" style="display: flex; flex-direction: column; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(20,21,26,0.04); overflow: hidden">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px">
+        <h2 id="ck" style="margin: 0; font-size: 16px; font-weight: 600">What can be checked</h2>
+        <div role="tablist" aria-label="Check status" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 12px; background: #F1F2F6">
+          <sc-for list="{{tabs}}" as="t" hint-placeholder-count="4">
+            <button type="button" role="tab" aria-selected="{{t.checked}}" onClick="{{t.pick}}" style="display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border: 0; border-radius: 9px; background: {{t.bg}}; color: {{t.fg}}; box-shadow: {{t.shadow}}; font-size: 13px; font-weight: {{t.weight}}; cursor: pointer">
+              <sc-if value="{{t.hasDot}}" hint-placeholder-val="{{ true }}"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 4px; background: {{t.dot}}"></span></sc-if><span style="font-weight: 700">{{t.n}}</span>{{t.label}}
+            </button>
+          </sc-for>
+        </div>
+      </div>
+      <sc-for list="{{checks}}" as="c" hint-placeholder-count="3">
+        <div style="display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 18px; border-top: 1px solid #F1F2F6">
+          <span aria-hidden="true" style="display: inline-flex; align-self: start; padding-top: 1px"><sc-if value="{{c.canRequest}}" hint-placeholder-val="{{ true }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-warn" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M12 9.5v4" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M12 17.1v.01" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-warn)"><path d="M10.2 3.9a2.1 2.1 0 0 1 3.6 0l8 13.8a2.1 2.1 0 0 1-1.8 3.2H4a2.1 2.1 0 0 1-1.8-3.2z" fill="#E8930F"/></g></svg></sc-if><sc-if value="{{c.present}}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-check" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M7.8 12.3l2.8 2.8 5.6-5.8" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-check)"><circle cx="12" cy="12" r="10" fill="#2E9E5B"/></g></svg></sc-if></span>
+          <span style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
+            <span style="font-size: 14.5px; font-weight: 600; color: {{c.findFg}}; text-wrap: pretty">{{c.finding}}</span>
+            <span style="font-size: 12.5px; color: #6B6E78">{{c.title}}</span>
+          </span>
+          <span style="display: flex; justify-content: flex-end">
+            <sc-if value="{{c.canRequest}}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{c.request}}" style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 13px; border: 0; border-radius: 10px; background: #F1F2FD; color: #2E3299; font-size: 13px; font-weight: 600; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-send" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M10.6 13.4L16 8" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-send)"><path d="M20.6 2.4c.9-.3 1.4.4 1.1 1.2l-6.4 17.2c-.4 1-1.7 1-2.1.1l-2.6-6-6-2.6c-.9-.4-.9-1.7.1-2.1z" fill="#2E3299"/></g></svg>Request</button></sc-if>
+          </span>
+        </div>
+      </sc-for>
+    </section>
+
+    <!-- REQUESTS -->
+    <section aria-labelledby="rq" style="display: flex; flex-direction: column; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(20,21,26,0.04); overflow: hidden">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px">
+        <h2 id="rq" style="margin: 0; font-size: 16px; font-weight: 600">Requests <span style="font-weight: 500; color: #8A8D96">2</span></h2>
+        <div style="display: flex; gap: 8px">
+          <label style="display: flex; align-items: center; gap: 8px; width: 200px; height: 36px; padding: 0 12px; border-radius: 10px; background: #F3F4F8; color: #6B6E78; box-sizing: border-box"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="#8A8D96" fill-opacity=".38" fill-rule="evenodd" d="M10.5 3a7.5 7.5 0 1 1 0 15 7.5 7.5 0 0 1 0-15zm0 3a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"/><rect x="16" y="14.2" width="3.2" height="8" rx="1.6" transform="rotate(-45 17.6 18.2)" fill="#8A8D96"/></svg><input type="search" aria-label="Search requests" placeholder="Search" style="flex: 1; min-width: 0; border: 0; background: transparent; font-size: 13px; outline: none"></label>
+          <button type="button" style="display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border: 0; border-radius: 10px; background: #3A40C0; color: #FFFFFF; font-size: 13.5px; font-weight: 600; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-send" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M10.6 13.4L16 8" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-send)"><path d="M20.6 2.4c.9-.3 1.4.4 1.1 1.2l-6.4 17.2c-.4 1-1.7 1-2.1.1l-2.6-6-6-2.6c-.9-.4-.9-1.7.1-2.1z" fill="#FFFFFF"/></g></svg>Send 1 request</button>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 20px minmax(0, 0.9fr) minmax(0, 1.6fr) 104px 112px; gap: 14px; align-items: center; padding: 6px 18px; border-top: 1px solid #F1F2F6; font-size: 12px; font-weight: 600; color: #8A8D96">
+        <input type="checkbox" checked aria-label="Select all requests" style="width: 15px; height: 15px; margin: 0; accent-color: #3A40C0"><span>Item</span><span>What is needed</span><span>State</span><span></span>
+      </div>
+      <div style="display: grid; grid-template-columns: 20px minmax(0, 0.9fr) minmax(0, 1.6fr) 104px 112px; gap: 14px; align-items: center; padding: 9px 18px; border-top: 1px solid #F1F2F6">
+        <input type="checkbox" checked aria-label="Select kent_gas_sep_2025.pdf" style="width: 15px; height: 15px; margin: 0; accent-color: #3A40C0">
+        <span style="display: flex; flex-direction: column; min-width: 0"><a href="#" style="font-size: 13.5px; font-weight: 600; color: #14151A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">kent_gas_sep_2025.pdf</a><span style="font-size: 12px; color: #6B6E78">Kent Cannery · Sep 2025</span></span>
+        <input type="text" aria-label="What is needed" value="Service period end date not found. Please send a copy that shows it." style="width: 100%; box-sizing: border-box; height: 34px; padding: 0 10px; border-radius: 9px; border: 1px solid #DCDEE6; background: #FFFFFF; font-size: 13px; color: #14151A">
+        <span><span style="height: 24px; padding: 0 10px 0 8px; border-radius: 999px; background: #FFF1DE; color: #8A4B12; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="flex: none; width: 7px; height: 7px; border-radius: 4px; background: #F29A17"></span>Draft</span></span>
+        <span style="display: flex; justify-content: flex-end"><button type="button" aria-label="More actions" style="width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: #55585F; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/></svg></button></span>
+      </div>
+      <div style="display: grid; grid-template-columns: 20px minmax(0, 0.9fr) minmax(0, 1.6fr) 104px 112px; gap: 14px; align-items: center; padding: 9px 18px; border-top: 1px solid #F1F2F6; background: {{row2Bg}}">
+        <input type="checkbox" aria-label="Select scan_0417.pdf" style="width: 15px; height: 15px; margin: 0; accent-color: #3A40C0">
+        <span style="display: flex; flex-direction: column; min-width: 0"><a href="#" style="font-size: 13.5px; font-weight: 600; color: #14151A">scan_0417.pdf</a><span style="font-size: 12px; color: #6B6E78">Modesto Bottling · Aug 2025</span></span>
+        <span style="font-size: 13px; color: #3B3D46">Scan is unreadable. Please re-send a legible copy.</span>
+        <span><span style="height: 24px; padding: 0 10px 0 8px; border-radius: 999px; background: #E8E9FB; color: #2E3299; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="flex: none; width: 7px; height: 7px; border-radius: 4px; background: #3A40C0"></span>Requested</span></span>
+        <span style="display: flex; justify-content: flex-end; gap: 4px">
+          <button type="button" onClick="{{toggleResolve}}" aria-expanded="{{resolveExpanded}}" style="height: 30px; padding: 0 11px; border: 0; border-radius: 8px; background: {{resolveBg}}; color: {{resolveFg}}; font-size: 13px; font-weight: 600; cursor: pointer">Resolve</button>
+          <button type="button" aria-label="More actions" style="width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: #55585F; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/></svg></button>
+        </span>
+      </div>
+
+      <sc-if value="{{resolveOpen}}" hint-placeholder-val="{{ false }}">
+        <form style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; padding: 16px 18px 18px 60px; background: #F7F8FD; border-top: 1px solid #E3E5F7">
+          <span style="flex: 1 0 100%; font-size: 14px; font-weight: 700">Resolve this request</span>
+          <div style="flex: 1 1 260px; display: flex; flex-direction: column; gap: 5px"><label for="rl" style="font-size: 12px; font-weight: 600; color: #3B3D46">What answered it <span style="font-weight: 500; color: #8A8D96">Optional</span></label>
+            <div style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 10px; border: 2px solid #3A40C0; box-shadow: 0 0 0 4px #E8E9FB; background: #FFFFFF; box-sizing: border-box"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="#6B6E78" fill-opacity=".38" fill-rule="evenodd" d="M10.5 3a7.5 7.5 0 1 1 0 15 7.5 7.5 0 0 1 0-15zm0 3a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"/><rect x="16" y="14.2" width="3.2" height="8" rx="1.6" transform="rotate(-45 17.6 18.2)" fill="#6B6E78"/></svg><input id="rl" type="text" placeholder="Find the re-sent file or the client's reply" style="flex: 1; min-width: 0; border: 0; background: transparent; font-family: inherit; font-size: 13px; outline: none"></div></div>
+          <div style="flex: 1 1 260px; display: flex; flex-direction: column; gap: 5px"><label for="rn" style="font-size: 12px; font-weight: 600; color: #3B3D46">Note <span style="font-weight: 500; color: #8A8D96">Optional</span></label><input id="rn" type="text" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #DCDEE6; background: #FFFFFF; font-family: inherit; font-size: 13px; box-sizing: border-box"></div>
+          <span style="display: flex; gap: 8px">
+            <button type="button" onClick="{{toggleResolve}}" style="height: 40px; padding: 0 14px; border: 0; border-radius: 10px; background: #FFFFFF; box-shadow: inset 0 0 0 1px #DCDEE6; color: #14151A; font-size: 13px; font-weight: 600; cursor: pointer">Cancel</button>
+            <button type="button" style="height: 40px; padding: 0 16px; border: 0; border-radius: 10px; background: #3A40C0; color: #FFFFFF; font-size: 13px; font-weight: 600; cursor: pointer">Mark resolved</button>
+          </span>
+        </form>
+      </sc-if>
+    </section>
+  </div>
+</main>
+<sc-if value="{{addOpen}}" hint-placeholder-val="{{ false }}">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(20,21,40,0.40)"></div>
+  <div role="dialog" aria-modal="true" aria-labelledby="ar" style="position: absolute; top: 140px; left: 50%; transform: translateX(-50%); z-index: 40; width: 520px; max-width: 92%; display: flex; flex-direction: column; gap: 16px; padding: 24px; border-radius: 20px; background: #FFFFFF; box-shadow: 0 32px 80px rgba(10,12,40,0.30)">
+    <div style="display: flex; align-items: flex-start; gap: 12px">
+      <span aria-hidden="true" style="flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; color: #2E3299"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-send" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M10.6 13.4L16 8" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-send)"><path d="M20.6 2.4c.9-.3 1.4.4 1.1 1.2l-6.4 17.2c-.4 1-1.7 1-2.1.1l-2.6-6-6-2.6c-.9-.4-.9-1.7.1-2.1z" fill="currentColor"/></g></svg></span>
+      <span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><h2 id="ar" style="margin: 0; font-size: 18px; font-weight: 700">Add to requests</h2><span style="font-size: 13px; color: #63666F">Saved as a draft. Nothing is emailed from here.</span></span>
+      <button type="button" onClick="{{closeAdd}}" aria-label="Close" style="width: 34px; height: 34px; border: 0; border-radius: 10px; background: #F1F2F6; color: #3B3D46; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F7F8FA">
+      <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11px; color: #63666F">Item</span><span style="font-size: 13px; font-weight: 600">Natural gas consumed</span></span>
+      <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11px; color: #63666F">Facility</span><span style="font-size: 13px; font-weight: 600">Not yet known</span></span>
+      <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11px; color: #63666F">Period</span><span style="font-size: 13px; font-weight: 600">FY 2025</span></span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+      <div style="display: flex; flex-direction: column; gap: 5px"><span id="rt" style="font-size: 12px; font-weight: 600; color: #3B3D46">Request type</span><button type="button" aria-labelledby="rt" aria-haspopup="listbox" style="display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px; border-radius: 11px; border: 1px solid #DCDEE6; background: #FFFFFF; font-size: 14px; color: #14151A; cursor: pointer; text-align: left"><span style="flex: 1">Missing document</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#55585F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button></div>
+      <div style="display: flex; flex-direction: column; gap: 5px"><span id="rb" style="font-size: 12px; font-weight: 600; color: #3B3D46">Raised by</span><button type="button" aria-labelledby="rb" aria-haspopup="listbox" style="display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px 0 8px; border-radius: 11px; border: 1px solid #DCDEE6; background: #FFFFFF; font-size: 14px; color: #14151A; cursor: pointer; text-align: left"><span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 13px; background: #E8E9FB; color: #2E3299; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">MO</span><span style="flex: 1">M. Osei</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#55585F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 5px"><label for="wn" style="font-size: 12px; font-weight: 600; color: #3B3D46">What is needed</label><textarea id="wn" rows="3" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 11px; border: 2px solid #3A40C0; box-shadow: 0 0 0 4px #E8E9FB; background: #FFFFFF; font-family: inherit; font-size: 14px; line-height: 1.45; color: #14151A; resize: vertical; outline: none">Natural gas consumed: September service-period end date not found for Kent Cannery.</textarea></div>
+    <div style="display: flex; justify-content: flex-end; gap: 8px">
+      <button type="button" onClick="{{closeAdd}}" style="height: 42px; padding: 0 16px; border: 0; border-radius: 11px; background: #F1F2F6; color: #14151A; font-size: 14px; font-weight: 600; cursor: pointer">Cancel</button>
+      <button type="button" onClick="{{closeAdd}}" style="height: 42px; padding: 0 18px; border: 0; border-radius: 11px; background: #3A40C0; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer">Add to requests</button>
+    </div>
+  </div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"panel":{"editor":"enum","options":["none","resolve","add"],"default":"none"},"tab":{"editor":"enum","options":["missing","present"],"default":"missing"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const panel = st.panel ?? (this.props.panel ?? 'none');
+    const tab = st.tab ?? (this.props.tab ?? 'missing');
+    const set = (p) => this.setState({ panel: panel === p ? 'none' : p });
+    const T = [['missing', '3', 'Missing', '#E9A23B'], ['present', '3', 'Present', '#1F8A55'], ['na', '1', 'Not applicable', ''], ['oos', '1', 'Out of scope', '']];
+    const tabs = T.map(([k, n, l, d]) => { const on = tab === k; return { n, label: l, dot: d, hasDot: !!d, checked: on ? 'true' : 'false', bg: on ? '#FFFFFF' : 'transparent', fg: on ? '#14151A' : '#55585F', shadow: on ? '0 1px 2px rgba(20,21,26,0.10)' : 'none', weight: on ? '600' : '500', pick: () => this.setState({ tab: k }) }; });
+    const warn = 'M12 4l9 16H3zM12 10v4M12 17h.01', ok = 'M5 12.5l4.5 4.5L19 7.5';
+    const C = {
+      missing: [
+        ['Natural gas consumption is present for every reporting month', ['Natural gas consumed'], 'September service-period end date not found for Kent Cannery.'],
+        ['Scope 2 electricity is present on both a location and a market basis', ['Electricity consumed (location-based)', 'Electricity consumed (market-based)'], 'Market-based factor documentation missing for Modesto Bottling.'],
+        ['Mobile combustion fuel is present for the fleet', ['Gasoline purchased · mobile combustion'], 'No mobile-combustion fuel records have been accepted.']
+      ],
+      present: [
+        ['Electricity consumption is present for every reporting month', ['Electricity consumed (location-based)'], "All accepted. Tualatin's missing Feb to Mar were answered by request."],
+        ['A grid emission factor source is recorded', ['Grid emission factor cited'], 'Factor source accepted.'],
+        ['The organizational boundary approach is stated', ['Organizational boundary approach'], 'Boundary statement accepted.']
+      ]
+    };
+    const list = C[tab] || C.missing;
+    const isMissing = tab !== 'present';
+    const checks = list.map(([t, pts, f]) => ({ title: t, points: pts.map((x) => ({ t: x })), finding: f, canRequest: isMissing, present: !isMissing,
+      icon: isMissing ? warn : ok, iconBg: isMissing ? '#FFF1DE' : '#E3F5EA', iconFg: isMissing ? '#8A4B12' : '#19663E', findFg: isMissing ? '#8A4B12' : '#14151A',
+      request: () => this.setState({ panel: 'add' }) }));
+    const resolveOpen = panel === 'resolve';
+    return {
+      tabs, checks, resolveOpen, addOpen: panel === 'add',
+      resolveExpanded: resolveOpen ? 'true' : 'false', resolveBg: resolveOpen ? '#3A40C0' : '#F1F2FD', resolveFg: resolveOpen ? '#FFFFFF' : '#2E3299',
+      row2Bg: resolveOpen ? '#F7F8FD' : '#FFFFFF',
+      toggleResolve: () => set('resolve'), closeAdd: () => this.setState({ panel: 'none' })
+    };
+  }
+}
+
+</script>
+</body>
+</html>

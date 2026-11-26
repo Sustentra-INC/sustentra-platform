@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sign in</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3A40C0;text-decoration:none}a:hover{color:#2B3099}
+button,input{font-family:inherit}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-wrap: wrap; background: #FFFFFF; color: #14151A; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', Inter, 'Helvetica Neue', Arial, sans-serif; font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+
+<!-- BRAND PANEL -->
+<section aria-label="Sustentra" style="flex: 1 1 520px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 36px; padding: 56px 48px; margin: 12px; border-radius: 24px; background: #262A8F; color: #FFFFFF; text-align: center">
+  <img src="/_blob/97354145be22da3c46a61eabc1e26114" alt="Sustentra" style="width: min(560px, 100%); height: auto; display: block">
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 100%">
+    <h2 style="margin: 0; font-size: clamp(14px, 1.45vw, 21px); line-height: 1.25; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap">AI operation system for environmental compliance.</h2>
+    <p style="margin: 0; font-size: clamp(12px, 1.1vw, 16px); color: #CDD0F5; white-space: nowrap">Climate evidence, always assurance-ready.</p>
+  </div>
+</section>
+
+<!-- FORM SIDE -->
+<main style="flex: 1.2 1 460px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 48px 24px">
+  <div style="width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 28px">
+
+    <!-- SIGN IN / READY -->
+    <sc-if value="{{signinLike}}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <h1 style="margin: 0; font-size: 30px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em">Sign in</h1>
+      </div>
+      <sc-if value="{{ready}}" hint-placeholder-val="{{ false }}">
+        <div role="status" style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; background: #E9F7EF; color: #19663E; font-size: 14px; font-weight: 500">
+          <span aria-hidden="true" style="flex: none; width: 22px; height: 22px; border-radius: 11px; background: #1F8A55; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+          Your account is ready. Sign in to continue.
+        </div>
+      </sc-if>
+      <form style="display: flex; flex-direction: column; gap: 18px">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="em" style="font-size: 13px; font-weight: 600">Email</label>
+          <input id="em" type="email" value="{{email}}" style="height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid #DCDEE6; background: #FFFFFF; font-size: 15px; color: #14151A; box-sizing: border-box">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <div style="display: flex; justify-content: space-between; align-items: baseline">
+            <label for="pw" style="font-size: 13px; font-weight: 600">Password</label>
+            <a href="#" style="font-size: 13px; font-weight: 500">Forgot password?</a>
+          </div>
+          <div style="display: flex; align-items: center; height: 46px; padding: 0 6px 0 14px; border-radius: 12px; border: 2px solid #3A40C0; box-shadow: 0 0 0 4px #E8E9FB; background: #FFFFFF; box-sizing: border-box">
+            <input id="pw" type="password" value="sustentra-demo" style="flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; font-size: 15px; color: #14151A; outline: none">
+            <button type="button" aria-label="Show password" style="height: 34px; padding: 0 10px; border: 0; border-radius: 8px; background: #F1F2F6; color: #3B3D46; font-size: 12px; font-weight: 600; cursor: pointer">Show</button>
+          </div>
+        </div>
+        <label style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #3B3D46; cursor: pointer">
+          <input type="checkbox" checked style="width: 18px; height: 18px; margin: 0; accent-color: #3A40C0">
+          Keep me signed in
+        </label>
+        <button type="button" style="height: 48px; border: 0; border-radius: 12px; background: #3A40C0; color: #FFFFFF; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 6px 16px rgba(58,64,192,0.28)">Sign in</button>
+      </form>
+    </sc-if>
+
+    <!-- ACTIVATE -->
+    <sc-if value="{{activate}}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 4px; border-radius: 15px; background: #F1F2F6; font-size: 13px; font-weight: 500; color: #3B3D46">
+          <span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 11px; background: #E8E9FB; color: #2E3299; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700">NP</span>
+          Invitation from Northgate Provisions Inc.
+        </span>
+        <h1 style="margin: 8px 0 0; font-size: 30px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em">Activate your account</h1>
+      </div>
+      <form style="display: flex; flex-direction: column; gap: 16px">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="nm" style="font-size: 13px; font-weight: 600">Name</label>
+          <input id="nm" type="text" value="Debo Sustentra" style="height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid #DCDEE6; background: #FFFFFF; font-size: 15px; color: #14151A; box-sizing: border-box">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="em2" style="font-size: 13px; font-weight: 600">Email</label>
+          <input id="em2" type="email" value="debo@sustentra.com" readonly style="height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid #E6E7EC; background: #F5F6F9; font-size: 15px; color: #55585F; box-sizing: border-box">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="pw2" style="font-size: 13px; font-weight: 600">Password</label>
+          <div style="display: flex; align-items: center; height: 46px; padding: 0 6px 0 14px; border-radius: 12px; border: 1px solid #DCDEE6; background: #FFFFFF; box-sizing: border-box">
+            <input id="pw2" type="password" value="northgate-2025" style="flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; font-size: 15px; color: #14151A; outline: none">
+            <button type="button" aria-label="Show password" style="height: 34px; padding: 0 10px; border: 0; border-radius: 8px; background: #F1F2F6; color: #3B3D46; font-size: 12px; font-weight: 600; cursor: pointer">Show</button>
+          </div>
+          <ul style="list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: #19663E">
+            <li style="display: flex; align-items: center; gap: 6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>At least 12 characters</li>
+            <li style="display: flex; align-items: center; gap: 6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Not a common password</li>
+          </ul>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="pw3" style="font-size: 13px; font-weight: 600">Confirm password</label>
+          <input id="pw3" type="password" value="northgate-2025" style="height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid #DCDEE6; background: #FFFFFF; font-size: 15px; color: #14151A; box-sizing: border-box">
+          <span style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #19663E"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Passwords match</span>
+        </div>
+        <button type="button" style="margin-top: 4px; height: 48px; border: 0; border-radius: 12px; background: #3A40C0; color: #FFFFFF; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 6px 16px rgba(58,64,192,0.28)">Activate account</button>
+      </form>
+    </sc-if>
+
+    <!-- VERIFY -->
+    <sc-if value="{{verify}}" hint-placeholder-val="{{ false }}">
+      <span aria-hidden="true" style="width: 56px; height: 56px; border-radius: 16px; background: #E8E9FB; color: #2E3299; display: inline-flex; align-items: center; justify-content: center">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-mail" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M6 8.5l6 4.2 6-4.2" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-mail)"><rect x="2.5" y="4.5" width="19" height="15" rx="3" fill="currentColor"/></g></svg>
+      </span>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <h1 style="margin: 0; font-size: 30px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em">Check your email</h1>
+        <p style="margin: 0; font-size: 15px; color: #55585F">Enter the 6-digit code we sent to <span style="color: #14151A; font-weight: 600">debo@sustentra.com</span>.</p>
+      </div>
+      <form style="display: flex; flex-direction: column; gap: 20px">
+        <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
+          <legend style="font-size: 13px; font-weight: 600; padding: 0; margin-bottom: 10px">Verification code</legend>
+          <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px">
+            <input aria-label="Digit 1" inputmode="numeric" maxlength="1" value="4" style="height: 60px; width: 100%; box-sizing: border-box; text-align: center; border-radius: 12px; border: 1px solid #DCDEE6; background: #FFFFFF; font-size: 26px; font-weight: 700; color: #14151A">
+            <input aria-label="Digit 2" inputmode="numeric" maxlength="1" value="8" style="height: 60px; width: 100%; box-sizing: border-box; text-align: center; border-radius: 12px; border: 1px solid #DCDEE6; background: #FFFFFF; font-size: 26px; font-weight: 700; color: #14151A">
+            <input aria-label="Digit 3" inputmode="numeric" maxlength="1" value="2" style="height: 60px; width: 100%; box-sizing: border-box; text-align: center; border-radius: 12px; border: 1px solid #DCDEE6; background: #FFFFFF; font-size: 26px; font-weight: 700; color: #14151A">
+            <input aria-label="Digit 4" inputmode="numeric" maxlength="1" value="" style="height: 60px; width: 100%; box-sizing: border-box; text-align: center; border-radius: 12px; border: 2px solid #3A40C0; box-shadow: 0 0 0 4px #E8E9FB; background: #FFFFFF; font-size: 26px; font-weight: 700; color: #14151A">
+            <input aria-label="Digit 5" inputmode="numeric" maxlength="1" value="" style="height: 60px; width: 100%; box-sizing: border-box; text-align: center; border-radius: 12px; border: 1px solid #DCDEE6; background: #F7F8FA; font-size: 26px; font-weight: 700; color: #14151A">
+            <input aria-label="Digit 6" inputmode="numeric" maxlength="1" value="" style="height: 60px; width: 100%; box-sizing: border-box; text-align: center; border-radius: 12px; border: 1px solid #DCDEE6; background: #F7F8FA; font-size: 26px; font-weight: 700; color: #14151A">
+          </div>
+        </fieldset>
+        <button type="button" style="height: 48px; border: 0; border-radius: 12px; background: #3A40C0; color: #FFFFFF; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 6px 16px rgba(58,64,192,0.28)">Verify</button>
+        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 14px; color: #55585F">
+          <span>Didn&#39;t get it? <a href="#" style="font-weight: 600">Resend code</a></span>
+          <a href="#" style="font-weight: 500; color: #3B3D46">Use a different email</a>
+        </div>
+      </form>
+    </sc-if>
+
+  </div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"screen":{"editor":"enum","options":["signin","ready","activate","verify"],"default":"signin"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.props.screen ?? 'signin';
+    return {
+      signinLike: s === 'signin' || s === 'ready',
+      ready: s === 'ready',
+      activate: s === 'activate',
+      verify: s === 'verify',
+      email: s === 'ready' ? 'debo@sustentra.com' : 'demo@sustentra.com'
+    };
+  }
+}
+</script>
+</body>
+</html>

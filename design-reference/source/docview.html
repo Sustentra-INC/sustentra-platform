@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Document view</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3A40C0;text-decoration:none}a:hover{color:#2B3099}
+button,input{font-family:inherit}
+.rail:hover{background:#E9EAF2}
+.nv:hover{background:#F3F4F8}
+</style>
+</helmet>
+<div style="height: 100vh; min-height: 640px; display: flex; background: #F3F4F8; color: #14151A; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', Inter, 'Helvetica Neue', Arial, sans-serif; font-size: 14px; line-height: 1.45; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; overflow: hidden">
+
+  <!-- COLLAPSED APP RAIL -->
+  <nav aria-label="Main" style="flex: none; width: 72px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px 0 16px; box-sizing: border-box">
+    <img src="/_blob/a247366b99f5d5c553aa6c173a1e0e39" alt="Sustentra" style="width: 30px; height: auto; margin-bottom: 18px">
+    <sc-for list="{{rail}}" as="ri" hint-placeholder-count="8">
+      <a href="#" class="rail" aria-label="{{ri.label}}" title="{{ri.label}}" aria-current="{{ri.current}}" style="position: relative; width: 44px; height: 44px; border-radius: 12px; background: {{ri.bg}}; color: {{ri.fg}}; display: inline-flex; align-items: center; justify-content: center">
+        <sc-if value="{{ri.is_dash}}" hint-placeholder-val="{{ false }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2.6" fill="currentColor"/><rect x="13" y="3" width="8" height="8" rx="2.6" fill="currentColor" fill-opacity=".38"/><rect x="3" y="13" width="8" height="8" rx="2.6" fill="currentColor" fill-opacity=".38"/><rect x="13" y="13" width="8" height="8" rx="2.6" fill="currentColor"/></svg></sc-if><sc-if value="{{ri.is_setup}}" hint-placeholder-val="{{ false }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="6" width="18" height="2.6" rx="1.3" fill="currentColor" fill-opacity=".38"/><rect x="3" y="15.4" width="18" height="2.6" rx="1.3" fill="currentColor" fill-opacity=".38"/><circle cx="15.5" cy="7.3" r="3.4" fill="currentColor"/><circle cx="8.5" cy="16.7" r="3.4" fill="currentColor"/></svg></sc-if><sc-if value="{{ri.is_up}}" hint-placeholder-val="{{ false }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 13.5a1.5 1.5 0 0 1 3 0V18h12v-4.5a1.5 1.5 0 0 1 3 0v5A2.5 2.5 0 0 1 18.5 21h-13A2.5 2.5 0 0 1 3 18.5z" fill="currentColor" fill-opacity=".38"/><path d="M11 3.6a1.4 1.4 0 0 1 2 0l4.2 4.2c.9.9.3 2.2-.9 2.2H14v4.5a2 2 0 0 1-4 0V10H7.7c-1.2 0-1.8-1.3-.9-2.2z" fill="currentColor"/></svg></sc-if><sc-if value="{{ri.is_ev}}" hint-placeholder-val="{{ false }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-doc" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M8.5 13h7M8.5 17h4.5" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-doc)"><path d="M6.5 2H14v4a2.5 2.5 0 0 0 2.5 2.5H20v11A2.5 2.5 0 0 1 17.5 22h-11A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" fill="currentColor"/><path d="M15.5 2.4L19.6 6.5H16.5a1 1 0 0 1-1-1z" fill="currentColor" fill-opacity=".38"/></g></svg></sc-if><sc-if value="{{ri.is_cov}}" hint-placeholder-val="{{ false }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.3 3.5h11.4a2 2 0 0 1 1.9 1.4L21 9.5H3l1.4-4.6a2 2 0 0 1 1.9-1.4z" fill="currentColor" fill-opacity=".38"/><path d="M2.5 11h5.2a1 1 0 0 1 .9.6l.7 1.4a1 1 0 0 0 .9.6h3.6a1 1 0 0 0 .9-.6l.7-1.4a1 1 0 0 1 .9-.6h5.2v7.5A2.5 2.5 0 0 1 19 21H5a2.5 2.5 0 0 1-2.5-2.5z" fill="currentColor"/></svg></sc-if><sc-if value="{{ri.is_meth}}" hint-placeholder-val="{{ false }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-clip" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M8.5 13.5l2.5 2.5 4.5-5" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-clip)"><rect x="4" y="4" width="16" height="18" rx="3" fill="currentColor"/><rect x="8" y="2" width="8" height="4.5" rx="1.8" fill="currentColor" fill-opacity=".38"/></g></svg></sc-if><sc-if value="{{ri.is_ver}}" hint-placeholder-val="{{ false }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="12" width="4.6" height="9" rx="1.8" fill="currentColor" fill-opacity=".38"/><rect x="9.7" y="4" width="4.6" height="17" rx="1.8" fill="currentColor"/><rect x="15.9" y="8.5" width="4.6" height="12.5" rx="1.8" fill="currentColor" fill-opacity=".38"/></svg></sc-if><sc-if value="{{ri.is_out}}" hint-placeholder-val="{{ false }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><mask id="dt-output" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M12 11v6M9.5 14.5L12 17l2.5-2.5" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-output)"><path d="M6.5 2H14v4a2.5 2.5 0 0 0 2.5 2.5H20v11A2.5 2.5 0 0 1 17.5 22h-11A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" fill="currentColor"/><path d="M15.5 2.4L19.6 6.5H16.5a1 1 0 0 1-1-1z" fill="currentColor" fill-opacity=".38"/></g></svg></sc-if>
+        <sc-if value="{{ri.dot}}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 4px; background: #D9473A; box-shadow: 0 0 0 2px {{ri.bg}}"></span></sc-if>
+      </a>
+    </sc-for>
+    <span style="flex: 1"></span>
+    <button type="button" aria-label="Expand sidebar" title="Expand sidebar" style="width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; color: #55585F; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M9.5 4v16M13.5 10l2 2-2 2"/></svg></button>
+  </nav>
+
+  <div style="flex: 1; min-width: 0; display: flex; padding: 12px 12px 12px 0; gap: 12px; box-sizing: border-box">
+
+    <!-- DOCUMENT NAVIGATOR -->
+    <aside aria-label="Documents" style="flex: none; width: 240px; display: flex; flex-direction: column; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(20,21,26,0.04); overflow: hidden">
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 14px 12px 10px">
+        <a href="#" style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px 0 6px; border-radius: 9px; background: #F3F4F8; color: #3B3D46; font-size: 13px; font-weight: 600; align-self: flex-start">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Evidence
+        </a>
+        <label style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border-radius: 10px; background: #F3F4F8; color: #6B6E78">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="currentColor" fill-opacity=".38" fill-rule="evenodd" d="M10.5 3a7.5 7.5 0 1 1 0 15 7.5 7.5 0 0 1 0-15zm0 3a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"/><rect x="16" y="14.2" width="3.2" height="8" rx="1.6" transform="rotate(-45 17.6 18.2)" fill="currentColor"/></svg>
+          <input type="search" aria-label="Find a document" placeholder="Find a document" style="flex: 1; min-width: 0; border: 0; background: transparent; font-family: inherit; font-size: 13px; outline: none">
+        </label>
+      </div>
+      <div style="flex: 1; overflow: auto; padding: 0 8px 12px; display: flex; flex-direction: column; gap: 1px">
+        <sc-for list="{{nav}}" as="n" hint-placeholder-count="11">
+          <a href="#" class="nv" aria-current="{{n.current}}" style="display: flex; align-items: center; gap: 6px; min-height: 34px; padding: 6px 10px 6px {{n.pad}}; border-radius: 9px; background: {{n.bg}}; color: {{n.fg}}; font-size: 13px; font-weight: {{n.weight}}">
+            <sc-if value="{{n.group}}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6B6E78" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; transform: {{n.rot}}"><path d="M9 6l6 6-6 6"/></svg></sc-if>
+            <span style="flex: 1; min-width: 0; line-height: 1.3">{{n.label}}</span>
+            <span style="flex: none; font-size: 12px; font-weight: 600; color: {{n.countFg}}">{{n.count}}</span>
+          </a>
+        </sc-for>
+      </div>
+    </aside>
+
+    <!-- VIEWER -->
+    <section aria-label="Document" style="flex: 1; min-width: 0; display: flex; flex-direction: column; border-radius: 18px; background: #E9EAF0; overflow: hidden">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 18px; background: #FFFFFF; border-bottom: 1px solid #E6E7EC">
+        <span aria-hidden="true" style="flex: none; height: 20px; width: 40px; border-radius: 5px; background: {{docTagBg}}; color: {{docTagFg}}; font-size: 9px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center">{{docExt}}</span>
+        <span style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+          <span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{docName}}</span>
+          <span style="font-size: 12px; color: #63666F">{{docMeta}}</span>
+        </span>
+        <span style="display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 10px; background: #F3F4F8">
+          <button type="button" aria-label="Zoom out" style="width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: #3B3D46; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/></svg></button>
+          <span style="width: 44px; text-align: center; font-size: 12px; font-weight: 600">100%</span>
+          <button type="button" aria-label="Zoom in" style="width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: #3B3D46; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg></button>
+        </span>
+        <button type="button" onClick="{{toggleHl}}" aria-pressed="{{hlPressed}}" style="display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: {{hlBg}}; color: {{hlFg}}; box-shadow: {{hlRing}}; font-size: 13px; font-weight: 600; cursor: pointer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="currentColor" fill-opacity=".38"/><circle cx="12" cy="12" r="4.5" fill="currentColor"/></svg>{{hlLabel}}
+        </button>
+      </div>
+
+      <sc-if value="{{hlOn}}" hint-placeholder-val="{{ false }}">
+        <div role="status" style="display: flex; align-items: center; gap: 10px; padding: 10px 18px; background: #3A40C0; color: #FFFFFF; font-size: 13px; font-weight: 500">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l-5 5v4h4l5-5M12.5 7.5l4 4L20 8l-4-4z"/></svg>
+          <span style="flex: 1">Extracting. Click a figure to add it as a value.</span>
+          <span style="font-size: 12px; padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,0.18)">Esc to finish</span>
+        </div>
+      </sc-if>
+
+      <div style="flex: 1; min-height: 0; overflow: auto; padding: 24px; display: flex; justify-content: center; align-items: flex-start">
+
+        <!-- SPREADSHEET -->
+        <sc-if value="{{isSheet}}" hint-placeholder-val="{{ true }}">
+          <div style="width: 100%; max-width: 760px; border-radius: 12px; background: #FFFFFF; box-shadow: 0 8px 24px rgba(20,21,26,0.10); overflow: hidden">
+            <div style="display: flex; align-items: center; gap: 4px; padding: 8px 10px 0; background: #F7F8FA; border-bottom: 1px solid #E6E7EC">
+              <span style="height: 30px; padding: 0 14px; border-radius: 8px 8px 0 0; background: #FFFFFF; box-shadow: 0 -1px 0 #E6E7EC, 1px 0 0 #E6E7EC, -1px 0 0 #E6E7EC; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 2px; background: #1F8A55"></span>Inventory</span>
+            </div>
+            <div style="overflow-x: auto">
+              <div role="table" aria-label="Inventory sheet" style="min-width: 680px; font-size: 12.5px">
+                <div role="row" style="display: grid; grid-template-columns: 36px minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1.3fr) 84px minmax(0, 1.2fr); background: #F7F8FA; color: #8A8D96; font-size: 11px; font-weight: 600; text-align: center; border-bottom: 1px solid #E6E7EC">
+                  <span style="padding: 5px 0"></span><span style="padding: 5px 0; border-left: 1px solid #E6E7EC">A</span><span style="padding: 5px 0; border-left: 1px solid #E6E7EC">B</span><span style="padding: 5px 0; border-left: 1px solid #E6E7EC">C</span><span style="padding: 5px 0; border-left: 1px solid #E6E7EC">D</span><span style="padding: 5px 0; border-left: 1px solid #E6E7EC">E</span>
+                </div>
+                <sc-for list="{{sheet}}" as="row" hint-placeholder-count="23">
+                  <div role="row" style="display: grid; grid-template-columns: 36px minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1.3fr) 84px minmax(0, 1.2fr); border-bottom: 1px solid #F0F1F4; min-height: 26px">
+                    <span style="display: flex; align-items: center; justify-content: center; background: #F7F8FA; color: #8A8D96; font-size: 11px">{{row.n}}</span>
+                    <sc-for list="{{row.cells}}" as="c" hint-placeholder-count="5">
+                      <span role="cell" style="display: flex; align-items: center; justify-content: {{c.align}}; padding: 0 8px; border-left: 1px solid #F0F1F4; font-weight: {{c.weight}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
+                        <span style="padding: 1px 5px; margin: 0 -5px; border-radius: 4px; background: {{c.bg}}; box-shadow: {{c.ring}}; color: {{c.fg}}">{{c.t}}</span>
+                      </span>
+                    </sc-for>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- PDF -->
+        <sc-if value="{{isPdf}}" hint-placeholder-val="{{ false }}">
+          <article style="width: 100%; max-width: 620px; min-height: 760px; box-sizing: border-box; padding: 56px 56px 40px; border-radius: 6px; background: #FFFFFF; box-shadow: 0 8px 24px rgba(20,21,26,0.10); font-family: 'Source Serif 4', Georgia, serif; color: #1F2230; cursor: crosshair; display: flex; flex-direction: column">
+            <div style="font-size: 19px; font-weight: 600; color: #1E2A6B">Cascade Provisions Co.</div>
+            <div style="font-size: 11px; color: #4A4E5A; margin-top: 4px; font-family: Inter, sans-serif">1200 Industrial Way, Tualatin, OR 97062</div>
+            <div style="height: 1px; background: #1E2A6B; margin: 18px 0 26px"></div>
+            <div style="font-size: 17px; font-weight: 600; margin-bottom: 18px">Organizational boundary statement · FY2025</div>
+            <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.75">This statement sets out the organizational boundary used for Cascade Provisions Co.&#39;s greenhouse gas inventory for the year ended 31 December 2025, prepared under the GHG Protocol Corporate Standard.</p>
+            <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.75; padding: 6px 8px; margin-left: -8px; margin-right: -8px; border-radius: 6px; background: #FFF1DE; box-shadow: 0 0 0 2px #3A40C0">The company consolidates on an operational-control basis for the 2025 reporting year.</p>
+            <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.75">The boundary includes the Tualatin Plant, the Kent Cannery and Modesto Bottling, each wholly owned and operated by the company. Leased office space in Portland is excluded as immaterial (below <span style="border-bottom: 2px dashed #3A40C0; padding: 0 1px">0.5%</span> of estimated emissions).</p>
+            <span style="flex: 1"></span>
+            <div style="display: flex; justify-content: space-between; padding-top: 12px; border-top: 1px solid #D9DBE3; font-size: 11px; color: #4A4E5A; font-family: Inter, sans-serif"><span>Dana Whitfield, Director of Sustainability</span><span>18 Feb 2026</span></div>
+          </article>
+        </sc-if>
+      </div>
+    </section>
+
+    <!-- REVIEW PANEL -->
+    <aside aria-label="Review values" style="flex: none; width: 380px; display: flex; flex-direction: column; border-radius: 18px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(20,21,26,0.04); overflow: hidden">
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 14px; border-bottom: 1px solid #EEEFF4">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <span style="display: flex; flex-direction: column"><span style="font-size: 12px; color: #63666F">Reviewing</span><span style="font-size: 16px; font-weight: 700">{{panelTitle}}</span></span>
+          <button type="button" onClick="{{toggleAdd}}" aria-expanded="{{addExpanded}}" style="display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: 10px; background: {{addBg}}; color: {{addFg}}; font-size: 13px; font-weight: 600; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add a value</button>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+          <sc-for list="{{stats}}" as="s" hint-placeholder-count="4">
+            <span style="display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 11px; background: {{s.bg}}">
+              <span style="font-size: 18px; font-weight: 700; color: {{s.fg}}">{{s.n}}</span>
+              <span style="font-size: 11px; color: #55585F">{{s.label}}</span>
+            </span>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="flex: 1; min-height: 0; overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px">
+
+        <sc-if value="{{addOpen}}" hint-placeholder-val="{{ false }}">
+          <form style="display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 16px; background: #F7F8FD; box-shadow: inset 0 0 0 1px #DCDFF7">
+            <div style="display: flex; align-items: center; justify-content: space-between"><span style="font-size: 15px; font-weight: 700">Add a value</span><span style="font-size: 12px; color: #63666F">{{docShort}}</span></div>
+            <div style="display: flex; flex-direction: column; gap: 5px">
+              <label for="wi" style="font-size: 12px; font-weight: 600; color: #3B3D46">What it is</label>
+              <div style="display: flex; align-items: center; height: 42px; padding: 0 10px 0 12px; border-radius: 11px; border: 2px solid #3A40C0; box-shadow: 0 0 0 4px #E8E9FB; background: #FFFFFF; box-sizing: border-box">
+                <input id="wi" type="text" placeholder="Search, e.g. Peak demand" style="flex: 1; min-width: 0; border: 0; background: transparent; font-family: inherit; font-size: 14px; outline: none">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#55585F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 70px; gap: 8px">
+              <div style="display: flex; flex-direction: column; gap: 5px"><label for="vv" style="font-size: 12px; font-weight: 600; color: #3B3D46">Value</label><input id="vv" type="text" inputmode="decimal" placeholder="0" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #DCDEE6; background: #FFFFFF; font-family: inherit; font-size: 14px; box-sizing: border-box; width: 100%"></div>
+              <div style="display: flex; flex-direction: column; gap: 5px"><label for="vu" style="font-size: 12px; font-weight: 600; color: #3B3D46">Unit</label><input id="vu" type="text" value="tCO&#8322;e" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #DCDEE6; background: #FFFFFF; font-family: inherit; font-size: 14px; box-sizing: border-box; width: 100%"></div>
+              <div style="display: flex; flex-direction: column; gap: 5px"><label for="vp" style="font-size: 12px; font-weight: 600; color: #3B3D46">Page</label><input id="vp" type="text" inputmode="numeric" value="1" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #DCDEE6; background: #FFFFFF; font-family: inherit; font-size: 14px; box-sizing: border-box; width: 100%"></div>
+            </div>
+            <span style="display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: #55585F"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex: none; margin-top: 2px"><defs><mask id="dt-info" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M12 11v5.5" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M12 7.7v.01" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></mask></defs><g mask="url(#dt-info)"><circle cx="12" cy="12" r="10" fill="currentColor"/></g></svg>Recorded as keyed by you. It counts as reviewed.</span>
+            <div style="display: flex; justify-content: flex-end; gap: 8px">
+              <button type="button" onClick="{{toggleAdd}}" style="height: 36px; padding: 0 14px; border: 0; border-radius: 10px; background: #FFFFFF; box-shadow: inset 0 0 0 1px #DCDEE6; color: #14151A; font-size: 13px; font-weight: 600; cursor: pointer">Cancel</button>
+              <button type="button" disabled style="height: 36px; padding: 0 14px; border: 0; border-radius: 10px; background: #C9CCF0; color: #FFFFFF; font-size: 13px; font-weight: 600">Add value</button>
+            </div>
+          </form>
+        </sc-if>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <span style="font-size: 13px; font-weight: 600">{{valuesHeading}}</span>
+          <sc-if value="{{showAcceptAll}}" hint-placeholder-val="{{ true }}"><button type="button" style="height: 30px; padding: 0 10px; border: 0; border-radius: 9px; background: #F1F2F6; color: #14151A; font-size: 12px; font-weight: 600; cursor: pointer">Accept all 5 in this file</button></sc-if>
+        </div>
+
+        <sc-for list="{{cards}}" as="v" hint-placeholder-count="2">
+          <article style="display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: #FFFFFF; box-shadow: {{v.ring}}">
+            <div style="display: flex; align-items: flex-start; gap: 8px">
+              <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                <span style="font-size: 13px; font-weight: 600; color: #3B3D46">{{v.title}}</span>
+                <span style="display: flex; align-items: baseline; gap: 6px"><span style="font-size: 22px; font-weight: 700; letter-spacing: -0.01em">{{v.value}}</span><span style="font-size: 13px; color: #55585F">{{v.unit}}</span></span>
+              </span>
+              <span style="flex: none; height: 24px; padding: 0 11px 0 9px; border-radius: 999px; background: #FFF1DE; color: #8A4B12; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="flex: none; width: 7px; height: 7px; border-radius: 4px; background: #F29A17"></span>To review</span>
+            </div>
+            <span style="display: flex; flex-wrap: wrap; gap: 6px">
+              <span style="height: 22px; padding: 0 10px 0 8px; border-radius: 999px; background: #E8E9FB; color: #2E3299; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="flex: none; width: 7px; height: 7px; border-radius: 4px; background: #3A40C0"></span>{{v.tag}}</span>
+              <span style="height: 22px; padding: 0 8px; border-radius: 999px; background: #F1F2F6; color: #4A4C55; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center">{{v.period}}</span>
+            </span>
+            <sc-if value="{{v.open}}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 11px; background: #F7F8FA; font-size: 12px; color: #55585F">
+                <span style="display: flex; align-items: center; gap: 6px; color: #3B3D46; font-weight: 600"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M11.1 2.9a1 1 0 0 1 1.8 0l2.4 4.9 5.4.8a1 1 0 0 1 .6 1.7l-3.9 3.8.9 5.4a1 1 0 0 1-1.5 1L12 18l-4.8 2.5a1 1 0 0 1-1.5-1l.9-5.4-3.9-3.8a1 1 0 0 1 .6-1.7l5.4-.8z" fill="currentColor"/></svg>Read by the system</span>
+                <span>{{v.source}}</span>
+                <span>Sep 10, 02:00 AM</span>
+              </div>
+              <div style="display: flex; gap: 8px">
+                <button type="button" style="flex: 1; height: 38px; border: 0; border-radius: 11px; background: #3A40C0; color: #FFFFFF; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Accept</button>
+                <button type="button" style="flex: 1; height: 38px; border: 0; border-radius: 11px; background: #F1F2F6; color: #14151A; font-size: 13px; font-weight: 600; cursor: pointer">Correct</button>
+                <button type="button" style="flex: 1; height: 38px; border: 0; border-radius: 11px; background: #F1F2F6; color: #14151A; font-size: 13px; font-weight: 600; cursor: pointer">Request</button>
+              </div>
+            </sc-if>
+          </article>
+        </sc-for>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["sheet","add","pdf"],"default":"sheet"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const mode = this.props.mode ?? 'sheet';
+    const isPdf = mode === 'pdf';
+    const addOpen = st.add ?? (mode === 'add');
+    const hlOn = st.hl ?? isPdf;
+
+    const I = {
+      dash: 'M3.5 3.5h7v7h-7zM13.5 3.5h7v7h-7zM3.5 13.5h7v7h-7zM13.5 13.5h7v7h-7z',
+      setup: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4',
+      up: 'M12 15V4M7.5 8.5L12 4l4.5 4.5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4',
+      ev: 'M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5',
+      cov: 'M4 13l2.5-7h11L20 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 13h4.5l1.5 2.5h4l1.5-2.5H20',
+      meth: 'M5 4h14v17H5zM9 12.5l2 2 4-4',
+      ver: 'M4 20h16M7 16v-5M12 16V7M17 16v-8',
+      out: 'M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M9 13h6M9 17h6'
+    };
+    const rail = [['Dashboard', 'dash'], ['Setup', 'setup'], ['Upload', 'up'], ['Evidence', 'ev'], ['Coverage & requests', 'cov'], ['Methodology review', 'meth'], ['Verification results', 'ver'], ['Output', 'out']].map(([l, k]) => {
+      const on = k === 'ev';
+      return { label: l, icon: I[k], ...Object.fromEntries(Object.keys(I).map((x) => ['is_' + x, x === k])), bg: on ? '#3A40C0' : 'transparent', fg: on ? '#FFFFFF' : '#3B3D46', current: on ? 'page' : 'false', dot: on };
+    });
+
+    const activeNav = isPdf ? 'Organizational boundary statement' : 'Scope 2';
+    const navRaw = [['Entity-level', '19', 0, true, true], ['General', '1', 1], ['Scope 1', '2', 1], ['Scope 2', '2', 1], ['Organizational boundary statement', '1', 1], ['Emission factor source list', '1', 1], ['Supplier roster', '12', 1],
+      ['Tualatin Plant', '15', 0, true, false], ['Kent Cannery', '18', 0, true, false], ['Modesto Bottling', '5', 0, true, false], ['Not yet known', '1', 0, true, false]];
+    const nav = navRaw.map(([l, c, d, g, open]) => {
+      const on = l === activeNav;
+      return { label: l, count: c, group: !!g, rot: open ? 'rotate(90deg)' : 'none', pad: d ? '30px' : '8px', bg: on ? '#E8E9FB' : 'transparent',
+        fg: on ? '#2E3299' : '#14151A', weight: (g || on) ? '600' : '500', countFg: on ? '#2E3299' : '#8A8D96', current: on ? 'page' : 'false' };
+    });
+
+    const C = (t, o) => Object.assign({ t, align: 'flex-start', weight: '400', bg: 'transparent', fg: '#14151A', ring: 'none' }, o || {});
+    const R = { align: 'flex-end' };
+    const rev = { bg: '#FFE7BF', fg: '#14151A' };
+    const sel = { bg: '#FFE7BF', ring: '0 0 0 2px #3A40C0', weight: '700' };
+    const B = { weight: '600' };
+    const H = { weight: '600', fg: '#55585F' };
+    const rowsRaw = [
+      [C('Cascade Provisions Co. · GHG inventory FY2025', B), C(''), C(''), C(''), C('')],
+      [C(''), C(''), C(''), C(''), C('')],
+      [C('Organizational boundary approach'), C('Operational control', rev), C(''), C(''), C('')],
+      [C('Reporting year'), C('2025'), C(''), C(''), C('')],
+      [C('GWP set'), C('IPCC AR5'), C(''), C(''), C('')],
+      [C(''), C(''), C(''), C(''), C('')],
+      [C('Scope 1', B), C('Activity', H), C('Quantity', H), C('tCO₂e', Object.assign({}, H, R)), C('Source', H)],
+      [C('Stationary combustion'), C('Natural gas'), C('1,221,600 therms'), C('9,561', R), C('Monthly gas bills')],
+      [C('Stationary combustion'), C('Propane'), C('18,900 gal'), C('115', R), C('Delivery tickets')],
+      [C('Mobile combustion'), C('Diesel'), C('468,000 gal'), C('4,617', R), C('Fleet fuel cards')],
+      [C('Fugitive emissions'), C('R-404A'), C('601 kg'), C('2,366', R), C('Service logs')],
+      [C('Total Scope 1', B), C(''), C(''), C('18,240', Object.assign({}, R, rev, B)), C('Client calculation')],
+      [C(''), C(''), C(''), C(''), C('')],
+      [C('Stationary combustion subtotal'), C(''), C(''), C('12,110', Object.assign({}, R, rev)), C('')],
+      [C(''), C(''), C(''), C(''), C('')],
+      [C('Scope 2', B), C('Activity', H), C('Quantity', H), C('tCO₂e', Object.assign({}, H, R)), C('Source', H)],
+      [C('Electricity · Tualatin'), C('Grid (NWPP)'), C('5,140,000 kWh'), C('1,830', R), C('Monthly bills')],
+      [C('Electricity · Kent'), C('Grid (NWPP)'), C('6,220,000 kWh'), C('2,213', R), C('Monthly bills')],
+      [C('Electricity · Modesto'), C('Grid (CAMX)'), C('7,310,000 kWh'), C('2,132', R), C('Monthly bills')],
+      [C('Total Scope 2, location-based', B), C(''), C(''), C('9,880', Object.assign({}, R, sel)), C('Client calculation')],
+      [C('Total Scope 2, market-based', B), C(''), C(''), C('7,410', Object.assign({}, R, rev, B)), C('With RECs retired')],
+      [C(''), C(''), C(''), C(''), C('')],
+      [C('Prepared by'), C('Dana Whitfield'), C(''), C(''), C('Feb 2026')]
+    ];
+    const sheet = rowsRaw.map((cells, i) => ({ n: String(i + 1), cells }));
+
+    const cards = isPdf
+      ? [{ title: 'Consolidation approach stated', value: 'Operational control', unit: '', tag: 'General', period: 'FY2025', open: true, ring: '0 0 0 2px #3A40C0', source: 'Organizational boundary statement, page 1' }]
+      : [
+        { title: 'Total Scope 2, location-based (client calc)', value: '9,880', unit: 'tCO₂e', tag: 'Scope 2 · location-based', period: 'FY2025', open: true, ring: '0 0 0 2px #3A40C0', source: 'Inventory workbook, cell D20' },
+        { title: 'Total Scope 2, market-based (client calc)', value: '7,410', unit: 'tCO₂e', tag: 'Scope 2 · market-based', period: 'FY2025', open: false, ring: '0 0 0 1px #E6E7EC', source: 'Inventory workbook, cell D21' }
+      ];
+    const stats = (isPdf ? ['1', '0', '0', '0'] : ['2', '0', '0', '0']).map((n, i) => ({ n, label: ['To review', 'Accepted', 'Corrected', 'Requests'][i],
+      bg: i === 0 ? '#FFF6E8' : '#F7F8FA', fg: i === 0 ? '#8A4B12' : '#14151A' }));
+
+    return {
+      rail, nav, sheet, cards, stats,
+      isSheet: !isPdf, isPdf, addOpen, hlOn,
+      docName: isPdf ? 'cascade_org_boundary_statement.pdf' : 'cascade_inventory_workbook_2025.xlsx',
+      docShort: isPdf ? 'org_boundary_statement.pdf' : 'inventory_workbook_2025.xlsx',
+      docMeta: isPdf ? 'Organizational boundary statement · FY2025 · 1 page' : 'Inventory workbook · FY2025 · 5 values read',
+      docExt: isPdf ? 'PDF' : 'XLSX', docTagBg: isPdf ? '#FDE7E4' : '#E3F5EA', docTagFg: isPdf ? '#A8281C' : '#19663E',
+      panelTitle: isPdf ? 'Entity-level · General' : 'Entity-level · Scope 2',
+      valuesHeading: isPdf ? '1 value in this file' : '2 values for Scope 2',
+      showAcceptAll: !isPdf,
+      hlLabel: hlOn ? 'Done extracting' : 'Extract', hlPressed: hlOn ? 'true' : 'false',
+      hlBg: hlOn ? '#E8E9FB' : 'transparent', hlFg: hlOn ? '#2E3299' : '#3B3D46', hlRing: hlOn ? 'inset 0 0 0 1px #C9CCEB' : 'inset 0 0 0 1px #DCDEE6',
+      addBg: addOpen ? '#2E3299' : '#3A40C0', addFg: '#FFFFFF', addExpanded: addOpen ? 'true' : 'false',
+      toggleAdd: () => this.setState({ add: !addOpen }), toggleHl: () => this.setState({ hl: !hlOn })
+    };
+  }
+}
+</script>
+</body>
+</html>
