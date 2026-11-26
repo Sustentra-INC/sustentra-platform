@@ -80,7 +80,7 @@ const figuresFor = (coverage: Parameters<typeof dashboardFigures>[0]["coverage"]
   dashboardFigures({ evidence: [], values: [], asks: [], findings: [], coverage });
 
 const attentionRows = () =>
-  screen.getAllByRole("button").filter((b) => b.className.includes("s1-attention__item"));
+  screen.getAllByRole("button").filter((b) => b.className.includes("s1-queue__row"));
 
 /** The live dashboard, with the recalculation the backend returns, once that has landed. */
 async function renderLive(
@@ -130,25 +130,26 @@ describe("dashboard evidence figures: live coverage", () => {
     expect(screen.queryByText(/in-scope data points/)).toBeNull();
     expect(screen.queryByText(/of 0/)).toBeNull();
 
-    const rows = attentionRows();
-    expect(rows.map((b) => b.textContent)).toEqual(["Reporting period needs a start and an end dateSetup"]);
+    // period item is the only open item → it goes to focus card, not queue
+    expect(screen.getByText("Reporting period needs a start and an end date")).toBeInTheDocument();
+    expect(attentionRows()).toHaveLength(0);
     expect(screen.queryByText(/missing evidence/)).toBeNull();
-    fireEvent.click(rows[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Open Setup" }));
     expect(onNavigate).toHaveBeenCalledWith("setup");
   });
 
   it("clears the reporting period row as soon as Setup saves the end date, before the recalculation catches up", async () => {
     const { rerender, props } = await renderLive(NEW_ENGAGEMENT, EMPTY);
-    expect(screen.getAllByText("Reporting period needs a start and an end date")[0]).toBeInTheDocument();
+    expect(screen.getByText("Reporting period needs a start and an end date")).toBeInTheDocument();
 
     // The recalculation already fetched still has no end date; the engagement now has one.
     rerender(<BackendDashboard {...props} engagement={{ ...NEW_ENGAGEMENT, reportingPeriod: { start: "2026-10-08", end: "2027-10-07" } }} />);
-    expect(screen.queryAllByText(/Reporting period needs/).length).toBe(0);
+    expect(screen.queryByText(/Reporting period needs/)).toBeNull();
     expect(api).toHaveBeenCalledTimes(1);
 
     // And it comes back at once if a date is cleared.
     rerender(<BackendDashboard {...props} engagement={{ ...NEW_ENGAGEMENT, reportingPeriod: { start: "", end: "2027-10-07" } }} />);
-    expect(screen.getAllByText("Reporting period needs a start and an end date")[0]).toBeInTheDocument();
+    expect(screen.getByText("Reporting period needs a start and an end date")).toBeInTheDocument();
   });
 
   it("shows no reporting period row before an engagement is chosen", async () => {
@@ -186,9 +187,9 @@ describe("dashboard evidence figures: live coverage", () => {
     expect(screen.queryByText(/missing evidence/)).toBeNull();
     expect(screen.queryByText(/Reporting period needs/)).toBeNull();
 
-    const row = attentionRows().find((b) => b.textContent?.startsWith("Reported total"));
-    expect(row).toHaveTextContent(/^Reported total not enteredResults$/);
-    fireEvent.click(row!);
+    // reported total is the only open item → focus card shows it, queue is empty
+    expect(screen.getByText("Reported total not entered")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Enter totals" }));
     expect(onNavigate).toHaveBeenCalledWith("results");
   });
 
@@ -196,7 +197,7 @@ describe("dashboard evidence figures: live coverage", () => {
     const result = withoutReported("scope1_total", "scope2_market_total");
     expect(missingReportedTotals(result)).toEqual(["Scope 1 (Total)", "Scope 2 (Total), market-based"]);
     await renderLive(WORKBOOK_ENGAGEMENT, result);
-    expect(screen.getAllByText("Reported totals not entered")[0]).toBeInTheDocument();
+    expect(screen.getByText("Reported totals not entered")).toBeInTheDocument();
     expect(screen.queryByText("Reported total not entered")).toBeNull();
   });
 
@@ -239,7 +240,7 @@ describe("dashboard evidence figures: demo coverage", () => {
     render(<DashboardScreen engagement={engagementConfig} figures={figures} />);
     const covered = count("inputs_present") + count("inputs_missing");
     expect(screen.getByText(new RegExp(`${count("inputs_present")} of ${covered} data points`))).toBeInTheDocument();
-    expect(screen.getByText("data points missing evidence")).toBeInTheDocument();
+    expect(screen.getByText(/data points missing evidence/)).toBeInTheDocument();
     expect(screen.queryByText(/Reporting period needs/)).toBeNull();
     expect(screen.queryByText(/Reported totals? not entered/)).toBeNull();
   });

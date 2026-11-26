@@ -50,9 +50,10 @@ describe("dashboard: progress only", () => {
     // Opinion: not issued
     expect(cards[3]).toHaveTextContent("Not issued");
 
-    const attention = screen.getAllByRole("button").filter((b) => b.className.includes("s1-attention__item"));
-    expect(attention[0]).toHaveTextContent("1document can't be read");
-    expect(attention.map((b) => b.textContent)).toContain("67values waiting for reviewReview");
+    // blocked item is in focus card; queue shows the remaining open/waiting items
+    const queueRows = screen.getAllByRole("button").filter((b) => b.className.includes("s1-queue__row"));
+    expect(queueRows[0]).toHaveTextContent("documents need a type or facility");
+    expect(queueRows.some((b) => b.textContent?.includes("values waiting for review"))).toBe(true);
     fireEvent.click(screen.getByText("data points missing evidence"));
     expect(onNavigate).toHaveBeenCalledWith("requests");
   });

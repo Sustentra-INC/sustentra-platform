@@ -51,6 +51,9 @@ export function DashboardScreen({
   const focusItem = blockingFocus ?? upNextFocus;
   const isFocusBlocking = !!blockingFocus;
 
+  // Queue: everything except the focus card item
+  const queueItems = attention.filter((a) => a.key !== focusItem?.key);
+
   // Evidence intake card
   const coverage = figures.coverage;
   const covered = coverage ? coverage.present + coverage.missing : 0;
@@ -260,38 +263,12 @@ export function DashboardScreen({
         </button>
       </section>
 
-      {focusItem && (
-        <div className="s1-focus-wrap">
+      <div className="s1-focus-wrap">
+        {focusItem && (
           <FocusCard item={focusItem} isBlocking={isFocusBlocking} onNavigate={onNavigate} />
-        </div>
-      )}
-
-      <section className="s1-attention" aria-labelledby="s1-attention-title">
-        <h2 id="s1-attention-title">Needs attention</h2>
-        {attention.length ? (
-          <ul className="s1-attention__list">
-            {attention.map((item) => (
-              <li key={item.key}>
-                <button className={`s1-attention__item s1-attention__item--${item.tone}`} type="button" onClick={go(item.nav)}>
-                  <span className="s1-attention__icon" aria-hidden>
-                    {item.icon}
-                  </span>
-                  <span className="s1-attention__n">{item.uncounted ? null : item.n}</span>
-                  <span className="s1-attention__what">{item.text}</span>
-                  <span className="s1-attention__go">
-                    {item.action}
-                    <ChevronRight aria-hidden />
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="s1-attention__none">
-            <Check aria-hidden /> Nothing needs you right now.
-          </p>
         )}
-      </section>
+        <QueueSection items={queueItems} onNavigate={onNavigate} />
+      </div>
     </section>
   );
 }
@@ -481,6 +458,67 @@ function FocusCard({
           {primaryLabel}
         </button>
       </div>
+    </section>
+  );
+}
+
+/* =============================== queue =============================== */
+
+const NAV_LABEL: Record<NavKey, string> = {
+  setup:    "Setup",
+  evidence: "Evidence",
+  requests: "Coverage & requests",
+  results:  "Verification results",
+  output:   "Output",
+};
+
+function QueueSection({
+  items,
+  onNavigate,
+}: {
+  items: Attention[];
+  onNavigate?: (key: NavKey) => void;
+}) {
+  const go = (key: NavKey) => () => onNavigate?.(key);
+  return (
+    <section aria-labelledby="s1-queue-title" className="s1-queue">
+      <div className="s1-queue__header">
+        <h2 id="s1-queue-title" className="s1-queue__title">Your queue</h2>
+      </div>
+      {items.length ? (
+        <ul className="s1-queue__list">
+          {items.map((item) => {
+            const isWaiting = item.tone === "waiting";
+            return (
+              <li key={item.key}>
+                <button
+                  type="button"
+                  className="s1-queue__row"
+                  onClick={go(item.nav)}
+                >
+                  <span className={`s1-queue__tile s1-queue__tile--${isWaiting ? "waiting" : "todo"}`} aria-hidden>
+                    {item.n}
+                  </span>
+                  <span className="s1-queue__mid">
+                    <span className="s1-queue__text">{item.text}</span>
+                    <span className="s1-queue__where">{NAV_LABEL[item.nav]}</span>
+                  </span>
+                  <span className={`s1-state ${isWaiting ? "s1-state--unverifiable" : "s1-state--active"}`}>
+                    {isWaiting ? "Waiting" : "To do"}
+                  </span>
+                  <span className="s1-queue__chevron" aria-hidden>
+                    <ChevronRight />
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="s1-queue__empty">
+          <Check aria-hidden /> Nothing needs you right now.
+        </p>
+      )}
     </section>
   );
 }
