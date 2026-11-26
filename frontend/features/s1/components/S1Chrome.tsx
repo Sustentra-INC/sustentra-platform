@@ -6,6 +6,7 @@ import { useState, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
 import { formatReportingPeriod } from "../utils/formatPeriod";
+import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AssistantWidget, type AssistantConnection } from "./AssistantWidget";
 
 export type NavKey =
@@ -97,13 +98,13 @@ export function S1Chrome({
         navCounts={navCounts}
       />
       <section className="s1-main">
+        <TopRow onReset={onReset} />
         <ContextBar
           engagement={engagement}
           expanded={ctxExpanded}
           onToggle={() => setCtxExpanded((v) => !v)}
           onOpenGlossary={onOpenGlossary}
           onOpenActivity={onOpenActivity}
-          onReset={onReset}
           user={user}
           onSignOut={onSignOut}
         />
@@ -293,6 +294,30 @@ function Sidebar({
   );
 }
 
+/* ========================= top row: ⋯ More actions ========================= */
+
+function TopRow({ onReset }: { onReset?: () => void }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const entries: ActionMenuEntry[] = [];
+  if (onReset) {
+    entries.push({
+      label: "Reset",
+      danger: true,
+      action: () => {
+        if (window.confirm("Reset the workspace to the start? This clears the current session.")) {
+          onReset();
+        }
+      },
+    });
+  }
+  if (!entries.length) return null;
+  return (
+    <div className="s1-toprow">
+      <ActionMenu label="More actions" entries={entries} isOpen={moreOpen} onOpenChange={setMoreOpen} />
+    </div>
+  );
+}
+
 /* ===================== engagement context bar (relocated, collapsed) ===================== */
 
 function ContextBar({
@@ -301,7 +326,6 @@ function ContextBar({
   onToggle,
   onOpenGlossary,
   onOpenActivity,
-  onReset,
   user,
   onSignOut,
 }: {
@@ -310,7 +334,6 @@ function ContextBar({
   onToggle: () => void;
   onOpenGlossary?: () => void;
   onOpenActivity?: () => void;
-  onReset?: () => void;
   user?: WorkpaperUser;
   onSignOut?: () => void;
 }) {
@@ -337,17 +360,6 @@ function ContextBar({
           <button className="s1-linklike" type="button" onClick={onOpenGlossary}>
             Glossary
           </button>
-          {onReset ? (
-            <button
-              className="s1-ctx__reset"
-              type="button"
-              onClick={() => {
-                if (window.confirm("Reset the workspace to the start? This clears the current session.")) onReset();
-              }}
-            >
-              <ResetIcon /> Reset
-            </button>
-          ) : null}
           {user ? (
             <div className="s1-ctx__user" aria-label="Signed in">
               <span className="s1-ctx__user-name" title={user.email}>
@@ -408,14 +420,6 @@ function ChevronsIcon({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-function ResetIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-      <path d="M3 3v5h5" />
-    </svg>
-  );
-}
 
 function ActivityIcon() {
   return (

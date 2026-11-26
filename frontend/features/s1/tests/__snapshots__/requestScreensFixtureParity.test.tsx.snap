@@ -710,7 +710,29 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
                           class="s1-button s1-button--icon"
                           type="button"
                         >
-                          ⋯
+                          <svg
+                            aria-hidden="true"
+                            fill="currentColor"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            width="18"
+                          >
+                            <circle
+                              cx="5.5"
+                              cy="12"
+                              r="1.7"
+                            />
+                            <circle
+                              cx="12"
+                              cy="12"
+                              r="1.7"
+                            />
+                            <circle
+                              cx="18.5"
+                              cy="12"
+                              r="1.7"
+                            />
+                          </svg>
                         </button>
                       </div>
                     </span>
@@ -785,7 +807,29 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
                           class="s1-button s1-button--icon"
                           type="button"
                         >
-                          ⋯
+                          <svg
+                            aria-hidden="true"
+                            fill="currentColor"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            width="18"
+                          >
+                            <circle
+                              cx="5.5"
+                              cy="12"
+                              r="1.7"
+                            />
+                            <circle
+                              cx="12"
+                              cy="12"
+                              r="1.7"
+                            />
+                            <circle
+                              cx="18.5"
+                              cy="12"
+                              r="1.7"
+                            />
+                          </svg>
                         </button>
                       </div>
                     </span>

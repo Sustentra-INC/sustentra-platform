@@ -3,10 +3,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { IconMore } from "./icons";
+
 export interface ActionMenuEntry {
   label: string;
   action: () => void;
   disabled?: boolean;
+  danger?: boolean;
 }
 
 /**
@@ -75,7 +78,7 @@ export function ActionMenu({
         aria-label={label}
         onClick={() => onOpenChange(!isOpen)}
       >
-        ⋯
+        <IconMore size={18} aria-hidden />
       </button>
       {isOpen && place
         ? createPortal(
@@ -88,7 +91,7 @@ export function ActionMenu({
               {entries.map((entry) => (
                 <button
                   key={entry.label}
-                  className="s1-menu__item"
+                  className={`s1-menu__item${entry.danger ? " s1-menu__item--danger" : ""}`}
                   type="button"
                   role="menuitem"
                   disabled={entry.disabled}
