@@ -355,11 +355,54 @@ def test_resend_cooldown_and_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     run(scenario)
 
 
-def test_resend_for_unknown_challenge_is_202() -> None:
+def test_resend_for_unknown_challenge_is_410() -> None:
     async def scenario(client: Any, sent: list[tuple[str, str]]) -> None:
-        assert (await resend(client, str(uuid.uuid4()))).status_code == 202
-        assert (await resend(client, "not-a-uuid")).status_code == 202
+        for challenge in (str(uuid.uuid4()), "not-a-uuid"):
+            response = await resend(client, challenge)
+            assert response.status_code == 410
+            assert response.json() == {"detail": "This code has expired. Sign in again."}
         assert sent == []
+
+    run(scenario)
+    [row] = asyncio.run(_admin("SELECT count(*) AS n FROM audit_logs WHERE event_type = 'otp_resend_expired'"))
+    assert row["n"] == 2
+
+
+def test_resend_for_expired_challenge_is_410_and_sends_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = Clock(monkeypatch)
+
+    async def scenario(client: Any, sent: list[tuple[str, str]]) -> None:
+        challenge = (await login(client)).json()["challenge_id"]
+        clock.advance(timedelta(hours=4))
+        response = await resend(client, challenge)
+        assert response.status_code == 410
+        assert response.json() == {"detail": "This code has expired. Sign in again."}
+        assert len(sent) == 1  # only the original code
+
+    run(scenario)
+    [row] = asyncio.run(_admin("SELECT metadata::text AS m FROM audit_logs WHERE event_type = 'otp_resend_expired'"))
+    assert "alice@acme.test" not in row["m"]
+
+
+def test_resend_for_used_challenge_is_410() -> None:
+    async def scenario(client: Any, sent: list[tuple[str, str]]) -> None:
+        challenge = (await login(client)).json()["challenge_id"]
+        assert (await verify(client, challenge, sent[-1][1])).status_code == 200
+        assert (await resend(client, challenge)).status_code == 410
+        assert len(sent) == 1
+
+    run(scenario)
+
+
+def test_resend_for_valid_challenge_is_202_and_sends(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = Clock(monkeypatch)
+
+    async def scenario(client: Any, sent: list[tuple[str, str]]) -> None:
+        challenge = (await login(client)).json()["challenge_id"]
+        clock.advance(timedelta(seconds=61))
+        response = await resend(client, challenge)
+        assert response.status_code == 202 and response.json() == {"status": "accepted"}
+        assert len(sent) == 2 and sent[-1][0] == "alice@acme.test"
 
     run(scenario)
 

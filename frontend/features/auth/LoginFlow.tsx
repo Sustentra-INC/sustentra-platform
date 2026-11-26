@@ -12,6 +12,7 @@ import styles from "./auth.module.css";
 const OTP_LENGTH = 6;
 const MAX_OTP_ATTEMPTS = 3;
 const RESEND_SECONDS = 60;
+const EXPIRED_CODE_MESSAGE = "This code has expired. Sign in again.";
 const GENERIC_LOGIN_ERROR = "Invalid email or password.";
 /** `?status=ready` on the org login, after an invite is accepted (FE-003). */
 export const ACCOUNT_READY_NOTICE = "Your account is ready — sign in.";
@@ -45,6 +46,8 @@ export function LoginFlow({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const [submitting, setSubmitting] = useState(false);
+  // The code expired (or was already used) before a resend: nothing was sent, so offer a fresh sign-in.
+  const [expired, setExpired] = useState(false);
 
   // Restored from the browser's back/forward cache (Back after signing in): reload, so the
   // server sees the session and moves on instead of showing the login or its code step.
@@ -70,10 +73,12 @@ export function LoginFlow({
     setResendIn(RESEND_SECONDS);
     setError(null);
     setNotice(`Enter the 6-digit code we sent to ${email}.`);
+    setExpired(false);
     setStep("otp");
   }
 
   function backToPassword(message: string) {
+    setExpired(false);
     setStep("password");
     setChallengeId(null);
     setCode("");
@@ -140,9 +145,30 @@ export function LoginFlow({
       await resendOtp(challengeId);
       setResendIn(RESEND_SECONDS);
       setNotice("A new code is on its way.");
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 410) {
+        setExpired(true);
+        setNotice(null);
+        setError(EXPIRED_CODE_MESSAGE);
+        return;
+      }
       setError("Could not resend the code. Try again in a moment.");
     }
+  }
+
+  if (step === "otp" && expired) {
+    return (
+      <AuthShell title="Check your email">
+        <div className={styles.form}>
+          <p className={styles.error} role="alert">
+            {error ?? EXPIRED_CODE_MESSAGE}
+          </p>
+          <button type="button" className={styles.button} onClick={() => backToPassword("")}>
+            Sign in again
+          </button>
+        </div>
+      </AuthShell>
+    );
   }
 
   if (step === "otp") {

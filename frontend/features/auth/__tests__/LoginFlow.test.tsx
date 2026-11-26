@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 import { ApiError } from "../../../lib/api";
 
@@ -10,10 +10,11 @@ vi.mock("../api", async () => {
   return { ...actual, login: vi.fn(), verifyOtp: vi.fn(), resendOtp: vi.fn() };
 });
 
-import { login, verifyOtp } from "../api";
+import { login, resendOtp, verifyOtp } from "../api";
 import { ACCOUNT_READY_NOTICE, LoginFlow } from "../LoginFlow";
 
 const loginMock = login as unknown as ReturnType<typeof vi.fn>;
+const resendMock = resendOtp as unknown as ReturnType<typeof vi.fn>;
 const verifyMock = verifyOtp as unknown as ReturnType<typeof vi.fn>;
 
 function fillCredentials() {
@@ -94,6 +95,27 @@ describe("LoginFlow", () => {
     await signInThroughOtp();
     expect(window.localStorage.getItem("sustentra.lastRealm")).toBe("org:acme");
     expect(document.cookie).toContain("sustentra_realm=org%3Aacme");
+  });
+
+  it("on a 410 from resend, shows the expired message and returns to sign-in", async () => {
+    loginMock.mockResolvedValueOnce({ challenge_id: "ch_1" });
+    resendMock.mockRejectedValueOnce(new ApiError(410, "expired", null, null));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<LoginFlow realm={{ kind: "org", slug: "acme" }} />);
+      fillCredentials();
+      fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+      await screen.findByLabelText(/6-digit code/i);
+      for (let i = 0; i < 61; i += 1) await act(() => vi.advanceTimersByTimeAsync(1000)); // one tick per render
+      fireEvent.click(await screen.findByRole("button", { name: "Resend code" }));
+
+      await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("This code has expired. Sign in again."));
+      expect(screen.queryByText(/new code is on its way/i)).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Sign in again" }));
+      expect(await screen.findByLabelText("Email")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("sends provider admins to their org list (FE-006)", async () => {
