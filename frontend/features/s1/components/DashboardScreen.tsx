@@ -19,7 +19,7 @@ import type { EngagementConfig } from "../types";
 import type { DashboardFigures } from "../utils/engagementActivity";
 import { formatReportingPeriod } from "../utils/formatPeriod";
 import type { NavKey } from "./S1Chrome";
-import { IconCheckCircle, IconChevronDown } from "./icons";
+import { IconArrowRight, IconCheckCircle, IconChevronDown } from "./icons";
 
 /**
  * Dashboard: progress only, at a glance. The engagement timeline, how much of the
@@ -38,13 +38,32 @@ export function DashboardScreen({
   const go = (key: NavKey) => () => onNavigate?.(key);
   const hasEngagement = Boolean(engagement.clientName);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const phases = buildPhases(hasEngagement, figures);
+  const attention = attentionItems(figures);
+
+  // Evidence intake card
   const coverage = figures.coverage;
   const covered = coverage ? coverage.present + coverage.missing : 0;
-  // Data points once an evidence check is in play; until then, the documents read.
   const byDataPoint = coverage !== null && covered > 0;
-  const reviewable = figures.valuesReviewed + figures.valuesToReview;
-  const attention = attentionItems(figures);
+  const evidenceDone = byDataPoint ? (coverage?.present ?? 0) : figures.documentsReadable;
+  const evidenceTotal = byDataPoint ? covered : figures.documents;
+  const evidencePct = evidenceTotal > 0 ? Math.round((evidenceDone / evidenceTotal) * 100) : 0;
+  const evidenceMissing = byDataPoint ? (coverage?.missing ?? 0) : 0;
+
+  // Review card
+  const reviewTotal = figures.valuesReviewed + figures.valuesToReview;
+  const reviewPct = reviewTotal > 0 ? Math.round((figures.valuesReviewed / reviewTotal) * 100) : 0;
+  const RING_C = 182.21; // 2π × r=29
+  const ringDash = reviewTotal > 0 ? (figures.valuesReviewed / reviewTotal) * RING_C : 0;
+
+  // Assessment card
+  const assessTotal = figures.dataPointsCalculated;
+  const assessDone = figures.dataPointsExamined;
+  const assessPct = assessTotal > 0 ? Math.round((assessDone / assessTotal) * 100) : 0;
+  const useSegments = assessTotal > 0 && assessTotal <= 20;
+  const assessStatus =
+    assessTotal === 0 || assessDone === 0 ? "not started" :
+    assessDone === assessTotal ? "all examined" :
+    `${assessTotal - assessDone} remaining`;
 
   const statusText = hasEngagement
     ? [
@@ -112,48 +131,103 @@ export function DashboardScreen({
         </section>
       )}
 
-      <ol className="s1-timeline" aria-label="Engagement timeline">
-        {phases.map((phase, index) => (
-          <li key={phase.key} className={`s1-timeline__step s1-timeline__step--${phase.status}`}>
-            <button className="s1-timeline__btn" type="button" onClick={go(phase.nav)}>
-              <span className="s1-timeline__dot" aria-hidden>
-                {phase.status === "done" ? <Check /> : <span>{index + 1}</span>}
-              </span>
-              <span className="s1-timeline__text">
-                <span className="s1-timeline__label">{phase.label}</span>
-                <span className="s1-timeline__caption">{phase.caption}</span>
-              </span>
-            </button>
-          </li>
-        ))}
-      </ol>
+      <section aria-label="Engagement progress" className="s1-stage-cards">
+        {/* A: Evidence intake */}
+        <button type="button" className="s1-stage-card" onClick={go("evidence")}>
+          <span className="s1-stage-card__top">
+            <span className="s1-stage-card__name">Evidence intake</span>
+            <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>
+          </span>
+          <span className="s1-stage-card__big">{evidencePct}%</span>
+          <span className="s1-stage-card__bar-track" aria-hidden>
+            <span className="s1-stage-card__bar-fill" style={{ width: `${evidencePct}%` }} />
+          </span>
+          <span className="s1-stage-card__caption">
+            {evidenceTotal > 0 ? (
+              <>
+                {byDataPoint
+                  ? `${evidenceDone} of ${evidenceTotal} data points`
+                  : `${evidenceDone} of ${evidenceTotal} documents`}
+                {evidenceMissing > 0 && (
+                  <> · <span className="s1-stage-card__missing">{evidenceMissing} missing</span></>
+                )}
+              </>
+            ) : "No evidence yet"}
+          </span>
+        </button>
 
-      <div className="s1-dash__meters">
-        <Meter
-          label="Evidence obtained"
-          done={byDataPoint ? coverage.present : figures.documentsReadable}
-          total={byDataPoint ? covered : figures.documents}
-          detail={
-            byDataPoint
-              ? `${coverage.present} of ${covered} in-scope data points have their evidence`
-              : figures.documents
-                ? `${figures.documentsReadable} of ${figures.documents} documents read`
-                : "Nothing uploaded yet"
-          }
-          onClick={go("requests")}
-        />
-        <Meter
-          label="Values reviewed"
-          done={figures.valuesReviewed}
-          total={reviewable}
-          detail={
-            reviewable
-              ? `${figures.valuesReviewed} of ${reviewable} values accepted or corrected`
-              : "No values read yet"
-          }
-          onClick={go("evidence")}
-        />
-      </div>
+        {/* B: Review */}
+        <button type="button" className="s1-stage-card" onClick={go("evidence")}>
+          <span className="s1-stage-card__top">
+            <span className="s1-stage-card__name">Review</span>
+            <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>
+          </span>
+          <span className="s1-stage-card__ring-wrap">
+            <span className="s1-stage-card__ring">
+              <svg width="64" height="64" viewBox="0 0 72 72" aria-hidden>
+                <circle cx="36" cy="36" r="29" className="s1-stage-card__ring-track" />
+                <circle
+                  cx="36" cy="36" r="29"
+                  className="s1-stage-card__ring-progress"
+                  strokeDasharray={`${ringDash.toFixed(1)} ${RING_C}`}
+                />
+              </svg>
+              <span className="s1-stage-card__ring-pct">{reviewPct}%</span>
+            </span>
+            <span className="s1-stage-card__fraction">
+              {figures.valuesReviewed}
+              <span className="s1-stage-card__fraction-of"> / {reviewTotal}</span>
+            </span>
+          </span>
+          <span className="s1-stage-card__caption">
+            {reviewTotal > 0
+              ? `values accepted or corrected · ${figures.valuesToReview} left`
+              : "No values to review yet"}
+          </span>
+        </button>
+
+        {/* C: Assessment */}
+        <button type="button" className="s1-stage-card" onClick={go("results")}>
+          <span className="s1-stage-card__top">
+            <span className="s1-stage-card__name">Assessment</span>
+            <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>
+          </span>
+          <span className="s1-stage-card__big">
+            {assessDone}
+            <span className="s1-stage-card__big-sub"> / {assessTotal}</span>
+          </span>
+          {useSegments ? (
+            <span
+              className="s1-stage-card__segments"
+              aria-hidden
+              style={{ gridTemplateColumns: `repeat(${assessTotal}, minmax(0, 1fr))` }}
+            >
+              {Array.from({ length: assessTotal }, (_, i) => (
+                <span
+                  key={i}
+                  className={`s1-stage-card__seg${i < assessDone ? " s1-stage-card__seg--done" : ""}`}
+                />
+              ))}
+            </span>
+          ) : (
+            <span className="s1-stage-card__bar-track" aria-hidden>
+              <span className="s1-stage-card__bar-fill" style={{ width: `${assessPct}%` }} />
+            </span>
+          )}
+          <span className="s1-stage-card__caption">results examined · {assessStatus}</span>
+        </button>
+
+        {/* D: Opinion */}
+        <button type="button" className="s1-stage-card" onClick={go("output")}>
+          <span className="s1-stage-card__top">
+            <span className="s1-stage-card__name">Opinion</span>
+            <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>
+          </span>
+          <span className="s1-stage-card__state">Not issued</span>
+          <span className="s1-stage-card__bar-striped" aria-hidden />
+          <span className="s1-stage-card__caption">Issued after assessment</span>
+        </button>
+      </section>
 
       <section className="s1-attention" aria-labelledby="s1-attention-title">
         <h2 id="s1-attention-title">Needs attention</h2>
@@ -183,112 +257,6 @@ export function DashboardScreen({
       </section>
     </section>
   );
-}
-
-/* =============================== meters =============================== */
-
-function Meter({
-  label,
-  done,
-  total,
-  detail,
-  onClick,
-}: {
-  label: string;
-  done: number;
-  total: number;
-  detail: string;
-  onClick: () => void;
-}) {
-  const share = total > 0 ? done / total : 0;
-  return (
-    <button className="s1-meter" type="button" onClick={onClick}>
-      <span className="s1-meter__label">{label}</span>
-      <span className="s1-meter__figure">
-        {done > 0 && share < 0.01 ? "<1" : Math.round(share * 100)}
-        <span className="s1-meter__unit">%</span>
-      </span>
-      <span className="s1-meter__track" aria-hidden>
-        <span className="s1-meter__fill" style={{ transform: `scaleX(${share})` }} />
-      </span>
-      <span className="s1-meter__detail">{detail}</span>
-    </button>
-  );
-}
-
-/* =============================== timeline =============================== */
-
-type PhaseStatus = "done" | "active" | "pending";
-interface Phase {
-  key: string;
-  label: string;
-  status: PhaseStatus;
-  caption: string;
-  nav: NavKey;
-}
-
-function buildPhases(hasEngagement: boolean, f: DashboardFigures): Phase[] {
-  const hasEvidence = f.documents > 0;
-  const reviewable = f.valuesReviewed + f.valuesToReview;
-  const missing = f.coverage?.missing ?? 0;
-
-  const intake: PhaseStatus = !hasEvidence
-    ? hasEngagement
-      ? "active"
-      : "pending"
-    : f.blockedDocuments || f.documentsNeedingYou || missing || f.requestsAwaitingClient || f.requestsNotSent
-      ? "active"
-      : "done";
-  const review: PhaseStatus = !reviewable ? "pending" : f.valuesToReview ? "active" : "done";
-  const assessment: PhaseStatus =
-    f.dataPointsCalculated === 0 && !f.coverage?.present
-      ? "pending"
-      : f.dataPointsCalculated > 0 &&
-          f.dataPointsExamined >= f.dataPointsCalculated &&
-          missing === 0 &&
-          !f.reportedTotalsMissing
-        ? "done"
-        : review === "pending"
-          ? "pending"
-          : "active";
-
-  const phases: Phase[] = [
-    { key: "setup", label: "Setup", status: hasEngagement ? "done" : "active", caption: hasEngagement ? "Done" : "To do", nav: "setup" },
-    {
-      key: "intake",
-      label: "Evidence intake",
-      status: intake,
-      caption: hasEvidence ? `${f.documents} documents in` : "Nothing uploaded yet",
-      nav: "evidence",
-    },
-    {
-      key: "review",
-      label: "Review",
-      status: review,
-      caption: !reviewable ? "Waiting for evidence" : f.valuesToReview ? `${f.valuesToReview} values to review` : "All values reviewed",
-      nav: "evidence",
-    },
-    {
-      key: "assessment",
-      label: "Assessment",
-      status: assessment,
-      caption: f.dataPointsCalculated
-        ? `${f.dataPointsExamined} of ${f.dataPointsCalculated} results examined`
-        : missing
-          ? `${missing} data points missing evidence`
-          : "Not started",
-      nav: "results",
-    },
-    { key: "opinion", label: "Opinion", status: "pending", caption: "Statement not issued", nav: "output" },
-  ];
-  // Only the first unfinished phase is current; later ones wait their turn.
-  let seenOpen = false;
-  return phases.map((phase) => {
-    if (phase.status === "done") return phase;
-    if (seenOpen) return { ...phase, status: phase.status === "active" ? "active" : "pending" };
-    seenOpen = true;
-    return { ...phase, status: "active" };
-  });
 }
 
 /* ============================ needs attention ============================ */

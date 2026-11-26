@@ -27,20 +27,28 @@ const FIGURES: DashboardFigures = {
 };
 
 describe("dashboard: progress only", () => {
-  it("shows the timeline, the two meters and what needs attention, most urgent first", () => {
+  it("shows stage cards and what needs attention, most urgent first", () => {
     const onNavigate = vi.fn();
     render(<DashboardScreen engagement={engagementConfig} figures={FIGURES} onNavigate={onNavigate} />);
 
-    const timeline = screen.getByRole("list", { name: "Engagement timeline" });
-    expect(within(timeline).getAllByRole("button").map((b) => b.textContent)).toEqual([
-      expect.stringContaining("Setup"),
-      expect.stringContaining("Evidence intake152 documents in"),
-      expect.stringContaining("67 values to review"),
+    const progress = screen.getByRole("region", { name: "Engagement progress" });
+    const cards = within(progress).getAllByRole("button");
+    expect(cards.map((b) => b.textContent)).toEqual([
+      expect.stringContaining("Evidence intake"),
+      expect.stringContaining("Review"),
       expect.stringContaining("Assessment"),
-      expect.stringContaining("Statement not issued"),
+      expect.stringContaining("Opinion"),
     ]);
-    expect(screen.getByText("9 of 12 in-scope data points have their evidence")).toBeInTheDocument();
-    expect(screen.getByText("41 of 108 values accepted or corrected")).toBeInTheDocument();
+    // Evidence intake: 9 present, 3 missing → 9/12 = 75%
+    expect(cards[0]).toHaveTextContent("75%");
+    expect(cards[0]).toHaveTextContent(/9 of 12 data points/);
+    // Review: 41 reviewed of 108 total = 38%
+    expect(cards[1]).toHaveTextContent("38%");
+    expect(cards[1]).toHaveTextContent(/41/);
+    // Assessment: not started
+    expect(cards[2]).toHaveTextContent(/not started/);
+    // Opinion: not issued
+    expect(cards[3]).toHaveTextContent("Not issued");
 
     const attention = screen.getAllByRole("button").filter((b) => b.className.includes("s1-attention__item"));
     expect(attention[0]).toHaveTextContent("1document can't be read");
