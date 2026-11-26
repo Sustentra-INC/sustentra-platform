@@ -17,6 +17,8 @@ the locking, the ledger and the saving. No prompt, document text, quote or reply
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
 import unicodedata
@@ -48,6 +50,9 @@ from backend.app.services.reviewed_evidence import set_aside_reason, superseded_
 logger = logging.getLogger(__name__)
 
 FEATURE = "methodology_prefill"
+# Bump when any prompt, schema or checking rule of the read changes: a stored read made under another
+# version is not reused (see ``read_fingerprint``).
+PREFILL_PROMPT_VERSION = "1"
 MAX_DOCUMENTS = 5
 MAX_LINES = 1_500
 MAX_CHARS = 150_000
@@ -1359,6 +1364,43 @@ def candidate_documents(upload_service: Any, pipeline_service: Any, engagement_i
                              (decisions.get(str(document["document_id"])) or {}).get("placements")):
             found.append(document)
     return found
+
+
+def _document_hash(document: dict[str, Any], storage: Any) -> str | None:
+    """The document's content hash: the stored one when the record has it, else the hash of its bytes
+    (the file is read, never parsed, so this makes no AI call). None when the file cannot be read."""
+
+    stored = document.get("sha256") or document.get("content_hash")
+    if stored:
+        return str(stored)
+    try:
+        owner = document.get("org_id")
+        uri = str(document.get("storage_uri") or "")
+        if owner is not None and not storage.is_owned_by(uri, str(owner)):
+            return None
+        path: Path = storage.resolve_storage_uri(uri)
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(block)
+        return digest.hexdigest()
+    except Exception as exc:  # unreadable: no fingerprint, so the read runs as before; log the type only
+        logger.warning("methodology prefill: document %s not hashed (%s)", document.get("document_id"),
+                       type(exc).__name__)
+        return None
+
+
+def read_fingerprint(candidates: Sequence[dict[str, Any]], *, storage: Any, provider: str, model: str) -> str | None:
+    """What a read depends on: the candidate documents' content hashes (sorted), the prompt version, the
+    provider and the model. Equal fingerprints mean the same read, so the stored answer still stands.
+    None when a document cannot be hashed."""
+
+    hashes = [_document_hash(d, storage) for d in candidates]
+    if not hashes or any(h is None for h in hashes):
+        return None
+    payload = json.dumps({"documents": sorted(str(h) for h in hashes), "prompt": PREFILL_PROMPT_VERSION,
+                          "provider": provider, "model": model}, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def read_documents(candidates: Sequence[dict[str, Any]], *, storage: Any, parser: Any) -> list[PrefillDocument]:

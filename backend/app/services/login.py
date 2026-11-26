@@ -2,7 +2,7 @@
 
 Step 1  start_login(email, password, org_slug?)  -> challenge (OTP emailed)
 Step 2  verify_login(challenge_id, code)         -> session (cookie)
-        resend_code(challenge_id)                 -> new code, old one invalid
+        resend_code(challenge_id)                 -> new code, old one invalid (410 if expired/used/unknown)
 
 Security properties
 - Every password-step failure (unknown org, unknown user, wrong password,
@@ -44,6 +44,7 @@ MAX_RESENDS = 3
 
 INVALID_CREDENTIALS = "Invalid credentials"
 INVALID_CODE = "Invalid or expired code"
+RESEND_EXPIRED = "This code has expired. Sign in again."
 
 
 def utcnow() -> datetime:
@@ -274,7 +275,12 @@ async def resend_code(db: AsyncSession, challenge_id: str, meta: RequestMeta) ->
     now = utcnow()
     challenge = await _load_challenge(db, challenge_id)
     if challenge is None or not _usable(challenge, now):
-        return accepted  # unknown / expired / used: same answer, nothing revealed
+        # Unknown / expired / used: tell the user, or the screen claims a code was sent when none
+        # was. The challenge id only goes to someone who passed the password step, so this does not
+        # reveal which emails exist. No email or code in the event.
+        await _audit(db, "otp_resend_expired", meta,
+                     org_id=challenge["org_id"] if challenge else None)
+        return LoginOutcome(410, {"detail": RESEND_EXPIRED})
 
     if challenge["resend_count"] >= MAX_RESENDS:
         return LoginOutcome(429, {"detail": "Too many codes requested. Sign in again."})
