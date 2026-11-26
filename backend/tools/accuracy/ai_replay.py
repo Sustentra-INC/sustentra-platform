@@ -19,7 +19,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from backend.app.adapters.llm.claude import ClaudeClient, ModelT, StructuredReply, TokenUsage
+from backend.app.adapters.llm.base import LlmClient, ModelT, StructuredReply, TokenUsage
 from backend.app.core.config import AiProvider
 
 # Any fixed UUID: the AI code only needs an organisation id to be present.
@@ -66,10 +66,10 @@ def _load(data: dict[str, Any], output_type: type[ModelT]) -> StructuredReply[Mo
     )
 
 
-class RecordingClaude:
+class RecordingClaude(LlmClient):
     """Calls the real client and stores each reply."""
 
-    def __init__(self, inner: ClaudeClient, directory: Path) -> None:
+    def __init__(self, inner: LlmClient, directory: Path) -> None:
         self._inner = inner
         self._dir = directory
         directory.mkdir(parents=True, exist_ok=True)
@@ -91,7 +91,7 @@ class RecordingClaude:
         return reply
 
 
-class ReplayClaude:
+class ReplayClaude(LlmClient):
     """Answers from recorded replies; never touches the network."""
 
     def __init__(self, directory: Path, *, model: str, provider: AiProvider = "anthropic") -> None:

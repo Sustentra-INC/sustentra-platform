@@ -26,7 +26,7 @@ Document text is untrusted data. The system prompt says so, the reply is bound t
 whose field names are an enum of the asked fields, and Claude has no tools.
 
 The gate and the ledger are Claude routing's (``ai_routing``): ``AI_SUGGESTIONS_ENABLED``, a client
-from ``get_claude()``, ``ai_usage.cap_reached``; every call that returns a reply is written to the
+from ``get_llm()``, ``ai_usage.cap_reached``; every call that returns a reply is written to the
 ``ai_usage`` ledger under feature ``extraction``. A call that raises gets no row. Any failure is a
 warning (``ai_unavailable``) and the pipeline goes on as without AI; with AI off nothing changes.
 
@@ -50,7 +50,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, create_model
 
-from backend.app.adapters.llm.claude import MAX_RETRIES, REQUEST_TIMEOUT_S, ClaudeClient
+from backend.app.adapters.llm.base import MAX_RETRIES, REQUEST_TIMEOUT_S, LlmClient
 from backend.app.core.config import Settings, get_settings
 from backend.app.services import ai_usage
 from backend.app.services.ai_locator import (
@@ -565,7 +565,7 @@ class AssistOutcome:
 
 class AiExtraction:
     def __init__(self, *, settings: Settings | None = None,
-                 client_factory: Callable[[Settings], ClaudeClient | None] = new_client,
+                 client_factory: Callable[[Settings], LlmClient | None] = new_client,
                  ledger: Ledger | None = None, clock: Callable[[], float] = time.monotonic) -> None:
         self._settings = settings
         self._client_factory = client_factory

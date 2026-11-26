@@ -10,7 +10,7 @@ Document text is untrusted data. The system prompt says so, the reply is bound t
 schema whose type and reason are enums, and Claude has no tools: an obeyed instruction in a
 document can only yield a type whose quote must still be on the document.
 
-The gate is methodology prefill's: ``AI_SUGGESTIONS_ENABLED``, a client from ``get_claude()``
+The gate is methodology prefill's: ``AI_SUGGESTIONS_ENABLED``, a client from ``get_llm()``
 and ``ai_usage.cap_reached``. Every call that returns a reply is written to the ``ai_usage``
 ledger (feature ``routing``) in its own short transaction, after the call; no database
 connection is held while Claude answers. Any failure becomes a warning (``ai_unavailable``)
@@ -35,7 +35,8 @@ from typing import Any, Literal, Protocol
 from sqlalchemy import Engine
 from pydantic import BaseModel, ConfigDict, create_model
 
-from backend.app.adapters.llm.claude import AiNotConfiguredError, ClaudeClient, StructuredReply, get_claude
+from backend.app.adapters.llm.base import LlmClient, LlmNotConfigured, StructuredReply
+from backend.app.adapters.llm.factory import get_llm
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.db import tenant_transaction
 from backend.app.core.s1_scope import S1Scope
@@ -194,27 +195,27 @@ class RoutingResult:
                 "disagrees": disagrees, "review_required": True}
 
 
-def new_client(settings: Settings) -> ClaudeClient | None:
+def new_client(settings: Settings) -> LlmClient | None:
     try:
-        return get_claude(settings)
-    except AiNotConfiguredError:
+        return get_llm(settings)
+    except LlmNotConfigured:
         return None
 
 
-def new_routing_client(settings: Settings) -> ClaudeClient | None:
+def new_routing_client(settings: Settings) -> LlmClient | None:
     """The client the double-check uses: it fails fast, so a slow answer never holds a read up for long."""
 
     try:
-        return get_claude(settings, timeout_s=REQUEST_TIMEOUT_S, max_retries=0)
-    except AiNotConfiguredError:
+        return get_llm(settings, timeout_s=REQUEST_TIMEOUT_S, max_retries=0)
+    except LlmNotConfigured:
         return None
 
 
 class AiRouting:
     def __init__(self, *, settings: Settings | None = None,
-                 client_factory: Callable[[Settings], ClaudeClient | None] = new_client,
+                 client_factory: Callable[[Settings], LlmClient | None] = new_client,
                  ledger: Ledger | None = None,
-                 quick_client_factory: Callable[[Settings], ClaudeClient | None] | None = None) -> None:
+                 quick_client_factory: Callable[[Settings], LlmClient | None] | None = None) -> None:
         self._settings = settings
         self._client_factory = client_factory
         # A factory given for tests serves both paths unless a quick one is given too.

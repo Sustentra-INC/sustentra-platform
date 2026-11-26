@@ -36,20 +36,21 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
-import anthropic
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from backend.app.adapters.llm.claude import (
-    AiNotConfiguredError,
-    ClaudeClient,
+from backend.app.adapters.llm.base import (
+    LlmClient,
+    LlmNotConfigured,
+    LlmProviderError,
+    LlmRequestRejected,
     StructuredReply,
     TokenUsage,
-    get_claude,
 )
+from backend.app.adapters.llm.factory import get_llm
 from backend.app.api import documents as documents_api
 from backend.app.api.engagements import _visible, require_open_engagement
 from backend.app.api.evidence_tree import document_decisions
@@ -174,12 +175,12 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def new_client(settings: Settings) -> ClaudeClient | None:
+def new_client(settings: Settings) -> LlmClient | None:
     """The Claude client, or None when this deployment has none set up (tests replace this)."""
 
     try:
-        return get_claude(settings, timeout_s=prefill.REQUEST_TIMEOUT_S)
-    except AiNotConfiguredError:
+        return get_llm(settings, timeout_s=prefill.REQUEST_TIMEOUT_S)
+    except LlmNotConfigured:
         return None
 
 
@@ -187,22 +188,21 @@ _CONFIG = "Sustentra's AI couldn't process this request (configuration)."
 
 
 def _is_request_rejected(exc: BaseException) -> bool:
-    """True when the provider answered 400 or 422: the request itself is wrong, so retrying cannot help."""
+    """True when the provider refused the request itself (400, 401, 403, 404, 422): retrying cannot help."""
 
-    return isinstance(exc, anthropic.APIStatusError) and exc.status_code in (400, 401, 403, 404, 422)
+    return isinstance(exc, LlmRequestRejected)
 
 
 def _reason(exc: BaseException) -> str:
     """A short, safe reason for the response: provider error type and the first 120 characters of its
     message (which describes the request, never the documents), with anything key-shaped removed."""
 
-    if not isinstance(exc, anthropic.APIStatusError):
+    if not isinstance(exc, LlmProviderError):
         return type(exc).__name__
-    body: dict[str, Any] = exc.body if isinstance(exc.body, dict) else {}
-    inner = body.get("error")
-    error: dict[str, Any] = inner if isinstance(inner, dict) else body
-    message = re.sub(r"sk-[A-Za-z0-9_\-]+|[A-Za-z0-9_\-]{32,}", "[removed]", str(error.get("message", "")))
-    kind = "billing" if "credit balance" in message.lower() else str(error.get("type") or exc.status_code)
+    if exc.status_code is None:
+        return exc.cause_name
+    message = re.sub(r"sk-[A-Za-z0-9_\-]+|[A-Za-z0-9_\-]{32,}", "[removed]", exc.message)
+    kind = "billing" if "credit balance" in message.lower() else str(exc.error_type or exc.status_code)
     return f"{kind}: {message[:120]}".strip()
 
 
@@ -213,15 +213,12 @@ def _log_call_failure(exc: BaseException, part: str = "") -> None:
     document; the prompt and the documents are never logged.
     """
 
-    if isinstance(exc, anthropic.APIStatusError):
-        body: dict[str, Any] = exc.body if isinstance(exc.body, dict) else {}
-        inner = body.get("error")
-        error: dict[str, Any] = inner if isinstance(inner, dict) else body
+    if isinstance(exc, LlmProviderError) and exc.status_code is not None:
         logger.warning("methodology prefill: Claude call failed part=" + part + " (%s) status=%s error_type=%s request_id=%s message=%s",
-                       type(exc).__name__, exc.status_code, error.get("type"), exc.request_id,
-                       str(error.get("message", ""))[:500])
+                       exc.cause_name, exc.status_code, exc.error_type, exc.request_id, exc.message[:500])
     else:
-        logger.warning("methodology prefill: Claude call failed part=%s (%s)", part, type(exc).__name__)
+        name = exc.cause_name if isinstance(exc, LlmProviderError) else type(exc).__name__
+        logger.warning("methodology prefill: Claude call failed part=%s (%s)", part, name)
 
 
 def _combine(results: list[prefill.PartResult]) -> tuple[StructuredReply[prefill.PrefillOutput] | None, list[dict[str, str]]]:

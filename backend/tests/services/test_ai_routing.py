@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from backend.app.adapters.llm.claude import StructuredReply, TokenUsage
+from backend.app.adapters.llm.base import StructuredReply, TokenUsage
 from backend.app.core.config import Settings
 from backend.app.repositories.pipeline_repository import InMemoryPipelineRunRepository
 from backend.app.services import ai_routing
@@ -310,10 +310,10 @@ SHADOW_ARGS: dict[str, Any] = {"status": "classified", "primary": "CT-S1-FUELQTY
 def test_the_quick_client_has_a_short_timeout_and_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, Any] = {}
 
-    def fake_get_claude(settings: Settings, **kw: Any) -> None:
+    def fake_get_llm(settings: Settings, **kw: Any) -> None:
         seen.update(kw)
 
-    monkeypatch.setattr(ai_routing, "get_claude", fake_get_claude)
+    monkeypatch.setattr(ai_routing, "get_llm", fake_get_llm)
     ai_routing.new_routing_client(settings())
     assert seen == {"timeout_s": ai_routing.REQUEST_TIMEOUT_S, "max_retries": 0}
     assert ai_routing.REQUEST_TIMEOUT_S <= 20  # the longest one double-check can hold a read up

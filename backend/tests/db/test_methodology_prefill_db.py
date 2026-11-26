@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from backend.app.adapters.llm.claude import StructuredReply, TokenUsage
+from backend.app.adapters.llm.base import StructuredReply, TokenUsage
 from backend.app.api import methodology_review as api
 from backend.app.core.config import Settings
 from backend.app.services import methodology_prefill as mp
@@ -323,15 +323,13 @@ def test_one_failing_call_keeps_the_others_and_names_the_section(claude: FakeCla
 
 
 def test_a_request_the_provider_rejects_names_the_reason(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
-    import anthropic
-    import httpx2
+    from backend.app.adapters.llm.base import LlmRequestRejected
 
     eid = create()["id"]
-    response = httpx2.Response(400, request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages"), json={
-        "type": "error", "error": {"type": "invalid_request_error", "message": "The compiled grammar is too large."}})
 
     def reject(**kwargs: Any) -> Any:
-        raise anthropic.BadRequestError("bad", response=response, body=response.json())
+        raise LlmRequestRejected("BadRequestError: HTTP 400", cause_name="BadRequestError", status_code=400,
+                                 error_type="invalid_request_error", message="The compiled grammar is too large.")
 
     monkeypatch.setattr(claude, "structured", reject)
     result = prefill(eid)

@@ -118,8 +118,8 @@ def main(argv: list[str] | None = None) -> int:
             client = ReplayClaude(args.ai_replay, model=settings.ai_model, provider=settings.ai_provider)
             mode = "ai-replay"
         else:
-            from backend.app.adapters.llm.claude import get_claude
-            real = get_claude(settings.model_copy(update={"ai_suggestions_enabled": True}))
+            from backend.app.adapters.llm.factory import get_llm
+            real = get_llm(settings.model_copy(update={"ai_suggestions_enabled": True}))
             if real is None:
                 print("cannot record: no AI credentials configured (ANTHROPIC_API_KEY / Bedrock)", file=sys.stderr)
                 return 2

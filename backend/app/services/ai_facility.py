@@ -15,7 +15,7 @@ printed in the file name or on a line of the sample (``ai_locator``); otherwise 
 unplaced, and counts as unplaced in the recalculation, until a reviewer places it: the "Place on <facility>"
 action writes the reviewer's own facility decision (POST /documents/{id}/facility, audited).
 
-The gate is the other Claude features': ``AI_SUGGESTIONS_ENABLED``, a client from ``get_claude()`` and the per-org
+The gate is the other Claude features': ``AI_SUGGESTIONS_ENABLED``, a client from ``get_llm()`` and the per-org
 monthly cap (``ai_usage.cap_reached``). Every call that returns a reply is written to the ``ai_usage`` ledger under
 feature ``facility``. With AI off, or on any failure, there is no suggestion and no error.
 
@@ -35,7 +35,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import text
 
-from backend.app.adapters.llm.claude import ClaudeClient
+from backend.app.adapters.llm.base import LlmClient
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.db import tenant_transaction
 from backend.app.core.s1_scope import S1Scope
@@ -230,7 +230,7 @@ def document_facility_decision(org_id: str, engagement_id: str, document_id: str
 # --- the service ---------------------------------------------------------------------------------------------------
 class AiFacility:
     def __init__(self, *, settings: Settings | None = None,
-                 client_factory: Callable[[Settings], ClaudeClient | None] = new_client,
+                 client_factory: Callable[[Settings], LlmClient | None] = new_client,
                  ledger: Ledger | None = None,
                  facilities_for: Callable[[str, str], tuple[list[dict[str, Any]], str | None]] = engagement_facilities,
                  decided_for: Callable[[str, str, str], str | None] = document_facility_decision) -> None:
