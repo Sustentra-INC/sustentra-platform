@@ -19,7 +19,7 @@ import type { EngagementConfig } from "../types";
 import type { DashboardFigures } from "../utils/engagementActivity";
 import { formatReportingPeriod } from "../utils/formatPeriod";
 import type { NavKey } from "./S1Chrome";
-import { IconArrowRight, IconCheckCircle, IconChevronDown } from "./icons";
+import { IconArrowRight, IconCheckCircle, IconChevronDown, IconClose, IconTag, IconWarning } from "./icons";
 
 /**
  * Dashboard: progress only, at a glance. The engagement timeline, how much of the
@@ -44,6 +44,12 @@ export function DashboardScreen({
   const reviewStage = phases[2].status;
   const assessStage = phases[3].status;
   const opinionStage = phases[4].status;
+
+  // Focus card
+  const blockingFocus = attention.find(a => a.tone === "blocking");
+  const upNextFocus = !blockingFocus ? attention.find(a => a.tone === "open") : undefined;
+  const focusItem = blockingFocus ?? upNextFocus;
+  const isFocusBlocking = !!blockingFocus;
 
   // Evidence intake card
   const coverage = figures.coverage;
@@ -254,6 +260,12 @@ export function DashboardScreen({
         </button>
       </section>
 
+      {focusItem && (
+        <div className="s1-focus-wrap">
+          <FocusCard item={focusItem} isBlocking={isFocusBlocking} onNavigate={onNavigate} />
+        </div>
+      )}
+
       <section className="s1-attention" aria-labelledby="s1-attention-title">
         <h2 id="s1-attention-title">Needs attention</h2>
         {attention.length ? (
@@ -387,6 +399,90 @@ function attentionItems(f: DashboardFigures): Attention[] {
     },
   ];
   return items.filter((item) => item.n > 0);
+}
+
+/* =============================== focus card =============================== */
+
+const FOCUS_BUTTON_LABELS: Record<string, string> = {
+  blocked:    "Open document",
+  unresolved: "Assign documents",
+  period:     "Open Setup",
+  review:     "Review values",
+  missing:    "View coverage",
+  unsent:     "Send requests",
+  reported:   "Enter totals",
+  examine:    "Review results",
+  awaiting:   "View requests",
+};
+
+function FocusCard({
+  item,
+  isBlocking,
+  onNavigate,
+}: {
+  item: Attention;
+  isBlocking: boolean;
+  onNavigate?: (key: NavKey) => void;
+}) {
+  const go = (key: NavKey) => () => onNavigate?.(key);
+  const tone = isBlocking ? "blocking" : "upnext";
+  const tagLabel = isBlocking
+    ? `Blocking ${item.key === "blocked" ? "intake" : item.key}`
+    : "Up next";
+  const title = item.uncounted ? item.text : `${item.n} ${item.text}`;
+  const primaryLabel = FOCUS_BUTTON_LABELS[item.key] ?? item.action;
+
+  return (
+    <section aria-labelledby={`s1-focus-${tone}`} className={`s1-focus s1-focus--${tone}`}>
+      <div className="s1-focus__top">
+        <span className={`s1-focus__tag s1-focus__tag--${tone}`}>
+          {isBlocking
+            ? <IconWarning size={15} aria-hidden />
+            : <IconArrowRight size={14} aria-hidden />}
+          {tagLabel}
+        </span>
+        <span className={`s1-focus__area s1-focus__area--${tone}`}>{item.action}</span>
+      </div>
+      <div className="s1-focus__body">
+        {isBlocking ? (
+          <span className="s1-focus__doc-slot" aria-hidden>
+            <span className="s1-focus__doc">
+              <span className="s1-focus__doc-line s1-focus__doc-line--title" style={{ width: "60%" }} />
+              <span className="s1-focus__doc-line" style={{ width: "90%" }} />
+              <span className="s1-focus__doc-line" style={{ width: "80%" }} />
+              <span className="s1-focus__doc-line" style={{ width: "88%" }} />
+              <span className="s1-focus__doc-line" style={{ width: "50%" }} />
+            </span>
+            <span className="s1-focus__doc-badge">
+              <IconClose size={16} aria-hidden />
+            </span>
+          </span>
+        ) : (
+          <span className="s1-focus__doc-slot s1-focus__doc-stack" aria-hidden>
+            <span className="s1-focus__doc-back" />
+            <span className="s1-focus__doc-front">
+              <span className="s1-focus__doc-line s1-focus__doc-line--title" style={{ width: "60%" }} />
+              <span className="s1-focus__doc-line" style={{ width: "90%" }} />
+              <span className="s1-focus__doc-line" style={{ width: "78%" }} />
+              <span className="s1-focus__doc-line" style={{ width: "85%" }} />
+            </span>
+            <span className="s1-focus__doc-pill">
+              <IconTag size={13} aria-hidden />
+              Type?
+            </span>
+          </span>
+        )}
+        <div className="s1-focus__text">
+          <h2 id={`s1-focus-${tone}`} className="s1-focus__title">{title}</h2>
+        </div>
+      </div>
+      <div className="s1-focus__actions">
+        <button type="button" className="s1-button s1-button--ink" onClick={go(item.nav)}>
+          {primaryLabel}
+        </button>
+      </div>
+    </section>
+  );
 }
 
 /* =============================== timeline =============================== */

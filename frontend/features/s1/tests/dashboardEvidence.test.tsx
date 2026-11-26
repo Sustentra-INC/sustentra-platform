@@ -139,16 +139,16 @@ describe("dashboard evidence figures: live coverage", () => {
 
   it("clears the reporting period row as soon as Setup saves the end date, before the recalculation catches up", async () => {
     const { rerender, props } = await renderLive(NEW_ENGAGEMENT, EMPTY);
-    expect(screen.getByText("Reporting period needs a start and an end date")).toBeInTheDocument();
+    expect(screen.getAllByText("Reporting period needs a start and an end date")[0]).toBeInTheDocument();
 
     // The recalculation already fetched still has no end date; the engagement now has one.
     rerender(<BackendDashboard {...props} engagement={{ ...NEW_ENGAGEMENT, reportingPeriod: { start: "2026-10-08", end: "2027-10-07" } }} />);
-    expect(screen.queryByText(/Reporting period needs/)).toBeNull();
+    expect(screen.queryAllByText(/Reporting period needs/).length).toBe(0);
     expect(api).toHaveBeenCalledTimes(1);
 
     // And it comes back at once if a date is cleared.
     rerender(<BackendDashboard {...props} engagement={{ ...NEW_ENGAGEMENT, reportingPeriod: { start: "", end: "2027-10-07" } }} />);
-    expect(screen.getByText("Reporting period needs a start and an end date")).toBeInTheDocument();
+    expect(screen.getAllByText("Reporting period needs a start and an end date")[0]).toBeInTheDocument();
   });
 
   it("shows no reporting period row before an engagement is chosen", async () => {
@@ -196,7 +196,7 @@ describe("dashboard evidence figures: live coverage", () => {
     const result = withoutReported("scope1_total", "scope2_market_total");
     expect(missingReportedTotals(result)).toEqual(["Scope 1 (Total)", "Scope 2 (Total), market-based"]);
     await renderLive(WORKBOOK_ENGAGEMENT, result);
-    expect(screen.getByText("Reported totals not entered")).toBeInTheDocument();
+    expect(screen.getAllByText("Reported totals not entered")[0]).toBeInTheDocument();
     expect(screen.queryByText("Reported total not entered")).toBeNull();
   });
 
