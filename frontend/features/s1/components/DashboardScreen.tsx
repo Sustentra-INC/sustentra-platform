@@ -465,11 +465,15 @@ function FocusCard({
 /* =============================== queue =============================== */
 
 const NAV_LABEL: Record<NavKey, string> = {
-  setup:    "Setup",
-  evidence: "Evidence",
-  requests: "Coverage & requests",
-  results:  "Verification results",
-  output:   "Output",
+  dashboard:   "Dashboard",
+  setup:       "Setup",
+  upload:      "Upload",
+  evidence:    "Evidence",
+  requests:    "Coverage & requests",
+  coverage:    "Coverage",
+  methodology: "Methodology",
+  results:     "Verification results",
+  output:      "Output",
 };
 
 function QueueSection({

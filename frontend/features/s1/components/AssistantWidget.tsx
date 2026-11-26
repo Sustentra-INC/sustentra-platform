@@ -8,6 +8,7 @@ import type { Message } from "../assistant/sanitize";
 import { TOOL_ACTIVITY } from "../assistant/spec";
 import type { AssistantData } from "../assistant/tools";
 import type { NavKey } from "./S1Chrome";
+import { IconArrowRight, IconClose, IconCompose, IconSend, IconSparkle, IconWarning } from "./icons";
 
 /**
  * Sustentra assistant — a small, integrated agent (bottom-right on every screen).
@@ -465,9 +466,11 @@ export function AssistantWidget({
       {open ? (
         <section className="s1-ai" role="dialog" aria-label="Sustentra assistant">
           <header className="s1-ai__head">
-            <span className="s1-ai__brand">
-              <img className="s1-ai__mark" src="/sustentra-mark.png" alt="" aria-hidden />
-              Sustentra assistant
+            <span className="s1-ai__brand-tile" aria-hidden>
+              <IconSparkle />
+            </span>
+            <span className="s1-ai__brand-info">
+              <span className="s1-ai__brand-name">Ask Sustentra</span>
               {assistant ? <span className={`s1-ai__badge${connected ? "" : " is-off"}`}>{connected ? "AI" : "Built-in help"}</span> : null}
             </span>
             <span className="s1-ai__headactions">
@@ -475,6 +478,7 @@ export function AssistantWidget({
                 <button
                   className="s1-ai__new"
                   type="button"
+                  aria-label="New chat"
                   onClick={() => {
                     abort.current?.abort();
                     history.current = [];
@@ -482,11 +486,11 @@ export function AssistantWidget({
                     setBusy(false);
                   }}
                 >
-                  New chat
+                  <IconCompose aria-hidden />
                 </button>
               ) : null}
               <button className="s1-ai__close" type="button" aria-label="Close" onClick={() => setOpen(false)}>
-                ✕
+                <IconClose aria-hidden />
               </button>
             </span>
           </header>
@@ -494,9 +498,8 @@ export function AssistantWidget({
             {assistant ? (
               <>
                 {chat.length === 0 ? (
-                  <div className="s1-ai__msg s1-ai__msg--assistant">
-                    Ask me about this engagement. I look things up in its documents, values, requests and results, and
-                    link every figure to where it came from. I read; the decisions are yours.
+                  <div className="s1-ai__start">
+                    <p className="s1-ai__start-prompt">What do you want to know?</p>
                   </div>
                 ) : null}
                 {chat.map((m, i) =>
@@ -505,14 +508,29 @@ export function AssistantWidget({
                       {m.text}
                     </div>
                   ) : (
-                    <div key={i} className={`s1-ai__msg s1-ai__msg--assistant${m.error ? " is-error" : ""}`} aria-live="polite">
+                    <div key={i} className={`s1-ai__msg s1-ai__msg--assistant${m.error ? " is-error" : ""}`} aria-live="polite" role={m.error ? "alert" : undefined}>
                       {m.status ? (
                         <span className="s1-ai__status">
                           <span className="s1-ai__dots" aria-hidden />
                           {m.status}…
                         </span>
                       ) : null}
-                      {m.error ? m.error : m.text ? m.canned ? m.text : <AnswerText text={m.text} resolve={resolve} /> : null}
+                      {m.error ? (
+                        <span className="s1-ai__error-body">
+                          <IconWarning aria-hidden />
+                          {m.error}
+                        </span>
+                      ) : m.text ? (
+                        <>
+                          {!m.canned ? (
+                            <span className="s1-ai__asst-head" aria-hidden>
+                              <span className="s1-ai__asst-tile"><IconSparkle /></span>
+                              Sustentra
+                            </span>
+                          ) : null}
+                          {m.canned ? m.text : <AnswerText text={m.text} resolve={resolve} />}
+                        </>
+                      ) : null}
                       {!m.streaming && !m.error && !m.canned && m.text ? <span className="s1-ai__disclaimer">AI answer · check the linked sources</span> : null}
                     </div>
                   )
@@ -529,7 +547,8 @@ export function AssistantWidget({
           <div className="s1-ai__sugs">
             {suggestions.map((s) => (
               <button key={s} className="s1-ai__sug" type="button" disabled={busy} onClick={() => send(s)}>
-                {s}
+                <span>{s}</span>
+                <IconArrowRight aria-hidden />
               </button>
             ))}
           </div>
@@ -548,7 +567,7 @@ export function AssistantWidget({
               maxLength={2000}
             />
             <button className="s1-ai__send" type="submit" aria-label="Send" disabled={busy}>
-              ↑
+              <IconSend aria-hidden />
             </button>
           </form>
         </section>
@@ -560,7 +579,7 @@ export function AssistantWidget({
         title="Sustentra assistant"
         onClick={() => setOpen((v) => !v)}
       >
-        <img className="s1-ai-fab__mark" src="/sustentra-mark.png" alt="Sustentra" />
+        <IconSparkle aria-hidden />
       </button>
     </>
   );
