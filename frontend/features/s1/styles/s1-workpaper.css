@@ -1326,6 +1326,25 @@ select:focus-visible,
   box-shadow: var(--shadow-card);
 }
 
+/* View-switch modifier: page-tab style (--sf-track track, --r-ctl segments) */
+.s1-ws-factabs--page {
+  gap: var(--sp-1); padding: var(--sp-1); flex-wrap: nowrap;
+  border-radius: var(--r-card); background: var(--sf-track);
+}
+.s1-ws-factabs--page .s1-ws-factab {
+  height: calc(var(--button-h) + var(--sp-half)); padding: 0 var(--sp-4);
+  font-size: var(--text-md); font-weight: var(--weight-medium); color: var(--ink-2);
+  background: transparent; border-radius: var(--r-ctl); box-shadow: none;
+}
+.s1-ws-factabs--page .s1-ws-factab:hover {
+  background: color-mix(in srgb, var(--sf-card) 60%, transparent 40%); color: var(--ink);
+  box-shadow: none;
+}
+.s1-ws-factabs--page .s1-ws-factab.is-on {
+  background: var(--sf-card); color: var(--ink); font-weight: var(--weight-strong);
+  box-shadow: var(--shadow-card);
+}
+
 .s1-ws-table td { vertical-align: top; }
 .s1-ws-group td {
   background: var(--sf-sunken); color: var(--ink);

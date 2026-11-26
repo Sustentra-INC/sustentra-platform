@@ -297,12 +297,14 @@
   --r-md:     10px;    /* avatars, small buttons, standard inputs */
   --r-ctl:    11px;    /* buttons, search fields, nav items */
   --r-card-sm: 12px;   /* small cards, large auth inputs */
-  --r-card:   14px;    /* cards, dropdown panels */
+  --r-card:   14px;    /* cards */
+  --r-pop:    16px;    /* floating dropdown panels */
   --r-lg:     18px;    /* large cards, modals */
   --r-pill:  999px;    /* pills, badges */
 
   --input-h:    40px;   /* standard form input height */
   --input-h-lg: 46px;   /* large auth input height */
+  --panel-max-h: 320px;  /* floating dropdown panel max height */
   --checkbox-size: 16px;  /* native checkbox width/height */
 
   --border-hairline: 1px solid var(--line);

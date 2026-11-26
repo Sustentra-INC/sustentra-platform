@@ -418,7 +418,7 @@ export function EvidenceWorkspace({
       ) : null}
 
       {tree ? (
-        <div className="s1-ws-factabs s1-ws-factabs--seg" role="group" aria-label="Group documents">
+        <div className="s1-ws-factabs s1-ws-factabs--page" role="group" aria-label="Group documents">
           <button className={`s1-ws-factab${view === "lines" ? " is-on" : ""}`} type="button" aria-pressed={view === "lines"} onClick={() => setView("lines")}>
             By calculation line
           </button>
