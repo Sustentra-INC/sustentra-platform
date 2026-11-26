@@ -59,15 +59,16 @@ describe("frontend contract checks", () => {
     expect(css).not.toContain("--font-mono");
   });
 
-  // docs/design_standard.md, section 2: the text in a field is smaller than the section title above it.
-  it("sets the text in form fields at the small size", () => {
+  // docs/design_standard.md, section 2: standard inputs use --text-md, search inner input uses --text-base.
+  it("sets the text in form fields at an allowed size", () => {
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
     const field = /(^|[\s,>+~(])(input|select|textarea)\b|[-_](input|select)\b/;
+    const allowed = new Set(["var(--text-sm)", "var(--text-md)", "var(--text-base)", "var(--text-title)", "inherit"]);
     const offenders: string[] = [];
     postcss.parse(css).walkRules((rule) => {
       if (!field.test(rule.selector)) return;
       rule.walkDecls("font-size", (d) => {
-        if (d.value !== "var(--text-sm)" && d.value !== "inherit") offenders.push(`${rule.selector} { font-size: ${d.value} }`);
+        if (!allowed.has(d.value)) offenders.push(`${rule.selector} { font-size: ${d.value} }`);
       });
     });
     expect(offenders).toEqual([]);

@@ -229,6 +229,7 @@
   --sp-1:     4px;
   --sp-1-5:   6px;
   --sp-2:     8px;
+  --sp-2-5:  10px;   /* textarea block padding */
   --sp-3:    12px;
   --sp-3-5:  14px;
   --sp-4:    16px;
@@ -289,13 +290,18 @@
   --radius-input: 6px;
 
   /* New radius scale (use these for new components). */
-  --r-sm:      8px;    /* small chips, checkboxes */
-  --r-md:     10px;    /* avatars, small buttons */
-  --r-ctl:    11px;    /* buttons, inputs, nav items */
-  --r-card-sm: 12px;   /* small cards */
+  --r-xs:      4px;    /* checkboxes */
+  --r-sm:      8px;    /* small chips */
+  --r-md:     10px;    /* avatars, small buttons, standard inputs */
+  --r-ctl:    11px;    /* buttons, search fields, nav items */
+  --r-card-sm: 12px;   /* small cards, large auth inputs */
   --r-card:   14px;    /* cards, dropdown panels */
   --r-lg:     18px;    /* large cards, modals */
   --r-pill:  999px;    /* pills, badges */
+
+  --input-h:    40px;   /* standard form input height */
+  --input-h-lg: 46px;   /* large auth input height */
+  --checkbox-size: 16px;  /* native checkbox width/height */
 
   --border-hairline: 1px solid var(--line);
   --border-strong:   1px solid var(--line-strong);

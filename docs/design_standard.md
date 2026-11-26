@@ -23,7 +23,7 @@ The screen must make sense with no tip, tour or tooltip open.
 | Token | Size | Use |
 |---|---|---|
 | `--text-xs` | 11px | Group labels, badges |
-| `--text-sm` | 12px | Labels, column headers, metadata, chips, timestamps, helper text, and the text inside form fields (inputs, selects, text areas) |
+| `--text-sm` | 12px | Labels, column headers, metadata, chips, timestamps, helper text |
 | `--text-base` | 13px | Secondary body text |
 | `--text-md` | 14px | Body, table cells, buttons, values |
 | `--text-title` | 16px | Card titles |
@@ -42,9 +42,9 @@ The screen must make sense with no tip, tour or tooltip open.
 - **Hierarchy comes from placement, grouping, contrast (`--ink`, `--ink-2`, `--ink-3`) and
   weight, before size or colour.** A section title is `--text-md` in the strong weight, not
   an extra size: it matches the text in its fields in size and outranks it in weight.
-- **The text in a field is smaller than the section title above it**: fields use `--text-sm`,
-  so a form reads title, then label, then value. The contract test checks every input, select
-  and text area rule.
+- **Fields use `--text-md`** (14px), matching body text. Labels above them are `--text-sm` at
+  `--weight-strong`, so a form reads label, then value. The contract test checks every input,
+  select and textarea rule.
 - Uppercase only for column headers and small group labels, with 0.06em tracking and
   `--text-sm`.
 - Exception: the demo's client documents (bills, letters, photos) look like the real thing.
