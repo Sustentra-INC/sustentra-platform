@@ -279,6 +279,10 @@
   --source-snippet-max-height: 7.5rem;
   --selected-source-max-height: 8rem;
   --source-notice-max-width: 280px;
+  --setup-col-left-min: 10.625rem;  /* setup two-col: left column min basis (170px) */
+  --setup-col-left-max: 13.75rem;   /* setup two-col: left column max width (220px) */
+  --setup-col-right-min: 26.25rem;  /* setup two-col: right column min basis (420px) */
+  --setup-grid-col-min: 17.5rem;    /* setup field grid: column min (280px) */
   --hairline-width: 1px;
   --ring-width: 1.5px;
   --active-row-marker-width: 3px;

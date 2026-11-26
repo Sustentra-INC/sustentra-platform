@@ -125,12 +125,12 @@ export function SetupScreen({
       {/* Tabs and section cards. Only shown once an engagement is selected in backend mode. */}
       {picker && !engagement.engagementId ? null : (
         <>
-          <div role="tablist" aria-label="Setup sections" className="s1-setup-tabs">
+          <div role="tablist" aria-label="Setup sections" className="s1-ws-factabs s1-ws-factabs--page">
             <button
               type="button"
               role="tab"
               aria-selected={tab === "engagement"}
-              className="s1-setup-tab"
+              className={`s1-ws-factab${tab === "engagement" ? " is-on" : ""}`}
               onClick={() => setTab("engagement")}
             >
               Engagement
@@ -139,7 +139,7 @@ export function SetupScreen({
               type="button"
               role="tab"
               aria-selected={tab === "people"}
-              className="s1-setup-tab"
+              className={`s1-ws-factab${tab === "people" ? " is-on" : ""}`}
               onClick={() => setTab("people")}
             >
               Facilities and people
@@ -148,7 +148,7 @@ export function SetupScreen({
               type="button"
               role="tab"
               aria-selected={tab === "points"}
-              className="s1-setup-tab"
+              className={`s1-ws-factab${tab === "points" ? " is-on" : ""}`}
               onClick={() => setTab("points")}
             >
               In-scope data points
