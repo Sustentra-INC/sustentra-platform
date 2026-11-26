@@ -2437,19 +2437,25 @@ html { font-size: 82%; }
 .s1-rc__field select, .s1-rc__group input { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); min-width: 0; }
 .s1-rc__group input[aria-invalid="true"] { border-color: var(--state-blocking-line); }
 .s1-rc__out { color: var(--ink-2); }
-/* Setup facilities: name, address, grid region per row; facilities found on bills. */
-.s1-fac { display: flex; flex-direction: column; gap: var(--sp-2); margin: var(--sp-3) 0; }
-.s1-fac__head, .s1-fac__row { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(10rem, 1.4fr) minmax(10rem, 1fr) auto; gap: var(--sp-2); align-items: center; }
-.s1-fac__hint { grid-column: 1 / -1; margin: 0; font-size: var(--text-sm); }
+/* Setup facilities: flex rows with icon, name, address, optional grid region. */
+.s1-fac { display: flex; flex-direction: column; gap: var(--sp-2-5); }
+.s1-fac__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2-5); padding: var(--sp-2-5); border-radius: var(--r-card); background: var(--sf-sunken); }
+.s1-fac__icon { flex: none; width: var(--button-h); height: var(--button-h); border-radius: var(--r-md); background: var(--accent-soft); color: var(--brand-dark); display: inline-flex; align-items: center; justify-content: center; }
+.s1-fac__name { flex: 1 1 0; min-width: 0; }
+.s1-fac__address-wrap { flex: 2 1 0; min-width: 0; box-sizing: border-box; display: flex; align-items: center; gap: var(--sp-2); height: var(--input-h); padding: 0 var(--sp-3); border-radius: var(--r-md); border: var(--border-strong); background: var(--sf-card); }
+.s1-fac__address-wrap:focus-within { border-color: var(--accent); box-shadow: var(--shadow-focus); }
+.s1-fac__hint { flex: 1 1 100%; margin: 0; font-size: var(--text-sm); color: var(--ink-3); }
+.s1-fac__remove { flex: none; width: var(--button-h); height: var(--button-h); padding: 0; border: 0; border-radius: var(--r-md); background: none; color: var(--ink-3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease; }
+.s1-fac__remove:hover { background: var(--state-blocking-bg); color: var(--state-blocking-fg); }
+.s1-fac__remove:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-fac__add { align-self: flex-start; }
+.s1-fac__found { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-2); }
+.s1-fac__found-label { font-size: var(--text-xs); font-weight: var(--weight-strong); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.s1-fac__found ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1-5); }
+.s1-fac__found-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) var(--sp-2-5); border-radius: var(--r-card-sm); background: var(--sf-card); box-shadow: var(--shadow-inset); }
 .s1-relate { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); padding: var(--sp-2) 0; }
 .s1-relate label { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); min-width: 0; }
 .s1-relate select { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); max-width: 100%; }
-.s1-fac__head { font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
-.s1-fac__row input, .s1-fac__row select { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); min-width: 0; }
-.s1-fac__found { margin: var(--sp-2) 0 var(--sp-3); padding: var(--sp-3); background: var(--state-open-bg); border: var(--border-hairline); border-color: var(--state-open-line); border-radius: var(--radius-input); font-size: var(--text-sm); }
-.s1-fac__found ul { list-style: none; margin: var(--sp-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
-.s1-fac__found li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-2); }
-@media (max-width: 48rem) { .s1-fac__head { display: none; } .s1-fac__row { grid-template-columns: 1fr; padding-bottom: var(--sp-2); border-bottom: var(--border-hairline); } }
 .s1-rc__need { font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--state-open-fg); }
 .s1-rc__hint { font-size: var(--text-sm); }
 .s1-rc__chosen { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: baseline; font-size: var(--text-sm); }
@@ -3656,10 +3662,14 @@ html, body { margin: 0; padding: 0; }
 }
 .s1-setup-row input:focus, .s1-fac__row input:focus, .s1-fac__row select:focus { outline: none; border-color: var(--accent); box-shadow: var(--shadow-focus); }
 .s1-setup-inline > input { flex: 1; min-width: 0; }
-/* Facility and team rows share the form's two columns, with the remove button in a fixed gutter. */
+/* Facility rows: flex overrides. Width/height resets for inputs inside .s1-fac__row. */
 .s1-fac { margin: 0; }
-.s1-fac__head, .s1-fac__row { grid-template-columns: repeat(2, minmax(0, 1fr)) 2.5rem; column-gap: var(--sp-3); }
-.s1-fac--regions .s1-fac__head, .s1-fac--regions .s1-fac__row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr) 2.5rem; }
+.s1-fac__row .s1-fac__name { width: auto; }
+.s1-fac__row .s1-fac__address { width: auto; height: 100%; border: 0; padding: 0; background: transparent; border-radius: 0; }
+.s1-fac__row .s1-fac__address:focus { box-shadow: none; }
+.s1-fac__region-wrap { flex: 1 1 var(--tooltip-min-width); min-width: 0; }
+.s1-sr-only { position: absolute; overflow: hidden; white-space: nowrap; width: var(--sp-half); height: var(--sp-half); clip-path: inset(50%); padding: 0; margin: 0; }
+.s1-heading-count { color: var(--ink-3); font-weight: var(--weight-medium); }
 .s1-setup-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) 2.5rem; gap: var(--sp-3); align-items: center; }
 .s1-setup-row input:first-child { flex: none; }
 .s1-setup-row--head { font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
@@ -3681,12 +3691,11 @@ html, body { margin: 0; padding: 0; }
 .s1-setup-add:hover { background: var(--accent-softer); border-color: var(--accent-solid); }
 .s1-setup-add:active { transform: scale(0.98); }
 .s1-setup-add svg { width: 0.95rem; height: 0.95rem; }
-/* Narrow: the name and its remove button share row one; every other field takes a full-width line below.
-   Team rows get the facility rows' divider and tighter in-row gap, so a login reads with its own name, not the next one. */
+/* Narrow: team rows (.s1-fac__row uses flex-wrap so handles responsive natively). */
 @media (max-width: 48rem) {
-  .s1-setup-row, .s1-fac__row, .s1-fac--regions .s1-fac__row { grid-template-columns: minmax(0, 1fr) 2.5rem; }
-  .s1-setup-row > .s1-setup-remove, .s1-fac__row > .s1-setup-remove { grid-column: 2; grid-row: 1; }
-  .s1-fac__address, .s1-fac__region, .s1-setup-row__login { grid-column: 1 / -1; }
+  .s1-setup-row { grid-template-columns: minmax(0, 1fr) 2.5rem; }
+  .s1-setup-row > .s1-setup-remove { grid-column: 2; grid-row: 1; }
+  .s1-setup-row__login { grid-column: 1 / -1; }
   .s1-setup-row:not(.s1-setup-row--head) { row-gap: var(--sp-2); padding-bottom: var(--sp-2); border-bottom: var(--border-hairline); }
   .s1-setup-row--head { display: none; }
 }

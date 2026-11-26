@@ -3,6 +3,8 @@
 import { Plus, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
+import { IconBuilding, IconPin, IconPlus, IconTrash } from "./icons";
+
 import type { EngagementConfig, FacilityOption } from "../types";
 import type { InScopeField } from "../types/scope";
 import { CountBadge } from "./CountBadge";
@@ -278,7 +280,8 @@ export function SetupScreen({
               <div className="s1-setup-card">
                 <div className="s1-setup-card__col-left">
                   <h2>
-                    Facilities
+                    Facilities{" "}
+                    <span className="s1-heading-count">{engagement.facilities.length}</span>
                     <InfoTip label="Facilities">
                       Bills are matched to a facility by its name or street address. The grid region sets the factor for its
                       electricity (Scope 2, location-based).
@@ -287,39 +290,53 @@ export function SetupScreen({
                 </div>
                 <div className="s1-setup-card__col-right">
                   {engagement.facilities.length ? (
-                    <div className={`s1-fac${gridRegions ? " s1-fac--regions" : ""}`}>
-                      <div className="s1-fac__head" aria-hidden>
-                        <span>Name</span>
-                        <span>Street address</span>
-                        {gridRegions ? <span>Grid region (eGRID)</span> : null}
-                        <span />
-                      </div>
+                    <div className="s1-fac">
                       {engagement.facilities.map((f) => (
                         <div className="s1-fac__row" key={f.facilityId}>
-                          <input aria-label="Facility name" value={f.name} onChange={(e) => renameFacility(f.facilityId, e.target.value)} />
+                          <span aria-hidden="true" className="s1-fac__icon">
+                            <IconBuilding size={18} />
+                          </span>
                           <input
-                            className="s1-fac__address"
-                            aria-label="Street address"
-                            placeholder="e.g. 15 State Street, Albany, NY"
-                            value={f.address ?? ""}
-                            onChange={(e) => patchFacility(f.facilityId, { address: e.target.value })}
+                            className="s1-fac__name"
+                            aria-label="Facility name"
+                            value={f.name}
+                            onChange={(e) => renameFacility(f.facilityId, e.target.value)}
                           />
+                          <div className="s1-fac__address-wrap">
+                            <IconPin size={16} aria-hidden="true" />
+                            <input
+                              className="s1-fac__address"
+                              aria-label="Street address"
+                              placeholder="e.g. 15 State Street, Albany, NY"
+                              value={f.address ?? ""}
+                              onChange={(e) => patchFacility(f.facilityId, { address: e.target.value })}
+                            />
+                          </div>
                           {gridRegions ? (
-                            <select
-                              className="s1-fac__region"
-                              aria-label="Grid region"
-                              value={f.gridRegion ?? ""}
-                              onChange={(e) => patchFacility(f.facilityId, { gridRegion: e.target.value || undefined })}
-                            >
-                              <option value="">Not set</option>
-                              {gridRegions.map((r) => (
-                                <option key={r.code} value={r.code}>
-                                  {r.code} · {r.name}
-                                </option>
-                              ))}
-                            </select>
+                            <>
+                              <span id={`grl-${f.facilityId}`} className="s1-sr-only">Grid region</span>
+                              <div className="s1-fac__region-wrap">
+                                <Dropdown
+                                  value={f.gridRegion ?? ""}
+                                  onChange={(v) => patchFacility(f.facilityId, { gridRegion: v || undefined })}
+                                  options={[
+                                    { value: "", label: "Not set" },
+                                    ...gridRegions.map((r) => ({ value: r.code, label: `${r.code} · ${r.name}` })),
+                                  ]}
+                                  placeholder="Not set"
+                                  labelId={`grl-${f.facilityId}`}
+                                />
+                              </div>
+                            </>
                           ) : null}
-                          <RemoveButton label={`Remove ${f.name || "facility"}`} onClick={() => removeFacility(f.facilityId)} />
+                          <button
+                            className="s1-fac__remove"
+                            type="button"
+                            aria-label={`Remove ${f.name || "facility"}`}
+                            onClick={() => removeFacility(f.facilityId)}
+                          >
+                            <IconTrash size={16} aria-hidden="true" />
+                          </button>
                           {gridRegions && lookupZip ? (
                             <ZipRegionHint
                               address={f.address}
@@ -334,24 +351,31 @@ export function SetupScreen({
                   ) : null}
                   {foundFacilities.length ? (
                     <div className="s1-fac__found">
-                      <strong>Found on uploaded bills</strong>
-                      <span className="s1-muted"> · not matched to a facility yet</span>
+                      <span className="s1-fac__found-label">Found on uploaded bills</span>
                       <ul>
                         {foundFacilities.map((found) => (
                           <li key={`${found.name}|${found.address ?? ""}`}>
-                            <span>
-                              {found.name}
-                              {found.address ? <span className="s1-muted"> · {found.address}</span> : null}
-                            </span>
-                            <button className="s1-linklike" type="button" onClick={() => addFacility(found)}>
-                              Add as facility
-                            </button>
+                            <div className="s1-fac__found-row">
+                              <span>
+                                {found.name}
+                                {found.address ? <span className="s1-muted"> · {found.address}</span> : null}
+                              </span>
+                              <button
+                                className="s1-button s1-button--soft s1-button--compact"
+                                type="button"
+                                onClick={() => addFacility(found)}
+                              >
+                                Add as facility
+                              </button>
+                            </div>
                           </li>
                         ))}
                       </ul>
                     </div>
                   ) : null}
-                  <AddButton onClick={() => addFacility()}>Add facility</AddButton>
+                  <button className="s1-button s1-button--soft s1-fac__add" type="button" onClick={() => addFacility()}>
+                    <IconPlus size={15} aria-hidden="true" /> Add facility
+                  </button>
                 </div>
               </div>
 
