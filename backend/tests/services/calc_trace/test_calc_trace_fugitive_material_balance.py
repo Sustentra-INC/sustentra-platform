@@ -215,6 +215,37 @@ def test_a_term_that_is_not_a_plausible_mass_never_reaches_the_math(number: Any,
     assert line["results"]["total_co2e_t"] == pytest.approx(10 * T_PER_LB * 1300, rel=1e-12)
 
 
+def test_each_entered_input_says_where_its_value_is_found() -> None:
+    """``TraceInput.source_hint``: the entry form asks "Its source (<hint>)"; the safety data sheet is only for a
+    component GWP."""
+
+    trace = line_of(run(store()), KEY)["trace"]
+    hints = {t: trace["inputs"][t]["source_hint"] for t in fugitive.MB_TERMS}
+    assert hints == {"I_B": "inventory count", "I_E": "inventory count", "P": "purchase invoice",
+                     "S": "sales, return or disposal record", "C_B": "equipment register (full charge)",
+                     "C_E": "equipment register (full charge)"}
+    assert trace["inputs"]["C_B"]["label"] == "Full charge of equipment at the start of the year"
+    assert trace["inputs"]["C_E"]["label"] == "Full charge of equipment at the end of the year"
+    units = {i: v["source_hint"] for i, v in trace["inputs"].items() if i.startswith((fugitive.UNIT_C, fugitive.UNIT_T))}
+    assert set(units.values()) == {"equipment nameplate or register", "equipment register (months in use)"}
+    from backend.tests.services.calc_trace.test_calc_trace_fugitive import R448A_KC, r448a_store
+
+    r448a = line_of(run(r448a_store()), R448A_KC)["trace"]["inputs"]
+    assert {v["source_hint"] for i, v in r448a.items() if i.startswith(fugitive.COMPONENT_GWP)} == \
+        {"the safety data sheet, say"}
+    from backend.tests.services.calc_trace.test_calc_trace_steam import KEY as STEAM, kent_store
+    from backend.tests.services.calc_trace.test_calc_trace_steam import run as run_steam
+
+    steam = line_of(run_steam(kent_store()), STEAM)["trace"]["inputs"]
+    assert steam["mass"]["source_hint"] == "supplier statement"
+    assert {steam[i]["source_hint"] for i in ("net_enthalpy", "pressure_psig", "condensate_f")} == \
+        {"supplier statement or steam conditions"}
+    assert steam["efficiency"]["source_hint"] == "supplier or boiler documentation"
+    supplier = {v["source_hint"] for v in steam.values() if v["kind"] == "reviewer_entered" and v["symbol"] == "EF"}
+    assert supplier == {"supplier emission factor statement"}
+    jsonschema.validate(line_of(run_steam(kent_store()), STEAM)["trace"], SCHEMA)
+
+
 def test_a_decision_for_another_line_never_touches_this_one() -> None:
     other = "s1:fugitive:hfc-134a:fac-stl2"
     stray = [event(other, "choice|method|", "edited", fugitive.MATERIAL_BALANCE),

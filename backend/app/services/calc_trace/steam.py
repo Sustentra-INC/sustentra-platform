@@ -60,6 +60,7 @@ ROUTE = "Location-based: steam energy (MMBtu) × emission factor, per gas, × GW
 HEAT_CONTENT_SOURCE = "Steam heat content entered under Recalculation inputs"
 DECIDED = ("accepted", "edited")
 KG_PER_T, G_PER_T = 1000.0, 1_000_000.0
+CONDITIONS_HINT = "supplier statement or steam conditions"  # where the enthalpy, pressure and return are read
 
 
 def zero_allowed(input_id: str) -> bool:
@@ -472,7 +473,7 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided, pick
                     theirs = _single(kind, c_value, unit, input_id=kind)
                     _annotate(op, theirs)
         item = TraceInput(kind, label, "evidence_sum", symbol="Mlb" if kind == MASS else "E", required_for=[METHOD],
-                          recomputed=side, rows=rows,
+                          recomputed=side, rows=rows, source_hint="supplier statement",
                           company=Side(theirs.result.value, unit, "accepted") if theirs is not None else None)
         if theirs is not None:
             item.difference = total - float(theirs.result.value)  # type: ignore[arg-type]
@@ -512,13 +513,16 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided, pick
     stated = company_given.get(NET_ENTHALPY)
     inputs[NET_ENTHALPY] = TraceInput(
         NET_ENTHALPY, "Net steam enthalpy", "reviewer_entered", symbol="h", required_for=[METHOD] if has_mass else [],
-        recomputed=enthalpy_side, company=Side(stated, "Btu/lb", "accepted") if stated is not None else None)
+        recomputed=enthalpy_side, company=Side(stated, "Btu/lb", "accepted") if stated is not None else None,
+        source_hint=CONDITIONS_HINT)
     if stated is not None and enthalpy is not None:
         inputs[NET_ENTHALPY].difference = enthalpy - stated
         inputs[NET_ENTHALPY].differs = ops.differs(enthalpy - stated, enthalpy)
     inputs[PRESSURE] = TraceInput(PRESSURE, "Steam pressure (saturated)", "reviewer_entered", symbol="p",
-                                  recomputed=sides.get(PRESSURE) or Side(None, "psig", "awaiting_review"))
+                                  recomputed=sides.get(PRESSURE) or Side(None, "psig", "awaiting_review"),
+                                  source_hint=CONDITIONS_HINT)
     cond_item = TraceInput(CONDENSATE, "Condensate returned at", "reviewer_entered", symbol="T",
+                           source_hint=CONDITIONS_HINT,
                            recomputed=sides.get(CONDENSATE) or Side(NO_RETURN_F, "°F", "reference", SourceRef(
                                "reference", dataset=str(table()["dataset"]),
                                citation="No condensate return stated: none returned (gross enthalpy)")))
