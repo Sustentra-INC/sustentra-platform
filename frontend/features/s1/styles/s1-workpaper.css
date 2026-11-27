@@ -5119,3 +5119,102 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
   margin-top: 0;
 }
 .s1-xr-passage.s1-cv__mark--selected { box-shadow: 0 0 0 var(--hairline-width) var(--accent-solid); }
+
+/* ============================================================
+   TICKET 9: Review panel header and stat tiles
+   ============================================================ */
+
+/* Panel header: flex column layout */
+.s1-xr-vhead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) 0 var(--sp-3);
+}
+.s1-xr-vhead h2 {
+  font-size: var(--text-title);
+  font-weight: var(--weight-bold);
+  margin: 0;
+  line-height: var(--leading-tight);
+}
+
+/* "Reviewing" context label above the title */
+.s1-xr-vhead__title { display: flex; flex-direction: column; gap: var(--sp-half); }
+.s1-xr-vhead__context { font-size: var(--text-sm); color: var(--ink-3); }
+
+/* "Add a value" button — primary */
+.s1-xr-addvalue {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  height: var(--button-h-sm);
+  padding: 0 var(--sp-3);
+  border: none;
+  border-radius: var(--r-ctl);
+  background: var(--accent-solid);
+  color: var(--sf-card);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  white-space: nowrap;
+}
+.s1-xr-addvalue:hover { background: var(--accent-strong); }
+.s1-xr-addvalue[aria-expanded="true"] { background: var(--accent-strong); }
+.s1-xr-addvalue svg { width: var(--text-sm); height: var(--text-sm); }
+
+/* Stat tiles — restyle filters as individual rounded tiles */
+.s1-xr-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-1-5);
+  flex-wrap: nowrap;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  background: none;
+}
+.s1-xr-filter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-half);
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-2-5);
+  font: inherit;
+  text-align: left;
+  background: var(--sf-page);
+  border: none;
+  border-radius: var(--r-ctl);
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.s1-xr-filter + .s1-xr-filter { border-left: none; }
+.s1-xr-filter:hover { background: var(--sf-sunken); }
+.s1-xr-filter.is-on { background: var(--sf-page); box-shadow: 0 0 0 var(--hairline-width) var(--accent-solid); }
+.s1-xr-filter__n {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-tight);
+}
+.s1-xr-filter__label {
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "To review" tile: amber tone when count > 0 */
+.s1-xr-filter--to_review:not([data-empty="true"]) { background: var(--state-open-bg); }
+.s1-xr-filter--to_review:not([data-empty="true"]):hover { background: var(--state-open-line); }
+.s1-xr-filter--to_review:not([data-empty="true"]) .s1-xr-filter__n { color: var(--state-open-fg); }
+
+/* "Requested" tile: softer indigo tint when count > 0 */
+.s1-xr-filter--requested:not([data-empty="true"]) { background: var(--accent-softer); }
+.s1-xr-filter--requested:not([data-empty="true"]):hover { background: var(--accent-soft); }

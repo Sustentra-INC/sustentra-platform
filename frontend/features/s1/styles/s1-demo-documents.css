@@ -26,7 +26,7 @@
 .s1-dd-page {
   position: relative; display: flex; flex-direction: column; gap: var(--sp-2);
   padding: 2.25rem 2.5rem 2.75rem; background: var(--sf-card); border-radius: 0.25rem;
-  box-shadow: 0 0.0625rem 0.125rem rgba(23, 23, 20, 0.06), 0 0.5rem 1.5rem rgba(40, 40, 112, 0.08);
+  box-shadow: var(--shadow-doc); max-width: var(--cv-doc-max-w); box-sizing: border-box;
   font-size: var(--text-sm); line-height: 1.45; min-height: 52rem;
 }
 .s1-dd-page--letter { font-family: Georgia, "Times New Roman", serif; font-size: var(--text-md); line-height: 1.7; }
@@ -89,16 +89,17 @@
 .s1-dd-note { transform: rotate(-2deg); font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive; font-size: 1.4rem; color: #2b3a67; display: flex; flex-direction: column; gap: var(--sp-2); }
 
 /* sheet */
-.s1-dd-sheet { display: flex; flex-direction: column; background: var(--sf-card); border-radius: 0.25rem; overflow: hidden; box-shadow: 0 0.5rem 1.5rem rgba(40, 40, 112, 0.08); }
-.s1-dd-sheet__bar { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); background: #1d6f42; color: var(--sf-card); font-size: var(--text-xs); }
-.s1-dd-sheet__tab { padding: 0.125rem var(--sp-2); background: rgba(255, 255, 255, 0.18); border-radius: 0.25rem; }
+.s1-dd-sheet { display: flex; flex-direction: column; background: var(--sf-card); border-radius: var(--r-card-sm); overflow: hidden; box-shadow: var(--shadow-doc); max-width: var(--cv-sheet-max-w); }
+.s1-dd-sheet__bar { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-2) 0; background: var(--sf-sunken); color: var(--ink); font-size: var(--text-xs); border-bottom: var(--border-hairline); }
+.s1-dd-sheet__tab { display: inline-flex; align-items: center; gap: var(--sp-1); height: var(--button-h-sm); padding: 0 var(--sp-3); background: var(--sf-card); border-radius: var(--r-sm) var(--r-sm) 0 0; box-shadow: var(--shadow-tab-active); font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink); }
 .s1-dd-sheet__scroll { overflow-x: auto; }
 .s1-dd-sheet table { border-collapse: collapse; width: 100%; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
-.s1-dd-sheet th, .s1-dd-sheet td { border: var(--hairline-width) solid #dadcd6; padding: 0.2rem var(--sp-2); white-space: nowrap; text-align: left; }
-.s1-dd-sheet thead th, .s1-dd-sheet tbody th { background: #f1f2ee; color: var(--ink-3); font-weight: var(--weight-regular); font-size: var(--text-xs); text-align: center; position: sticky; }
+.s1-dd-sheet th, .s1-dd-sheet td { border: var(--border-hairline); padding: 0.2rem var(--sp-2); white-space: nowrap; text-align: left; }
+.s1-dd-sheet thead th, .s1-dd-sheet tbody th { background: var(--sf-sunken); color: var(--ink-3); font-weight: var(--weight-regular); font-size: var(--text-xs); text-align: center; position: sticky; }
 .s1-dd-sheet thead th { top: 0; z-index: 1; }
 .s1-dd-sheet tbody th { left: 0; min-width: 2.25rem; }
-.s1-dd-sheet tr.is-title td { font-weight: 700; }
+.s1-dd-sheet tr.is-title td { font-weight: var(--weight-bold); }
+.s1-dd-sheet td:has(.s1-dd-hl) { text-align: right; }
 
 /* the highlight itself: a highlighter stroke on the figure, by review state (the --hl-*
    tokens, shared with the uploaded pages and files on staging) */

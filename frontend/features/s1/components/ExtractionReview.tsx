@@ -605,7 +605,10 @@ export function ExtractionReview({
         <div className="s1-xr-values" ref={valuesPane} onKeyDown={onListKey}>
           <div className="s1-xr-vhead">
             <div className="s1-xr-vhead__top">
-              <h2>{nodeHeaderLabel(nodeKey, engagement)}</h2>
+              <div className="s1-xr-vhead__title">
+                <span className="s1-xr-vhead__context">Reviewing</span>
+                <h2>{nodeHeaderLabel(nodeKey, engagement)}</h2>
+              </div>
               {allowAddValue && (selected ?? nodeValues[0]) ? (
                 <button className="s1-xr-addvalue" type="button" aria-expanded={adding} onClick={() => setAdding((v) => !v)}>
                   <Plus aria-hidden /> Add a value
@@ -620,6 +623,7 @@ export function ExtractionReview({
                   className={`s1-xr-filter s1-xr-filter--${k}${filter === k ? " is-on" : ""}`}
                   type="button"
                   aria-pressed={filter === k}
+                  data-empty={counts[k] === 0}
                   onClick={() => setFilter((cur) => (cur === k ? null : k))}
                 >
                   <span className="s1-xr-filter__n">{counts[k]}</span>
