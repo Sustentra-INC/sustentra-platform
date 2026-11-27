@@ -238,8 +238,8 @@ export function EvidenceTree(props: EvidenceTreeProps) {
             <button
               className="s1-et-review-btn"
               type="button"
-              aria-label={`Open data point review for ${lineTitle(line)}`}
-              title="Open data point review"
+              aria-label={`Open supporting schedule for ${lineTitle(line)}`}
+              title="Open supporting schedule"
               onClick={() => props.onOpenSchedule(line.key)}
             >
               <PanelsTopLeft aria-hidden />
@@ -362,8 +362,17 @@ export function EvidenceTree(props: EvidenceTreeProps) {
       ) : null}
 
       {!filtered || visibleScopes.length || supporting.unassigned.length ? (
-        <section className="s1-et-supp">
+        <section className={`s1-et-supp${isOpen("b:supporting") ? "" : " s1-et-supp--collapsed"}`}>
           <div className="s1-et-supp__head">
+            <button
+              className="s1-et-supp__toggle"
+              type="button"
+              aria-expanded={isOpen("b:supporting")}
+              aria-label={isOpen("b:supporting") ? "Collapse supporting evidence" : "Expand supporting evidence"}
+              onClick={() => toggle("b:supporting")}
+            >
+              <ChevronRight aria-hidden />
+            </button>
             <h2 className="s1-et-supp__title">Supporting evidence</h2>
             <div className="s1-et-supp__legend" aria-hidden>
               <span className="s1-et-supp__leg-item s1-et-supp__leg-item--accepted">Accepted</span>
@@ -371,6 +380,8 @@ export function EvidenceTree(props: EvidenceTreeProps) {
               <span className="s1-et-supp__leg-item s1-et-supp__leg-item--blocked">Blocked</span>
             </div>
           </div>
+          {isOpen("b:supporting") ? (
+          <>
           <div className="s1-et-supp__cols" aria-hidden>
             <span className="s1-et-supp__col-title">Data point</span>
             <span className="s1-et-supp__col-docs">Documents</span>
@@ -397,6 +408,8 @@ export function EvidenceTree(props: EvidenceTreeProps) {
             >
               {supporting.unassigned.length ? docList(supporting.unassigned, SUPPORTING_UNASSIGNED) : <p className="s1-et-none">Nothing here.</p>}
             </Fold>
+          ) : null}
+          </>
           ) : null}
         </section>
       ) : null}
