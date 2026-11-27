@@ -169,7 +169,49 @@ def _shift(line: calc.LineResult, item: DecidedLine) -> None:
     biogenic = figures.biogenic_co2_t - float(before.get("biogenic_co2_t") or 0.0)
     if biogenic != 0.0:
         line.biogenic_co2_t += biogenic
+    line.steps.extend(_decided_inputs(item))
     line.flags = sorted({*line.flags, FLAG})
+
+
+_LABELS = {"activity.total": "Activity", "distance": "Distance", "fuel_economy": "Fuel economy",
+           "hhv": "Site heat content (HHV)", "cc": "Carbon content"}
+
+
+def _label(input_id: str) -> str:
+    if input_id.startswith("ef."):
+        return f"{input_id[3:]} emission factor"
+    if input_id.startswith("activity.total/"):
+        return "Activity (one record)"
+    return _LABELS.get(input_id, input_id)
+
+
+def _decided_inputs(item: DecidedLine) -> list[calc.Step]:
+    """The inputs a reviewer decided for the line, as steps of its category line (so the Working sheet shows them):
+    the value used, its unit, who decided it and why. A decided fuel economy also shows the distance it gave."""
+
+    steps: list[calc.Step] = []
+    key = str(item.line["key"])
+    for entry in item.decided.applied:
+        if entry.get("target") != "input" or isinstance(entry.get("value"), bool) or not isinstance(
+                entry.get("value"), (int, float)):
+            continue  # a chosen equation is a choice, not an input
+        who = f"decided by {entry.get('decided_by') or 'a reviewer'}" + (
+            f" on {entry['decided_at']}" if entry.get("decided_at") else "")
+        why = f": {entry['reason_given']}" if entry.get("reason_given") else ""
+        held = f" ({entry['uses']})" if entry.get("uses") else ""
+        value, unit = float(entry["value"]), str(entry.get("unit") or "")
+        name = _label(str(entry["id"]))
+        steps.append(calc.Step(f"Decided input: {name} ({key})", "used in place of the calculated value",
+                               {name: {"value": value, "unit": unit, "source": f"{who}{why}{held}"}}, value, unit))
+        if entry["id"] == "fuel_economy":
+            ch4 = item.figures.rows.get("CH4")
+            if ch4 is not None:
+                miles = float(ch4["activity"])
+                steps.append(calc.Step(f"Distance from the decided fuel economy ({key})", "Fuel x fuel economy",
+                                       {"fuel": {"value": item.figures.activity, "unit": "gal", "source": None},
+                                        "fuel economy": {"value": value, "unit": unit, "source": f"{who}{why}"}},
+                                       miles, "mi"))
+    return steps
 
 
 def _market(market: calc.CategoryResult | None, location_lines: list[calc.LineResult],

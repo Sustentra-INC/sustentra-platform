@@ -104,7 +104,29 @@ class DecidedLine:
             row["mass_t"], row["co2e_t"] = worked["mass_t"], worked["co2e_t"]
             if row.get("company_co2e_t") is not None:
                 row["difference_to_company_t"] = row["co2e_t"] - row["company_co2e_t"]
+        self._summary_distance()
         out["flags"] = sorted({*out["flags"], "reviewer_decisions_applied"})
+
+    def _summary_distance(self) -> None:
+        """An on-road line's summary fields (``step2.distance`` and the fuel economy it implies) follow the distance
+        the decided figures worked, so the summary panel never contradicts the trace and the total."""
+
+        step2 = self.line["step2"]
+        distance = step2.get("distance")
+        row = next((r for r in self.line["step3"]["gases"] if r["gas"] == "CH4"), None)
+        if not distance or row is None or row["activity"]["unit"] != "mi":
+            return
+        miles, fuel = float(row["activity"]["value"]), float(step2["result"]["quantity"])
+        decided = {a.get("id") for a in self.decided.applied if a.get("status") in ("accepted", "edited")}
+        if "fuel_economy" in decided:
+            source = "Fuel decided for this line x the fuel economy decided for it"
+        elif "distance" in decided:
+            source = "Distance decided for this line"
+        else:
+            return
+        step2["distance"] = {**distance, "quantity": miles, "source": source}
+        if step2.get("implied_fuel_economy") is not None and fuel > 0:
+            step2["implied_fuel_economy"] = {**step2["implied_fuel_economy"], "value": miles / fuel}
 
 
 @dataclass
@@ -342,6 +364,10 @@ class _Builder:
         if family == "stationary" and primary is not None:  # the equations a line can be worked on (C1)
             records = self.line_decisions.get(bucket.line.key) if bucket.line is not None else None
             context["fuel"], context["decided"] = primary.sub[0], stationary.site_decided(records)
+        group = bucket.groups.get(primary.sub) if family == "mobile" and primary is not None else None
+        if group is not None and group.on_road:  # what a decided fuel economy is decided for (its stale basis)
+            context["vehicle_group"] = (f"Vehicle group: {group.vehicle_type}, {group.factor_fuel_type}, "
+                                        f"model year {group.model_year}")
         return context
 
     def _trace(self, family: str, out: dict[str, Any], bucket: _Bucket, primary: _Sub | None) -> dict[str, Any] | None:

@@ -7,10 +7,11 @@ import { buildRecalculation } from "../recalcDataRollup";
 import type { DemoRoute } from "../types";
 import { applyDecisions, decisionRoutes } from "./decisions";
 import { traceFromLine } from "./fromLine";
+import { withFuelEconomy } from "./mobile";
 
 function traceOf(engagementId: string, lineKey: string) {
   const line = buildRecalculation(engagementId).calculation_lines?.find((l) => l.key === lineKey);
-  return line ? traceFromLine(line) : null;
+  return line ? withFuelEconomy(traceFromLine(line), line) : null;
 }
 
 export const calcTraceRoutes: DemoRoute[] = [
