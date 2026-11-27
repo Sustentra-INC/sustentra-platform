@@ -136,6 +136,10 @@ export interface TraceInput {
   /** recomputed − company, only when both are numbers in the same unit. */
   difference?: number;
   rows?: TraceInputRow[];
+  /** Whether a reviewer can accept or edit the recomputed value for this line (the POST answers 409 otherwise). */
+  decidable?: boolean;
+  /** Why not, when `decidable` is false (e.g. "the GWP is chosen for the whole engagement on the Methodology page"). */
+  why_not?: string | null;
 }
 
 export interface TraceChoiceOption {

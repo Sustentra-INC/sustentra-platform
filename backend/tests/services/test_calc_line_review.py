@@ -63,6 +63,10 @@ def edit(record: dict, value: Any, side: str = "recomputed", input_id: str = "ac
     found = c.find_input(t, input_id)
     assert found is not None
     kw.setdefault("reason", "Bill total corrected from the invoice")
+    holder = found[1] or found[0]
+    unit = ((holder.get("recomputed") or holder.get("company") or {}).get("unit"))
+    if unit:
+        kw.setdefault("unit", unit)  # a recomputed number is entered with its unit
     return c.decide_input(record, found[0], found[1], side, "edit", value=value, actor=ANN, now=NOW, **kw)
 
 
@@ -223,7 +227,10 @@ def test_wrong_units_are_a_422_and_the_inputs_own_unit_is_used_when_none_is_give
     with pytest.raises(ReviewInvalid, match="is in gal: enter the value in gal"):
         edit(new(), 2400, unit="kWh")
     assert edit(new(), 2400, unit="gallon")["decision"]["unit"] == "gallon"  # the same unit by another name
-    assert edit(new(), 2400, unit=" ")["decision"]["unit"] == "gal"
+    assert edit(new(), 2400, unit=" ", side="company")["decision"]["unit"] == "gal"  # the company's side: its own
+    for missing in (None, " "):  # a recomputed number is an operand: its unit is never assumed
+        with pytest.raises(ReviewInvalid, match="is in gal: enter the unit with the value"):
+            edit(new(), 2400, unit=missing)
     with pytest.raises(ReviewInvalid, match="unit is not valid"):
         edit(new(), 2400, unit="g\x00al")
     with pytest.raises(ReviewInvalid, match="unit is not valid"):

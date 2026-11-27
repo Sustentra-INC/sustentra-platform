@@ -24,6 +24,7 @@ A line whose working holds more than one calculator run (it mixes fuels or units
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
@@ -123,6 +124,24 @@ def not_decidable(input_id: str) -> str | None:
     return "this input cannot be decided for a line"
 
 
+MIXED_RUNS = "this line mixes fuels or units: move the other records to their own line first"
+
+
+def mark_decidable(trace: LineTrace) -> None:
+    """``decidable`` and ``why_not`` on each input, by the same rules ``apply`` and the decision POST use."""
+
+    mixed = _multi_run(trace)
+    for input_id, item in trace.inputs.items():
+        why = not_decidable(input_id)
+        if why is None and (mixed or trace.state == "blocked"):
+            why = MIXED_RUNS if mixed else "this line has no working to calculate from"
+        item.decidable, item.why_not = why is None, why
+
+
+def _multi_run(trace: LineTrace) -> bool:
+    return any("#" in b.id for s in trace.steps for b in s.blocks)
+
+
 def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
           ) -> tuple[LineTrace, Outcome, Figures | None]:
     """The decided trace (``trace`` itself, worked in place: a copy of a trace costs more than building it again),
@@ -132,7 +151,7 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
     outcome = Outcome()
     values: dict[str, tuple[float, Mapping[str, Any], Mapping[str, Any]]] = {}  # input id -> (value, decision, record)
     rejected: list[str] = []
-    multi_run = any("#" in b.id for s in out.steps for b in s.blocks)
+    multi_run = _multi_run(out)
 
     for stream, record in sorted(records.items()):
         parsed = _parse(stream)
@@ -168,6 +187,13 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
             outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="line_mixes_runs",
                                               message="Not applied: this line mixes fuels or units. Move the other "
                                                       "records to their own line first."))
+            continue
+        stale = _stale(out, found, decision)
+        if stale is not None:
+            outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="stale",
+                                              automatic_then=stale[0], automatic_now=stale[1],
+                                              message="Not applied: the evidence or reference data changed after this "
+                                                      "decision, so the new automatic value is used. Decide again."))
             continue
         number = _number(decision.get("value"))
         if number is None:
@@ -219,6 +245,42 @@ def _move_to_not_applied(outcome: Outcome, input_id: str, reason: str, message: 
                                         "message": message})
 
 
+def _basis(decision: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The stored context of a decision (``calc_line_review.basis_of``), or None for one made before it was kept."""
+
+    raw = decision.get("basis")
+    if not isinstance(raw, str):
+        return None
+    try:
+        found = json.loads(raw)
+    except ValueError:
+        return None
+    return found if isinstance(found, dict) else None
+
+
+def _same(a: Any, b: Any) -> bool:
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)) and not isinstance(a, bool) \
+            and not isinstance(b, bool):
+        return math.isclose(float(a), float(b), rel_tol=1e-12, abs_tol=1e-12)
+    return bool(a == b)
+
+
+def _stale(trace: LineTrace, found: Any, decision: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """(what the decision replaced, what is automatic now) when they differ, else None."""
+
+    then = _basis(decision)
+    if then is None:
+        return None
+    side = found.recomputed
+    grid = trace.inputs.get("grid_region")
+    now = {"value": side.value if side else None, "unit": side.unit if side else None,
+           "source": (side.source.citation[:200] if side and side.source and side.source.citation else None),
+           "grid_region": grid.recomputed.value if grid is not None and grid.recomputed is not None else None}
+    if all(_same(then.get(k), now[k]) for k in now):
+        return None
+    return {k: then.get(k) for k in now}, now
+
+
 def _choice(trace: LineTrace, choice_id: str, decision: Mapping[str, Any], outcome: Outcome) -> None:
     choice: Choice | None = next((c for c in trace.choices if c.id == choice_id), None)
     status = str(decision.get("status"))
@@ -231,6 +293,14 @@ def _choice(trace: LineTrace, choice_id: str, decision: Mapping[str, Any], outco
         outcome.applied.append(_entry("choice", choice_id, None, status=status, uses="automatic value"))
         return
     if status not in DECIDED:
+        return
+    then = _basis(decision)
+    if then is not None and "chosen" in then and then["chosen"] != (choice.chosen if choice.chosen_by == "default"
+                                                                    else None):
+        outcome.not_applied.append(_entry("choice", choice_id, None, status=status, reason="stale",
+                                          automatic_then=then["chosen"], automatic_now=choice.chosen,
+                                          message="Not applied: the line's automatic method changed after this "
+                                                  "decision. Decide again."))
         return
     picked = decision.get("value")
     option = next((o for o in choice.options if o.id == picked), None)

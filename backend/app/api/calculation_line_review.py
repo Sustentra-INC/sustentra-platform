@@ -22,12 +22,13 @@ pending suggestion never is.
 No ``from __future__ import annotations``: FastAPI resolves these at runtime.
 """
 
-from collections.abc import Iterator
+from collections.abc import Awaitable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,12 +64,26 @@ class InputBody(_Body):
     document_id: str | None = Field(None, max_length=rules.MAX_TEXT)
 
 
+# Why the working would not take a decision -> the code a refusal answers with (409).
+CODES = {"set_elsewhere": "not_decidable", "line_mixes_runs": "mixed_line", "stale": "stale",
+         "line_has_no_working": "no_working"}
+
+
+class _Refused(Exception):
+    def __init__(self, code: str, detail: str) -> None:
+        super().__init__(detail)
+        self.code, self.detail = code, detail
+
+
 @contextmanager
 def _rules() -> Iterator[None]:
-    """Turn a refused move into 409 and malformed input into 422."""
+    """Turn a refused move into 409 and malformed input into 422. A move the working cannot take is a 409 with a
+    ``code`` (``rules.Refused``)."""
 
     try:
         yield
+    except rules.Refused as exc:
+        raise _Refused(exc.code, str(exc)) from exc
     except ReviewConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ReviewInvalid as exc:
@@ -94,6 +109,23 @@ async def _line_trace(db: AsyncSession, engagement: dict[str, Any], user: Curren
     if not trace:
         raise HTTPException(status_code=409, detail="This line has no working to decide on yet.")
     return dict(trace)
+
+
+async def _would_apply(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser, *, line_key: str,
+                       stream: str, target: str, target_id: str, side: str | None, record: dict[str, Any]) -> None:
+    """Refuse (409, with a code) a decision the line's working would not take, by the very rules the totals use: the
+    engine is run with the engagement's decisions and this one in place of the stream's current one."""
+
+    events = [e for e in await rules.current(db, engagement["id"])
+              if not (e.get("line_key") == line_key and e.get("stream") == stream)]
+    events.append({"line_key": line_key, "stream": stream, "target": target, "target_id": target_id, "side": side,
+                   "seq": 0, "record": record})
+    result = await recalculation_api.traced_recalculation(db, engagement, user, line_decisions=events)
+    line = next((ln for ln in result.get("calculation_lines", []) if ln.get("key") == line_key), None)
+    refused = next((n for n in ((line or {}).get("decisions") or {}).get("not_applied", [])
+                    if n.get("target") == target and n.get("id") == target_id and n.get("side") == side), None)
+    if refused is not None:
+        raise _Refused(CODES.get(str(refused.get("reason")), "not_counted"), str(refused.get("message")))
 
 
 async def _audit(db: AsyncSession, request: Request, user: CurrentUser, engagement: dict[str, Any], *,
@@ -137,13 +169,19 @@ async def _act(request: Request, user: CurrentUser, engagement: dict[str, Any], 
     with _rules():
         if choice is not None:
             updated = rules.decide_choice(record, choice, action, option_id=inputs.get("option_id"),
-                                          reason=inputs.get("reason"), actor=actor, now=now)
+                                          reason=inputs.get("reason"), actor=actor, now=now,
+                                          basis=rules.basis_of(trace, choice=choice))
         else:
             assert found is not None and side is not None
             item, row = found
             updated = rules.decide_input(record, item, row, side, action, value=inputs.get("value"),
                                          unit=inputs.get("unit"), reason=inputs.get("reason"),
-                                         document_id=inputs.get("document_id"), actor=actor, now=now)
+                                         document_id=inputs.get("document_id"), actor=actor, now=now,
+                                         basis=rules.basis_of(trace, row if row is not None else item))
+    if action in ("accept", "edit", "choose") and (side != "company"):
+        await _would_apply(db, engagement, user, line_key=line_key, stream=stream, target=target,
+                           target_id=target_id, side=side, record=updated)
+    with _rules():
         event = await rules.append(
             db, org_id=engagement["org_id"], engagement_id=engagement["id"], line_key=line_key, stream=stream,
             target=target, target_id=target_id, side=side, previous_seq=int(stored["seq"]) if stored else 0,
@@ -153,6 +191,15 @@ async def _act(request: Request, user: CurrentUser, engagement: dict[str, Any], 
                  action=action, status=status_of(updated), restored=restored)
     return {"line_key": line_key, "target": target, "id": target_id, "side": side, "seq": event["seq"],
             **rules.public_record(updated)}
+
+
+async def _answer(acting: Awaitable[dict[str, Any]]) -> dict[str, Any] | JSONResponse:
+    """The decision, or 409 ``{detail, code}`` when the line's working would not take it (nothing is written)."""
+
+    try:
+        return await acting
+    except _Refused as exc:
+        return JSONResponse(status_code=409, content={"detail": exc.detail, "code": exc.code})
 
 
 @router.post("/engagements/{engagement_id}/calculation-lines/{line_key}/choices/{choice_id}",
@@ -165,9 +212,10 @@ async def decide_choice(
     user: CurrentUser = Depends(s1_writer),
     engagement: dict[str, Any] = Depends(require_open_engagement),
     db: AsyncSession = Depends(get_db_session, scope="function"),
-) -> dict[str, Any]:
-    return await _act(request, user, engagement, db, line_key=line_key, target=rules.CHOICE, target_id=choice_id,
-                      side=None, action=body.action, option_id=body.option_id, reason=body.reason)
+) -> dict[str, Any] | JSONResponse:
+    return await _answer(_act(request, user, engagement, db, line_key=line_key, target=rules.CHOICE,
+                              target_id=choice_id, side=None, action=body.action, option_id=body.option_id,
+                              reason=body.reason))
 
 
 @router.post("/engagements/{engagement_id}/calculation-lines/{line_key}/inputs/{input_id:path}/{side}",
@@ -181,10 +229,10 @@ async def decide_input(
     user: CurrentUser = Depends(s1_writer),
     engagement: dict[str, Any] = Depends(require_open_engagement),
     db: AsyncSession = Depends(get_db_session, scope="function"),
-) -> dict[str, Any]:
-    return await _act(request, user, engagement, db, line_key=line_key, target=rules.INPUT, target_id=input_id,
-                      side=side, action=body.action, value=body.value, unit=body.unit, reason=body.reason,
-                      document_id=body.document_id)
+) -> dict[str, Any] | JSONResponse:
+    return await _answer(_act(request, user, engagement, db, line_key=line_key, target=rules.INPUT,
+                              target_id=input_id, side=side, action=body.action, value=body.value, unit=body.unit,
+                              reason=body.reason, document_id=body.document_id))
 
 
 @router.get("/engagements/{engagement_id}/calculation-lines/decisions", response_model=dict[str, Any])

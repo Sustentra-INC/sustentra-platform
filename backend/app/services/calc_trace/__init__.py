@@ -48,10 +48,13 @@ def _built(panel: str, line: dict[str, Any], context: dict[str, Any] | None) -> 
     if builder is None:
         return None
     try:
-        return builder(line, context)
+        trace = builder(line, context)
     except Exception as exc:  # noqa: BLE001 - a trace must never take a recalculation down
         log.warning("calculation trace failed: %s", type(exc).__name__)
         return None
+    if trace is not None:
+        decisions.mark_decidable(trace)
+    return trace
 
 
 def build_trace(panel: str, line: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any] | None:

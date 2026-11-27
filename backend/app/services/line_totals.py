@@ -181,7 +181,9 @@ def _market(market: calc.CategoryResult | None, location_lines: list[calc.LineRe
 
     if market is None:
         return True, None
-    mwh = {f.facility: float(f.consumption.value) for f in facilities}
+    if any(f.consumption.unit not in ("MWh", "kWh") for f in facilities):
+        return False, None
+    mwh = {f.facility: float(f.consumption.value) / (1000 if f.consumption.unit == "kWh" else 1) for f in facilities}
     if set(mwh) != {line.key for line in location.lines}:
         return False, None
     changed: set[str] = set()

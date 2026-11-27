@@ -28,7 +28,7 @@ from backend.app.api.s1_access import can_see, s1_reader
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
 from backend.app.services import workpaper_item_service
-from backend.app.services import methodology_gwp
+from backend.app.services import calc_line_review, methodology_gwp
 from backend.app.services.evidence_tree_service import EvidenceTreeService
 
 router = APIRouter(prefix="/v1", tags=["evidence-tree"])
@@ -117,6 +117,7 @@ async def get_line_schedule(
     schedule = _service().schedule(
         engagement, lambda record: can_see(record, user), line_key, decisions,
         name_of=lambda login: names.get(str(login).lower(), str(login)),
+        line_decisions=await calc_line_review.current(db, engagement["id"]),
     )
     if schedule is None:
         raise HTTPException(status_code=404, detail="This calculation line does not exist in this engagement.")

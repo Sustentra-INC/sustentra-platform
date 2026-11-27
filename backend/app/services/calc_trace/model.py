@@ -105,6 +105,8 @@ class TraceInput:
     differs: bool | None = None
     difference: float | None = None
     rows: list[InputRow] | None = None
+    decidable: bool = True  # a reviewer can accept or edit the recomputed value for this line
+    why_not: str | None = None  # why not, when it cannot
 
 
 @dataclass

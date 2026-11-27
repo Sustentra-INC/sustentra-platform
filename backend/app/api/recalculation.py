@@ -68,33 +68,43 @@ async def get_recalculation(
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> dict:
     engagement = await _visible(db, engagement_id, user)
+    return await run_recalculation(db, engagement, user)
+
+
+LOAD = "load"  # run_recalculation's default: the engagement's current line decisions
+
+
+async def run_recalculation(db: AsyncSession, engagement: dict, user: CurrentUser, *, with_traces: bool = False,
+                            line_decisions: list[dict] | None | str = LOAD) -> dict:
+    """THE entry point of one recalculation (Results, the trace, the decision checks): the documents' decisions, the
+    Methodology GWP and, by default, the reviewer's decisions on the calculation lines (``calc_line_review.current``),
+    then ``EngagementRecalculationService.recalculate``. A cache belongs around that call, with the line decisions in
+    its key. ``line_decisions=None`` runs without them; a list runs with exactly those."""
+
     decisions = {
         str(item["payload"].get("documentId") or item["item_key"]): item["payload"]
         for item in await workpaper_item_service.list_items(db, engagement["id"], "document")
     }
     engagement = await methodology_gwp.attach_choice(db, engagement)  # the Methodology review's GWP set
-    line_decisions = await calc_line_review.current(db, engagement["id"])
+    events = await calc_line_review.current(db, engagement["id"]) if line_decisions == LOAD else line_decisions
+    assert not isinstance(events, str)
     return _service().recalculate(engagement, lambda record: can_see(record, user), decisions,
-                                  line_decisions=line_decisions)
+                                  with_traces=with_traces, line_decisions=events)
 
 
 async def traced_recalculation(db: AsyncSession, engagement: dict, user: CurrentUser, *,
-                               with_line_decisions: bool = True) -> dict:
+                               with_line_decisions: bool = True, line_decisions: list[dict] | None = None) -> dict:
     """One engine run with every line's trace (``with_traces``): the trace endpoint and the reviewer's decisions on
     a line (``calculation_line_review``) both read the line from it, so they agree with the recalculation.
 
     ``with_line_decisions`` reads the reviewer's decisions on the lines into their working (as the recalculation
-    does). The decision endpoints turn it off: a decision is checked against the line's automatic working, the
-    options and values the calculators offer, never against an earlier decision."""
+    does); ``line_decisions`` runs with exactly those instead (a decision POST checking what it would do). The
+    decision endpoints read the automatic working (off): the state machine and the stored context of a decision are
+    the calculators' values, never an earlier decision's."""
 
-    decisions = {
-        str(item["payload"].get("documentId") or item["item_key"]): item["payload"]
-        for item in await workpaper_item_service.list_items(db, engagement["id"], "document")
-    }
-    engagement = await methodology_gwp.attach_choice(db, engagement)
-    line_decisions = await calc_line_review.current(db, engagement["id"]) if with_line_decisions else None
-    return _service().recalculate(engagement, lambda record: can_see(record, user), decisions, with_traces=True,
-                                  line_decisions=line_decisions)
+    chosen: list[dict] | None | str = line_decisions if line_decisions is not None else (
+        LOAD if with_line_decisions else None)
+    return await run_recalculation(db, engagement, user, with_traces=True, line_decisions=chosen)
 
 
 @router.get("/engagements/{engagement_id}/recalculation/lines/{line_key}/trace")

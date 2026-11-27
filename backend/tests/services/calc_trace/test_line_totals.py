@@ -11,6 +11,8 @@ from typing import Any
 import pytest
 from openpyxl import load_workbook
 
+from backend.app.reference.emission_factor_loader import default_emission_factor_reference
+from backend.app.services import calc_line_review
 from backend.app.services import emissions_calculator as calc
 from backend.app.services import line_totals
 from backend.app.services.workpaper_export_service import build_workbook
@@ -21,6 +23,7 @@ from backend.tests.services.calc_trace.test_calc_trace_decisions import (
 )
 from backend.tests.services.test_calculation_lines import ELEC_STL, GAS_KC, GAS_STL
 from backend.tests.services.test_calculation_lines import _elec as _elec_record
+from backend.tests.services.test_calculation_lines import _gas as _gas_record
 from backend.tests.services.test_engagement_recalculation_service import FakeStore, _diesel_purchase
 
 FAMILIES = {"stationary": "stationary_combustion", "mobile": "mobile_combustion",
@@ -295,3 +298,74 @@ def test_two_lines_of_one_fuel_each_move_their_own_share_of_the_category() -> No
         before["categories"]["stationary_combustion"]["total_co2e"] == pytest.approx(delta, rel=1e-9)
     assert decided["calculation_line_decisions"]["lines_with_decisions"] == 2
     _assert_lines_add_up(decided)
+
+
+# --- a decision never silently overrides evidence (or reference data) that arrived after it -------------------------
+def _based(response: dict, line_key: str, input_id: str, value: float, unit: str) -> dict:
+    """An edit as the decision POST stores it: with what it replaced (``calc_line_review.basis_of``)."""
+
+    trace = line_of(response, line_key)["trace"]
+    found = calc_line_review.find_input(trace, input_id)
+    assert found is not None
+    made = event(line_key, f"input|{input_id}|recomputed", "edited", value, unit)
+    made["record"]["decision"]["basis"] = calc_line_review.basis_of(trace, found[1] or found[0])
+    return made
+
+
+def test_an_activity_edit_is_stale_once_a_new_bill_arrives_and_the_new_total_is_used() -> None:
+    store = FakeStore()
+    store.add_document("G1", "CT-S1-FUELQTY", [_gas_record(30000)])
+    edit = _based(run(store), GAS_KC, "activity.total", 40000, "MMBtu")
+    applied = run(store, line_decisions=[edit])
+    assert [a["id"] for a in line_of(applied, GAS_KC)["decisions"]["applied"]] == ["activity.total"]
+    assert applied["categories"]["stationary_combustion"]["total_co2e"] == pytest.approx(40000 * NG_T_PER_MMBTU)
+
+    store.add_document("G2", "CT-S1-FUELQTY", [_gas_record(5000, "2025-02-01", "2025-02-28")])
+    later = run(store, line_decisions=[edit])
+    line = line_of(later, GAS_KC)
+    [stale] = line["decisions"]["not_applied"]
+    assert stale["reason"] == "stale" and line["decisions"]["applied"] == []
+    assert stale["automatic_then"]["value"] == 30000 and stale["automatic_now"]["value"] == 35000
+    assert later["categories"]["stationary_combustion"]["total_co2e"] == pytest.approx(35000 * NG_T_PER_MMBTU)
+    assert line["trace"]["inputs"]["activity.total"]["recomputed"]["value"] == 35000
+    assert later["calculation_line_decisions"]["not_applied"][0]["reason"] == "stale"
+
+
+def test_a_factor_edit_is_stale_once_the_grid_region_changes() -> None:
+    settings: dict[str, Any] = {"grid_regions": REGIONS, "vehicle_groups": [GROUP_ROAD]}
+    edit = _based(run(mixed_store(), **settings), ELEC_STL, "ef.CO2", 500.0, "lb/MWh")
+    same = run(mixed_store(), line_decisions=[edit], **settings)
+    assert [a["id"] for a in line_of(same, ELEC_STL)["decisions"]["applied"]] == ["ef.CO2"]
+    moved = {**settings, "grid_regions": {**REGIONS, "St Louis Plant": "CAMX"}}
+    later = run(mixed_store(), line_decisions=[edit], **moved)
+    [stale] = line_of(later, ELEC_STL)["decisions"]["not_applied"]
+    assert stale["reason"] == "stale"
+    assert (stale["automatic_then"]["grid_region"], stale["automatic_now"]["grid_region"]) == ("RFCE", "CAMX")
+    plain = run(mixed_store(), **moved)
+    assert later["categories"] == plain["categories"] and later["scope_totals"] == plain["scope_totals"]
+
+
+def test_a_decision_stored_before_its_context_was_kept_is_applied_as_before() -> None:
+    edit = event(GAS_KC, "input|activity.total|recomputed", "edited", 700000, "therm")
+    assert "basis" not in edit["record"]["decision"]
+    line = line_of(run(gas_store(), line_decisions=[edit]), GAS_KC)
+    assert [a["id"] for a in line["decisions"]["applied"]] == ["activity.total"]
+
+
+def test_every_input_says_whether_a_line_can_decide_it() -> None:
+    trace = line_of(run(gas_store()), GAS_KC)["trace"]
+    assert trace["inputs"]["activity.total"]["decidable"] is True and "why_not" not in trace["inputs"]["activity.total"]
+    assert trace["inputs"]["ef.CO2"]["decidable"] is True
+    assert trace["inputs"]["gwp.CH4"]["decidable"] is False and "Methodology" in trace["inputs"]["gwp.CH4"]["why_not"]
+    assert trace["inputs"]["share"]["decidable"] is False
+
+
+def test_market_based_takes_kwh_facilities_in_mwh_and_refuses_any_other_unit() -> None:
+    ref = default_emission_factor_reference()
+    facilities = [calc.FacilityElectricity("A", calc.Measure(1_200_000, "kWh"), "NYUP")]
+    location = calc.electricity_location_based(facilities, ref)
+    market = calc.electricity_market_based(facilities, [], ref)
+    ok, rerun = line_totals._market(market, location.lines, location, [], facilities, [], ref)
+    assert ok and rerun is not None and rerun.details["total_mwh"] == pytest.approx(1200)
+    odd = [calc.FacilityElectricity("A", calc.Measure(5, "GJ"), "NYUP")]
+    assert line_totals._market(market, location.lines, location, [], odd, [], ref) == (False, None)

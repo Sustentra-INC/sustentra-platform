@@ -75,7 +75,7 @@ def test_each_decision_is_a_new_row_and_the_trace_shows_the_current_one() -> Non
     one = call("POST", path(eid, f"{LINE}/choices/method"), "a_member",
                {"action": "choose", "option_id": "per_unit"})
     assert one.status_code == 200, one.text
-    edit = {"action": "edit", "value": 640000, "reason": "Invoice shows less"}
+    edit = {"action": "edit", "value": 640000, "unit": "therm", "reason": "Invoice shows less"}
     two = call("POST", path(eid, f"{LINE}/inputs/activity.total/recomputed"), "a_member", edit)
     three = call("POST", path(eid, f"{LINE}/inputs/activity.total/recomputed"), "a_admin",
                  {**edit, "value": 641000})
@@ -103,7 +103,7 @@ def test_each_decision_is_a_new_row_and_the_trace_shows_the_current_one() -> Non
 def test_every_action_writes_an_audit_event_without_the_value_or_the_reason() -> None:
     eid = create()["id"]
     call("POST", path(eid, f"{LINE}/inputs/activity.total/recomputed"), "a_member",
-         {"action": "edit", "value": 123456, "reason": "secret-looking reason"})
+         {"action": "edit", "value": 123456, "unit": "therm", "reason": "secret-looking reason"})
     call("POST", path(eid, f"{LINE}/inputs/activity.total/recomputed"), "a_member", {"action": "revert"})
     refused = call("POST", path(eid, f"{LINE}/choices/method"), "a_member", {"action": "choose", "option_id": "heat",
                                                                               "reason": "x"})
