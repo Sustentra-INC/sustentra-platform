@@ -1,5 +1,5 @@
 /* @vitest-environment jsdom */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../lib/api", () => ({
@@ -99,14 +99,15 @@ describe("scrolling to the selected value", () => {
       motion(reduce);
       render(<BackendPageView documentId="DOC" span={MARK.span!} marks={[MARK]} onPickMark={vi.fn()} />);
       fireEvent.load(await screen.findByRole("img"));
-      expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ behavior }));
+      await waitFor(() => expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ behavior })));
     });
 
     it(`jumps in a file${reduce ? " at once under reduced motion" : " smoothly otherwise"}`, async () => {
       motion(reduce);
       render(<DocumentContentView documentId="DOC" marks={[MARK]} selectedId="kwh" />);
       await screen.findByRole("button", { name: /^Select Electricity consumed/ });
-      expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ behavior }));
+      // The view scrolls in an effect after the cell renders: wait for it rather than racing it.
+      await waitFor(() => expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ behavior })));
     });
   }
 });
