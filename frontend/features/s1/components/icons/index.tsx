@@ -921,6 +921,16 @@ export function IconStar(props: IconProps) {
   );
 }
 
+/** Four-point sparkle with a small second sparkle — AI extraction (design standard section 7). */
+export function IconAiSparkle(props: IconProps) {
+  return (
+    <Root {...props}>
+      <path d="M18.5 1.5c.35 1.9 1.1 2.65 3 3-1.9.35-2.65 1.1-3 3-.35-1.9-1.1-2.65-3-3 1.9-.35 2.65-1.1 3-3z" fill="currentColor" fillOpacity=".38" />
+      <path d="M10 4c.6 4.3 2.7 6.4 7 7-4.3.6-6.4 2.7-7 7-.6-4.3-2.7-6.4-7-7 4.3-.6 6.4-2.7 7-7z" fill="currentColor" />
+    </Root>
+  );
+}
+
 /** Two-row checklist with square bullets — coverage task list. */
 export function IconChecklist(props: IconProps) {
   return (

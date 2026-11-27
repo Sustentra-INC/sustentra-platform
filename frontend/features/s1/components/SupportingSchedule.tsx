@@ -6,7 +6,7 @@ import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSc
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { userFacingApiError } from "../api/s1Backend";
 import { ContainerStateSurface } from "./ContainerStateSurface";
-import { IconArrowRight, IconChecklist, IconChevronDown, IconChevronLeft, IconChevronRight, IconDocument } from "./icons";
+import { IconArrowRight, IconChevronDown, IconChevronLeft, IconChevronRight, IconAiSparkle, IconDocument } from "./icons";
 
 /**
  * One calculation line's supporting schedule: what covers each month of the year, which
@@ -507,6 +507,7 @@ function CoverageChart({
   );
 }
 
+/** "System" history events are AI extraction (design standard section 7), so they get the AI sparkle (IconAiSparkle). */
 const SYSTEM_ACTOR = "System";
 
 /** Who an event's sentence starts with: a reviewer on this line, or the system; null when it names neither. */
@@ -534,7 +535,7 @@ function LineHistory({ history, people }: { history: LineSchedule["history"]; pe
                 <li key={`${h.at}:${i}`}>
                   {actor === SYSTEM_ACTOR ? (
                     <span className="s1-team-avatar s1-team-avatar--sm s1-team-avatar--3" aria-hidden>
-                      <IconChecklist size={14} />
+                      <IconAiSparkle size={14} />
                     </span>
                   ) : (
                     <span className={`s1-team-avatar s1-team-avatar--sm s1-team-avatar--${actor ? avatarTone(actor) : 3}`} aria-hidden>
