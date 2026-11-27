@@ -398,6 +398,7 @@
   --batch-row-min-h: 54px;/* batch file row minimum height */
   --batch-mini-w: 90px;   /* batch row inline mini progress bar width */
   --upq-spin-border: 2px; /* spinner ring border width */
+  --disabled-opacity: 0.45; /* withdrawn / disabled content */
   --hairline-width: 1px;
   --ring-width: 1.5px;
   --active-row-marker-width: 3px;
