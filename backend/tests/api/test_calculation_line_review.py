@@ -389,20 +389,43 @@ def test_a_post_runs_the_engine_once_off_the_event_loop_and_locks_only_to_write(
     assert runs[0] != loop[0]  # the engine ran in a worker thread, not on the event loop
 
 
-def test_a_stream_that_moves_between_the_check_and_the_write_is_a_409_state_changed(  # noqa: ANN001
+def test_a_double_click_lands_twice_and_a_move_that_no_longer_fits_is_state_changed(  # noqa: ANN001
         act_as, rows: Rows, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stream another request wrote between this one's check and its write: the move is made again on the new
+    state and lands when it still fits (two edits: both land, one after the other); one that no longer fits (a revert
+    of a decision someone else just reverted) is 409 ``state_changed``. Never both refused."""
+
     act_as("org_member", ORG_A)
     with TestClient(app) as client:
         key, t = trace_of(client)
         unit = t["inputs"]["activity.total"]["recomputed"]["unit"]
-        stream = "input|activity.total|recomputed"
+        path = f"{BASE}/{key}/inputs/activity.total/recomputed"
+        real_lock = calc_line_review.lock
+        first_done: list[int] = []
 
-        async def someone_else_first(*args: Any) -> None:  # another request wrote while this one was checking
-            rows.events.append({"line_key": key, "stream": stream, "target": "input", "target_id": "activity.total",
-                                "side": "recomputed", "seq": 1, "record": calc_line_review.new_record(stream)})
+        async def the_other_click_lands_first(*args: Any) -> None:
+            if not first_done:
+                first_done.append(1)
+                rows.events.append({"line_key": key, "stream": "input|activity.total|recomputed", "target": "input",
+                                    "target_id": "activity.total", "side": "recomputed", "seq": 1, "record": {
+                                        **calc_line_review.new_record("input|activity.total|recomputed"),
+                                        "decision": {"status": "edited", "value": 8.0, "unit": unit,
+                                                     "by": {"name": "x"}, "at": "t"}}})
+            await real_lock(*args)
 
-        monkeypatch.setattr(calc_line_review, "lock", someone_else_first)
-        late = client.post(f"{BASE}/{key}/inputs/activity.total/recomputed",
-                           json={"action": "edit", "value": 9, "unit": unit, "reason": "r"})
+        monkeypatch.setattr(calc_line_review, "lock", the_other_click_lands_first)
+        second = client.post(path, json={"action": "edit", "value": 9, "unit": unit, "reason": "r"})
+        assert second.status_code == 200, second.text
+        assert second.json()["seq"] == 2 and second.json()["decision"]["value"] == 9
+        assert [e["seq"] for e in rows.events] == [1, 2]
+
+        async def someone_reverted_first(*args: Any) -> None:
+            rows.events.append({**rows.events[-1], "seq": 3,
+                                "record": calc_line_review.new_record("input|activity.total|recomputed")})
+            await real_lock(*args)
+
+        monkeypatch.setattr(calc_line_review, "lock", someone_reverted_first)
+        late = client.post(path, json={"action": "revert"})
         assert late.status_code == 409 and late.json()["code"] == "state_changed", late.text
-    assert len(rows.events) == 1 and rows.audit == []
+        assert "already pending" in late.json()["detail"]
+    assert [e["seq"] for e in rows.events] == [1, 2, 3]

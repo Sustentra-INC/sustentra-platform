@@ -135,7 +135,7 @@ async def _act(request: Request, user: CurrentUser, engagement: dict[str, Any], 
     record = stored["record"] if stored else rules.new_record(stream)
     now, actor = datetime.now(UTC), actor_of(user)
 
-    def make(trace: dict[str, Any]) -> dict[str, Any]:
+    def make(trace: dict[str, Any], record: dict[str, Any] = record) -> dict[str, Any]:
         if target == rules.CHOICE:
             choice = rules.find_choice(trace, target_id)
             if choice is None:
@@ -176,8 +176,16 @@ async def _act(request: Request, user: CurrentUser, engagement: dict[str, Any], 
     await rules.lock(db, engagement["id"], line_key)
     now_stored = next((e for e in await rules.current(db, engagement["id"], line_key) if e["stream"] == stream), None)
     if (now_stored or {}).get("seq") != (stored or {}).get("seq"):
-        raise _Refused("state_changed", "This decision was changed by someone else a moment ago. Reload to see the "
-                                        "current state.")
+        # Another request wrote this stream while this one was checking (a double click). The move is made again on
+        # the stream's new state and the same automatic working: what the engine checked (this move's value, unit
+        # and basis, against the line and its category) is unchanged, so only the state machine can refuse it now.
+        assert now_stored is not None and proposal.trace is not None
+        try:
+            updated = make(proposal.trace, now_stored["record"])
+        except (ReviewConflict, ReviewInvalid) as exc:
+            raise _Refused("state_changed", "This decision was changed by someone else a moment ago, and this "
+                                            f"change no longer fits: {exc} Reload to see the current state.") from exc
+        stored = now_stored
     with _rules():
         event = await rules.append(
             db, org_id=engagement["org_id"], engagement_id=engagement["id"], line_key=line_key, stream=stream,

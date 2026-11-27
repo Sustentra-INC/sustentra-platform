@@ -207,7 +207,7 @@ def test_a_decision_whose_line_is_gone_is_kept_and_listed_as_orphaned(monkeypatc
     eid = create()["id"]
     call("POST", path(eid, f"{LINE}/choices/method"), "a_member", {"action": "choose", "option_id": "per_unit"})
 
-    async def renamed(db: Any, engagement: dict, user: Any) -> dict:
+    async def renamed(db: Any, engagement: dict, user: Any, **_: Any) -> dict:
         return {"calculation_lines": [{"key": "s1:stationary:natural-gas:fac-new", "trace": {**TRACE, "line_key": "x"}}]}
 
     monkeypatch.setattr(recalculation_api, "traced_recalculation", renamed)
@@ -220,10 +220,14 @@ def test_a_decision_whose_line_is_gone_is_kept_and_listed_as_orphaned(monkeypatc
 def test_a_line_key_of_200_characters_works_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None:
     longest = "s1:" + "k" * 197
 
-    async def long_line(db: Any, engagement: dict, user: Any) -> dict:
-        return {"calculation_lines": [{"key": longest, "trace": {**copy.deepcopy(TRACE), "line_key": longest}}]}
+    async def long_line(db: Any, engagement: dict, user: Any, **kw: Any) -> dict:
+        trace = {**copy.deepcopy(TRACE), "line_key": longest}
+        if kw.get("proposal") is not None:  # the decision POST's one engine run
+            kw["proposal"].offer(longest, copy.deepcopy(trace))
+        return {"calculation_lines": [{"key": longest, "trace": trace}]}
 
     monkeypatch.setattr(recalculation_api, "traced_recalculation", long_line)
+    monkeypatch.setattr(recalculation_api, "run_recalculation", long_line)
     eid = create()["id"]
     response = call("POST", path(eid, f"{longest}/choices/method"), "a_member",
                     {"action": "choose", "option_id": "per_unit"})
