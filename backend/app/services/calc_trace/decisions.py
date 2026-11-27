@@ -11,6 +11,8 @@ What counts, per stream:
   suggestion never does (it is not an operand); a ``rejected`` one leaves the automatic value, with a flag.
 * a **choice**, ``accepted`` or ``edited`` (chosen): the option the line uses. Each choice offers only today's route
   so far, so a chosen option is the default one; an option no route exists for is never applied.
+* a **choice** of the electricity line's grid region (a ZIP code in two subregions), ``accepted`` or ``edited``: the line
+  is worked on the factors of the picked subregion, as if its three emission factors were decided (``electricity``).
 * the **company** side: shown on the trace (``calc_line_review.with_decisions``), never an operand.
 
 Only the activity (the total, or a document's row), the emission factors and a vehicle group's distance or fuel economy can be decided
@@ -30,8 +32,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from backend.app.services.calc_trace import mobile, ops, stationary
-from backend.app.services.calc_trace._line import _annotate, normalise_unit
+from backend.app.reference.emission_factor_loader import default_emission_factor_reference
+from backend.app.services.calc_trace import electricity, mobile, ops, stationary
+from backend.app.services.calc_trace._line import _annotate, normalise_unit, reference_source
 from backend.app.services.calc_trace.model import (
     Choice, LineTrace, Operand, Operation, Side, SourceRef, Term, TraceBlock, TraceResult,
 )
@@ -155,6 +158,7 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
     values: dict[str, tuple[float, Mapping[str, Any], Mapping[str, Any]]] = {}  # input id -> (value, decision, record)
     rejected: list[str] = []
     chosen: list[tuple[str, Mapping[str, Any]]] = []  # read after the inputs: a route needs its site values
+    region_pick: tuple[str, Mapping[str, Any], Mapping[str, Any]] | None = None
     multi_run = _multi_run(out)
 
     for stream, record in sorted(records.items()):
@@ -230,7 +234,9 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
 
     site = {k: values[k][0] for k in stationary.SITE_INPUTS if k in values}
     for target_id, decision in chosen:
-        _choice(out, target_id, decision, outcome, panel, site)
+        picked = _choice(out, target_id, decision, outcome, panel, site)
+        if picked is not None:  # a grid-region pick: never a route (``outcome.routes``), worked as factors below
+            region_pick = (picked, decision, records.get(f"choice|{target_id}|") or {})
     if panel == "stationary":
         stationary.follow_co2(out, outcome.routes, {i for i, _ in chosen}, site)
     _equation_overrides(out, values, outcome)
@@ -264,6 +270,7 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
         values.pop("distance")
         _move_to_not_applied(outcome, "distance", "fuel_economy_decided",
                              "Not applied: the fuel economy is decided, and the distance follows from it.")
+    regional = _region_values(out, region_pick, values, outcome, (context or {}).get("ref")) if region_pick else {}
     if (not values and not outcome.routes) or out.state == "blocked" or not out.steps:
         if values:
             for input_id in values:
@@ -271,6 +278,8 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
                                      "Not applied: this line has no working to calculate from.")
         return out, outcome, None
     figures = _rework(out, values, panel, outcome.routes, site, context)
+    if region_pick is not None and regional:
+        _region_worked(out, region_pick, regional, values)
     out.flags = sorted({*out.flags, APPLIED_FLAG})
     return out, outcome, figures
 
@@ -342,19 +351,22 @@ def _equation_overrides(trace: LineTrace, values: dict[str, Any], outcome: Outco
 
 
 def _choice(trace: LineTrace, choice_id: str, decision: Mapping[str, Any], outcome: Outcome, panel: str = "",
-            site: Mapping[str, float] | None = None) -> None:
+            site: Mapping[str, float] | None = None) -> str | None:
+    """Records a choice's decision; returns the option a grid-region choice picked other than the line's own (the
+    caller works the line on it), else None."""
+
     choice: Choice | None = next((c for c in trace.choices if c.id == choice_id), None)
     status = str(decision.get("status"))
     if choice is None:
         outcome.not_applied.append(_entry("choice", choice_id, None, status=status, reason="not_on_this_line",
                                           message="This choice is no longer part of the line's working."))
-        return
+        return None
     if status == "rejected":
         trace.flags = sorted({*trace.flags, REJECTED_FLAG})
         outcome.applied.append(_entry("choice", choice_id, None, status=status, uses="automatic value"))
-        return
+        return None
     if status not in DECIDED:
-        return
+        return None
     then = _basis(decision)
     if then is not None and "chosen" in then and then["chosen"] != (choice.chosen if choice.chosen_by == "default"
                                                                     else None):
@@ -362,13 +374,16 @@ def _choice(trace: LineTrace, choice_id: str, decision: Mapping[str, Any], outco
                                           automatic_then=then["chosen"], automatic_now=choice.chosen,
                                           message="Not applied: the line's automatic method changed after this "
                                                   "decision. Decide again."))
-        return
+        return None
     picked = decision.get("value")
     option = next((o for o in choice.options if o.id == picked), None)
     if option is None or not option.available:
         outcome.not_applied.append(_entry("choice", choice_id, None, status=status, reason="option_not_available",
                                           message="Not applied: that option is not available for this line."))
-        return
+        return None
+    if option.id != choice.chosen and choice_id == electricity.REGION_CHOICE and panel == "electricity":
+        return option.id  # another subregion of the facility's ZIP code: worked as its factors (``_region_values``)
+        return None
     if option.id != choice.chosen:  # a route is worked only where one is built: never a number from one that is not
         gas = choice_id.split(":", 1)[1] if choice_id.startswith("equation:") else ""
         refusal: str | None = "Not applied: Sustentra cannot calculate this option yet."
@@ -377,11 +392,68 @@ def _choice(trace: LineTrace, choice_id: str, decision: Mapping[str, Any], outco
         if refusal is not None:
             outcome.not_applied.append(_entry("choice", choice_id, None, status=status, reason="no_route_for_option",
                                               message=refusal))
-            return
+            return None
         outcome.routes[choice_id] = (choice.chosen, option.id)
         choice.chosen = option.id
     choice.chosen_by = "reviewer"
     outcome.applied.append(_entry("choice", choice_id, None, status=status, value=option.id))
+    return None
+
+
+def _region_values(trace: LineTrace, pick: tuple[str, Mapping[str, Any], Mapping[str, Any]],
+                   values: dict[str, tuple[float, Mapping[str, Any], Mapping[str, Any]]], outcome: Outcome,
+                   ref: Any = None) -> dict[str, Any]:
+    """The picked subregion's three factors, decided as the line's emission factors (one the reviewer decided
+    separately wins), from the reference the engine ran on (``ref``; the default one when none is given). Returns the factors by gas, or {} when the line cannot be worked on them (reported)."""
+
+    code, decision, _ = pick
+    status = str(decision.get("status"))
+
+    def refused(reason: str, message: str) -> dict[str, Any]:
+        outcome.not_applied.append(_entry("choice", electricity.REGION_CHOICE, None, status=status, reason=reason,
+                                          message=message))
+        return {}
+
+    if trace.state == "blocked" or not trace.steps:
+        return refused("line_has_no_working", "Not applied: this line has no working to calculate from.")
+    try:
+        factors = (ref or default_emission_factor_reference()).electricity(code)
+    except LookupError:
+        return refused("option_not_available", "Not applied: that option is not available for this line.")
+    found: dict[str, Any] = {}
+    for gas in electricity.GASES:
+        item = trace.inputs.get(f"ef.{gas}")
+        number = _number(factors[gas].value)
+        if item is None or item.recomputed is None or number is None:
+            return refused("no_route_for_option", "Not applied: Sustentra cannot calculate this option yet.")
+        if normalise_unit(factors[gas].unit) != normalise_unit(str(item.recomputed.unit)):
+            return refused("unit_mismatch", "Not applied: the subregion's factors are in another unit than the line's.")
+        found[gas] = factors[gas]
+    for gas in electricity.GASES:
+        values.setdefault(f"ef.{gas}", (_number(found[gas].value) or 0.0, decision, pick[2]))
+    outcome.applied.append(_entry("choice", electricity.REGION_CHOICE, None, status=status, value=code,
+                                  moves_totals=True, decided_by=_by(decision),
+                                  decided_at=str(decision.get("at") or ""),
+                                  reason_given=str(decision.get("reason") or "")))
+    return found
+
+
+def _region_worked(trace: LineTrace, pick: tuple[str, Mapping[str, Any], Mapping[str, Any]],
+                   factors: Mapping[str, Any], values: Mapping[str, tuple[float, Mapping[str, Any], Mapping[str, Any]]]
+                   ) -> None:
+    """After the rework: the factors the subregion gave say where they come from (the table, not "entered"), and the
+    region input, its block and the choice say which subregion the line used."""
+
+    code, decision, record = pick
+    for gas, factor in factors.items():
+        item = trace.inputs[f"ef.{gas}"]
+        if values[f"ef.{gas}"][1] is decision and item.recomputed is not None:  # not decided on its own
+            item.recomputed = Side(factor.value, item.recomputed.unit, "reference", reference_source(factor.source))
+    choice = next((c for c in trace.choices if c.id == electricity.REGION_CHOICE), None)
+    if choice is not None:
+        choice.chosen, choice.chosen_by = code, "reviewer"
+    electricity.decided_region(trace, code, Side(code, None, "edited" if decision.get("status") == "edited"
+                                                 else "accepted", _source(decision, record)))
 
 
 def _find(trace: LineTrace, input_id: str) -> Any:

@@ -11,6 +11,7 @@ import type {
 } from "../api/recalculation";
 import type { RecalculationSettings } from "../types/engagement";
 import { demoGwpChoice } from "./methodology";
+import { companyRegionCode, demoCompanyRegion } from "./calcTrace/companyRegion";
 import { DEFAULT_VEHICLE_GROUP, buildModel, engagementNow, recordsOn, shareInPeriod, type Model, type ModelLine, type ModelRecord } from "./linesModel";
 
 const HUB = "EPA GHG Emission Factors Hub 2025";
@@ -251,7 +252,10 @@ export function calculate(): Calculated {
     let company: CalculationLine["company"] = null;
     if (companyActivity) {
       const cStep2 = plan.step2(companyActivity);
-      const cg = gasLines(plan.gases(cStep2), inputs.gwp_set);
+      // The company's own grid region, when a reviewer entered one: its factors, not ours.
+      const theirs = ml.category === "purchased_energy" ? companyRegionCode(demoCompanyRegion(engagementNow().engagementId, ml.key)) : null;
+      const companyPlan = theirs ? (planFor(ml, inputs, theirs) ?? plan) : plan;
+      const cg = gasLines(companyPlan.gases(cStep2), inputs.gwp_set);
       company = { activity: companyActivity, step2: cStep2, step3: { gases: cg.rows }, results: cg.results };
     }
     const withCompany = company ? gasLines(plan.gases(step2), inputs.gwp_set, company.results.gas_co2e_t) : own;

@@ -29,7 +29,7 @@ from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorNotFoundError, EmissionFactorReference
 from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
-from backend.app.services.calc_trace import Decided, build_trace, decided_trace, stationary
+from backend.app.services.calc_trace import Decided, build_trace, decided_trace, electricity, stationary
 from backend.app.services.calc_trace.decisions import Figures
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
 from backend.app.services.reviewed_evidence import ReviewedRecord, place_on_facility, to_date
@@ -222,6 +222,7 @@ class _Builder:
         self.proposal = proposal
         self.line_decisions = line_decisions or {}
         self.decided: list[DecidedLine] = []
+        self.setup_facilities: dict[str, dict[str, Any]] = {}  # Setup facility by anchor id (electricity's ZIP code)
         self.ref = ref
         self.ledger = ledger
         self.inputs = inputs
@@ -359,8 +360,15 @@ class _Builder:
 
     def _context(self, family: str, bucket: _Bucket, primary: _Sub | None) -> dict[str, Any]:
         context: dict[str, Any] = {}
-        if family == "electricity" and primary is not None:
-            context["grid_region"] = self.ledger.regions.get(primary.sub[0]) or self._region_of(bucket, primary.sub[0])
+        if family == "electricity":
+            name = primary.sub[0] if primary is not None else (bucket.anchor or bucket.level2)
+            setup = bucket.facility or self.setup_facilities.get(bucket.line.anchor_id if bucket.line else "") or {}
+            records = self.line_decisions.get(bucket.line.key) if bucket.line is not None else None
+            addresses = [setup.get("address"), *(c.record.best("service_address") for c in bucket.contribs)]
+            context = electricity.context(
+                self.ref, region=self.ledger.regions.get(name) or self._region_of(bucket, name),
+                chosen=self.inputs.grid_regions.get(name), setup_region=setup.get("gridRegion"),
+                addresses=addresses, records=records) | {"ref": self.ref}
         if family == "stationary" and primary is not None:  # the equations a line can be worked on (C1)
             records = self.line_decisions.get(bucket.line.key) if bucket.line is not None else None
             context["fuel"], context["decided"] = primary.sub[0], stationary.site_decided(records)
@@ -510,8 +518,12 @@ class _Builder:
                 f"the same kind as {sub.to_unit}.")
             return
         rows = []
+        company_ef = electricity.company_factors(self.ref, self.line_decisions.get(key)) if bucket.family == "electricity" \
+            else None  # the company's own region: its factors, not ours
         for row in sub.rows:
             row = dict(row)
+            if company_ef is not None:
+                row["ef"] = company_ef[row["gas"]]
             if row.pop("driven"):
                 mass = converted * row["ef"]["value"] * row["unit_conversion"]
                 row.update(activity={"value": converted, "unit": sub.to_unit}, mass_t=mass,
@@ -657,6 +669,7 @@ def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRe
 
     placements, known, slot_of = filing.placements, filing.known, filing.slot_of
     builder = _Builder(ref, ledger, inputs, tolerance, open_sources, with_traces, line_decisions, proposal)
+    builder.setup_facilities = {cl.facility_anchor_id(f): f for f in facilities}
     facility_names = {cl.facility_anchor_id(f): str(f.get("name")) for f in facilities}
     anchors = cl.vehicle_group_anchors(inputs.vehicle_groups)
     biogenic_fuels = calc.biogenic_fuel_names(ref)

@@ -8,6 +8,7 @@ import type { CalcGas, CalcLineGas, CalculationLine } from "../../api/recalculat
 import type {
   LineTrace,
   TraceBlock,
+  TraceChoice,
   TraceColumn,
   TraceInput,
   TraceOpSymbol,
@@ -17,6 +18,17 @@ import type {
   TraceSourceRef,
   TraceStep,
 } from "../../api/calcTrace";
+
+import { DEMO_REGION_NAMES, companyRegionCode } from "./companyRegion";
+
+/** An electricity line's grid region: what the demo calculated on, the facility's ZIP, and what a reviewer entered for the company. */
+export interface DemoElectricity {
+  region: string | null;
+  source: string | null;
+  zip: string | null;
+  candidates: string[];
+  companyRegionText: string | null;
+}
 
 const GASES: CalcGas[] = ["CO2", "CH4", "N2O"];
 const GAS_LABEL: Record<CalcGas, string> = { CO2: "CO₂", CH4: "CH₄", N2O: "N₂O" };
@@ -125,7 +137,7 @@ function siteInputs(toUnit: string): Record<string, TraceInput> {
   };
 }
 
-export function traceFromLine(line: CalculationLine): LineTrace {
+export function traceFromLine(line: CalculationLine, electricity?: DemoElectricity | null): LineTrace {
   const co = line.company;
   const inputs: Record<string, TraceInput> = {};
   const total = line.step1.total;
@@ -324,6 +336,43 @@ export function traceFromLine(line: CalculationLine): LineTrace {
   };
 
   const steps = [step1, step2, { id: "emissions", n: 3, title: "Step 3 · Emissions by gas", note: "One equation per gas", blocks: mass } as TraceStep, { id: "gwp", n: 4, title: "Step 4 · CO₂e", note: "Mass × global warming potential", blocks: gwp } as TraceStep, results];
+  // Electricity: the grid region, company against the one calculated on (board 04), and a ZIP in two subregions as a choice.
+  let regionChoice: TraceChoice | undefined;
+  if (electricity) {
+    const { region } = electricity;
+    const code = companyRegionCode(electricity.companyRegionText);
+    const entered = electricity.companyRegionText?.trim() || null;
+    const companyValue = entered ? (code ?? entered) : null;
+    const differs = companyValue !== null && region ? companyValue.toLowerCase() !== region.toLowerCase() : undefined;
+    inputs.grid_region = {
+      id: "grid_region",
+      label: "Grid region",
+      kind: "reference",
+      required_for: ["location_based"],
+      recomputed: region
+        ? { value: region, status: electricity.source?.startsWith("ZIP") ? "reference" : "derived", source: electricity.source?.startsWith("ZIP") ? ref(`ZIP ${electricity.zip} (EPA Power Profiler, eGRID2023)`) : { kind: "derived", from: [electricity.source ?? "facility grid region"] } }
+        : { value: null, status: "awaiting_review" },
+      company: companyValue ? { value: companyValue, status: "edited", source: { kind: "entered", by: "reviewer" } } : { value: null, status: "not_reported" },
+      ...(differs !== undefined ? { differs } : {}),
+    };
+    const label = (c: string) => (DEMO_REGION_NAMES[c] ? `${c} · ${DEMO_REGION_NAMES[c]}` : c);
+    if (region && electricity.candidates.length >= 2) {
+      const ids = electricity.candidates.includes(region) ? electricity.candidates : [...electricity.candidates, region];
+      regionChoice = { id: "grid_region", label: "Grid region", options: ids.map((id) => ({ id, label: label(id), available: true, required_inputs: [] })), chosen: region, chosen_by: "default" };
+    }
+    const single = (value: string | null, extra: Partial<TraceOperand> = {}): TraceOperation => ({
+      terms: [{ op: null, operand: { column: "grid_region", value, input_id: "grid_region", ...extra } }],
+      result: { column: "grid_region", value, input_id: "grid_region", ...extra },
+    });
+    step1.blocks.push({
+      id: "grid_region",
+      label: "Grid region",
+      columns: [col("grid_region", "Grid region", undefined, true)],
+      ...(regionChoice ? { choice_id: "grid_region" } : {}),
+      company: single(companyValue),
+      recomputed: single(region, differs !== undefined ? { differs } : {}),
+    });
+  }
   const equation = (gas: CalcGas) => line.method.equations[gas];
   const stationary = line.category === "stationary"; // not biogenic, mobile or electricity
   if (stationary) Object.assign(inputs, siteInputs(line.step2.to_unit));
@@ -345,6 +394,7 @@ export function traceFromLine(line: CalculationLine): LineTrace {
           chosen: stationary ? "eq_1" : "eq",
           chosen_by: "default" as const,
         })),
+      ...(regionChoice ? [regionChoice] : []),
     ],
     inputs,
     steps,
@@ -355,6 +405,6 @@ export function traceFromLine(line: CalculationLine): LineTrace {
       difference: line.difference_t,
     },
     method_mismatch: false,
-    flags: reportedIsEntered ? [...line.flags, "company_total_is_reported_figure"] : line.flags,
+    flags: [...(reportedIsEntered ? [...line.flags, "company_total_is_reported_figure"] : line.flags), ...(electricity?.companyRegionText && !companyRegionCode(electricity.companyRegionText) ? ["company_grid_region_not_recognised"] : [])],
   };
 }
