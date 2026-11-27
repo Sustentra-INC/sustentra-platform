@@ -111,7 +111,7 @@
 }
 .s1-dd-hl:hover { background: var(--hl-to-review-hover); }
 .s1-dd-hl:active { transform: scale(0.97); }
-.s1-dd-hl:focus-visible { outline: var(--focus-ring); outline-offset: 0.125rem; }
+.s1-dd-hl:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .s1-dd-hl--accepted { background: var(--hl-accepted); box-shadow: inset 0 -0.1rem 0 var(--hl-accepted-stroke); }
 .s1-dd-hl--accepted:hover { background: var(--hl-accepted-hover); }
 .s1-dd-hl--corrected { background: var(--hl-corrected); box-shadow: inset 0 -0.1rem 0 var(--hl-corrected-stroke); }
