@@ -1,13 +1,13 @@
 "use client";
 
-import { ChevronDown, ChevronRight, FileText } from "lucide-react";
+import { FileText } from "lucide-react";
 import { Fragment, useEffect, useState, type CSSProperties } from "react";
 
 import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleRow } from "../api/evidenceTree";
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { userFacingApiError } from "../api/s1Backend";
 import { ContainerStateSurface } from "./ContainerStateSurface";
-import { IconArrowRight, IconChevronLeft } from "./icons";
+import { IconArrowRight, IconChevronDown, IconChevronLeft, IconChevronRight } from "./icons";
 
 /**
  * One calculation line's supporting schedule: what covers each month of the year, which
@@ -167,8 +167,8 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
       <div className="s1-sch-top">
         <CoverageChart coverage={schedule.coverage} fileNames={fileNames} onOpenDocument={onOpenDocument} />
 
-        <section className="s1-panel s1-sch-ids" aria-label="Source identifiers">
-          <h2>Source identifiers</h2>
+        <section className="s1-sch-ids" aria-labelledby="s1-sch-ids-title">
+          <h2 id="s1-sch-ids-title">Source identifiers</h2>
           {groups.length ? (
             <ul>
               {groups.map((g) => (
@@ -491,11 +491,20 @@ function IdentifierItem({ group, onOpenDocument }: { group: IdentifierGroup; onO
   return (
     <li className={all ? "" : "is-partial"}>
       <button className="s1-sch-ids__toggle" type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        {open ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden />}
-        <span className="s1-sch-ids__label">{group.label}</span>
-        <span className={`s1-sch-ids__value${summary.length <= 24 ? " s1-sch-ids__value--short" : ""}`}>{summary}</span>
-        <span className="s1-sch-ids__n">
-          {group.documents_with} of {group.documents_total} documents
+        <span className="s1-sch-ids__top">
+          <span className="s1-sch-ids__label">
+            {open ? <IconChevronDown size={14} aria-hidden /> : <IconChevronRight size={14} aria-hidden />}
+            {group.label}
+          </span>
+          <span className="s1-sch-ids__n">
+            {group.documents_with} of {group.documents_total} documents
+          </span>
+        </span>
+        <span className="s1-sch-ids__value" title={summary}>
+          {summary}
+        </span>
+        <span className="s1-sch-ids__bar" aria-hidden>
+          <span style={{ "--share": group.documents_total ? group.documents_with / group.documents_total : 0 } as CSSProperties} />
         </span>
       </button>
       {group.matched_by?.length ? <p className="s1-muted s1-sch-ids__how">Matched by: {group.matched_by.join("; ")}</p> : null}

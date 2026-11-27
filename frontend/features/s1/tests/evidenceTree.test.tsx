@@ -685,13 +685,13 @@ describe("the supporting schedule", () => {
     expect(props.onOpenDocument).toHaveBeenCalledWith("mar");
   });
 
-  it("keeps a short identifier summary on one line, so it never breaks mid-word", async () => {
+  it("keeps an identifier summary on one line, never breaking mid-word, with the full value on hover", async () => {
     renderSchedule();
     const toggle = await screen.findByRole("button", { name: /Meter number/ });
     const value = toggle.querySelector(".s1-sch-ids__value") as HTMLElement;
-    expect(value.className).toContain("s1-sch-ids__value--short");
+    expect(value).toHaveAttribute("title", "2 values");
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
-    expect(css).toMatch(/\.s1-sch-ids__value--short\s*\{[^}]*white-space:\s*nowrap/);
+    expect(css).toMatch(/\.s1-sch-ids__value\s*\{[^}]*white-space:\s*nowrap[^}]*text-overflow:\s*ellipsis/);
     expect(css).not.toMatch(/\.s1-sch-ids__value\s*\{[^}]*overflow-wrap:\s*anywhere/);
   });
 
