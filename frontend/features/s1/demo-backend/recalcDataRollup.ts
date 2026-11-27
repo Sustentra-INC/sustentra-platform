@@ -14,6 +14,8 @@ import { CALCULABLE, buildCategories, calculate, gwpOf, typeId, type Calculated 
 import { demoDecisions } from "./state";
 import { demoGwpChoice } from "./methodology";
 import { monthCoverage, recordsOn, shareInPeriod } from "./linesModel";
+import { demoDecided } from "./calcTrace/decisions";
+import { withChosenMethod } from "./calcTrace/fugitive";
 
 const GROUPS: GasGroup[] = ["CO2", "CH4", "N2O", "HFCs", "PFCs", "SF6", "NF3"];
 const zero = (): Record<GasGroup, GasAmount> => Object.fromEntries(GROUPS.map((g) => [g, { mass_t: 0, co2e_t: 0 }])) as Record<GasGroup, GasAmount>;
@@ -324,7 +326,7 @@ export function buildRecalculation(engagementId: string): Recalculation {
     uncounted_values: uncountedValues(c),
     documents_considered: considered.size, documents_reviewed: [...considered].filter((d) => !open.has(d)).length,
     quality_checks: qualityChecks(c), rollup,
-    calculation_lines: c.lines.map((l) => l.line), calculation_unplaced: [],
+    calculation_lines: c.lines.map((l) => withChosenMethod(l.line, demoDecided(engagementId, l.line.key))), calculation_unplaced: [],
     calculation_line_inputs: { consolidated_shares: c.inputs.shares, unknown_line_keys: [], unknown_facility_ids: [] },
   };
 }

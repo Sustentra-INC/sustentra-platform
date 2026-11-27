@@ -121,7 +121,7 @@ def test_the_method_is_the_simplified_material_balance_with_screening_offered() 
     method = trace["choices"][0]
     assert method["id"] == "method" and method["chosen"] == "smb"
     assert [(o["id"], o["available"]) for o in method["options"]] == [
-        ("screening", True), ("smb", True), ("material_balance", False)]
+        ("screening", True), ("smb", True), ("material_balance", True)]
     assert method["options"][1]["equation"] == fugitive.EQUATION
 
 

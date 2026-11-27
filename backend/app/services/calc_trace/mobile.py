@@ -132,7 +132,8 @@ def _add_fuel_economy(trace: LineTrace, line: dict[str, Any], context: dict[str,
         recomputed=Side(economy, ECONOMY_UNIT, "derived", SourceRef(
             "derived", from_=["distance", "activity.total"], citation=group)),
         company=(Side(company_economy, ECONOMY_UNIT, "derived", SourceRef("derived", from_=["distance", "activity.total"]))
-                 if company_economy is not None else None))
+                 if company_economy is not None else None),
+        source_hint="fleet records or manufacturer rating")
     _difference(item)
     trace.inputs[FUEL_ECONOMY] = item
     block = TraceBlock(DISTANCE_BLOCK, "Distance driven", _distance_columns(), company=theirs, recomputed=mine)

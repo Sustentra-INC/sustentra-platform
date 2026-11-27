@@ -89,7 +89,7 @@ export function screeningChoices(available: boolean, gas = ""): TraceChoice[] {
   const method: TraceChoice = { id: "method", label: "Calculation method", chosen: "smb", chosen_by: "default", options: [
     { id: "screening", label: "Screening", equation: SCREENING_EQUATION, available, ...(available ? {} : { why_unavailable: "No reviewed records of equipment on this line." }), required_inputs: ["equipment_type", ...FACTORS] },
     { id: "smb", label: "Simplified material balance", equation: "Emitted = (P_N − C_N) + P_S + (C_D − R_D)", available: true, required_inputs: ["P_N", "C_N", "P_S", "C_D", "R_D"] },
-    { id: "material_balance", label: "Material balance", available: false, why_unavailable: "Sustentra cannot calculate this method yet.", required_inputs: [] },
+    { id: "material_balance", label: "Material balance", equation: "Emitted = (I_B − I_E) + (P − S) + (C_B − C_E)", available: true, required_inputs: ["I_B", "I_E", "P", "S", "C_B", "C_E"] },
   ] };
   if (!available) return [method];
   return [method, { id: "equipment_type", label: "Equipment type", chosen: "", chosen_by: "default", options: SCREENING_TYPES.map((t) => {
@@ -119,9 +119,9 @@ export function screeningInputs(units: Unit[], unit: string, decided: DemoDecide
   for (const u of units) {
     const c = `C.${u.uid}`;
     const t = `T.${u.uid}`;
-    out[c] = { id: c, label: `${u.name} capacity`, symbol: "C", kind: "reviewer_entered", required_for: ["screening"], decidable: true,
+    out[c] = { id: c, label: `${u.name} capacity`, symbol: "C", kind: "reviewer_entered", required_for: ["screening"], decidable: true, source_hint: "equipment nameplate or register",
       recomputed: c in decided.inputs ? entered(c, decided.inputs[c], unit) : u.capacity !== null ? { value: u.capacity, unit, status: "accepted" } : { value: null, unit, status: "awaiting_review" } };
-    out[t] = { id: t, label: `${u.name} time in use`, symbol: "T", kind: "reviewer_entered", required_for: ["screening"], decidable: true,
+    out[t] = { id: t, label: `${u.name} time in use`, symbol: "T", kind: "reviewer_entered", required_for: ["screening"], decidable: true, source_hint: "equipment register (months in use)",
       recomputed: t in decided.inputs ? entered(t, decided.inputs[t], undefined) : { value: 1, status: "derived", source: { kind: "derived", from: ["default: in use the whole reporting period"] } } };
   }
   for (const f of FACTORS) {

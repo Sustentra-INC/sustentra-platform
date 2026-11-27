@@ -172,7 +172,9 @@ def inputs(chosen: str, values: Mapping[str, float], sides: Mapping[str, Side], 
                 label = f"{LABEL[option]} {GAS_LABEL[gas]} factor"
                 kind = "reviewer_entered"
             item = TraceInput(input_id, label, kind, symbol="EF", required_for=[option], recomputed=side,
-                              company=Side(given, UNIT[gas], "accepted") if given is not None else None)
+                              company=Side(given, UNIT[gas], "accepted") if given is not None else None,
+                              source_hint="supplier or boiler documentation" if option == FUEL
+                              else "supplier emission factor statement")
             if option == FUEL and chosen == FUEL and input_id not in values:
                 item.assumption = (f"Default: natural gas, {_g(fuel[gas][0])} {UNIT[gas]} (EPA Hub Table 1) · not "
                                    "confirmed")
@@ -184,7 +186,8 @@ def inputs(chosen: str, values: Mapping[str, float], sides: Mapping[str, Side], 
     out[EFFICIENCY] = TraceInput(EFFICIENCY, "Boiler thermal efficiency", "reviewer_entered", symbol="η",
                                  required_for=[FUEL],
                                  recomputed=sides.get(EFFICIENCY) or Side(None, "%", "awaiting_review"),
-                                 company=Side(given, "%", "accepted") if given is not None else None)
+                                 company=Side(given, "%", "accepted") if given is not None else None,
+                                 source_hint="supplier or boiler documentation")
     return out
 
 

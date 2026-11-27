@@ -52,6 +52,7 @@ export function withFuelEconomy(trace: LineTrace, line: CalculationLine): LineTr
     kind: "reviewer_entered",
     required_for: ["eq4_distance"],
     decidable: true,
+    source_hint: "fleet records or manufacturer rating",
     recomputed: { value: economy, unit: ECONOMY_UNIT, status: "derived", source: { ...DERIVED, from: [...DERIVED.from] } },
     ...(companyEconomy !== null ? { company: { value: companyEconomy, unit: ECONOMY_UNIT, status: "derived" as const, source: { ...DERIVED, from: [...DERIVED.from] } }, difference: economy - companyEconomy } : {}),
   };

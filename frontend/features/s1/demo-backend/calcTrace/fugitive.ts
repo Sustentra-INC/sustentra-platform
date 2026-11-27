@@ -5,9 +5,10 @@
  * beside it for reference (AR5 only: the reference data holds no AR4 or AR6 component GWPs).
  */
 import type { CalcLineSmb, CalcLineStep1Row, CalcQuantity, CalculationLine } from "../../api/recalculation";
-import type { LineTrace, TraceBlock, TraceColumn, TraceInput, TraceOpSymbol, TraceOperand, TraceOperation, TraceSide, TraceStep } from "../../api/calcTrace";
+import type { LineDecisions, LineTrace, TraceBlock, TraceColumn, TraceInput, TraceOpSymbol, TraceOperand, TraceOperation, TraceSide, TraceStep } from "../../api/calcTrace";
 import type { ModelLine, ModelRecord } from "../linesModel";
 import { type DemoDecided, screeningChoices, screeningInputs, screeningSteps, screeningUnits } from "./fugitiveScreening";
+import { materialInputs, materialSteps } from "./fugitiveMaterialBalance";
 
 const HUB = "EPA GHG Emission Factors Hub 2025";
 export const TERMS = ["P_N", "C_N", "P_S", "C_D", "R_D"] as const;
@@ -93,6 +94,11 @@ export function fugitiveLine(ml: ModelLine, used: ModelRecord[], opts: { gwp: nu
 
 /** The trace of a demo fugitive line, from the line's own numbers. */
 export function fugitiveTrace(line: CalculationLine, decided: DemoDecided = { choices: {}, inputs: {} }): LineTrace | null {
+  return fugitiveWorking(line, decided)?.trace ?? null;
+}
+
+/** The trace and the route it was worked by (the chosen method's once it can be worked, else the balance's). */
+function fugitiveWorking(line: CalculationLine, decided: DemoDecided): { trace: LineTrace; route: string } | null {
   const smb = line.smb;
   if (!smb || !smb.gwp) return null;
   const { unit, gas, factor } = smb;
@@ -110,7 +116,9 @@ export function fugitiveTrace(line: CalculationLine, decided: DemoDecided = { ch
   // The screening method (C5): its inputs are on every trace; its working once a reviewer picks it.
   const units = screeningUnits(line.step1.rows);
   if (units.length) Object.assign(inputs, screeningInputs(units, unit, decided, gas));
-  const screen = units.length && decided.choices.method === "screening" ? screeningSteps(units, unit, { P_N: smb.terms.P_N, C_D: smb.terms.C_D }, inputs, decided, gas) : null;
+  // The material balance (C6): its six terms are on every trace too; its working once a reviewer picks it.
+  Object.assign(inputs, materialInputs(unit, decided));
+  const screen = units.length && decided.choices.method === "screening" ? screeningSteps(units, unit, { P_N: smb.terms.P_N, C_D: smb.terms.C_D }, inputs, decided, gas) : decided.choices.method === "material_balance" ? materialSteps(unit, decided) : null;
   const emittedValue = screen ? screen.emitted : num(balance.result.value);
   inputs.unit_conversion = { id: "unit_conversion", label: "Unit conversion", kind: "constant", required_for: [], recomputed: side(factor, `t/${unit}`, "reference", "fuel_units conversion table: 1 lb = 0.45359237 kg exactly; 1 t = 1,000 kg"), decidable: false, why_not: "the unit conversion comes from the conversion table" };
   const toT = operation([{ op: null, operand: operand("emitted", emittedValue, unit, { step_ref: "emitted" }) }, { op: "×", operand: operand("factor", factor, `t/${unit}`, { input_id: "unit_conversion" }) }], "emitted_t", "t");
@@ -163,9 +171,59 @@ export function fugitiveTrace(line: CalculationLine, decided: DemoDecided = { ch
     if (picked && c.options.some((o) => o.id === picked && o.available)) Object.assign(c, { chosen: picked, chosen_by: "reviewer" });
   }
   const blocking = screen?.blocking ?? [];
-  return {
+  const trace: LineTrace = {
     trace_version: 1, line_key: line.key, panel: "fugitive", state: blocking.length ? "blocked" : "complete", blocking,
-    choices, inputs, steps, method_mismatch: false, flags: [...line.flags],
+    choices, inputs, steps, method_mismatch: false,
+    flags: screen ? [...line.flags.filter((f) => f !== "negative_refrigerant_emissions"), ...(emittedValue !== null && emittedValue < 0 ? ["negative_refrigerant_emissions"] : [])] : [...line.flags],
     result: { unit: "t CO2e", company, recomputed, difference: company === null || recomputed === null ? null : recomputed - company },
+  };
+  return { trace, route: screen && !blocking.length ? screen.route : ROUTE };
+}
+
+const METHOD_LABEL: Record<string, string> = { screening: "Screening", material_balance: "Material balance" };
+
+/** The simplified material balance with the reviewer's decided terms (a term outright, or P_S record by record), in
+ * t CO2e after the consolidated share: what a line counts while its chosen method is blocked (backend
+ * `fugitive.balance_figures`). */
+export function balanceWithDecisions(line: CalculationLine, decided: DemoDecided): number | null {
+  const smb = line.smb;
+  if (!smb || !smb.gwp) return null;
+  const ok = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
+  const terms = { ...smb.terms };
+  for (const t of TERMS) if (ok(decided.inputs[t])) terms[t] = decided.inputs[t];
+  if (!ok(decided.inputs.P_S)) {
+    const rows = line.step1.rows.map((r) => {
+      const v = decided.inputs[`P_S/${r.document_id}/${r.candidate_id ?? "1"}`];
+      return ok(v) ? v : r.counted_quantity;
+    });
+    if (rows.length) terms.P_S = rows.reduce((a, b) => a + b, 0);
+  }
+  const emitted = terms.P_N - terms.C_N + terms.P_S + terms.C_D - terms.R_D;
+  return emitted * smb.factor * smb.gwp.value * (line.consolidated_share_pct / 100);
+}
+
+/** The line as the chosen method leaves it: its route is the method's once that method can be worked. While the
+ * method is blocked the route stays the balance's, and the method's decision says what counts until then. */
+export function withChosenMethod(line: CalculationLine, decided: DemoDecided): CalculationLine {
+  const method = decided.choices.method;
+  if (line.counts_toward !== "fugitive" || !method || method === "smb") return line;
+  const worked = fugitiveWorking(line, decided);
+  if (!worked) return line;
+  const decisions = fugitiveDecisions(line, worked.trace, decided);
+  return { ...line, method: { ...line.method, route: worked.route }, ...(decisions ? { decisions } : {}) };
+}
+
+/** The method's decision on a blocked screening or material balance: "... is chosen but blocked (awaiting ...).
+ * Counting the simplified material balance (x t) until then." (backend `decisions._fugitive`). */
+export function fugitiveDecisions(line: CalculationLine, trace: LineTrace, decided: DemoDecided): LineDecisions | null {
+  const method = decided.choices.method;
+  const label = METHOD_LABEL[method ?? ""];
+  if (!label || trace.state !== "blocked" || !trace.choices.some((c) => c.id === "method" && c.chosen === method)) return null;
+  const reason = trace.blocking[0]?.message.split(".")[0] ?? "an input";
+  const total = balanceWithDecisions(line, decided) ?? line.results.total_co2e_t;
+  const shown = total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return {
+    applied: [{ target: "choice", id: "method", side: null, status: "edited", uses: `${label} is chosen but blocked (awaiting ${reason}). Counting the simplified material balance (${shown} t) until then.` }],
+    not_applied: [],
   };
 }

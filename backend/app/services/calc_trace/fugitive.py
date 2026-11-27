@@ -36,6 +36,17 @@ come from the equipment type a reviewer picks (``choice|equipment_type|``), the 
 prints it; each is shown as "Default: … · not confirmed" until a reviewer enters it, and may be entered without a type.
 Every screening input is on every trace of the line (a decision is checked against the automatic working).
 
+The material balance (C6, EPA's guidance on direct fugitive emissions; terms as ruled in Q8) is the third method a reviewer
+may pick (``choice|method|`` = ``material_balance``):
+
+    Emitted = (I_B − I_E) + (P − S) + (C_B − C_E)
+
+I_B / I_E the gas held in storage (not in equipment) at the start and end of the year, P what was purchased or acquired,
+S what was sold or sent off-site (returned, recycled, destroyed), C_B / C_E the total full charge of the equipment at the
+start and end. No record gives these, so each is entered by a reviewer (``MB_TERMS``, 0 allowed); until all six are, a
+term is shown "not reported" and the method is blocked, and the line counts its simplified material balance (with its
+decisions) meanwhile. A negative result is kept and flagged, as for the simplified balance.
+
 Decisions (``calc_trace/decisions``): a term (or one record of it) and a component GWP Table 11 lacks can be decided for
 the line; the composition, the blend's GWP, the conversion and the consolidated share cannot (set for the whole
 engagement or by the reference data). ``rework`` builds the trace again with the decided values in and returns the
@@ -94,31 +105,62 @@ EQUIPMENT_CHOICE = "equipment_type"
 FACTORS = ("k", "x", "y", "z")
 FACTOR_LABEL = {"k": "Installation loss", "x": "Annual leak rate", "y": "Left at disposal", "z": "Recovery"}
 UNIT_C, UNIT_T = "C.", "T."  # one equipment unit's capacity and its time in use: "C.<unit id>", "T.<unit id>"
-DECIDABLE_IDS = (*TERMS, *FACTORS)
+DECIDABLE_IDS: tuple[str, ...] = (*TERMS, *FACTORS)
 DECIDABLE_PREFIXES = (UNIT_C, UNIT_T)
 DEFAULT_T = 1.0
 CAPACITY_CONFLICT_FLAG = "equipment_capacity_differs"
+
+# --- the material balance (C6) ------------------------------------------------------------------------------------------
+MATERIAL_BALANCE = "material_balance"
+MB_TERMS = ("I_B", "I_E", "P", "S", "C_B", "C_E")
+MB_LABEL = {"I_B": "In storage at the start of the year", "I_E": "In storage at the end of the year",
+            "P": "Purchased or acquired", "S": "Sold or sent off-site",
+            "C_B": "Full charge of equipment at the start of the year",
+            "C_E": "Full charge of equipment at the end of the year"}
+MB_HINT = {"I_B": "inventory count", "I_E": "inventory count", "P": "purchase invoice",
+           "S": "sales, return or disposal record", "C_B": "equipment register (full charge)",
+           "C_E": "equipment register (full charge)"}
+_MB_OP = {"I_B": None, "I_E": "−", "P": "+", "S": "−", "C_B": "+", "C_E": "−"}
+MB_EQUATION = "Emitted = (I_B − I_E) + (P − S) + (C_B − C_E)"
+MB_ROUTE = "Material balance: (I_B − I_E) + (P − S) + (C_B − C_E), to metric tons, × GWP"
+MB_NOT_REPORTED = "not reported. Enter it from the company's records, or 0 if there was none"
+MB_NEGATIVE = "negative balance: check the inventory, purchase and capacity figures. The negative value is kept"
+METHOD_NAME = {METHOD: "the simplified material balance", SCREENING: "the screening method",
+               MATERIAL_BALANCE: "the material balance"}
+METHOD_LABEL = {METHOD: "Simplified material balance", SCREENING: "Screening", MATERIAL_BALANCE: "Material balance"}
+DECIDABLE_IDS = (*DECIDABLE_IDS, *MB_TERMS)
 
 
 def zero_allowed(input_id: str) -> bool:
     """A balance term (or one record of it) may be decided as 0: no new equipment, nothing recovered. So may a
     screening factor other than the leak rate (no assembly loss, nothing left, nothing recovered) and a unit's time in
-    use (not in use this period). A GWP, a capacity and the leak rate may not."""
+    use (not in use this period), and a material balance term (nothing in storage, nothing bought or sold). A GWP, a
+    capacity and the leak rate may not."""
 
     base = input_id.split("/", 1)[0]
-    return base in TERMS or base in ("k", "y", "z") or base.startswith(UNIT_T)
+    return base in TERMS or base in MB_TERMS or base in ("k", "y", "z") or base.startswith(UNIT_T)
 
 
-def used_by(input_id: str, screening: bool) -> bool | None:
-    """Whether the method the line is worked by reads this input (or one record of it); None for one both read or
-    neither names (a GWP)."""
+def used_by(input_id: str, method: str) -> bool | None:
+    """Whether the method the line is worked by (``METHOD``, ``SCREENING`` or ``MATERIAL_BALANCE``) reads this input
+    (or one record of it); None for one every method reads or none names (a GWP)."""
 
     base = input_id.split("/", 1)[0]
     if base in FACTORS or base.startswith(DECIDABLE_PREFIXES):
-        return screening
+        return method == SCREENING
+    if base in MB_TERMS:
+        return method == MATERIAL_BALANCE
     if base in ("P_S", "C_N", "R_D"):
-        return not screening
+        return method == METHOD
+    if base in ("P_N", "C_D"):
+        return method != MATERIAL_BALANCE
     return None
+
+
+def users(input_id: str) -> str:
+    """The one method that reads an input no other does: "the screening method" or "the material balance"."""
+
+    return METHOD_NAME[MATERIAL_BALANCE if input_id.split("/", 1)[0] in MB_TERMS else SCREENING]
 
 
 def check_value(input_id: str, number: float) -> str | None:
@@ -279,7 +321,7 @@ def company_terms_of(records: Mapping[str, Mapping[str, Any]] | None) -> dict[st
     """The company's own terms a reviewer entered or accepted (``input|P_S|company``): shown, never an operand."""
 
     out: dict[str, float] = {}
-    for term in (*TERMS, *FACTORS):
+    for term in (*TERMS, *FACTORS, *MB_TERMS):
         record = (records or {}).get(f"input|{term}|company")
         decision = record.get("decision") if isinstance(record, Mapping) else None
         if not isinstance(decision, Mapping) or decision.get("status") not in DECIDED:
@@ -471,7 +513,10 @@ def _choices(units: list[ScreenUnit], why_not: str | None = None, gas: str = "")
         ChoiceOption(SCREENING, "Screening", available=why is None, why_unavailable=why, equation=SCREENING_EQUATION,
                      required_inputs=[EQUIPMENT_CHOICE, *FACTORS], citation=guidance),
         ChoiceOption(METHOD, "Simplified material balance", equation=EQUATION, required_inputs=list(TERMS)),
-        ChoiceOption("material_balance", "Material balance", available=False, why_unavailable=NOT_YET),
+        ChoiceOption(MATERIAL_BALANCE, "Material balance", available=why_not is None, why_unavailable=why_not,
+                     equation=MB_EQUATION, required_inputs=list(MB_TERMS), citation=SourceRef(
+                         "reference", dataset=_GUIDANCE, edition="December 2023",
+                         citation=f"{_GUIDANCE}, material balance method")),
     ], chosen=METHOD)
     if why is not None:
         return [method]
@@ -576,7 +621,7 @@ def balance_figures(line_context: tuple[dict[str, Any], dict[str, Any]], decided
     when no decided value moves the balance (the line's own numbers stand) or the balance is blocked too."""
 
     line, context = line_context
-    mine = {k: v for k, v in decided.items() if used_by(k, False) is not False}
+    mine = {k: v for k, v in decided.items() if used_by(k, METHOD) is not False}
     if not mine:
         return None
     again = _build(line, context, mine, {})
@@ -594,7 +639,9 @@ def _figures(again: LineTrace, line: Mapping[str, Any], picks: Mapping[str, str]
     gwp = again.inputs[f"gwp.{line['smb']['gas']}"].recomputed
     assert gwp is not None and isinstance(gwp.value, (int, float))
     route = ROUTE
-    if (picks or {}).get("method") == SCREENING:
+    if (picks or {}).get("method") == MATERIAL_BALANCE:
+        route = MB_ROUTE
+    elif (picks or {}).get("method") == SCREENING:
         kind = screening_factors().get((picks or {}).get(EQUIPMENT_CHOICE) or "")
         route = FIRE_ROUTE if kind is not None and kind.fire else SCREENING_ROUTE
     return {"emitted": result("emitted"), "emitted_t": result("emitted_t"), "gwp": float(gwp.value),
@@ -613,11 +660,13 @@ def _screening_inputs(inputs: dict[str, TraceInput], units: list[ScreenUnit], ki
         if c_id in decided:
             c_side = decided[c_id][1]
         inputs[c_id] = TraceInput(c_id, f"{u.name} capacity", "evidence_sum" if u.capacity is not None
-                                  else "reviewer_entered", symbol="C", required_for=[SCREENING], recomputed=c_side)
+                                  else "reviewer_entered", symbol="C", required_for=[SCREENING], recomputed=c_side,
+                                  source_hint="equipment nameplate or register")
         t_side = decided[t_id][1] if t_id in decided else Side(DEFAULT_T, None, "derived", SourceRef(
             "derived", from_=["default: in use the whole reporting period"]))
         inputs[t_id] = TraceInput(t_id, f"{u.name} time in use", "reviewer_entered", symbol="T",
-                                  required_for=[SCREENING], recomputed=t_side)
+                                  required_for=[SCREENING], recomputed=t_side,
+                                  source_hint="equipment register (months in use)")
     for f in FACTORS:
         default = kind.factors.get(f) if kind is not None else None
         if f in decided:
@@ -762,6 +811,65 @@ def _screening(units: list[ScreenUnit], kind: EquipmentType | None, inputs: dict
     return step1, step2, float(value) if isinstance(value, (int, float)) else None, blocking, equation
 
 
+def _material_inputs(inputs: dict[str, TraceInput], decided: Decided, company_terms: Mapping[str, float],
+                     unit: str) -> None:
+    """The material balance's six terms, on every trace of the line: no record gives them, so each awaits a reviewer
+    (``awaiting_review``, "not reported") until entered."""
+
+    for term in MB_TERMS:
+        side = decided[term][1] if term in decided else Side(None, unit, "awaiting_review")
+        given = company_terms.get(term)
+        item = TraceInput(term, MB_LABEL[term], "reviewer_entered", symbol=term, required_for=[MATERIAL_BALANCE],
+                          recomputed=side, company=Side(given, unit, "accepted") if given is not None else None,
+                          source_hint=MB_HINT[term])
+        if given is not None and isinstance(side.value, (int, float)):
+            item.difference = float(side.value) - given
+            item.differs = ops.differs(item.difference, float(side.value))
+        inputs[term] = item
+
+
+def _material(inputs: dict[str, TraceInput], company_terms: Mapping[str, float], unit: str
+              ) -> tuple[list[TraceBlock], list[TraceBlock], float | None, list[Blocking], Operation | None]:
+    """Steps 1 and 2 of the material balance, to the refrigerant emitted in the line's unit: Step 1's blocks (one per
+    term), Step 2's balance, the emitted mass (None while a term is not reported), what blocks it, and the company's
+    balance when the company's six terms were entered."""
+
+    values = {t: _number_of(inputs[t]) for t in MB_TERMS}
+    step1: list[TraceBlock] = []
+    for term in MB_TERMS:
+        value = values[term]
+        mine = _single("amount", value, unit, input_id=term) if value is not None \
+            else _open([Term(None, Operand("amount", None, unit, input_id=term))], "amount", unit)
+        given = company_terms.get(term)
+        theirs = _single("amount", given, unit, input_id=term) if given is not None else None
+        if theirs is not None and value is not None:
+            _annotate(mine, theirs)
+        step1.append(TraceBlock(f"term.{term}", f"{MB_LABEL[term]} · {term}",
+                                [Column("amount", "Total", unit, True, {"sig": 6})], recomputed=mine, company=theirs,
+                                warning=MB_NOT_REPORTED if value is None else None))
+
+    def balance(source: Mapping[str, float | None]) -> Operation:
+        terms = [Term(_MB_OP[t], Operand(t, source.get(t), unit, step_ref=f"term.{t}")) for t in MB_TERMS]
+        if any(t.operand.value is None for t in terms):
+            return _open(terms, "emitted", unit)
+        return ops.make_operation(terms, "emitted", unit)
+
+    emitted_op = balance(values)
+    theirs = balance(company_terms) if all(t in company_terms for t in MB_TERMS) else None
+    worked = emitted_op.result.value
+    emitted = float(worked) if isinstance(worked, (int, float)) else None
+    if theirs is not None and emitted is not None:
+        _annotate(emitted_op, theirs)
+    step2 = [TraceBlock("emitted", "Refrigerant emitted", [
+        *[Column(t, t, unit) for t in MB_TERMS], Column("emitted", "Emitted", unit, True, {"sig": 6})],
+        recomputed=emitted_op, company=theirs, warning=MB_NEGATIVE if emitted is not None and emitted < 0 else None)]
+    missing = [t for t in MB_TERMS if values[t] is None]
+    blocking = [Blocking(missing[0], (
+        f"material balance terms. Not reported: {', '.join(missing)}. Enter each from the company's inventory, "
+        "purchase and equipment records; enter 0 for a term that was nil."))] if missing else []
+    return step1, step2, emitted, blocking, theirs
+
+
 def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided,
            picks: Mapping[str, str] | None = None) -> LineTrace:
     smb = line["smb"]
@@ -772,10 +880,11 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided,
     picks = picks or {}
     units = screening_units(line)
     screening = picks.get("method") == SCREENING and bool(units)
+    material = picks.get("method") == MATERIAL_BALANCE
     kind = screening_factors().get(picks.get(EQUIPMENT_CHOICE) or "")
     if kind is not None and type_refusal(gas, kind) is not None:
         kind = None  # never the factors of a type the gas cannot be screened under (``decisions`` refuses it first)
-    check = not decided and not screening  # the default working must reproduce the line's numbers
+    check = not decided and not screening and not material  # the default working must reproduce the line's numbers
     inputs: dict[str, TraceInput] = {}
 
     # --- Step 1: each term, the records it adds up ---------------------------------------------------------------
@@ -832,14 +941,18 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided,
                                 recomputed=op, company=theirs))
     if units:
         _screening_inputs(inputs, units, kind, decided, company_terms, unit)
+    _material_inputs(inputs, decided, company_terms, unit)
 
-    # --- Step 2: the balance (or the screening), then metric tons -------------------------------------------------
+    # --- Step 2: the balance (or the screening, or the material balance), then metric tons -----------------------
     screen_blocking: list[Blocking] = []
     emitted: float | None
     company_emitted: Operation | None = None
     if screening:
         step1, step2_head, emitted, screen_blocking, equation = _screening(units, kind, inputs, values, decided,
                                                                           company_terms, unit)
+    elif material:
+        step1, step2_head, emitted, screen_blocking, company_emitted = _material(inputs, company_terms, unit)
+        equation = MB_EQUATION
     else:
         columns = [Column(t, t, unit) for t in TERMS] + [Column("emitted", "Emitted", unit, True, {"sig": 6})]
 
@@ -915,7 +1028,7 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided,
         if input_id in decided:
             entered, side = decided[input_id]
         inputs[input_id] = TraceInput(input_id, f"{c.name} GWP ({gwp_set}, 100-year)", "reviewer_entered", symbol="GWP",
-                                      required_for=[METHOD], recomputed=side)
+                                      required_for=[METHOD], recomputed=side, source_hint="the safety data sheet, say")
         parts_gwp.append((c, entered, input_id))
     missing = [c.name for c, v, _ in parts_gwp if v is None]
     effective = sum(c.share * v for c, v, _ in parts_gwp if v is not None) if blend and not missing else None
@@ -1027,6 +1140,9 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided,
                        f"{kind.label}" if kind is not None else
                        "Each piece of equipment's capacity × its time in use. Pick the equipment type for EPA's "
                        "screening factors")
+    elif material:
+        inputs_note = ("The gas in storage, bought and sold, and the equipment's full charge at the start and end of "
+                       "the year, as entered by a reviewer")
     else:
         inputs_note = "The reviewed service records, added up per term"
     steps = [

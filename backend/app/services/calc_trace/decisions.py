@@ -331,13 +331,15 @@ def _fugitive(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any]
         values.clear()
     worked: dict[str, Any] | None = None
     picks = {k: chosen for k, (_, chosen) in outcome.routes.items()}
-    screening = picks.get("method") == fugitive.SCREENING
-    unused = [i for i in values if fugitive.used_by(i, screening) is False]
-    if not screening and fugitive.EQUIPMENT_CHOICE in picks:
+    method = picks.get("method") or fugitive.METHOD
+    other = method != fugitive.METHOD  # the screening (C5) or the material balance (C6)
+    name = fugitive.METHOD_NAME.get(method, "the chosen method")
+    unused = [i for i in values if fugitive.used_by(i, method) is False]
+    if method != fugitive.SCREENING and fugitive.EQUIPMENT_CHOICE in picks:
         for item in outcome.applied:
             if item["target"] == "choice" and item["id"] == fugitive.EQUIPMENT_CHOICE:
-                item["uses"] = "held: the line is worked by the simplified material balance, which has no equipment type"
-    if (screening or any(i not in unused for i in values)) and line is not None:
+                item["uses"] = f"held: the line is worked by {name}, which has no equipment type"
+    if (other or any(i not in unused for i in values)) and line is not None:
         decided: dict[str, tuple[float, Side]] = {}
         for input_id, (number, decision, record) in values.items():
             found = _find(trace, input_id)
@@ -345,9 +347,9 @@ def _fugitive(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any]
                                                        decision, record))
         worked = fugitive.rework(trace, (line, context or {}), decided, picks)
         mark_decidable(trace)
-        if screening and worked is None:
-            # Screening chosen but blocked: the line counts its simplified material balance, with the reviewer's
-            # decisions on the balance in, until the screening can be worked. The trace shows the screening.
+        if other and worked is None:
+            # Another method chosen but blocked: the line counts its simplified material balance, with the reviewer's
+            # decisions on the balance in, until that method can be worked. The trace shows the chosen method.
             worked = fugitive.balance_figures((line, context or {}), decided)
             reason = trace.blocking[0].message.split(".")[0] if trace.blocking else "an input"
             total = worked["total"] if worked is not None else float(line["results"]["total_co2e_t"])
@@ -355,15 +357,15 @@ def _fugitive(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any]
                 if item.get("status") not in DECIDED:
                     continue
                 if item["target"] == "choice" and item["id"] == "method":
-                    item["uses"] = (f"Screening is chosen but blocked (awaiting {reason}). Counting the simplified "
-                                    f"material balance ({total:,.2f} t) until then.")
-                elif item["target"] == "choice" or fugitive.used_by(item["id"], False) is False:
-                    item["uses"] = f"held: the screening method awaits {reason}"
+                    item["uses"] = (f"{fugitive.METHOD_LABEL.get(method, method)} is chosen but blocked (awaiting "
+                                    f"{reason}). Counting the simplified material balance ({total:,.2f} t) until then.")
+                elif item["target"] == "choice" or fugitive.used_by(item["id"], fugitive.METHOD) is False:
+                    item["uses"] = f"held: {name} awaits {reason}"
         else:
             for item in outcome.applied:
                 if item["id"] in unused and item.get("status") in DECIDED:
-                    item["uses"] = ("held: the screening method does not use it" if screening else
-                                    "held: only the screening method uses it")
+                    item["uses"] = (f"held: {name} does not use it" if other else
+                                    f"held: only {fugitive.users(item['id'])} uses it")
     elif values and len(unused) == len(values):  # only the other method reads them: shown as decided, held
         for input_id, (number, decision, record) in values.items():
             found = _find(trace, input_id)
@@ -371,7 +373,7 @@ def _fugitive(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any]
                 found.recomputed = _decided_side(found.recomputed, number, decision, record)
         for item in outcome.applied:
             if item["id"] in unused and item.get("status") in DECIDED:
-                item["uses"] = "held: only the screening method uses it"
+                item["uses"] = f"held: only {fugitive.users(item['id'])} uses it"
     elif values:
         for input_id in list(values):
             _move_to_not_applied(outcome, input_id, "could_not_apply",
@@ -385,10 +387,10 @@ def _fugitive(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any]
     if worked is None or line is None:
         waiting = trace.blocking[0].message.split(".")[0] if trace.blocking else "a GWP"
         for item in outcome.applied:
-            if (item["id"] in values or (item["target"] == "choice" and screening)) and \
+            if (item["id"] in values or (item["target"] == "choice" and other)) and \
                     item.get("status") in DECIDED and "uses" not in item:
-                item["uses"] = (f"held: the line awaits {waiting}, so it is not counted yet" if not screening else
-                                f"held: the screening method awaits {waiting}; the line counts its simplified "
+                item["uses"] = (f"held: the line awaits {waiting}, so it is not counted yet" if not other else
+                                f"held: {name} awaits {waiting}; the line counts its simplified "
                                 "material balance until then")
         return trace, outcome, None
     trace.flags = sorted({*trace.flags, APPLIED_FLAG})

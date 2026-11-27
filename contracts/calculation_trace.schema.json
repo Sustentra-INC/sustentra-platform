@@ -334,6 +334,13 @@
           ],
           "description": "A default the line uses where nothing is stated yet, shown until a reviewer decides the input: \"Default: <value> (<source>) · not confirmed\"."
         },
+        "source_hint": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Where a reviewer finds the value (\"inventory count\"): the entry form asks for its source with it."
+        },
         "company": {
           "oneOf": [
             {

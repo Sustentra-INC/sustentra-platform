@@ -125,7 +125,7 @@ export function InputActions({
       {mode === "edit" ? (
         <ReasonRow
           label={`Reason: ${label}`}
-          placeholder={company ? "Where does the company state this?" : input.kind === "reviewer_entered" ? "Its source (the safety data sheet, say)" : "Why is this value changed?"}
+          placeholder={company ? "Where does the company state this?" : input.source_hint ? `Its source (${input.source_hint})` : input.kind === "reviewer_entered" ? "Its source (document, page or record)" : "Why is this value changed?"}
           submitLabel="Save"
           validate={() => valueOk}
           onCancel={close}
