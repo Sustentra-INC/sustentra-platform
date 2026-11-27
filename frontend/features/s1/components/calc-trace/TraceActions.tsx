@@ -28,7 +28,7 @@ export interface TraceActions {
    * server's sentence when `inline` and the input was refused (422) or the request failed, so the open
    * editor can show it beside the field.
    */
-  act: (run: () => Promise<unknown>, options?: { inline?: boolean }) => Promise<string | null>;
+  act: (run: () => Promise<unknown>, options?: { inline?: boolean; entered?: string }) => Promise<string | null>;
 }
 
 const Context = createContext<TraceActions | null>(null);
@@ -79,7 +79,9 @@ export function useTraceDecisions(engagementId: string, lineKey: string, onSaved
         return null;
       }
       if (status === 409) {
-        setNotice({ kind: "conflict", text: `${CHANGED_TEXT} ${error instanceof ApiError ? error.detail : ""}`.trim() });
+        // The editor closes with the refetch, so what the reviewer typed is kept in the sentence.
+        const changed = options?.entered ? `${CHANGED_TEXT.slice(0, -1)} (you entered ${options.entered}).` : CHANGED_TEXT;
+        setNotice({ kind: "conflict", text: `${changed} ${error instanceof ApiError ? error.detail : ""}`.trim() });
         saved.current();
         return null;
       }

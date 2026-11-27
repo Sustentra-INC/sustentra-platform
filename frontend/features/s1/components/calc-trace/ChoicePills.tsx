@@ -31,6 +31,10 @@ export function ChoicePills({
   const [mode, setMode] = useState<Mode>(null);
   const editable = Boolean(actions);
   const decision = choice.decision && choice.decision.status !== "pending" ? choice.decision : null;
+  // The option the latest decision picked (a choose or an accepted suggestion), else the one the calculation used.
+  const decidedId = decision && decision.status !== "rejected" && decision.value !== null && decision.value !== undefined ? String(decision.value) : null;
+  const shown = decidedId && choice.options.some((o) => o.id === decidedId) ? decidedId : choice.chosen;
+  const notApplied = shown !== choice.chosen;
   const suggested = !decision && choice.suggestion ? choice.suggestion : null;
   const suggestedOption = suggested ? choice.options.find((o) => o.id === String(suggested.value)) : undefined;
 
@@ -38,7 +42,7 @@ export function ChoicePills({
     actions ? actions.act(() => decideChoice(actions.engagementId, actions.lineKey, choice.id, body), { inline }) : Promise.resolve(null);
 
   function pick(option: TraceChoiceOption) {
-    if (!option.available || option.id === choice.chosen) return;
+    if (!option.available || option.id === shown) return;
     if (option.id === automaticOption(choice)) void post({ action: "choose", option_id: option.id });
     else setMode({ kind: "choose", option });
   }
@@ -47,7 +51,7 @@ export function ChoicePills({
     <div className="s1-cp-pills" role="group" aria-label={choice.label}>
       {compact ? null : <span className="s1-cp-pills__label">{choice.label}</span>}
       {choice.options.map((o) => {
-        const chosen = o.id === choice.chosen;
+        const chosen = o.id === shown;
         const why = o.why_unavailable ?? "not available for this line";
         const className = `s1-cp-pill${chosen ? " is-chosen" : ""}${o.available ? "" : " is-unavailable"}`;
         const tag = o.detection && TAG_TEXT[o.detection] ? <span className="s1-cp-pill__tag"> · {TAG_TEXT[o.detection]}</span> : null;
@@ -105,6 +109,7 @@ export function ChoicePills({
           ) : null}
         </span>
       ) : null}
+      {notApplied ? <span className="s1-cp-change s1-muted">Recorded. The total updates when the calculation is applied.</span> : null}
       {mode?.kind === "choose" ? (
         <ReasonRow
           label={`Reason: ${choice.label}`}

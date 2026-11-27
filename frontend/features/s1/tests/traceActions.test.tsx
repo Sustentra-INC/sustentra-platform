@@ -345,3 +345,82 @@ describe("a role that cannot decide", () => {
     expect(screen.queryByRole("button", { name: /Revert/ })).toBeNull();
   });
 });
+
+describe("pills follow the decision", () => {
+  it("highlights the decided option and says it is recorded, while the trace still has the old one", async () => {
+    const t = withEq2(base());
+    t.choices.find((c) => c.id === "equation:CO2")!.decision = decision({ value: "eq_2", reason: "bill" });
+    mount(t); // the mock never mutates: the backend has not applied it
+    const group = await ready();
+    expect(within(group).getByRole("button", { name: "Eq. 2" }).getAttribute("aria-pressed")).toBe("true");
+    expect(within(group).getByRole("button", { name: "Eq. 1" }).getAttribute("aria-pressed")).toBe("false");
+    expect(group.textContent).toContain("Chosen by Ada Reviewer");
+    expect(group.textContent).toContain("Recorded. The total updates when the calculation is applied.");
+  });
+
+  it("shows no note when the decided option is the one the calculation used", async () => {
+    const t = withEq2(base());
+    t.choices.find((c) => c.id === "equation:CO2")!.decision = decision({ value: "eq_1" });
+    mount(t);
+    const group = await ready();
+    expect(group.textContent).not.toContain("Recorded.");
+  });
+});
+
+describe("typed numbers", () => {
+  const openEdit = async (user: ReturnType<typeof userEvent.setup>) => {
+    await efMenu(user);
+    await user.click(screen.getByRole("menuitem", { name: "Edit" }));
+    return screen.getByRole("textbox", { name: "Value: CO₂ emission factor" });
+  };
+
+  it("refuses an ambiguous comma, accepts thousands grouping", async () => {
+    const user = userEvent.setup();
+    mount(base());
+    await ready();
+    const value = await openEdit(user);
+    await user.type(screen.getByRole("textbox", { name: "Reason: CO₂ emission factor" }), "why");
+    const save = screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
+    await user.clear(value);
+    await user.type(value, "1,5");
+    expect(screen.getByRole("alert").textContent).toBe("Use a point for decimals");
+    expect(save.disabled).toBe(true);
+    await user.clear(value);
+    await user.type(value, "1,500.5");
+    expect(screen.queryByRole("alert")).toBeNull();
+    await user.click(save);
+    await waitFor(() => expect(server.posts[0]?.body).toMatchObject({ action: "edit", value: 1500.5 }));
+  });
+
+  it("an input with no value on either side is still a number when it has a unit", async () => {
+    const user = userEvent.setup();
+    const t = base();
+    t.inputs["ef.CO2"].recomputed = { value: null, unit: "kg/MMBtu", status: "not_reported" };
+    delete t.inputs["ef.CO2"].company;
+    mount(t);
+    await ready();
+    const value = await openEdit(user);
+    expect((value as HTMLInputElement).value).toBe("");
+    await user.type(value, "42.1");
+    await user.type(screen.getByRole("textbox", { name: "Reason: CO₂ emission factor" }), "why");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(server.posts).toHaveLength(1));
+    expect(server.posts[0].body).toEqual({ action: "edit", value: 42.1, unit: "kg/MMBtu", reason: "why" });
+  });
+
+  it("a 409 during an edit closes the editor, refetches, and keeps what was typed in the notice", async () => {
+    const user = userEvent.setup();
+    mount(base());
+    await ready();
+    const gets = server.gets;
+    const value = await openEdit(user);
+    await user.clear(value);
+    await user.type(value, "42.1");
+    await user.type(screen.getByRole("textbox", { name: "Reason: CO₂ emission factor" }), "why");
+    server.postError = new ApiError(409, "Someone else decided.", null, null);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect((await screen.findByRole("status")).textContent).toContain("This value changed since you opened it (you entered 42.1)");
+    expect(screen.queryByRole("textbox", { name: "Value: CO₂ emission factor" })).toBeNull();
+    await waitFor(() => expect(server.gets).toBeGreaterThan(gets));
+  });
+});

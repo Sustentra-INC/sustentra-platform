@@ -20,6 +20,25 @@ const DECIDABLE = new Set(["reference", "reviewer_entered", "constant"]);
 
 type Mode = "edit" | "reject" | "accept" | null;
 
+const PLAIN = /^-?(\d+(\.\d+)?|\.\d+)$/;
+const GROUPED = /^-?\d{1,3}(,\d{3})+(\.\d+)?$/;
+
+/** A number as typed: a plain number or valid thousands grouping. "1,5" is ambiguous (a decimal comma?) and refused. */
+export function parseEntered(text: string): { value: number } | { error: string } {
+  const t = text.trim();
+  if (!t) return { error: "" };
+  if (PLAIN.test(t)) return { value: Number(t) };
+  if (GROUPED.test(t)) return { value: Number(t.replace(/,/g, "")) };
+  return { error: t.includes(",") ? "Use a point for decimals" : "Enter a number" };
+}
+
+/** Numeric when any side holds a number or the trace gives a unit: an input with no value yet stays a number. */
+function isNumeric(input: TraceInput): boolean {
+  const sides = [input.recomputed, input.company];
+  return sides.some((s) => typeof s?.value === "number" || Boolean(s?.unit));
+}
+const unitOf = (input: TraceInput): string | undefined => input.recomputed?.unit || input.company?.unit || undefined;
+
 export function isDecidable(input: TraceInput | undefined): input is TraceInput {
   return Boolean(input && input.recomputed && DECIDABLE.has(input.kind));
 }
@@ -41,8 +60,9 @@ export function InputActions({
   const side = input.recomputed;
   const decision = side?.decision && side.decision.status !== "pending" ? side.decision : null;
   const status = decision?.status ?? null;
-  const unit = side?.unit ? prettyUnit(side.unit) : "";
-  const numeric = typeof side?.value === "number";
+  const rawUnit = unitOf(input);
+  const unit = rawUnit ? prettyUnit(rawUnit) : "";
+  const numeric = isNumeric(input);
 
   const mark =
     status === "accepted" ? (
@@ -67,7 +87,7 @@ export function InputActions({
   );
   if (!actions || !side) return cell;
 
-  const post = (body: InputDecisionBody) => actions.act(() => decideInput(actions.engagementId, actions.lineKey, input.id, "recomputed", body), { inline: true });
+  const post = (body: InputDecisionBody, entered?: string) => actions.act(() => decideInput(actions.engagementId, actions.lineKey, input.id, "recomputed", body), { inline: true, entered });
   const close = () => {
     setMode(null);
     setValue("");
@@ -84,8 +104,10 @@ export function InputActions({
     ...(decision ? [{ label: "Revert", disabled: actions.busy, action: () => void direct({ action: "revert" }) }] : []),
   ];
 
-  const parsed = numeric ? Number(value.replace(/,/g, "")) : NaN;
-  const valueOk = numeric ? value.trim() !== "" && Number.isFinite(parsed) : value.trim() !== "";
+  const entered = numeric ? parseEntered(value) : null;
+  const parsed = entered && "value" in entered ? entered.value : NaN;
+  const valueOk = numeric ? Number.isFinite(parsed) : value.trim() !== "";
+  const valueError = entered && "error" in entered ? entered.error : "";
 
   return (
     <>
@@ -101,7 +123,7 @@ export function InputActions({
           validate={() => valueOk}
           onCancel={close}
           onSubmit={async (reason) => {
-            const message = await post({ action: "edit", value: numeric ? parsed : value.trim(), ...(side.unit ? { unit: side.unit } : {}), reason });
+            const message = await post({ action: "edit", value: numeric ? parsed : value.trim(), ...(rawUnit ? { unit: rawUnit } : {}), reason }, value.trim());
             if (!message) close();
             return message;
           }}
@@ -116,6 +138,11 @@ export function InputActions({
               autoFocus
             />
             {unit ? <span className="s1-muted">{unit}</span> : null}
+            {valueError ? (
+              <span className="s1-cp-reason__error" role="alert">
+                {valueError}
+              </span>
+            ) : null}
           </span>
         </ReasonRow>
       ) : null}
