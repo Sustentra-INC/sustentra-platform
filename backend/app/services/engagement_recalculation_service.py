@@ -608,6 +608,9 @@ class EngagementRecalculationService:
         try:
             filing = recalculation_lines.file_records(self.reference, placed, inputs, settings, decisions,
                                                       self._facilities, self._company)
+            # Block 1 is reference only: a document there (a bill a reviewer moved in, too) adds nothing, awaits no
+            # review, is not "left out" and is no part of any check. Placement decides, never the type.
+            placed = [r for r in placed if not filing.in_summary_block(r)]
             held = [r for r in placed if self._held_summary(r)]  # counts 0 until a reviewer decides
             records = [r for r in placed if filing.on_a_line(r) and r not in held]
             off_line = [r for r in placed if not filing.on_a_line(r) and r not in held]

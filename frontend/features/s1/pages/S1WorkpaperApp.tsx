@@ -38,7 +38,7 @@ import {
   documentFacts,
   unmatchedFacilities,
 } from "../utils/documentView";
-import { ExtractionReview, isSummaryDocument } from "../components/ExtractionReview";
+import { ExtractionReview } from "../components/ExtractionReview";
 import type { RereadState } from "../components/EvidenceTree";
 import { EvidenceWorkspace, type WorkspaceProblem } from "../components/EvidenceWorkspace";
 import { S1Chrome, type NavKey, type WorkpaperUser } from "../components/S1Chrome";
@@ -224,6 +224,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const [evidenceTab, setEvidenceTab] = useState<EvidenceTab>("supporting");
   // Where each document sits (Block 1, 2 or 3), from the Evidence tree; null until it has loaded.
   const [placements, setPlacements] = useState<ReturnType<typeof placementOfDocuments> | null>(null);
+  const [placementsError, setPlacementsError] = useState<string | null>(null);
+  const [placementsRetry, setPlacementsRetry] = useState(0);
   const [auditIntents, setAuditIntents] = useState<SessionAuditEntry[]>([]);
   const [demoState, setDemoState] = useState<ContainerState>(dataMode === "backend" ? "loading" : "populated");
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>(
@@ -637,6 +639,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setEvidenceFacility(null);
     setEvidenceTab("supporting");
     setPlacements(null);
+    setPlacementsError(null);
     setEvidenceTreeOpen(null);
     rememberEngagement(row.id);
     setSetupSave({ state: "idle", savedAt: null, problems: {}, message: null });
@@ -1436,24 +1439,32 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     };
   }, [dataMode, activeView.name, engagement.engagementId, evidenceSignature]);
   // Where each document sits, read from the Evidence tree (never filtered), again when the documents, a
-  // placement or a read changes. A failed read leaves what was known: the screens then fall back to the type.
+  // placement or a read changes. Backend mode only. A failed read is shown, with a way to retry; the review
+  // screen waits for it and never guesses from the document's type.
   useEffect(() => {
-    if (!engagement.engagementId) return;
+    if (dataMode !== "backend" || !engagement.engagementId) return;
     let live = true;
     getEvidenceTree(engagement.engagementId)
-      .then((tree) => live && setPlacements(placementOfDocuments(tree)))
-      .catch(() => undefined);
+      .then((tree) => {
+        if (!live) return;
+        setPlacements(placementOfDocuments(tree));
+        setPlacementsError(null);
+      })
+      .catch((error: unknown) => {
+        if (!live || handleSessionEnded(error)) return;
+        setPlacementsError(userFacingApiError(error));
+      });
     return () => {
       live = false;
     };
-  }, [engagement.engagementId, evidenceSignature, documentDecisions, workspaceFields]);
+    // handleSessionEnded changes every render; the placements load when these change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataMode, engagement.engagementId, evidenceSignature, documentDecisions, workspaceFields, placementsRetry]);
+  const placementsReady = placements !== null && placementsError === null;
 
-  /** Block 1 is decided by where a document sits, not by its type: reference documents carry no values to accept.
-   *  Until the placement is known (or for a document the tree does not list), the type decides, as before. */
+  /** Block 1 is decided by where a document sits, never by its type: reference documents carry no values to accept. */
   function inSummaryBlock(documentId: string): boolean {
-    const where = placements?.get(documentId);
-    if (where) return where === "summary";
-    return isSummaryDocument(evidenceView.find((e) => e.documentId === documentId));
+    return placements?.get(documentId) === "summary";
   }
 
   // A document opened from a link, a dashboard or after a reload lands on the tab that holds it.
@@ -1814,6 +1825,24 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           // Opened from a reload or a link: wait for the workspace, then pick the value.
           <section className="s1-content">
             <ContainerStateSurface state="loading" />
+          </section>
+        ) : activeView.name === "extraction" && dataMode === "backend" && !placementsReady ? (
+          // Whether the document is in Block 1 decides whether it has values to accept, so nothing is offered until known.
+          <section className="s1-content s1-xr s1-xr--doconly">
+            <button className="s1-linklike s1-backlink" type="button" onClick={() => goBack({ name: "evidence" })}>
+              ‹ Back to {backLabel}
+            </button>
+            {placementsError ? (
+              <div className="s1-system-banner" role="alert">
+                <strong>Couldn&apos;t check where this document sits</strong>
+                <span>{placementsError} </span>
+                <button className="s1-button" type="button" onClick={() => setPlacementsRetry((n) => n + 1)}>
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <ContainerStateSurface state="loading" label="Loading document" />
+            )}
           </section>
         ) : activeView.name === "extraction" && STAGING_SCREENS && dataMode === "backend" && isSummaryView(activeView.documentId, activeView.field) ? (
           <SummaryDocumentReview

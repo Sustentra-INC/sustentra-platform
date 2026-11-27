@@ -61,6 +61,8 @@ export interface EvidenceTreeProps {
    *  The facility filter belongs to the Supporting evidence tab only. Without it the tree keeps its own. */
   tab?: EvidenceTab;
   onTabChange?: (tab: EvidenceTab) => void;
+  /** The "By calculation line / By document type" switch, shown on the filter row of the Supporting evidence tab. */
+  viewSwitch?: ReactNode;
   /** Ids of the open rows, or null to start from the default (scopes open). */
   openIds: string[] | null;
   onOpenIdsChange: (ids: string[]) => void;
@@ -113,6 +115,48 @@ type OnError = ((error: unknown) => boolean) | undefined;
 const isLineKey = (key: string) => !key.startsWith("block:") && !key.startsWith("supporting:");
 const UNKNOWN_LINE_LABEL = "Unassigned supporting evidence (its line was deleted)";
 
+const TABS: { id: EvidenceTab; label: string }[] = [
+  { id: "summary", label: "Summary documents and workbook" },
+  { id: "supporting", label: "Supporting evidence" },
+];
+
+/** The Evidence page's two top-level tabs, in the page's underline tab style. Arrow keys move between them (the tab
+ *  follows focus); Home and End jump to the ends. */
+export function EvidenceTabs({ tab, onTabChange }: { tab: EvidenceTab; onTabChange: (tab: EvidenceTab) => void }) {
+  function onKey(e: ReactKeyboardEvent<HTMLDivElement>) {
+    const at = TABS.findIndex((t) => t.id === tab);
+    const to =
+      e.key === "ArrowRight" || e.key === "ArrowDown" ? (at + 1) % TABS.length
+      : e.key === "ArrowLeft" || e.key === "ArrowUp" ? (at - 1 + TABS.length) % TABS.length
+      : e.key === "Home" ? 0
+      : e.key === "End" ? TABS.length - 1
+      : -1;
+    if (to < 0) return;
+    e.preventDefault();
+    onTabChange(TABS[to].id);
+    window.requestAnimationFrame(() => document.getElementById(`s1-et-tab-${TABS[to].id}`)?.focus());
+  }
+  return (
+    <div className="s1-ws-factabs" role="tablist" aria-label="Evidence" onKeyDown={onKey}>
+      {TABS.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          role="tab"
+          id={`s1-et-tab-${t.id}`}
+          aria-selected={tab === t.id}
+          aria-controls={`s1-et-panel-${t.id}`}
+          tabIndex={tab === t.id ? 0 : -1}
+          className={`s1-ws-factab${tab === t.id ? " is-on" : ""}`}
+          onClick={() => onTabChange(t.id)}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function EvidenceTree(props: EvidenceTreeProps) {
   const { engagement, reloadKey, openIds, onOpenIdsChange, onError } = props;
   const engagementId = engagement.engagementId;
@@ -144,11 +188,32 @@ export function EvidenceTree(props: EvidenceTreeProps) {
     };
   }, [engagementId, reloadKey, reload]);
 
+  // The whole tree (Block 1 and the "All facilities" view) and the tree of the one facility filtered to are each
+  // kept until the evidence changes, so switching tabs with a filter set asks the server for nothing it already has
+  // and shows no stale view. The facility stays in the app's state; only the Supporting evidence tab applies it.
+  const cache = useRef<{ stamp: string; all?: EvidenceTreeData; facility?: { id: string; tree: EvidenceTreeData } }>({ stamp: "" });
+  const shownFor = useRef<string | null>(null);
   useEffect(() => {
+    const stamp = `${engagementId}|${reloadKey}|${reload}`;
+    if (cache.current.stamp !== stamp) cache.current = { stamp };
+    const have = facilityId === null ? cache.current.all : cache.current.facility?.id === facilityId ? cache.current.facility.tree : undefined;
+    if (have) {
+      shownFor.current = facilityId;
+      setTree(have);
+      setProblem(null);
+      return;
+    }
+    // Nothing kept for this view: do not leave the other view (filtered or not) showing while it loads.
+    if ((shownFor.current === null) !== (facilityId === null)) setTree(null);
     let live = true;
     getEvidenceTree(engagementId, facilityId)
       .then((next) => {
         if (!live) return;
+        if (cache.current.stamp === stamp) {
+          if (facilityId === null) cache.current.all = next;
+          else cache.current.facility = { id: facilityId, tree: next };
+        }
+        shownFor.current = facilityId;
         setTree(next);
         setProblem(null);
         if (openAllOnLoad.current) {
@@ -180,18 +245,30 @@ export function EvidenceTree(props: EvidenceTreeProps) {
     return { scopes, categories };
   }, [tree]);
 
+  // While the tree loads, or cannot be read, the page still offers the view switch (the other grouping needs no tree).
+  const bareBar = tab === "supporting" && props.viewSwitch ? <div className="s1-et-bar">{props.viewSwitch}</div> : null;
   if (problem) {
     return (
-      <div className="s1-system-banner" role="alert">
-        <strong>Couldn&apos;t load the evidence tree</strong>
-        <span>{problem} </span>
-        <button className="s1-button" type="button" onClick={() => setReload((n) => n + 1)}>
-          Try again
-        </button>
-      </div>
+      <>
+        {bareBar}
+        <div className="s1-system-banner" role="alert">
+          <strong>Couldn&apos;t load the evidence tree</strong>
+          <span>{problem} </span>
+          <button className="s1-button" type="button" onClick={() => setReload((n) => n + 1)}>
+            Try again
+          </button>
+        </div>
+      </>
     );
   }
-  if (!tree) return <ContainerStateSurface state="loading" />;
+  if (!tree) {
+    return (
+      <>
+        {bareBar}
+        <ContainerStateSurface state="loading" />
+      </>
+    );
+  }
 
   const open = new Set(openIds ?? defaultOpen(tree));
   const setOpen = (ids: Iterable<string>) => onOpenIdsChange([...ids]);
@@ -208,25 +285,6 @@ export function EvidenceTree(props: EvidenceTreeProps) {
   const { summary, unassigned, supporting } = tree.blocks;
   const visibleScopes = supporting.scopes.filter((s) => !noneFor(s.counts));
   const nothingShown = filtered && unassigned.length + supporting.unassigned.length + visibleScopes.length === 0;
-  const TABS: { id: EvidenceTab; label: string }[] = [
-    { id: "summary", label: "Summary documents and workbook" },
-    { id: "supporting", label: "Supporting evidence" },
-  ];
-  /** Arrow keys move between the tabs (and select, as the tab follows focus); Home and End jump to the ends. */
-  function onTabKey(e: ReactKeyboardEvent<HTMLDivElement>) {
-    const at = TABS.findIndex((t) => t.id === tab);
-    const to =
-      e.key === "ArrowRight" || e.key === "ArrowDown" ? (at + 1) % TABS.length
-      : e.key === "ArrowLeft" || e.key === "ArrowUp" ? (at - 1 + TABS.length) % TABS.length
-      : e.key === "Home" ? 0
-      : e.key === "End" ? TABS.length - 1
-      : -1;
-    if (to < 0) return;
-    e.preventDefault();
-    setTab(TABS[to].id);
-    window.requestAnimationFrame(() => document.getElementById(`s1-et-tab-${TABS[to].id}`)?.focus());
-  }
-
   function changeFacility(next: string | null) {
     openAllOnLoad.current = next !== null;
     props.onFacilityChange(next);
@@ -265,8 +323,8 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           {open ? (
             <>
               {" · "}
-              <button className="s1-linklike" type="button" onClick={open}>
-                Open Methodology review
+              <button className="s1-linklike" type="button" onClick={open} aria-label={`Open Methodology review for ${doc.file_name}`}>
+                Open
               </button>
             </>
           ) : null}
@@ -279,8 +337,8 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         {open ? (
           <>
             {" · "}
-            <button className="s1-linklike" type="button" onClick={open}>
-              Read with Sustentra&apos;s AI
+            <button className="s1-linklike" type="button" onClick={open} aria-label={`Read ${doc.file_name} with Sustentra's AI`}>
+              Read
             </button>
           </>
         ) : null}
@@ -299,7 +357,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
       local ?? (kept ? { typeId: kept.canonical_type_id, typeName: kept.type_name, status: kept.status === "failed" ? "failed" : "reading", message: kept.error ?? undefined } : null);
     const also = doc.also_in.map((key) => lineMap.get(key)).filter((l): l is CalculationLine => Boolean(l));
     return (
-      <div key={id} className="s1-et-doc">
+      <div key={id} className={`s1-et-doc${section === BLOCK_SUMMARY ? " s1-et-doc--summary" : ""}`}>
         <button className="s1-doc-link" type="button" onClick={() => props.onOpenExtraction(doc.document_id)}>
           {doc.file_name}
         </button>
@@ -561,23 +619,6 @@ export function EvidenceTree(props: EvidenceTreeProps) {
 
   return (
     <div className="s1-et">
-      <div className="s1-et-tabs" role="tablist" aria-label="Evidence" onKeyDown={onTabKey}>
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            id={`s1-et-tab-${t.id}`}
-            aria-selected={tab === t.id}
-            aria-controls={`s1-et-panel-${t.id}`}
-            tabIndex={tab === t.id ? 0 : -1}
-            className={`s1-xr-tab${tab === t.id ? " is-on" : ""}`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
       <div className="s1-et-bar">
         {tab === "supporting" ? (
           <label className="s1-et-facility">
@@ -592,6 +633,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
             </select>
           </label>
         ) : null}
+        {tab === "supporting" ? props.viewSwitch : null}
         <span className="s1-et-bar__fold">
           <button className="s1-linklike" type="button" onClick={() => setOpen(collectIds(tree))}>
             Expand all
@@ -602,7 +644,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         </span>
       </div>
 
-      <div className="s1-et" role="tabpanel" id={`s1-et-panel-${tab}`} aria-labelledby={`s1-et-tab-${tab}`}>
+      <div className={`s1-et s1-et-panel s1-et-panel--${tab}`} role="tabpanel" id={`s1-et-panel-${tab}`} aria-labelledby={`s1-et-tab-${tab}`}>
       {nothingShown ? (
         <div className="s1-ws-empty" role="status">
           <p>No documents belong to this facility.</p>
@@ -632,23 +674,8 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         </Fold>
       ) : null}
 
-      {!filtered || unassigned.length ? (
-        <Fold
-          id="b:unassigned"
-          depth={0}
-          open={isOpen("b:unassigned")}
-          onToggle={toggle}
-          title="Unassigned documents"
-          subtitle="System could not identify these"
-          counts={tree.blocks.unassigned_counts}
-          countOnly
-        >
-          {unassigned.length ? docList(unassigned, BLOCK_UNASSIGNED) : <p className="s1-et-none">Nothing here.</p>}
-        </Fold>
-      ) : null}
-
-      {tab === "supporting" && (!filtered || visibleScopes.length || supporting.unassigned.length) ? (
-        <Fold id="b:supporting" depth={0} open={isOpen("b:supporting")} onToggle={toggle} title="Supporting evidence">
+      {tab === "supporting" ? (
+        <>
           {tree.facilities.length === 0 ? (
             <p className="s1-et-none s1-et-nofac">
               No calculation lines yet. Add your facilities in Setup and each fuel gets one line per facility.{" "}
@@ -680,12 +707,27 @@ export function EvidenceTree(props: EvidenceTreeProps) {
               {supporting.unassigned.length ? docList(supporting.unassigned, SUPPORTING_UNASSIGNED) : <p className="s1-et-none">Nothing here.</p>}
             </Fold>
           ) : null}
+        </>
+      ) : null}
+
+      {/* Block 2 shows on both tabs: what the system could not identify has no known type. */}
+      {!filtered || unassigned.length ? (
+        <Fold
+          id="b:unassigned"
+          depth={0}
+          open={isOpen("b:unassigned")}
+          onToggle={toggle}
+          title="Unassigned documents"
+          subtitle="System could not identify these"
+          counts={tree.blocks.unassigned_counts}
+          countOnly
+        >
+          {unassigned.length ? docList(unassigned, BLOCK_UNASSIGNED) : <p className="s1-et-none">Nothing here.</p>}
         </Fold>
       ) : null}
 
-      </div>
-
-      {!filtered && tree.set_aside.length ? (
+      {/* Set aside is of either kind of document, so it shows on both tabs, last. */}
+      {tree.set_aside.length ? (
         <Fold id="b:set-aside" depth={0} open={isOpen("b:set-aside")} onToggle={toggle} title="Set aside" subtitle="Withdrawn, duplicate or replaced: not used in any line">
           <div className="s1-et-docs">
             {tree.set_aside.map((d) => (
@@ -699,6 +741,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           </div>
         </Fold>
       ) : null}
+      </div>
 
       {dialog?.kind === "move" ? (
         <MoveDialog
@@ -1096,7 +1139,9 @@ function MoveDialog({
   if (rereadAs) {
     warning = `The document will be read again as ${rereadAs}. The values it gives start unreviewed, and the earlier reading stays in the record.`;
   } else if (toLine && fromSummary) {
-    warning = "This is a summary document, and its values don't feed lines. Moving it here changes no calculation.";
+    warning = "Summary documents are reference only. Moving it onto this line makes any values it holds count in this line's calculation.";
+  } else if (to === BLOCK_SUMMARY && !fromSummary) {
+    warning = "Summary documents are reference only. Moving it there stops its values counting in any calculation.";
   } else if (toLine && doc.value_family && toLine.family !== doc.value_family) {
     const why = toLine.family ? `it calculates ${FAMILY_WORDS[toLine.family]}` : "no calculation reads this kind of line";
     warning = `These values won't count on this line, because ${why}. They will show as not placed.`;

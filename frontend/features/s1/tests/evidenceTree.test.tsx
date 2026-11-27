@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { useState } from "react";
@@ -19,7 +19,7 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
 import { ApiError } from "../../../lib/api";
 import { type CalculationLine, type ScheduleHistoryEntry, type EvidenceTree as TreeData, type LineSchedule, type TreeDocRow } from "../api/evidenceTree";
 import { engagementFromBackend, engagementToBackend } from "../api/engagements";
-import { EvidenceTree, type EvidenceTreeProps } from "../components/EvidenceTree";
+import { EvidenceTabs, EvidenceTree, type EvidenceTreeProps } from "../components/EvidenceTree";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { AssignTaskProvider } from "../../tasks/AssignTaskContext";
 import { SupportingSchedule } from "../components/SupportingSchedule";
@@ -147,6 +147,8 @@ function Harness({ tab: firstTab = "supporting", ...over }: Partial<EvidenceTree
   const [open, setOpen] = useState<string[] | null>(null);
   const [tab, setTab] = useState(firstTab);
   return (
+    <>
+      <EvidenceTabs tab={tab} onTabChange={setTab} />
     <EvidenceTree
       tab={tab}
       onTabChange={setTab}
@@ -165,6 +167,7 @@ function Harness({ tab: firstTab = "supporting", ...over }: Partial<EvidenceTree
       writesEnabled
       {...over}
     />
+    </>
   );
 }
 
@@ -174,7 +177,7 @@ beforeEach(() => {
 });
 
 const expandAll = async () => {
-  await screen.findByRole("tablist");
+  await screen.findByRole("button", { name: "Expand all" });
   fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
 };
 
@@ -202,7 +205,7 @@ describe("the Evidence tree", () => {
 
   it("draws no bar segment for a zero count, so an empty row shows no coloured stubs", async () => {
     render(<Harness />);
-    await screen.findByRole("tablist");
+    await screen.findByRole("button", { name: "Expand all" });
     const bars = Array.from(document.querySelectorAll(".s1-et-bar-track"));
     expect(bars.length).toBeGreaterThan(0);
     for (const bar of bars) {
@@ -334,7 +337,7 @@ describe("the Evidence tree", () => {
       return <Harness facilityId={facility} onFacilityChange={setFacility} openIds={open} onOpenIdsChange={(n) => { ids.push(n); setOpen(n); }} />;
     }
     render(<Filtered />);
-    await screen.findByRole("tablist");
+    await screen.findByRole("button", { name: "Expand all" });
     fireEvent.change(screen.getByLabelText("Facility"), { target: { value: "FAC-PL02" } });
     expect(await screen.findByRole("button", { name: "mar.pdf" })).toBeInTheDocument();
     expect(mocks.calls.some((c) => c.path === `${TREE_PATH}?facility_id=FAC-PL02`)).toBe(true);
@@ -471,7 +474,7 @@ describe("the two tabs", () => {
 
   it("renders the two tabs with a tabpanel, and switches with the arrow keys, Home and End", async () => {
     render(<Harness />);
-    await screen.findByRole("tablist");
+    await screen.findByRole("button", { name: "Expand all" });
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Summary documents and workbook", "Supporting evidence"]);
     expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", tab("Supporting evidence").id);
     expect(tab("Supporting evidence")).toHaveAttribute("tabindex", "0");
@@ -491,7 +494,7 @@ describe("the two tabs", () => {
 
   it("shows Block 2, Unassigned documents, on both tabs", async () => {
     render(<Harness />);
-    await screen.findByRole("tablist");
+    await screen.findByRole("button", { name: "Expand all" });
     expect(screen.getByText("Unassigned documents")).toBeInTheDocument();
     fireEvent.click(tab("Summary documents and workbook"));
     expect(screen.getByText("Unassigned documents")).toBeInTheDocument();
@@ -514,6 +517,14 @@ describe("the two tabs", () => {
     // the filter stays set for the other tab, but the Block 1 tree is asked for whole
     await waitFor(() => expect(mocks.calls.some((c) => c.path === TREE_PATH)).toBe(true));
     expect(mocks.calls.some((c) => c.path.includes("facility_id"))).toBe(false);
+    // back on Supporting evidence the filter applies again, from what is already loaded: no second fetch, no flicker
+    const treeCalls = () => mocks.calls.filter((c) => c.path.startsWith(TREE_PATH)).length;
+    const before = treeCalls();
+    fireEvent.click(tab("Supporting evidence"));
+    expect(screen.getByLabelText("Facility")).toHaveValue("FAC-PL02");
+    expect(screen.getByText("Scope 1")).toBeInTheDocument();
+    await act(async () => undefined);
+    expect(treeCalls()).toBe(before);
   });
 
   it("comes back to the tab it was left on after a visit to a document", async () => {
@@ -523,6 +534,8 @@ describe("the two tabs", () => {
       return visiting ? (
         <button type="button" onClick={() => setVisiting(false)}>Back to evidence</button>
       ) : (
+        <>
+        <EvidenceTabs tab={tabId} onTabChange={setTabId} />
         <EvidenceTree
           engagement={ENGAGEMENT}
           reloadKey="a"
@@ -540,14 +553,15 @@ describe("the two tabs", () => {
           onDeleteLine={vi.fn().mockResolvedValue(0)}
           writesEnabled
         />
+        </>
       );
     }
     render(<App />);
-    await screen.findByRole("tablist");
+    await screen.findByRole("button", { name: "Expand all" });
     fireEvent.click(tab("Summary documents and workbook"));
     fireEvent.click(await screen.findByRole("button", { name: "GHG workbook.xlsx" }));
     fireEvent.click(screen.getByRole("button", { name: "Back to evidence" }));
-    await screen.findByRole("tablist");
+    await screen.findByRole("button", { name: "Expand all" });
     expect(tab("Summary documents and workbook")).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("button", { name: "GHG workbook.xlsx" })).toBeInTheDocument();
   });
@@ -558,7 +572,7 @@ describe("the blocks match the design", () => {
 
   it("shows Block 1 and Block 2 with a document count and no bar or percent", async () => {
     render(<Harness tab="summary" />);
-    await screen.findByRole("tablist");
+    await screen.findByRole("button", { name: "Expand all" });
     for (const title of ["Summary documents and workbook", "Unassigned documents"]) {
       const h = head(title);
       expect(within(h).getByText("1 document")).toBeInTheDocument();
@@ -646,7 +660,7 @@ describe("the blocks match the design", () => {
     };
     mocks.byPath = { [TREE_PATH]: empty };
     render(<Harness tab="summary" />);
-    await screen.findByRole("tablist");
+    await screen.findByRole("button", { name: "Expand all" });
     fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
     expect(screen.getByText("No summary documents yet.")).toBeInTheDocument();
     expect(screen.getAllByText("Nothing here.").length).toBe(1); // Block 2 shows on this tab too
@@ -756,7 +770,7 @@ describe("the move confirm says what changes", () => {
     render(<Harness tab="summary" />);
     const dialog = await openMove("GHG workbook.xlsx");
     choose(dialog, KENT.key);
-    expect(within(dialog).getByRole("status")).toHaveTextContent("This is a summary document, and its values don't feed lines.");
+    expect(within(dialog).getByRole("status")).toHaveTextContent("Summary documents are reference only. Moving it onto this line makes any values it holds count");
     fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
     expect(screen.getByRole("alert")).toHaveTextContent("This changes the calculation for Natural gas · Kent.");
   });
@@ -790,7 +804,7 @@ describe("the move confirm says what changes", () => {
       choose(dialog, PLANT.key);
       expect(within(dialog).queryByRole("status")).toBeNull();
       choose(dialog, "block:summary");
-      expect(within(dialog).queryByRole("status")).toBeNull();
+      expect(within(dialog).getByRole("status")).toHaveTextContent("stops its values counting in any calculation");
     });
 
     it("says nothing about a re-read for a line no extractor feeds", async () => {
@@ -1836,8 +1850,8 @@ describe("a summary document's row label", () => {
     const open = vi.fn();
     render(<Harness tab="summary" onOpenMethodology={open} />);
     const row = await workbookRow();
-    await waitFor(() => expect(row).toHaveTextContent("2 facts read · Open Methodology review"));
-    fireEvent.click(within(row).getByRole("button", { name: "Open Methodology review" }));
+    await waitFor(() => expect(row).toHaveTextContent("2 facts read · Open"));
+    fireEvent.click(within(row).getByRole("button", { name: "Open Methodology review for GHG workbook.xlsx" }));
     expect(open).toHaveBeenCalledTimes(1);
   });
 
@@ -1845,14 +1859,14 @@ describe("a summary document's row label", () => {
     mocks.byPath[METHODOLOGY_PATH] = methodology([field("a", "workbook")]);
     const { unmount } = render(<Harness tab="summary" onOpenMethodology={vi.fn()} />);
     const row = await workbookRow();
-    await waitFor(() => expect(row).toHaveTextContent("1 fact read · Open Methodology review"));
+    await waitFor(() => expect(row).toHaveTextContent("1 fact read · Open"));
     unmount();
     cleanup();
     mocks.byPath[METHODOLOGY_PATH] = methodology([field("a", "another-doc")]);
     render(<Harness tab="summary" onOpenMethodology={vi.fn()} />);
     const again = await workbookRow();
-    await waitFor(() => expect(again).toHaveTextContent("Not read yet · Read with Sustentra's AI"));
-    expect(within(again).getByRole("button", { name: "Read with Sustentra's AI" })).toBeInTheDocument();
+    await waitFor(() => expect(again).toHaveTextContent("Not read yet · Read"));
+    expect(within(again).getByRole("button", { name: "Read GHG workbook.xlsx with Sustentra's AI" })).toBeInTheDocument();
   });
 
   it("keeps the old wording when the read facts cannot be loaded, and never for a document with values", async () => {

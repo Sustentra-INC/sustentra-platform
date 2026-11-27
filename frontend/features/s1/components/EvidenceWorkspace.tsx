@@ -19,7 +19,8 @@ import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AiTypeNote } from "./AiTypeNote";
-import { EvidenceTree,type EvidenceTreeProps } from "./EvidenceTree";
+import { EvidenceTabs, EvidenceTree, type EvidenceTreeProps } from "./EvidenceTree";
+import type { EvidenceTab } from "../api/evidenceTree";
 import { formatPeriod } from "../utils/formatPeriod";
 import { UPLOAD_PICKER_ACCEPT } from "../constants/uploads";
 import { pickFromDrop, pickFromFileList, type UploadPick } from "../utils/uploadSources";
@@ -162,6 +163,22 @@ export function EvidenceWorkspace({
   // Backend mode: the calculation-line tree, or the table by document type (set type, facility, notes).
   const view = tree?.view ?? "types";
   const setView = (next: "lines" | "types") => tree?.onViewChange(next);
+  // The two top-level tabs: Block 1 (reference) and Block 3. Kept by the app; the document-type grouping
+  // belongs to Supporting evidence, so the Summary tab always shows the tree.
+  const [ownTab, setOwnTab] = useState<EvidenceTab>("supporting");
+  const blockTab = tree?.tab ?? ownTab;
+  const setBlockTab = tree?.onTabChange ?? setOwnTab;
+  const showTree = Boolean(tree) && (blockTab === "summary" || view === "lines");
+  const viewSwitch = (
+    <span className="s1-et-views" role="group" aria-label="Group documents">
+      <button className={`s1-xr-tab${view === "lines" ? " is-on" : ""}`} type="button" aria-pressed={view === "lines"} onClick={() => setView("lines")}>
+        By calculation line
+      </button>
+      <button className={`s1-xr-tab${view === "types" ? " is-on" : ""}`} type="button" aria-pressed={view === "types"} onClick={() => setView("types")}>
+        By document type
+      </button>
+    </span>
+  );
   // Bird's-eye by default: every type starts folded to its summary bar.
   const [openTypes, setOpenTypes] = useState<Set<string>>(new Set());
   const toggleType = (t: string) =>
@@ -411,7 +428,7 @@ export function EvidenceWorkspace({
         activeFilter={headerFilter}
         onFilter={(f) => setHeaderFilter((cur) => (cur === f ? null : f))}
         onUpload={onOpenUpload}
-        showFilters={!(tree && view === "lines")}
+        showFilters={!showTree}
       />
 
       {backendError ? (
@@ -428,22 +445,21 @@ export function EvidenceWorkspace({
         </div>
       ) : null}
 
-      {tree ? (
-        <div className="s1-ws-factabs" role="group" aria-label="Group documents">
-          <button className={`s1-ws-factab${view === "lines" ? " is-on" : ""}`} type="button" aria-pressed={view === "lines"} onClick={() => setView("lines")}>
-            By calculation line
-          </button>
-          <button className={`s1-ws-factab${view === "types" ? " is-on" : ""}`} type="button" aria-pressed={view === "types"} onClick={() => setView("types")}>
-            By document type
-          </button>
-        </div>
-      ) : null}
+      {tree ? <EvidenceTabs tab={blockTab} onTabChange={setBlockTab} /> : null}
 
       {showEmpty ? (
-        <FirstDayEmpty onUploadFiles={onUploadFiles} isUploading={isUploading} />
+        <>
+          {tree && blockTab === "supporting" ? <div className="s1-et-bar">{viewSwitch}</div> : null}
+          <FirstDayEmpty onUploadFiles={onUploadFiles} isUploading={isUploading} />
+        </>
       ) : (
         <>
-          {tree && view === "lines" ? null : (
+          {showTree ? null : (
+            <div className="s1-et-bar" role="tabpanel" id="s1-et-panel-supporting" aria-labelledby="s1-et-tab-supporting">
+              {viewSwitch}
+            </div>
+          )}
+          {showTree ? null : (
             <FacilityFilterStrip
               engagement={engagement}
               total={activeCount}
@@ -453,8 +469,9 @@ export function EvidenceWorkspace({
             />
           )}
 
-          {tree && view === "lines" ? (
+          {tree && showTree ? (
             <EvidenceTree
+              viewSwitch={blockTab === "supporting" ? viewSwitch : undefined}
               openIds={tree.openIds}
               onOpenIdsChange={tree.onOpenIdsChange}
               onOpenSchedule={tree.onOpenSchedule}
@@ -472,8 +489,8 @@ export function EvidenceWorkspace({
               onError={tree.onError}
               facilityId={tree.facilityId}
               onFacilityChange={tree.onFacilityChange}
-              tab={tree.tab}
-              onTabChange={tree.onTabChange}
+              tab={blockTab}
+              onTabChange={setBlockTab}
               engagement={engagement}
               reloadKey={treeReloadKey}
               onOpenExtraction={onOpenExtraction}
