@@ -314,6 +314,13 @@
   --updlg-close-size: 38px;        /* upload modal close button size */
   --updlg-dz-icon: 64px;           /* upload modal drop zone icon tile size */
   --updlg-empty-bars-max: 240px;   /* upload modal empty state bars max width */
+  /* Upload processing UI */
+  --upq-thumb-w: 40px;    /* file thumbnail / batch tag width */
+  --upq-tag-h: 16px;      /* small file-type tag height inside thumbnails */
+  --upq-stage-h: 34px;    /* upload progress stage pill height */
+  --batch-row-min-h: 54px;/* batch file row minimum height */
+  --batch-mini-w: 90px;   /* batch row inline mini progress bar width */
+  --upq-spin-border: 2px; /* spinner ring border width */
   --hairline-width: 1px;
   --ring-width: 1.5px;
   --active-row-marker-width: 3px;
