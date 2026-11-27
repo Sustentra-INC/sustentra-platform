@@ -13,8 +13,11 @@ where ``record`` is the stream's whole field record after the move and ``seq`` c
 row with the highest ``seq`` is the stream's current state; the earlier rows are what the reviewer decided before.
 ``item_key`` is a hash of (line key, stream) and ``seq``: a line key can fill the whole 200-character key limit.
 
-A decision is only read for display here. Nothing in the totals reads it yet (the next PR, F3b); until then a
-decision never changes a number. A pending AI suggestion is never an operand.
+A decision is shown on the trace here (``with_decisions``) and read into the line's working by
+``calc_trace/decisions`` (F3b): an accepted or edited value on the recomputed side is an operand, a pending AI
+suggestion never is. So a value that would reach the arithmetic is checked here first: a number above 0, in the
+input's own unit, on an input a line can decide (the activity, an emission factor, a distance). The GWP, the
+consolidated share, the unit conversion and the grid region are set for the whole engagement: 409.
 
 A decision on a line that no longer exists (deleted or renamed) is kept and listed as orphaned, never applied to
 another line (``split_orphans``).
@@ -28,7 +31,8 @@ import json
 import math
 import re
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -37,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.services import review_field
 from backend.app.services.calc_trace._line import normalise_unit
+from backend.app.services.calc_trace.decisions import not_decidable
 from backend.app.services.request_service import Actor
 from backend.app.services.review_field import ReviewConflict, ReviewInvalid
 from backend.app.services.workpaper_item_service import MAX_PAYLOAD_BYTES, _row, insert_item, payload_size
@@ -49,7 +54,8 @@ INPUT_ACTIONS = ("accept", "edit", "reject", "revert")
 MAX_TEXT = 200  # a text value, a choice or input id
 MAX_UNIT = 40
 MAX_NUMBER = 1e15
-EXTRAS = ("reason", "unit", "document_id", "kind")  # what a revert restores beyond status and value
+EXTRAS = ("reason", "unit", "document_id", "kind", "basis")  # what a revert restores beyond status and value
+MAX_CITATION = 1000  # a basis stays well inside review_field.MAX_EXTRA["basis"] (4,000), so a revert keeps it
 REVIEWER_ENTERED = "reviewer_entered"  # the recomputed side's value was typed by a reviewer, with the reason
 COMPANY_INPUT = "company_input"
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
@@ -57,6 +63,61 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 class RecordTooLarge(ReviewInvalid):
     """The stream's record would pass the size limit of one stored row (422)."""
+
+
+@dataclass
+class Proposal:
+    """A decision POST's move, made inside the one engine run that checks it (``recalculate(proposal=...)``): the
+    engine offers the target line's automatic trace, ``make`` turns it into the stream's new record (or raises), and
+    the run then works the line with that record in place, by the rules the totals use."""
+
+    line_key: str
+    stream: str
+    make: Callable[[dict[str, Any]], dict[str, Any]]
+    seen: bool = False
+    trace: dict[str, Any] | None = None
+    record: dict[str, Any] | None = None
+    error: BaseException | None = None
+
+    def offer(self, line_key: str, trace: dict[str, Any] | None) -> dict[str, Any] | None:
+        if line_key != self.line_key:
+            return None
+        self.seen, self.trace = True, trace
+        if not trace:
+            return None
+        try:
+            self.record = self.make(trace)
+        except Exception as exc:  # noqa: BLE001 - re-raised by the caller, outside the engine
+            self.error = exc
+            return None
+        return self.record
+
+
+class Refused(ReviewConflict):
+    """A decision the line's working cannot take (409), with a code for the frontend: ``not_decidable`` (set for the
+    whole engagement), ``mixed_line`` (the line mixes fuels or units), ``stale`` (the evidence changed under it),
+    ``no_working``, ``not_counted`` (its category cannot count it)."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def basis_of(trace: Mapping[str, Any], holder: Mapping[str, Any] | None = None,
+             choice: Mapping[str, Any] | None = None) -> str:
+    """What a recomputed decision replaces, as stored with it (compact JSON, so a revert restores it as text): the
+    automatic value, its unit and factor source, and the line's grid region; for a choice, the default option. When
+    any of these is different when the decision is read, the decision is stale (``calc_trace/decisions``)."""
+
+    if choice is not None:
+        return json.dumps({"chosen": default_option(choice)}, separators=(",", ":"), ensure_ascii=False)
+    side = (holder or {}).get("recomputed") or {}
+    source: Mapping[str, Any] = side["source"] if isinstance(side.get("source"), Mapping) else {}
+    grid = (((trace.get("inputs") or {}).get("grid_region") or {}).get("recomputed") or {})
+    citation = source.get("citation")
+    return json.dumps({"value": side.get("value"), "unit": side.get("unit"),
+                       "source": str(citation)[:MAX_CITATION] if citation else None,
+                       "grid_region": grid.get("value")}, separators=(",", ":"), ensure_ascii=False)
 
 
 # --- streams and keys ------------------------------------------------------------------------------
@@ -259,7 +320,7 @@ def default_option(choice: Mapping[str, Any]) -> str | None:
 
 
 def decide_choice(record: Mapping[str, Any], choice: Mapping[str, Any], action: str, *, option_id: Any = None,
-                  reason: Any = None, actor: Actor, now: datetime) -> dict[str, Any]:
+                  reason: Any = None, actor: Actor, now: datetime, basis: str | None = None) -> dict[str, Any]:
     """accept (the AI's suggestion) | choose (an option) | reject | revert, on a choice of the line."""
 
     label = str(choice.get("label") or choice["id"])
@@ -277,7 +338,8 @@ def decide_choice(record: Mapping[str, Any], choice: Mapping[str, Any], action: 
 
     record = _seeded(record, choice.get("suggestion"))
     if action == "accept":
-        return review_field.accept(record, label, validate, actor, now, instead="Pick an option instead.")
+        return _with_basis(review_field.accept(record, label, validate, actor, now, instead="Pick an option instead."),
+                           basis)
     if action == "choose":
         if option_id is None:
             raise ReviewInvalid(f"Pick an option for '{label}'.")
@@ -285,7 +347,10 @@ def decide_choice(record: Mapping[str, Any], choice: Mapping[str, Any], action: 
         needs_reason = picked != default_option(choice)
         why = review_field.clean_reason(
             reason, missing=f"Say why '{label}' is not left as it is: a reason is required." if needs_reason else None)
-        return review_field.edit(record, validate, picked, actor, now, extra={"reason": why} if why else None)
+        extra = {"reason": why} if why else {}
+        if basis:
+            extra["basis"] = basis
+        return review_field.edit(record, validate, picked, actor, now, extra=extra or None)
     if action == "reject":
         return review_field.reject(record, label, reason, actor, now)
     if action == "revert":
@@ -293,10 +358,17 @@ def decide_choice(record: Mapping[str, Any], choice: Mapping[str, Any], action: 
     raise ReviewInvalid(f"'{action}' is not an action on a choice.")
 
 
+def _with_basis(record: dict[str, Any], basis: str | None) -> dict[str, Any]:
+    if basis and isinstance(record.get("decision"), dict):
+        record["decision"]["basis"] = basis
+    return record
+
+
 def decide_input(record: Mapping[str, Any], item: Mapping[str, Any], row: Mapping[str, Any] | None, side: str,
                  action: str, *, value: Any = None, unit: Any = None, reason: Any = None, document_id: Any = None,
-                 actor: Actor, now: datetime) -> dict[str, Any]:
-    """accept (the AI's suggestion) | edit | reject | revert, on one side of an input (or of one of its rows)."""
+                 actor: Actor, now: datetime, basis: str | None = None) -> dict[str, Any]:
+    """accept (the AI's suggestion) | edit | reject | revert, on one side of an input (or of one of its rows).
+    ``basis`` (``basis_of``): what a recomputed decision replaces, stored with it to tell later when it is stale."""
 
     if side not in SIDES:
         raise ReviewInvalid("The side is company or recomputed.")
@@ -310,19 +382,42 @@ def decide_input(record: Mapping[str, Any], item: Mapping[str, Any], row: Mappin
     own = holder.get(side)
     record = _seeded(record, own.get("suggestion") if isinstance(own, Mapping) else None)
 
-    def validate(given: Any) -> Any:
-        return _input_value(label, given, numeric)
+    operand = side == "recomputed"  # this side's value is worked into the line's numbers
 
+    def validate(given: Any) -> Any:
+        value = _input_value(label, given, numeric)
+        if operand and not isinstance(value, str) and value <= 0:
+            raise ReviewInvalid(f"'{label}': enter a number above 0.")
+        return value
+
+    if operand and action in ("accept", "edit"):
+        target = str(item.get("id") or "") + (f"/{row.get('id')}" if row is not None else "")
+        why = not_decidable(target)
+        if why is not None:
+            raise Refused("not_decidable", f"'{label}' can't be changed for one line: {why}.")
+    if not operand:
+        basis = None
     if action == "accept":
-        return review_field.accept(record, label, validate, actor, now, carry=("unit",))
+        accepted = review_field.accept(record, label, validate, actor, now, carry=("unit",))
+        decided = accepted["decision"]
+        if operand and expected_unit and not isinstance(decided.get("value"), str) and not decided.get("unit"):
+            raise ReviewInvalid(f"'{label}': the suggestion gives no unit. Edit the value and enter it in "
+                                f"{expected_unit}.")
+        if operand and decided.get("unit"):
+            _unit(label, decided["unit"], expected_unit, True)
+        return _with_basis(accepted, basis)
     if action == "edit":
         entered = validate(value)
-        own_unit = _unit(label, unit, expected_unit, numeric is not False and not isinstance(entered, str))
+        numeric_entry = numeric is not False and not isinstance(entered, str)
+        own_unit = _unit(label, unit, expected_unit, numeric_entry)
         if side == "recomputed":
             why = review_field.clean_reason(
                 reason, missing=f"Say why the recomputed value of '{label}' is changed: a reason is required.")
         else:
             why = review_field.clean_reason(reason)
+        if operand and numeric_entry and expected_unit and (unit is None or (isinstance(unit, str)
+                                                                             and not unit.strip())):
+            raise ReviewInvalid(f"'{label}' is in {expected_unit}: enter the unit with the value.")
         extra: dict[str, Any] = {"kind": REVIEWER_ENTERED if side == "recomputed" else COMPANY_INPUT}
         if own_unit:
             extra["unit"] = own_unit
@@ -330,6 +425,8 @@ def decide_input(record: Mapping[str, Any], item: Mapping[str, Any], row: Mappin
             extra["reason"] = why
         if document_id is not None:
             extra["document_id"] = clean_id(document_id, "document id")
+        if basis:
+            extra["basis"] = basis
         return review_field.edit(record, validate, entered, actor, now, extra=extra)
     if action == "reject":
         return review_field.reject(record, label, reason, actor, now)

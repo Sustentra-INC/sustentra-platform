@@ -227,6 +227,15 @@ def _category(category: str, lines: list[LineResult], ref: EmissionFactorReferen
                           details or {}, gwp_set)
 
 
+def retotal(result: CategoryResult, lines: list[LineResult], ref: EmissionFactorReference,
+            flags: list[str] | None = None) -> CategoryResult:
+    """The category totalled again over changed lines (a reviewer's decisions on its calculation lines): mass, GWP,
+    CO2e and the total steps exactly as the category makes them, its details kept."""
+
+    return _category(result.category, lines, ref, flags=sorted({*result.flags, *(flags or [])}),
+                     details=result.details, gwp_set=result.gwp_set)
+
+
 # =========================================================================================
 # Fuel combustion (Eq 1 / Eq 2 / Eq 3)
 # =========================================================================================

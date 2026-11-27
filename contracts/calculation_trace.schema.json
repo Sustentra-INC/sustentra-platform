@@ -308,6 +308,17 @@
             "type": "string"
           }
         },
+        "decidable": {
+          "type": "boolean",
+          "description": "Whether a reviewer can accept or edit this input's recomputed value for this line (POST answers 409 otherwise)."
+        },
+        "why_not": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why the recomputed value cannot be decided for this line, when decidable is false."
+        },
         "company": {
           "oneOf": [
             {

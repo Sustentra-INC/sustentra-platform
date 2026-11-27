@@ -53,6 +53,11 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
         return tree_api.methodology_gwp.default_choice()
 
     monkeypatch.setattr(tree_api.methodology_gwp, "load_choice", default_choice)
+
+    async def no_line_decisions(db, engagement_id, line_key=None):  # noqa: ANN001, ANN202 - the calc_line rows
+        return []
+
+    monkeypatch.setattr(tree_api.calc_line_review, "current", no_line_decisions)
     app.dependency_overrides[get_db_session] = no_db
     yield store
     app.dependency_overrides.pop(get_db_session, None)

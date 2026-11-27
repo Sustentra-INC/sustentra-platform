@@ -135,7 +135,8 @@
       }
      }
     }
-   ]
+   ],
+   "decidable": true
   },
   "unit_conversion": {
    "id": "unit_conversion",
@@ -151,7 +152,9 @@
      "dataset": "fuel_units conversion table",
      "citation": "fuel_units conversion table"
     }
-   }
+   },
+   "decidable": false,
+   "why_not": "the unit conversion comes from the conversion table"
   },
   "ef.CO2": {
    "id": "ef.CO2",
@@ -171,7 +174,8 @@
      "edition": "2025",
      "citation": "EPA GHG Emission Factors Hub 2025, Table 1, row 38"
     }
-   }
+   },
+   "decidable": true
   },
   "gwp.CO2": {
    "id": "gwp.CO2",
@@ -191,7 +195,9 @@
      "edition": "2025",
      "citation": "EPA GHG Emission Factors Hub 2025, Table 11, row 524 (IPCC AR5)"
     }
-   }
+   },
+   "decidable": false,
+   "why_not": "the GWP is chosen for the whole engagement on the Methodology page"
   },
   "ef.CH4": {
    "id": "ef.CH4",
@@ -211,7 +217,8 @@
      "edition": "2025",
      "citation": "EPA GHG Emission Factors Hub 2025, Table 1, row 38"
     }
-   }
+   },
+   "decidable": true
   },
   "gwp.CH4": {
    "id": "gwp.CH4",
@@ -231,7 +238,9 @@
      "edition": "2025",
      "citation": "EPA GHG Emission Factors Hub 2025, Table 11, row 525 (IPCC AR5)"
     }
-   }
+   },
+   "decidable": false,
+   "why_not": "the GWP is chosen for the whole engagement on the Methodology page"
   },
   "ef.N2O": {
    "id": "ef.N2O",
@@ -251,7 +260,8 @@
      "edition": "2025",
      "citation": "EPA GHG Emission Factors Hub 2025, Table 1, row 38"
     }
-   }
+   },
+   "decidable": true
   },
   "gwp.N2O": {
    "id": "gwp.N2O",
@@ -271,7 +281,9 @@
      "edition": "2025",
      "citation": "EPA GHG Emission Factors Hub 2025, Table 11, row 526 (IPCC AR5)"
     }
-   }
+   },
+   "decidable": false,
+   "why_not": "the GWP is chosen for the whole engagement on the Methodology page"
   },
   "share": {
    "id": "share",
@@ -288,7 +300,9 @@
      "field": "consolidated_share",
      "label": "Consolidated share"
     }
-   }
+   },
+   "decidable": false,
+   "why_not": "the consolidated share is set under Recalculation inputs"
   }
  },
  "steps": [

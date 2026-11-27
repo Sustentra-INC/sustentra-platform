@@ -107,14 +107,22 @@ def test_choose_the_default_edit_an_input_and_see_both_on_the_trace(act_as, rows
         assert edited.status_code == 200, edited.text
         assert edited.json()["decision"]["kind"] == "reviewer_entered" and edited.json()["seq"] == 1
 
-        again = client.get(f"/v1/engagements/ENG-1/recalculation/lines/{key}/trace").json()["trace"]
+        fetched = client.get(f"/v1/engagements/ENG-1/recalculation/lines/{key}/trace").json()
+        again = fetched["trace"]
         assert again["choices"][0]["decision"]["value"] == choice["chosen"]
         assert again["inputs"]["activity.total"]["recomputed"]["decision"]["value"] == 1300
-        # shown, not applied: the working and the result are what they were
-        assert again["result"] == before["result"] and again["steps"] == before["steps"]
-        assert again["inputs"]["activity.total"]["recomputed"]["value"] == before["inputs"]["activity.total"]["recomputed"]["value"]
-        assert again["choices"][0]["chosen"] == choice["chosen"]
-    assert [a["metadata"]["action"] for a in rows.audit] == ["choose", "edit"]
+        # applied: the recomputed side is worked with the edited activity, the chosen (default) route unchanged
+        assert again["inputs"]["activity.total"]["recomputed"]["value"] == 1300
+        assert again["inputs"]["activity.total"]["recomputed"]["status"] == "edited"
+        old = before["inputs"]["activity.total"]["recomputed"]["value"]
+        assert again["result"]["recomputed"] == pytest.approx(before["result"]["recomputed"] * 1300 / old, rel=1e-9)
+        assert again["choices"][0]["chosen"] == choice["chosen"] and again["choices"][0]["chosen_by"] == "reviewer"
+        assert {(d["id"], d["status"]) for d in fetched["decisions"]["applied"]} == {
+            (choice["id"], "edited"), ("activity.total", "edited")}
+        # the decision endpoints still check against the automatic working: choosing the default needs no reason
+        assert client.post(f"{BASE}/{key}/choices/{choice['id']}",
+                           json={"action": "choose", "option_id": choice["chosen"]}).status_code == 200
+    assert [a["metadata"]["action"] for a in rows.audit] == ["choose", "edit", "choose"]
     assert all(a["event_type"] == "calc_line_decision" and a["target_id"] == "ENG-1" for a in rows.audit)
     blob = repr(rows.audit)
     assert "Corrected from invoice" not in blob and "1300" not in blob  # never a value or reason
@@ -126,7 +134,8 @@ def test_row_inputs_and_revert_and_a_duplicate_submit(act_as, rows: Rows) -> Non
         key, t = trace_of(client)
         row = t["inputs"]["activity.total"]["rows"][0]["id"]
         path = f"{BASE}/{key}/inputs/activity.total/{row}/recomputed"
-        body = {"action": "edit", "value": 5, "reason": "typo"}
+        body = {"action": "edit", "value": 5, "unit": t["inputs"]["activity.total"]["recomputed"]["unit"],
+                "reason": "typo"}
         assert client.post(path, json=body).status_code == 200
         assert client.post(path, json={**body, "value": 6}).status_code == 200
         reverted = client.post(path, json={"action": "revert"})
@@ -225,7 +234,8 @@ def test_a_decision_on_a_line_that_is_gone_is_kept_and_listed_as_orphaned(act_as
     with TestClient(app) as client:
         key, t = trace_of(client)
         path = f"{BASE}/{key}/inputs/activity.total/recomputed"
-        assert client.post(path, json={"action": "edit", "value": 9, "reason": "r"}).status_code == 200
+        unit = t["inputs"]["activity.total"]["recomputed"]["unit"]
+        assert client.post(path, json={"action": "edit", "value": 9, "unit": unit, "reason": "r"}).status_code == 200
         listed = client.get(f"{BASE}/decisions").json()
         assert [d["line_key"] for d in listed["decisions"]] == [key] and listed["orphaned_decisions"] == []
         # the line is renamed: its key changes, the stored decision stays where it was
@@ -238,3 +248,184 @@ def test_a_decision_on_a_line_that_is_gone_is_kept_and_listed_as_orphaned(act_as
         shown = client.get(f"/v1/engagements/ENG-1/recalculation/lines/{key}/trace").json()["trace"]
         assert "decision" not in shown["inputs"]["activity.total"]["recomputed"]
         assert shown["result"] == t["result"]
+        # the recalculation reports it as orphaned
+        report = client.get("/v1/engagements/ENG-1/recalculation").json()["calculation_line_decisions"]
+        assert [o["line_key"] for o in report["orphaned"]] == ["s2:purchased_energy:electricity:old-name"]
+
+
+def test_a_value_that_would_reach_the_arithmetic_is_checked_first(act_as, rows: Rows) -> None:  # noqa: ANN001
+    """Zero, a negative value, NaN or infinity as text, or a value in another unit: 422, nothing written. An input set
+    for the whole engagement (a GWP, the share, the unit conversion): 409. The company's side may be 0."""
+
+    act_as("org_member", ORG_A)
+    with TestClient(app) as client:
+        key, t = trace_of(client)
+        unit = t["inputs"]["activity.total"]["recomputed"]["unit"]
+        row = t["inputs"]["activity.total"]["rows"][0]["id"]
+        for path in (f"{BASE}/{key}/inputs/activity.total/recomputed", f"{BASE}/{key}/inputs/ef.CO2/recomputed",
+                     f"{BASE}/{key}/inputs/activity.total/{row}/recomputed"):
+            for value in (0, -1, -0.0, "0", "-5", "NaN", "nan", "Infinity", "-inf"):
+                bad = client.post(path, json={"action": "edit", "value": value, "unit": "x", "reason": "r"})
+                assert bad.status_code == 422, (path, value)
+                assert "above 0" in bad.json()["detail"] or "between" in bad.json()["detail"], bad.json()
+        wrong = client.post(f"{BASE}/{key}/inputs/activity.total/recomputed",
+                            json={"action": "edit", "value": 5, "unit": "kWh" if unit != "kWh" else "therm",
+                                  "reason": "r"})
+        assert wrong.status_code == 422 and "enter the value in" in wrong.json()["detail"]
+        for input_id in ("gwp.CO2", "share", "unit_conversion"):
+            refused = client.post(f"{BASE}/{key}/inputs/{input_id}/recomputed",
+                                  json={"action": "edit", "value": 2, "reason": "r"})
+            assert refused.status_code == 409, input_id
+            assert "can't be changed for one line" in refused.json()["detail"]
+        assert rows.events == [] and rows.audit == []
+        # the company's side is never an operand: a company that reported 0 can be recorded as such
+        company = client.post(f"{BASE}/{key}/inputs/activity.total/company", json={"action": "edit", "value": 0})
+        assert company.status_code == 200, company.text
+
+
+def test_a_hand_written_row_that_slips_past_the_checks_never_reaches_a_total(act_as, rows: Rows) -> None:  # noqa: ANN001
+    act_as("org_member", ORG_A)
+    with TestClient(app) as client:
+        key, t = trace_of(client)
+        before = client.get("/v1/engagements/ENG-1/recalculation").json()
+        rows.events.append({"line_key": key, "stream": "input|activity.total|recomputed", "target": "input",
+                            "target_id": "activity.total", "side": "recomputed", "seq": 1, "record": {"decision": {
+                                "status": "edited", "value": -40, "by": {"name": "x"}, "at": "now"}}})
+        after = client.get("/v1/engagements/ENG-1/recalculation").json()
+        line = next(ln for ln in after["calculation_lines"] if ln["key"] == key)
+        assert [n["reason"] for n in line["decisions"]["not_applied"]] == ["invalid_value"]
+        assert after["categories"] == before["categories"] and after["scope_totals"] == before["scope_totals"]
+
+
+def test_edit_then_revert_through_the_api_moves_the_totals_and_puts_them_back(act_as, rows: Rows) -> None:  # noqa: ANN001
+    act_as("org_member", ORG_A)
+    with TestClient(app) as client:
+        key, t = trace_of(client)
+        before = client.get("/v1/engagements/ENG-1/recalculation").json()
+        old = t["inputs"]["activity.total"]["recomputed"]
+        path = f"{BASE}/{key}/inputs/activity.total/recomputed"
+        edited = client.post(path, json={"action": "edit", "value": old["value"] * 2, "unit": old["unit"],
+                                         "reason": "Second meter"})
+        assert edited.status_code == 200, edited.text
+        stored = rows.events[-1]["record"]["decision"]
+        assert '"value":' in stored["basis"] and str(old["unit"]) in stored["basis"]  # what it replaced, kept
+        moved = client.get("/v1/engagements/ENG-1/recalculation").json()
+        location = "purchased_electricity_location_based"
+        assert moved["categories"][location]["total_co2e"] == pytest.approx(
+            2 * before["categories"][location]["total_co2e"], rel=1e-9)
+        assert client.post(path, json={"action": "revert"}).status_code == 200  # the F2 revert: back to pending
+        back = client.get("/v1/engagements/ENG-1/recalculation").json()
+        for part in ("categories", "scope_totals", "comparisons", "rollup"):
+            assert back[part] == before[part], part
+
+
+def test_a_decision_the_working_cannot_take_is_refused_up_front_with_a_code(act_as, rows: Rows,  # noqa: ANN001
+                                                                             wired: FakeStore) -> None:  # noqa: F811
+    """409 ``{detail, code}`` and nothing written, instead of 200 and a refusal later in the totals."""
+
+    plant = {"facility_name": ("Facility A", None), "service_period_start": ("2025-01-01", None),
+             "service_period_end": ("2025-01-31", None), "fuel_type": ("natural_gas", None)}
+    wired.add_document("GAS-1", "CT-S1-FUELQTY", [{**plant, "activity_quantity": (100, "MMBtu"),
+                                                   "activity_unit": ("MMBtu", None)}], org_id=str(ORG_A))
+    wired.add_document("GAS-2", "CT-S1-FUELQTY", [{**plant, "activity_quantity": (1000, "scf"),
+                                                   "activity_unit": ("scf", None)}], org_id=str(ORG_A))
+    act_as("org_member", ORG_A)
+    with TestClient(app) as client:
+        lines = client.get("/v1/engagements/ENG-1/recalculation").json()["calculation_lines"]
+        mixed = next(ln for ln in lines if "mixed_units_or_fuels" in ln["flags"])
+        trace = client.get(f"/v1/engagements/ENG-1/recalculation/lines/{mixed['key']}/trace").json()["trace"]
+        assert trace["inputs"]["ef.CO2"]["decidable"] is False and "mixes fuels" in trace["inputs"]["ef.CO2"]["why_not"]
+        refused = client.post(f"{BASE}/{mixed['key']}/inputs/ef.CO2/recomputed",
+                              json={"action": "edit", "value": 50, "unit": "kg/MMBtu", "reason": "r"})
+        assert refused.status_code == 409 and refused.json()["code"] == "mixed_line", refused.text
+        assert "mixes fuels or units" in refused.json()["detail"]
+        key = next(ln["key"] for ln in lines if ln["counts_toward"] == "purchased_energy")
+        gwp = client.post(f"{BASE}/{key}/inputs/gwp.CH4/recomputed", json={"action": "edit", "value": 30,
+                                                                              "unit": "t CO2e/t", "reason": "r"})
+        assert gwp.status_code == 409 and gwp.json()["code"] == "not_decidable"
+        no_unit = client.post(f"{BASE}/{key}/inputs/activity.total/recomputed",
+                              json={"action": "edit", "value": 5, "reason": "r"})
+        assert no_unit.status_code == 422 and "enter the unit" in no_unit.json()["detail"]
+    assert rows.events == [] and rows.audit == []
+
+
+def test_a_post_runs_the_engine_once_off_the_event_loop_and_locks_only_to_write(  # noqa: ANN001
+        act_as, rows: Rows, monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    from backend.app.api import recalculation as recalculation_api
+
+    make_service = recalculation_api._service
+    runs: list[int] = []  # the thread each engine run was on
+    order: list[str] = []
+    loop: list[int] = []  # the event loop's thread (the lock is awaited on it)
+
+    def counted() -> Any:
+        service = make_service()
+        inner = service.recalculate
+
+        def recalculate(*args: Any, **kw: Any) -> dict:
+            runs.append(threading.get_ident())
+            order.append("engine")
+            return inner(*args, **kw)
+
+        service.recalculate = recalculate  # type: ignore[method-assign]
+        return service
+
+    async def lock(*args: Any) -> None:
+        order.append("lock")
+        loop.append(threading.get_ident())
+
+    act_as("org_member", ORG_A)
+    with TestClient(app) as client:
+        key, t = trace_of(client)
+        unit = t["inputs"]["activity.total"]["recomputed"]["unit"]
+        monkeypatch.setattr(recalculation_api, "_service", counted)
+        monkeypatch.setattr(calc_line_review, "lock", lock)
+        done = client.post(f"{BASE}/{key}/inputs/activity.total/recomputed",
+                           json={"action": "edit", "value": 9, "unit": unit, "reason": "r"})
+        assert done.status_code == 200, done.text
+    assert len(runs) == 1 and order == ["engine", "lock"]  # one run, and the lock only after it
+    assert runs[0] != loop[0]  # the engine ran in a worker thread, not on the event loop
+
+
+def test_a_double_click_lands_twice_and_a_move_that_no_longer_fits_is_state_changed(  # noqa: ANN001
+        act_as, rows: Rows, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stream another request wrote between this one's check and its write: the move is made again on the new
+    state and lands when it still fits (two edits: both land, one after the other); one that no longer fits (a revert
+    of a decision someone else just reverted) is 409 ``state_changed``. Never both refused."""
+
+    act_as("org_member", ORG_A)
+    with TestClient(app) as client:
+        key, t = trace_of(client)
+        unit = t["inputs"]["activity.total"]["recomputed"]["unit"]
+        path = f"{BASE}/{key}/inputs/activity.total/recomputed"
+        real_lock = calc_line_review.lock
+        first_done: list[int] = []
+
+        async def the_other_click_lands_first(*args: Any) -> None:
+            if not first_done:
+                first_done.append(1)
+                rows.events.append({"line_key": key, "stream": "input|activity.total|recomputed", "target": "input",
+                                    "target_id": "activity.total", "side": "recomputed", "seq": 1, "record": {
+                                        **calc_line_review.new_record("input|activity.total|recomputed"),
+                                        "decision": {"status": "edited", "value": 8.0, "unit": unit,
+                                                     "by": {"name": "x"}, "at": "t"}}})
+            await real_lock(*args)
+
+        monkeypatch.setattr(calc_line_review, "lock", the_other_click_lands_first)
+        second = client.post(path, json={"action": "edit", "value": 9, "unit": unit, "reason": "r"})
+        assert second.status_code == 200, second.text
+        assert second.json()["seq"] == 2 and second.json()["decision"]["value"] == 9
+        assert [e["seq"] for e in rows.events] == [1, 2]
+
+        async def someone_reverted_first(*args: Any) -> None:
+            rows.events.append({**rows.events[-1], "seq": 3,
+                                "record": calc_line_review.new_record("input|activity.total|recomputed")})
+            await real_lock(*args)
+
+        monkeypatch.setattr(calc_line_review, "lock", someone_reverted_first)
+        late = client.post(path, json={"action": "revert"})
+        assert late.status_code == 409 and late.json()["code"] == "state_changed", late.text
+        assert "already pending" in late.json()["detail"]
+    assert [e["seq"] for e in rows.events] == [1, 2, 3]

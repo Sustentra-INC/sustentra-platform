@@ -41,6 +41,7 @@ PENDING, ACCEPTED, EDITED, REJECTED = "pending", "accepted", "edited", "rejected
 STATUSES = (PENDING, ACCEPTED, EDITED, REJECTED)
 
 MAX_REASON = 500
+MAX_EXTRA = {"basis": 4000}  # longer extras a revert restores (calc_line_review's stored decision context)
 MAX_HISTORY = 50
 MAX_VALUE_HISTORY = 10  # earlier decisions kept per field, for Revert
 HISTORY_ROOM = 10 * 1024  # bytes of event history a record keeps room for before it keeps earlier decisions
@@ -192,7 +193,7 @@ def restorable(validate: Validate, entry: Any, extras: Sequence[str] = ()) -> di
         raise cannot_restore(f"it no longer fits the field: {detail}") from None
     for key in extras:
         item = entry.get(key)
-        if isinstance(item, str) and item and len(item) <= MAX_REASON and "\x00" not in item:
+        if isinstance(item, str) and item and len(item) <= MAX_EXTRA.get(key, MAX_REASON) and "\x00" not in item:
             restored[key] = item
     return restored
 

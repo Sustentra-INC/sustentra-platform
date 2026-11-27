@@ -368,8 +368,10 @@ class EvidenceTreeService:
     # ------------------------------------------------------------------------------------
     def schedule(self, engagement: dict[str, Any], can_see: Callable[[dict], bool], key: str,
                  decisions: dict[str, dict[str, Any]] | None = None,
-                 name_of: Callable[[str], str] = lambda login: login) -> dict[str, Any] | None:
-        """The line's schedule, or None when the engagement has no such line."""
+                 name_of: Callable[[str], str] = lambda login: login,
+                 line_decisions: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
+        """The line's schedule, or None when the engagement has no such line. ``line_decisions``: the reviewer's
+        decisions on the calculation lines, so its recalculation is the very one Results runs."""
 
         loaded = self.load(engagement, can_see, decisions)
         line = next((ln for ln in loaded.lines if ln.key == key), None)
@@ -378,7 +380,8 @@ class EvidenceTreeService:
         # The recalculation decides what counts: a record it lists as awaiting review does not, and
         # the line is calculated only when the recalculation has it.
         recalculation = EngagementRecalculationService(
-            self._upload, self._pipeline, self._reviews, self._reference).recalculate(engagement, can_see, decisions)
+            self._upload, self._pipeline, self._reviews, self._reference).recalculate(
+                engagement, can_see, decisions, line_decisions=line_decisions)
         waiting_by_record = {(str(a["document_id"]), str(a["record"])): list(a["fields"])
                              for a in recalculation["awaiting_review"]}
         calculated = key in {str(ln["key"]) for ln in recalculation["calculation_lines"]}

@@ -12,6 +12,7 @@ import jsonschema
 import pytest
 
 from backend.app.services import calc_line_review as c
+from backend.app.services.calc_trace.decisions import not_decidable
 from backend.app.services.request_service import Actor
 from backend.app.services.review_field import ReviewConflict, ReviewInvalid
 from backend.app.services.workpaper_item_service import ITEM_KEY
@@ -62,6 +63,10 @@ def edit(record: dict, value: Any, side: str = "recomputed", input_id: str = "ac
     found = c.find_input(t, input_id)
     assert found is not None
     kw.setdefault("reason", "Bill total corrected from the invoice")
+    holder = found[1] or found[0]
+    unit = ((holder.get("recomputed") or holder.get("company") or {}).get("unit"))
+    if unit:
+        kw.setdefault("unit", unit)  # a recomputed number is entered with its unit
     return c.decide_input(record, found[0], found[1], side, "edit", value=value, actor=ANN, now=NOW, **kw)
 
 
@@ -222,7 +227,10 @@ def test_wrong_units_are_a_422_and_the_inputs_own_unit_is_used_when_none_is_give
     with pytest.raises(ReviewInvalid, match="is in gal: enter the value in gal"):
         edit(new(), 2400, unit="kWh")
     assert edit(new(), 2400, unit="gallon")["decision"]["unit"] == "gallon"  # the same unit by another name
-    assert edit(new(), 2400, unit=" ")["decision"]["unit"] == "gal"
+    assert edit(new(), 2400, unit=" ", side="company")["decision"]["unit"] == "gal"  # the company's side: its own
+    for missing in (None, " "):  # a recomputed number is an operand: its unit is never assumed
+        with pytest.raises(ReviewInvalid, match="is in gal: enter the unit with the value"):
+            edit(new(), 2400, unit=missing)
     with pytest.raises(ReviewInvalid, match="unit is not valid"):
         edit(new(), 2400, unit="g\x00al")
     with pytest.raises(ReviewInvalid, match="unit is not valid"):
@@ -232,12 +240,28 @@ def test_wrong_units_are_a_422_and_the_inputs_own_unit_is_used_when_none_is_give
 
 
 def test_text_inputs_take_text_and_keep_unicode() -> None:
-    done = edit(new(), "  AKGD – Alaska ✓ ", input_id="grid_region")
+    done = edit(new(), "  AKGD – Alaska ✓ ", side="company", input_id="grid_region")
     assert done["decision"]["value"] == "AKGD – Alaska ✓" and "unit" not in done["decision"]
     with pytest.raises(ReviewInvalid, match="takes text"):
-        edit(new(), 5, input_id="grid_region")
+        edit(new(), 5, side="company", input_id="grid_region")
     with pytest.raises(ReviewInvalid):
-        edit(new(), "bad\nvalue", input_id="grid_region")
+        edit(new(), "bad\nvalue", side="company", input_id="grid_region")
+
+
+def test_a_recomputed_value_is_a_number_above_zero_on_an_input_a_line_can_decide() -> None:
+    """The recomputed side is worked into the line's numbers (F3b): zero, a negative value, NaN and infinity never
+    get there, and an input set for the whole engagement is not changed for one line."""
+
+    for value in (0, -0.0, -3, "0", "-1,000", "NaN", "inf", float("nan"), float("-inf")):
+        with pytest.raises(ReviewInvalid):
+            edit(new(), value)
+    assert edit(new(), "1,250.5")["decision"]["value"] == 1250.5
+    for input_id in ("grid_region", "empty"):
+        with pytest.raises(ReviewConflict, match="can't be changed for one line"):
+            edit(new(), 5, input_id=input_id)
+    assert edit(new(), 0, side="company")["decision"]["value"] == 0  # the company's side may say 0
+    assert c.decide_input(new(), *c.find_input(trace(), "grid_region"), "recomputed", "reject",  # type: ignore[misc]
+                          reason="wrong", actor=ANN, now=NOW)["decision"]["status"] == "rejected"
 
 
 def test_an_input_with_no_value_yet_takes_a_number_or_text() -> None:
@@ -339,9 +363,21 @@ def test_a_real_trace_with_decisions_still_validates_against_the_schema() -> Non
             assert found is not None
             unit = (item.get("recomputed") or item.get("company") or {}).get("unit")
             numeric = isinstance((item.get("recomputed") or {}).get("value"), (int, float))
-            records[c.stream_of("input", input_id, "recomputed")] = c.decide_input(
-                new(), found[0], None, "recomputed", "edit", value=5 if numeric else "text", unit=unit,
+            side = "recomputed" if not_decidable(input_id) is None else "company"
+            records[c.stream_of("input", input_id, side)] = c.decide_input(
+                new(), found[0], None, side, "edit", value=5 if numeric else "text", unit=unit,
                 reason="because", document_id="DOC-1", actor=ANN, now=NOW)
         shown = c.with_decisions(t, records)
         validator.validate(shown)
         assert shown["result"] == t["result"] and shown["steps"] == t["steps"]
+
+
+def test_a_revert_keeps_a_long_basis_so_the_restored_decision_can_still_be_found_stale() -> None:
+    holder = {"recomputed": {"value": 2350.0, "unit": "gal", "status": "accepted",
+                             "source": {"kind": "reference", "citation": "EPA GHG Emission Factors Hub 2025 " + "x" * 900}}}
+    basis = c.basis_of(trace(), holder)
+    assert 500 < len(basis) <= 4000
+    first = edit(new(), 2400, basis=basis)
+    second = edit(first, 2500, basis=basis)
+    back = act_input(second, "revert")
+    assert back["decision"]["value"] == 2400 and back["decision"]["basis"] == basis

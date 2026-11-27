@@ -54,10 +54,13 @@ BACKEND = Path(__file__).resolve().parents[2]
 
 @pytest.fixture(autouse=True)
 def one_line(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake(db: Any, engagement: dict, user: Any) -> dict:
+    async def fake(db: Any, engagement: dict, user: Any, **kw: Any) -> dict:
+        if kw.get("proposal") is not None:  # a decision POST: its move is made on the line's (automatic) trace
+            kw["proposal"].offer(LINE, copy.deepcopy(TRACE))
         return {"calculation_lines": [{"key": LINE, "trace": copy.deepcopy(TRACE)}]}
 
     monkeypatch.setattr(recalculation_api, "traced_recalculation", fake)
+    monkeypatch.setattr(recalculation_api, "run_recalculation", fake)
 
 
 def path(engagement_id: str, tail: str) -> str:
@@ -75,7 +78,7 @@ def test_each_decision_is_a_new_row_and_the_trace_shows_the_current_one() -> Non
     one = call("POST", path(eid, f"{LINE}/choices/method"), "a_member",
                {"action": "choose", "option_id": "per_unit"})
     assert one.status_code == 200, one.text
-    edit = {"action": "edit", "value": 640000, "reason": "Invoice shows less"}
+    edit = {"action": "edit", "value": 640000, "unit": "therm", "reason": "Invoice shows less"}
     two = call("POST", path(eid, f"{LINE}/inputs/activity.total/recomputed"), "a_member", edit)
     three = call("POST", path(eid, f"{LINE}/inputs/activity.total/recomputed"), "a_admin",
                  {**edit, "value": 641000})
@@ -94,7 +97,8 @@ def test_each_decision_is_a_new_row_and_the_trace_shows_the_current_one() -> Non
     shown = call("GET", f"{BASE}/{eid}/recalculation/lines/{LINE}/trace", "a_member").json()
     assert shown["trace"]["choices"][0]["decision"]["value"] == "per_unit"
     recomputed = shown["trace"]["inputs"]["activity.total"]["recomputed"]
-    assert recomputed["decision"]["value"] == 640000.0 and recomputed["value"] == 650000.0  # shown, not applied
+    # the engine is faked here, so the working is not redone (the engine tests cover that)
+    assert recomputed["decision"]["value"] == 640000.0 and recomputed["value"] == 650000.0
     listed = call("GET", path(eid, "decisions"), "a_member").json()
     assert len(listed["decisions"]) == 2 and listed["orphaned_decisions"] == []
 
@@ -102,7 +106,7 @@ def test_each_decision_is_a_new_row_and_the_trace_shows_the_current_one() -> Non
 def test_every_action_writes_an_audit_event_without_the_value_or_the_reason() -> None:
     eid = create()["id"]
     call("POST", path(eid, f"{LINE}/inputs/activity.total/recomputed"), "a_member",
-         {"action": "edit", "value": 123456, "reason": "secret-looking reason"})
+         {"action": "edit", "value": 123456, "unit": "therm", "reason": "secret-looking reason"})
     call("POST", path(eid, f"{LINE}/inputs/activity.total/recomputed"), "a_member", {"action": "revert"})
     refused = call("POST", path(eid, f"{LINE}/choices/method"), "a_member", {"action": "choose", "option_id": "heat",
                                                                               "reason": "x"})
@@ -203,7 +207,7 @@ def test_a_decision_whose_line_is_gone_is_kept_and_listed_as_orphaned(monkeypatc
     eid = create()["id"]
     call("POST", path(eid, f"{LINE}/choices/method"), "a_member", {"action": "choose", "option_id": "per_unit"})
 
-    async def renamed(db: Any, engagement: dict, user: Any) -> dict:
+    async def renamed(db: Any, engagement: dict, user: Any, **_: Any) -> dict:
         return {"calculation_lines": [{"key": "s1:stationary:natural-gas:fac-new", "trace": {**TRACE, "line_key": "x"}}]}
 
     monkeypatch.setattr(recalculation_api, "traced_recalculation", renamed)
@@ -216,10 +220,14 @@ def test_a_decision_whose_line_is_gone_is_kept_and_listed_as_orphaned(monkeypatc
 def test_a_line_key_of_200_characters_works_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None:
     longest = "s1:" + "k" * 197
 
-    async def long_line(db: Any, engagement: dict, user: Any) -> dict:
-        return {"calculation_lines": [{"key": longest, "trace": {**copy.deepcopy(TRACE), "line_key": longest}}]}
+    async def long_line(db: Any, engagement: dict, user: Any, **kw: Any) -> dict:
+        trace = {**copy.deepcopy(TRACE), "line_key": longest}
+        if kw.get("proposal") is not None:  # the decision POST's one engine run
+            kw["proposal"].offer(longest, copy.deepcopy(trace))
+        return {"calculation_lines": [{"key": longest, "trace": trace}]}
 
     monkeypatch.setattr(recalculation_api, "traced_recalculation", long_line)
+    monkeypatch.setattr(recalculation_api, "run_recalculation", long_line)
     eid = create()["id"]
     response = call("POST", path(eid, f"{longest}/choices/method"), "a_member",
                     {"action": "choose", "option_id": "per_unit"})
