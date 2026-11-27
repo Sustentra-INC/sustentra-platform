@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 
+import { Dropdown } from "./Dropdown";
+
 /**
  * Setup's engagement chooser (S1-BE-002): pick one of the org's engagements or
  * create a new one. Shown in backend mode only; the fixture demo has one engagement.
@@ -63,16 +65,15 @@ export function EngagementPicker({
       <h2>Engagement</h2>
       {engagements.length === 0 && !creating ? null : engagements.length > 0 ? (
         <div className="s1-setup-inline">
-          <label className="s1-setup-field">
-            <span>Working on</span>
-            <select value={selectedId} onChange={(e) => onSelect(e.target.value)} aria-label="Working on">
-              {engagements.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.clientName ? `${e.name} — ${e.clientName}` : e.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="s1-setup-field">
+            <span id="picker-engagement-label">Working on</span>
+            <Dropdown
+              value={selectedId}
+              onChange={(v) => onSelect(v)}
+              options={engagements.map((e) => ({ value: e.id, label: e.clientName ? `${e.name} — ${e.clientName}` : e.name }))}
+              labelId="picker-engagement-label"
+            />
+          </div>
           {!creating ? (
             <button className="s1-button" type="button" onClick={() => setCreating(true)}>
               New engagement

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import localFont from "next/font/local";
+import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
 
 import "../features/s1/styles/sustentra-tokens.css";
@@ -22,18 +22,17 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#2b2b77", // logo navy
+  themeColor: "#282870", // brand indigo
 };
 
-// The interface font: IBM Plex Sans, used through --font-sans (sustentra-tokens.css). The
-// standard's two weights are committed in ./fonts (Latin subset, from @fontsource/ibm-plex-sans
-// 5.3.0; SIL OFL 1.1, see ./fonts/OFL.txt), so builds never fetch from Google Fonts.
-const plex = localFont({
-  src: [
-    { path: "./fonts/ibm-plex-sans-latin-400-normal.woff2", weight: "400", style: "normal" },
-    { path: "./fonts/ibm-plex-sans-latin-600-normal.woff2", weight: "600", style: "normal" },
-  ],
-  variable: "--font-plex",
+// The interface font: Inter, loaded from Google Fonts via next/font and exposed as
+// --font-inter so the --font-sans stack in sustentra-tokens.css resolves to it.
+// IBM Plex Sans files remain in ./fonts (SIL OFL 1.1, see ./fonts/OFL.txt) but are
+// no longer loaded; they can be removed in a later cleanup ticket.
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-inter",
   display: "swap",
 });
 
@@ -43,7 +42,7 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="en" className={plex.variable}>
+    <html lang="en" className={inter.variable}>
       <body>{children}</body>
     </html>
   );

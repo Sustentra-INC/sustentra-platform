@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronRight, Send, StickyNote, Upload } from "lucide-react";
+import { IconActivity, IconBuilding, IconCheckCircle, IconCopy, IconDocument, IconLayoutSplit, IconNote, IconSend, IconTag, IconTrash } from "./icons";
 import { Fragment, useMemo, useRef, useState } from "react";
 
 import { createAuditIntent, type AuditIntentAction, type SessionAuditEntry } from "../utils/auditIntent";
@@ -418,9 +419,9 @@ export function EvidenceWorkspace({
       ) : null}
 
       {tree ? (
-        <div className="s1-ws-factabs" role="group" aria-label="Group documents">
+        <div className="s1-ws-factabs s1-ws-factabs--page" role="group" aria-label="Group documents">
           <button className={`s1-ws-factab${view === "lines" ? " is-on" : ""}`} type="button" aria-pressed={view === "lines"} onClick={() => setView("lines")}>
-            By calculation line
+            By scope
           </button>
           <button className={`s1-ws-factab${view === "types" ? " is-on" : ""}`} type="button" aria-pressed={view === "types"} onClick={() => setView("types")}>
             By document type
@@ -484,10 +485,19 @@ export function EvidenceWorkspace({
                 const done = mix.find((part) => part.role === "resolved")?.n ?? 0;
                 // Never round up to 100% while anything is still open.
                 const pctDone = counted === 0 ? 0 : done === counted ? 100 : Math.floor((done / counted) * 100);
+                const unresolved = group.type === "Type unresolved";
                 return (
-                  <section key={group.type} className={`s1-ws-gr${open ? " is-open" : ""}${prepared ? " s1-ws-gr--prepared" : ""}`}>
-                    <button className="s1-ws-gr__head" type="button" aria-expanded={open} onClick={() => toggleType(group.type)}>
-                      <ChevronRight className="s1-ws-gr__caret" aria-hidden />
+                  <section key={group.type} className={`s1-ws-gr${open ? " is-open" : ""}${prepared ? " s1-ws-gr--prepared" : ""}${unresolved ? " s1-ws-gr--warn" : ""}`}>
+                    <div className="s1-ws-gr__head">
+                      <button
+                        className="s1-ws-gr__toggle"
+                        type="button"
+                        aria-expanded={open}
+                        aria-label={`${open ? "Collapse" : "Expand"} ${group.type}`}
+                        onClick={() => toggleType(group.type)}
+                      >
+                        <ChevronRight className="s1-ws-gr__caret" aria-hidden />
+                      </button>
                       <span className="s1-ws-gr__type">
                         {group.type}
                         {prepared ? <span className="s1-ws-gr__tag">Inventory, not source evidence</span> : null}
@@ -505,21 +515,21 @@ export function EvidenceWorkspace({
                       </span>
                       <span className="s1-ws-gr__mix">
                         {mix.map((part) => (
-                          <span key={part.role} className={`s1-ws-gr__mixitem s1-ws-gr__mixitem--${part.role}`}>
-                            <span className="s1-ws-gr__mixn">{part.n}</span> {part.label}
+                          <span key={part.role} className={`s1-ws-gr__chip s1-ws-gr__chip--${part.role}`}>
+                            {part.n} {part.label}
                           </span>
                         ))}
                       </span>
-                    </button>
+                    </div>
                     {open ? (
                       <div className="s1-table-wrap s1-ws-gr__body">
                         <table className="s1-table s1-ws-table">
                           <colgroup>
-                            <col style={{ width: "34%" }} /* Document */ />
-                            <col style={{ width: "18%" }} /* Facility */ />
-                            <col style={{ width: "20%" }} /* Type */ />
-                            <col style={{ width: "22%" }} /* Status */ />
-                            <col style={{ width: "6%" }} /* Menu */ />
+                            <col className="s1-ws-col-doc" />
+                            <col className="s1-ws-col-fac" />
+                            <col className="s1-ws-col-type" />
+                            <col className="s1-ws-col-status" />
+                            <col className="s1-ws-col-menu" />
                           </colgroup>
                           <thead>
                             <tr>
@@ -709,6 +719,7 @@ function CountFilter({
       aria-pressed={on}
       onClick={onClick}
     >
+      <span className="s1-ws-count__dot" aria-hidden="true" />
       <span className="s1-ws-count__n">{n}</span>
       <span className="s1-ws-count__label">{label}</span>
     </button>
@@ -785,8 +796,10 @@ function WorkspaceRow(props: {
   const { item, items, asks, engagement } = props;
   const withdrawn = item.disposition === "withdrawn";
   const proc = processingDisplay(item);
+  const isOutsidePeriod = periodOutsideYear(item, engagement);
+  const addOutsidePeriodPill = isOutsidePeriod && proc.role === "resolved";
   const issues = [
-    ...issueLines(item, items, engagement).filter((line) => line !== proc.sub),
+    ...issueLines(item, items, engagement).filter((line) => line !== proc.sub && (addOutsidePeriodPill ? line !== "Period outside reporting year" : true)),
     ...(withdrawn
       ? []
       : qualityIssueLines(props.qualityChecks, item.documentId, (id) => items.find((d) => d.documentId === id)?.filename ?? id)),
@@ -794,26 +807,32 @@ function WorkspaceRow(props: {
   const ask = latestAsk(asks, item.documentId);
   const notes = item.notes ?? [];
   const period = item.periodStart && item.periodEnd ? formatPeriod(item.periodStart, item.periodEnd) : null;
+  const ext = fileExt(item.filename);
 
   return (
     <tr className={withdrawn ? "s1-row-withdrawn" : ""}>
-      {/* Document: name (opens its extraction), period, and markers for notes and requests */}
+      {/* Document: file type tag, name (opens its extraction), period, and markers for notes and requests */}
       <td>
-        <button className="s1-doc-link" type="button" onClick={() => props.onOpenExtraction(item.documentId)}>
-          {item.filename}
-        </button>
-        <div className="s1-ws-docmeta">
-          {period ? <span>{period}</span> : null}
-          {notes.length ? (
-            <button className="s1-ws-marker" type="button" onClick={props.onToggleExpand} title={notes[notes.length - 1].text}>
-              <StickyNote aria-hidden /> {notes.length} {notes.length === 1 ? "note" : "notes"}
+        <div className="s1-ws-doc-cell">
+          <span className={`s1-ws-doc-tag s1-ws-doc-tag--${ext}`} aria-hidden>{ext.toUpperCase()}</span>
+          <div className="s1-ws-doc-info">
+            <button className="s1-doc-link s1-ws-doc-name" type="button" onClick={() => props.onOpenExtraction(item.documentId)}>
+              {item.filename}
             </button>
-          ) : null}
-          {ask ? (
-            <button className={`s1-ws-marker s1-ws-marker--${ask.state}`} type="button" onClick={props.onOpenRequests}>
-              <Send aria-hidden /> {askLabel(ask)}
-            </button>
-          ) : null}
+            <div className="s1-ws-docmeta">
+              {period ? <span>{period}</span> : null}
+              {notes.length ? (
+                <button className="s1-ws-marker" type="button" onClick={props.onToggleExpand} title={notes[notes.length - 1].text}>
+                  <StickyNote aria-hidden /> {notes.length} {notes.length === 1 ? "note" : "notes"}
+                </button>
+              ) : null}
+              {ask ? (
+                <button className={`s1-ws-marker s1-ws-marker--${ask.state}`} type="button" onClick={props.onOpenRequests}>
+                  <Send aria-hidden /> {askLabel(ask)}
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
       </td>
 
@@ -878,10 +897,11 @@ function WorkspaceRow(props: {
         <AiTypeNote item={item} />
       </td>
 
-      {/* Status: processing state, and any issue under it */}
+      {/* Status: processing state, plus amber "Outside period" pill when extracted but dated outside year */}
       <td>
         <span className={`s1-state s1-state--${proc.role}`}>{proc.label}</span>
-        {proc.sub || issues.length ? (
+        {addOutsidePeriodPill ? <span className="s1-state s1-state--open">Outside period</span> : null}
+        {(proc.sub || issues.length) ? (
           <div className="s1-ws-issues">
             {[proc.sub, ...issues].filter(Boolean).map((line) => (
               <div key={line as string}>{line}</div>
@@ -1032,21 +1052,23 @@ function RowMenu({
   const withdrawn = item.disposition === "withdrawn";
   const entries: ActionMenuEntry[] = withdrawn
     ? [
-        { label: "Open", action: onOpen },
-        { label: "History", action: onHistory },
+        { label: "Open", action: onOpen, icon: <IconDocument size={16} /> },
+        { label: "History", action: onHistory, icon: <IconActivity size={16} />, separator: true },
         { label: "Reinstate document", action: onReinstate },
       ]
     : [
-        { label: "Open extraction", action: onOpen },
-        hasAsk ? { label: "View in requests", action: onOpenRequests } : { label: "Add to requests", action: onAddToRequests },
-        { label: "Set type", action: onSetType },
-        { label: "Set facility", action: onSetFacility },
-        { label: "Add note", action: onAddNote },
-        { label: "Mark duplicate of…", action: onMarkDuplicate },
-        { label: "Mark supersedes…", action: onMarkSupersedes },
-        { label: "Answers request", action: onAnswersRequest },
-        { label: "History", action: onHistory },
-        { label: "Withdraw", action: onWithdraw },
+        { label: "Open extraction", action: onOpen, icon: <IconDocument size={16} /> },
+        hasAsk
+          ? { label: "View in requests", action: onOpenRequests, icon: <IconSend size={16} /> }
+          : { label: "Add to requests", action: onAddToRequests, icon: <IconSend size={16} /> },
+        { label: "Set type", action: onSetType, icon: <IconTag size={16} />, separator: true },
+        { label: "Set facility", action: onSetFacility, icon: <IconBuilding size={16} /> },
+        { label: "Add note", action: onAddNote, icon: <IconNote size={16} /> },
+        { label: "Mark duplicate of…", action: onMarkDuplicate, icon: <IconCopy size={16} />, separator: true },
+        { label: "Mark supersedes…", action: onMarkSupersedes, icon: <IconLayoutSplit size={16} /> },
+        { label: "Answers request", action: onAnswersRequest, icon: <IconCheckCircle size={16} /> },
+        { label: "History", action: onHistory, icon: <IconActivity size={16} />, separator: true },
+        { label: "Withdraw", action: onWithdraw, icon: <IconTrash size={16} />, danger: true, separator: true },
       ];
 
   return <ActionMenu label={`Actions for ${item.filename}`} entries={entries} isOpen={isOpen} onOpenChange={onOpenChange} />;
@@ -1170,6 +1192,16 @@ function groupByType(items: EvidenceItem[]): Array<{ type: string; items: Eviden
 
 function sortDocs(items: EvidenceItem[]): EvidenceItem[] {
   return [...items].sort((a, b) => (a.periodStart ?? "").localeCompare(b.periodStart ?? ""));
+}
+
+function fileExt(name: string): string {
+  const parts = name.split(".");
+  if (parts.length < 2) return "file";
+  const ext = parts.pop()!.toLowerCase();
+  if (ext === "jpeg") return "jpg";
+  if (ext === "doc") return "docx";
+  if (ext === "xls") return "xlsx";
+  return ext;
 }
 
 /** Blocked, and not being read again: a row that is being read says so, and its earlier failure

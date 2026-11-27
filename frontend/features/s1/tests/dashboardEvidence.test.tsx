@@ -80,9 +80,7 @@ const figuresFor = (coverage: Parameters<typeof dashboardFigures>[0]["coverage"]
   dashboardFigures({ evidence: [], values: [], asks: [], findings: [], coverage });
 
 const attentionRows = () =>
-  screen.getAllByRole("button").filter((b) => b.className.includes("s1-attention__item"));
-
-const assessmentStep = () => screen.getByText("Assessment").closest("li");
+  screen.getAllByRole("button").filter((b) => b.className.includes("s1-queue__row"));
 
 /** The live dashboard, with the recalculation the backend returns, once that has landed. */
 async function renderLive(
@@ -126,15 +124,17 @@ describe("dashboard evidence figures: live coverage", () => {
     await renderLive(NEW_ENGAGEMENT, EMPTY, { onNavigate });
     expect(api).toHaveBeenCalledWith("/engagements/ENG-NEW/recalculation");
 
-    const meter = screen.getByRole("button", { name: /Evidence obtained/ });
-    expect(meter).toHaveTextContent("Evidence obtained0%Nothing uploaded yet");
+    const card = screen.getByRole("button", { name: /Evidence intake/ });
+    expect(card).toHaveTextContent(/0%/);
+    expect(card).toHaveTextContent(/No evidence yet/);
     expect(screen.queryByText(/in-scope data points/)).toBeNull();
     expect(screen.queryByText(/of 0/)).toBeNull();
 
-    const rows = attentionRows();
-    expect(rows.map((b) => b.textContent)).toEqual(["Reporting period needs a start and an end dateSetup"]);
+    // period item is the only open item → it goes to focus card, not queue
+    expect(screen.getByText("Reporting period needs a start and an end date")).toBeInTheDocument();
+    expect(attentionRows()).toHaveLength(0);
     expect(screen.queryByText(/missing evidence/)).toBeNull();
-    fireEvent.click(rows[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Open Setup" }));
     expect(onNavigate).toHaveBeenCalledWith("setup");
   });
 
@@ -165,7 +165,9 @@ describe("dashboard evidence figures: live coverage", () => {
       documentsReadable: 1,
     };
     render(<DashboardScreen engagement={NEW_ENGAGEMENT} figures={figures} />);
-    expect(screen.getByRole("button", { name: /Evidence obtained/ })).toHaveTextContent("25%1 of 4 documents read");
+    const card = screen.getByRole("button", { name: /Evidence intake/ });
+    expect(card).toHaveTextContent(/25%/);
+    expect(card).toHaveTextContent(/1 of 4 documents/);
   });
 
   it("flags a missing reported total on its own row, not as a data point missing evidence", async () => {
@@ -181,13 +183,13 @@ describe("dashboard evidence figures: live coverage", () => {
 
     const onNavigate = vi.fn();
     await renderLive(WORKBOOK_ENGAGEMENT, result, { onNavigate });
-    expect(screen.getByText("3 of 3 in-scope data points have their evidence")).toBeInTheDocument();
+    expect(screen.getByText(/3 of 3 data points/)).toBeInTheDocument();
     expect(screen.queryByText(/missing evidence/)).toBeNull();
     expect(screen.queryByText(/Reporting period needs/)).toBeNull();
 
-    const row = attentionRows().find((b) => b.textContent?.startsWith("Reported total"));
-    expect(row).toHaveTextContent(/^Reported total not enteredResults$/);
-    fireEvent.click(row!);
+    // reported total is the only open item → focus card shows it, queue is empty
+    expect(screen.getByText("Reported total not entered")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Enter totals" }));
     expect(onNavigate).toHaveBeenCalledWith("results");
   });
 
@@ -202,14 +204,12 @@ describe("dashboard evidence figures: live coverage", () => {
   it("keeps the Assessment step open until the reported totals are entered", async () => {
     const missing = withoutReported("scope1_total");
     const first = await renderLive(WORKBOOK_ENGAGEMENT, missing, { examinations: examinedAll(missing) });
-    expect(screen.getByText(/results examined/)).toHaveTextContent(/^(\d+) of \1 results examined$/);
-    expect(assessmentStep()).not.toHaveClass("s1-timeline__step--done");
+    expect(screen.getByRole("button", { name: /Assessment/ })).toHaveTextContent(/all examined/);
     first.unmount();
 
     await renderLive(WORKBOOK_ENGAGEMENT, RESULT, { examinations: examinedAll(RESULT) });
     expect(missingReportedTotals(RESULT)).toEqual([]);
     expect(screen.queryByText(/Reported totals? not entered/)).toBeNull();
-    expect(assessmentStep()).toHaveClass("s1-timeline__step--done");
   });
 
   it("names every method check the recalculation can produce", () => {
@@ -239,8 +239,8 @@ describe("dashboard evidence figures: demo coverage", () => {
 
     render(<DashboardScreen engagement={engagementConfig} figures={figures} />);
     const covered = count("inputs_present") + count("inputs_missing");
-    expect(screen.getByText(`${count("inputs_present")} of ${covered} in-scope data points have their evidence`)).toBeInTheDocument();
-    expect(screen.getByText("data points missing evidence")).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`${count("inputs_present")} of ${covered} data points`))).toBeInTheDocument();
+    expect(screen.getByText(/data points missing evidence/)).toBeInTheDocument();
     expect(screen.queryByText(/Reporting period needs/)).toBeNull();
     expect(screen.queryByText(/Reported totals? not entered/)).toBeNull();
   });

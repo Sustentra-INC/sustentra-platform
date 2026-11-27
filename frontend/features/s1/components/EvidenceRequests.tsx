@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, ListChecks, Send } from "lucide-react";
+import { IconActivity, IconArrowRight, IconChecklist, IconSearch, IconSend, IconTrash } from "./icons";
 import { Fragment, useMemo, useState } from "react";
 
 import { andThen, NOT_SAVED_TITLE, problemText, settle, useStillOpen, type MaybePromise } from "../requests/maybePromise";
@@ -149,7 +149,7 @@ export function EvidenceRequests({
 
   return (
     <section className="s1-content s1-req s1-cr">
-      <header className="s1-ws-header">
+      <header className="s1-ws-header s1-cr-head">
         <div className="s1-ws-header__id">
           <h1>Coverage &amp; requests</h1>
           <InfoTip label="Coverage and requests">
@@ -157,6 +157,19 @@ export function EvidenceRequests({
             reviewed; anything missing becomes a request.
           </InfoTip>
         </div>
+        {valuesToReview > 0 ? (
+          <button className="s1-cr-review" type="button" onClick={onReview}>
+            <span className="s1-cr-review__icon" aria-hidden>
+              <IconChecklist size={19} />
+            </span>
+            <span className="s1-cr-review__text">
+              {valuesToReview} {valuesToReview === 1 ? "value" : "values"} waiting for review
+            </span>
+            <span className="s1-cr-review__go">
+              Review now <IconArrowRight size={14} aria-hidden />
+            </span>
+          </button>
+        ) : null}
       </header>
 
       {problem ? (
@@ -166,62 +179,53 @@ export function EvidenceRequests({
         </div>
       ) : null}
 
-      {valuesToReview > 0 ? (
-        <button className="s1-cr-review" type="button" onClick={onReview}>
-          <span className="s1-cr-review__icon" aria-hidden>
-            <ListChecks />
-          </span>
-          <span className="s1-cr-review__text">
-            <strong>
-              {valuesToReview} {valuesToReview === 1 ? "value" : "values"} waiting for review
-            </strong>
-            <span>Checks count a value once it is accepted or corrected.</span>
-          </span>
-          <span className="s1-cr-review__go">
-            Review now <ArrowRight aria-hidden />
-          </span>
-        </button>
-      ) : null}
-
       <CoveragePanel coverage={coverage} isRequested={isRequested} onRequest={setRequestRule} />
 
       <section className="s1-cr-reqs" aria-labelledby="s1-cr-reqs-title">
         <div className="s1-cr-sectionhead">
-          <h2 id="s1-cr-reqs-title">Requests</h2>
-          <div className="s1-cr-filters" role="group" aria-label="Show requests">
+          <span className="s1-cr-sectionhead__title">
+            <h2 id="s1-cr-reqs-title">
+              Requests <span className="s1-cr-count">{asks.length}</span>
+            </h2>
+          </span>
+          <div className="s1-ws-factabs s1-ws-factabs--seg s1-cr-checkfilter" role="group" aria-label="Show requests">
             {(["not_yet_sent", "requested", "resolved"] as AskState[]).map((state) => (
               <button
                 key={state}
-                className={`s1-cr-filter s1-cr-filter--${state}${stateFilter === state ? " is-on" : ""}`}
+                className={`s1-ws-factab${stateFilter === state ? " is-on" : ""}`}
                 type="button"
                 aria-pressed={stateFilter === state}
                 onClick={() => setStateFilter((cur) => (cur === state ? null : state))}
               >
-                <span className="s1-cr-filter__n">{counts[state]}</span>
+                <span className="s1-cr-checkfilter__n">{counts[state]}</span>
                 {STATE_LABEL[state]}
               </button>
             ))}
           </div>
-          <input
-            className="s1-cr-search"
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search requests"
-            aria-label="Search requests"
-          />
-          <button
-            className="s1-button s1-button--pri s1-cr-send"
-            type="button"
-            disabled={selectedSendable.length === 0}
-            onClick={() => {
-              setSendProblem(null);
-              setSendWindow({});
-            }}
-          >
-            <Send aria-hidden />
-            Send{selectedSendable.length ? ` (${selectedSendable.length})` : ""}
-          </button>
+          <div className="s1-cr-reqs__tools">
+            <label className="s1-search s1-cr-search">
+              <IconSearch size={15} aria-hidden />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search requests"
+                aria-label="Search requests"
+              />
+            </label>
+            <button
+              className="s1-button s1-button--pri s1-cr-send"
+              type="button"
+              disabled={selectedSendable.length === 0}
+              onClick={() => {
+                setSendProblem(null);
+                setSendWindow({});
+              }}
+            >
+              <IconSend size={14} aria-hidden />
+              Send{selectedSendable.length ? ` (${selectedSendable.length})` : ""}
+            </button>
+          </div>
         </div>
 
         {asks.length === 0 ? (
@@ -229,18 +233,20 @@ export function EvidenceRequests({
         ) : filtered.length === 0 ? (
           <p className="s1-cr-note">No requests match.</p>
         ) : (
-          <div className="s1-table-wrap">
+          <div className="s1-cr-reqs__scroll">
             <table className="s1-table s1-req-table">
               <colgroup>
-                <col style={{ width: "3rem" }} />
-                <col style={{ width: "30%" }} />
+                <col className="s1-req-col--check" />
+                <col className="s1-req-col--item" />
                 <col />
-                <col style={{ width: "22%" }} />
+                <col className="s1-req-col--state" />
+                <col className="s1-req-col--actions" />
               </colgroup>
               <thead>
                 <tr>
                   <th>
                     <input
+                      className="s1-checkbox"
                       type="checkbox"
                       checked={allSelectableChecked}
                       disabled={selectableIds.length === 0}
@@ -251,14 +257,18 @@ export function EvidenceRequests({
                   <th>Item</th>
                   <th>What is needed</th>
                   <th>State</th>
+                  <th>
+                    <span className="s1-sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((ask) => (
                   <Fragment key={ask.id}>
-                    <tr className={`s1-req-row s1-req-row--${ask.state}`}>
+                    <tr className={`s1-req-row s1-req-row--${ask.state}${resolveFor === ask.id ? " is-resolving" : ""}`}>
                       <td>
                         <input
+                          className="s1-checkbox"
                           type="checkbox"
                           checked={selected.includes(ask.id)}
                           disabled={ask.state !== "not_yet_sent"}
@@ -267,22 +277,24 @@ export function EvidenceRequests({
                         />
                       </td>
                       <td>
-                        <button className="s1-doc-link" type="button" onClick={() => onOpenSource(ask)}>
+                        <button className="s1-doc-link s1-req-item" type="button" onClick={() => onOpenSource(ask)} title={ask.source.itemLabel}>
                           {ask.source.itemLabel}
                         </button>
-                        <div className="s1-ws-docmeta">
-                          <span>{REQUEST_TYPES.find((t) => t.value === ask.type)?.label}</span>
-                          <span>
-                            {ask.source.facilityName ?? (ask.source.documentId ? "Facility not yet known" : "Entity-level")}
-                            {ask.source.period ? ` · ${readablePeriod(ask.source.period)}` : ""}
-                          </span>
-                          {ask.linkedFromAskId ? <span>Follow-up</span> : null}
+                        <div className="s1-req-meta">
+                          {[
+                            REQUEST_TYPES.find((t) => t.value === ask.type)?.label,
+                            ask.source.facilityName ?? (ask.source.documentId ? "Facility not yet known" : "Entity-level"),
+                            ask.source.period ? readablePeriod(ask.source.period) : null,
+                            ask.linkedFromAskId ? "Follow-up" : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
                         </div>
                       </td>
                       <td>
                         {ask.state === "not_yet_sent" ? (
                           <input
-                            className="s1-inline-input"
+                            className="s1-input s1-req-need"
                             defaultValue={ask.whatIsNeeded}
                             onBlur={(e) => {
                               const input = e.currentTarget;
@@ -304,12 +316,15 @@ export function EvidenceRequests({
                         )}
                       </td>
                       <td>
-                        <StateCell
+                        <StateCell ask={ask} serverRecordsActor={serverRecordsActor} />
+                      </td>
+                      <td>
+                        <RowActions
                           ask={ask}
                           menuOpen={menuFor === ask.id}
                           onMenuChange={(open) => setMenuFor(open ? ask.id : null)}
                           recordOpen={expanded.includes(ask.id)}
-                          serverRecordsActor={serverRecordsActor}
+                          resolveOpen={resolveFor === ask.id}
                           onResolveOpen={() => {
                             setResolveFor(ask.id);
                             setWithdrawFor(null);
@@ -330,11 +345,17 @@ export function EvidenceRequests({
                     </tr>
 
                     {resolveFor === ask.id ? (
-                      <tr className="s1-req-subrow">
-                        <td colSpan={4}>
+                      <tr className="s1-req-subrow s1-req-subrow--resolve">
+                        <td colSpan={5}>
                           <ResolveBox
                             pending={pendingIds.includes(ask.id)}
-                            onCancel={() => setResolveFor(null)}
+                            onCancel={() => {
+                              setResolveFor(null);
+                              // Back to the row's Resolve button once the panel has closed.
+                              requestAnimationFrame(() =>
+                                document.querySelector<HTMLButtonElement>(`[data-resolve-for="${CSS.escape(ask.id)}"]`)?.focus()
+                              );
+                            }}
                             onResolve={(link, note) =>
                               changeRequest(
                                 ask.id,
@@ -352,7 +373,7 @@ export function EvidenceRequests({
 
                     {withdrawFor === ask.id ? (
                       <tr className="s1-req-subrow">
-                        <td colSpan={4}>
+                        <td colSpan={5}>
                           <WithdrawBox
                             pending={pendingIds.includes(ask.id)}
                             onCancel={() => setWithdrawFor(null)}
@@ -373,7 +394,7 @@ export function EvidenceRequests({
 
                     {expanded.includes(ask.id) ? (
                       <tr className="s1-history-row">
-                        <td colSpan={4}>
+                        <td colSpan={5}>
                           <AskRecord ask={ask} />
                         </td>
                       </tr>
@@ -470,49 +491,26 @@ function coverageTarget(rule: CoverageRule, engagement: EngagementConfig): AddTo
  * A request's state: a chip that fits its words, the one next step (Resolve) when there
  * is one, and the rest in the row's menu, all on one line.
  */
-function StateCell({
-  ask,
-  menuOpen,
-  onMenuChange,
-  recordOpen,
-  serverRecordsActor,
-  onResolveOpen,
-  onWithdrawOpen,
-  onFollowUp,
-  onExpand,
-}: {
-  ask: Ask;
-  menuOpen: boolean;
-  onMenuChange: (open: boolean) => void;
-  recordOpen: boolean;
-  serverRecordsActor: boolean;
-  onResolveOpen: () => void;
-  onWithdrawOpen: () => void;
-  onFollowUp: () => void;
-  onExpand: () => void;
-}) {
-  const entries: ActionMenuEntry[] = [
-    ...(ask.state === "not_yet_sent" || ask.state === "requested" ? [{ label: "Withdraw", action: onWithdrawOpen }] : []),
-    ...(ask.state === "resolved" ? [{ label: "Raise follow-up", action: onFollowUp }] : []),
-    { label: recordOpen ? "Hide history" : "History", action: onExpand },
-  ];
+/** Shared state chip variant per request state. */
+const STATE_CHIP: Record<AskState, string> = {
+  not_yet_sent: "open",
+  requested: "active",
+  resolved: "resolved",
+  withdrawn: "na",
+};
+
+/** The request's state as one pill, with who acted and how it closed underneath. */
+function StateCell({ ask, serverRecordsActor }: { ask: Ask; serverRecordsActor: boolean }) {
   const acted = serverRecordsActor ? whoActed(ask) : null;
   return (
     <div className="s1-req-state">
-      <div className="s1-req-state__row">
-        <span className="s1-req-state__label" title={ask.requestNumber ? `Request ${ask.requestNumber}` : undefined}>
-          {STATE_LABEL[ask.state]}
-          {ask.state === "requested" && ask.requestNumber ? ` · #${ask.requestNumber}` : ""}
-        </span>
-        <span className="s1-req-state__actions">
-          {ask.state === "requested" ? (
-            <button className="s1-req-state__go" type="button" onClick={onResolveOpen}>
-              Resolve
-            </button>
-          ) : null}
-          <ActionMenu label={`Actions for ${ask.source.itemLabel}`} entries={entries} isOpen={menuOpen} onOpenChange={onMenuChange} />
-        </span>
-      </div>
+      <span
+        className={`s1-state s1-state--${STATE_CHIP[ask.state]} s1-req-state__label`}
+        title={ask.requestNumber ? `Request ${ask.requestNumber}` : undefined}
+      >
+        {STATE_LABEL[ask.state]}
+        {ask.state === "requested" && ask.requestNumber ? ` · #${ask.requestNumber}` : ""}
+      </span>
       {acted ? (
         <div className="s1-muted s1-req-state__note">
           {acted.label}
@@ -524,6 +522,53 @@ function StateCell({
       ) : null}
       {ask.state === "withdrawn" && ask.withdrawReason ? <div className="s1-muted s1-req-state__note">{ask.withdrawReason}</div> : null}
     </div>
+  );
+}
+
+/** Resolve (only while requested) and the row menu. */
+function RowActions({
+  ask,
+  menuOpen,
+  onMenuChange,
+  recordOpen,
+  resolveOpen,
+  onResolveOpen,
+  onWithdrawOpen,
+  onFollowUp,
+  onExpand,
+}: {
+  ask: Ask;
+  menuOpen: boolean;
+  onMenuChange: (open: boolean) => void;
+  recordOpen: boolean;
+  resolveOpen: boolean;
+  onResolveOpen: () => void;
+  onWithdrawOpen: () => void;
+  onFollowUp: () => void;
+  onExpand: () => void;
+}) {
+  const entries: ActionMenuEntry[] = [
+    ...(ask.state === "not_yet_sent" || ask.state === "requested"
+      ? [{ label: "Withdraw", action: onWithdrawOpen, icon: <IconTrash size={16} />, danger: true }]
+      : []),
+    ...(ask.state === "resolved" ? [{ label: "Raise follow-up", action: onFollowUp, icon: <IconSend size={16} /> }] : []),
+    { label: recordOpen ? "Hide history" : "History", action: onExpand, icon: <IconActivity size={16} /> },
+  ];
+  return (
+    <span className="s1-req-state__actions">
+      {ask.state === "requested" ? (
+        <button
+          className={`s1-req-state__go${resolveOpen ? " is-on" : ""}`}
+          type="button"
+          aria-expanded={resolveOpen}
+          data-resolve-for={ask.id}
+          onClick={onResolveOpen}
+        >
+          Resolve
+        </button>
+      ) : null}
+      <ActionMenu label={`Actions for ${ask.source.itemLabel}`} entries={entries} isOpen={menuOpen} onOpenChange={onMenuChange} />
+    </span>
   );
 }
 
@@ -539,22 +584,34 @@ function ResolveBox({
   const [link, setLink] = useState("");
   const [note, setNote] = useState("");
   return (
-    <div className="s1-req-box">
-      <strong>Resolve</strong>
-      <label className="s1-setup-field">
-        <span>Link to the document or value that answered it (optional)</span>
-        <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="e.g. the re-sent file, or the client's reply" />
+    <div
+      className="s1-req-box s1-req-box--resolve"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
+      <strong className="s1-req-box__title">Resolve this request</strong>
+      <label className="s1-req-box__field">
+        <span className="s1-field-label">
+          What answered it <span className="s1-optional">(optional)</span>
+        </span>
+        <input className="s1-input" value={link} autoFocus onChange={(e) => setLink(e.target.value)} placeholder="e.g. the re-sent file, or the client's reply" />
       </label>
-      <label className="s1-setup-field">
-        <span>Note (optional)</span>
-        <input value={note} onChange={(e) => setNote(e.target.value)} />
+      <label className="s1-req-box__field">
+        <span className="s1-field-label">
+          Note <span className="s1-optional">(optional)</span>
+        </span>
+        <input className="s1-input" value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
-      <div className="s1-modal__actions">
-        <button className="s1-button" type="button" disabled={pending} onClick={() => onResolve(link.trim() || null, note.trim() || null)}>
-          Resolve
-        </button>
-        <button className="s1-button" type="button" onClick={onCancel}>
+      <div className="s1-req-box__actions">
+        <button className="s1-button s1-req-box__cancel" type="button" onClick={onCancel}>
           Cancel
+        </button>
+        <button className="s1-button s1-button--pri" type="button" disabled={pending} onClick={() => onResolve(link.trim() || null, note.trim() || null)}>
+          Mark resolved
         </button>
       </div>
     </div>

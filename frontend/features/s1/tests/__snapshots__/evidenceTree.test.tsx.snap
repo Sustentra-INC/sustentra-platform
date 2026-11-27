@@ -1,0 +1,277 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the Evidence tree > draws the Move and New fuel dialogs as it always has > move dialog 1`] = `
+<div
+  class="s1-modal-scrim"
+>
+  <div
+    aria-labelledby="ID"
+    aria-modal="true"
+    class="s1-modal"
+    role="dialog"
+  >
+    <div
+      class="s1-modal__head"
+    >
+      <div
+        class="s1-modal__head-text"
+      >
+        <h2
+          class="s1-modal__title"
+          id="ID"
+        >
+          Move to…
+        </h2>
+      </div>
+      <button
+        aria-label="Close"
+        class="s1-button s1-button--icon s1-modal__close"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          fill="none"
+          height="15"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="15"
+        >
+          <path
+            d="M6 6l12 12M18 6L6 18"
+          />
+        </svg>
+      </button>
+    </div>
+    <p
+      class="s1-modal__note"
+    >
+      Moves 
+      feb.pdf
+       from 
+      Natural gas · Kent
+      . Only this placement moves; the document stays where else it is used.
+    </p>
+    <label
+      class="s1-modal__field"
+    >
+      <span>
+        Move to
+      </span>
+      <select
+        aria-label="Move to"
+      >
+        <option
+          value=""
+        >
+          Choose where it goes
+        </option>
+        <optgroup
+          label="Blocks"
+        >
+          <option
+            value="block:summary"
+          >
+            Summary documents and workbook
+          </option>
+          <option
+            value="block:unassigned"
+          >
+            Unassigned documents
+          </option>
+          <option
+            value="supporting:unassigned"
+          >
+            Unassigned supporting evidence
+          </option>
+        </optgroup>
+        <optgroup
+          label="Scope 1 › Stationary combustion"
+        >
+          <option
+            value="s1:stationary:natural-gas:fac-pl02"
+          >
+            Natural gas · Plant 2
+          </option>
+        </optgroup>
+        <optgroup
+          label="Scope 2 › Purchased energy"
+        >
+          <option
+            value="s2:purchased_energy:electricity:fac-kc01"
+          >
+            Electricity · Kent
+          </option>
+        </optgroup>
+      </select>
+    </label>
+    <div
+      class="s1-modal__actions"
+    >
+      <button
+        class="s1-button s1-button--pri"
+        disabled=""
+        type="button"
+      >
+        Move
+      </button>
+      <button
+        class="s1-button"
+        type="button"
+      >
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`the Evidence tree > draws the Move and New fuel dialogs as it always has > new fuel dialog 1`] = `
+<div
+  class="s1-modal-scrim"
+>
+  <div
+    aria-labelledby="ID"
+    aria-modal="true"
+    class="s1-modal"
+    role="dialog"
+  >
+    <div
+      class="s1-modal__head"
+    >
+      <span
+        aria-hidden="true"
+        class="s1-modal__head-icon"
+      >
+        <svg
+          aria-hidden="true"
+          fill="none"
+          height="18"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-width="2.4"
+          viewBox="0 0 24 24"
+          width="18"
+        >
+          <path
+            d="M12 5v14M5 12h14"
+          />
+        </svg>
+      </span>
+      <div
+        class="s1-modal__head-text"
+      >
+        <h2
+          class="s1-modal__title"
+          id="ID"
+        >
+          New fuel
+        </h2>
+        <span
+          class="s1-modal__context"
+        >
+          Scope 1 · Stationary combustion
+        </span>
+      </div>
+      <button
+        aria-label="Close"
+        class="s1-button s1-button--icon s1-modal__close"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          fill="none"
+          height="15"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="15"
+        >
+          <path
+            d="M6 6l12 12M18 6L6 18"
+          />
+        </svg>
+      </button>
+    </div>
+    <label
+      class="s1-modal__field"
+    >
+      <span>
+        Fuel name
+      </span>
+      <input
+        class="s1-inline-input"
+        placeholder="e.g. Fuel oil"
+        value=""
+      />
+    </label>
+    <label
+      class="s1-modal__field"
+    >
+      <span>
+        Facility
+      </span>
+      <select
+        aria-label="Facility"
+      >
+        <option
+          value=""
+        >
+          Choose one
+        </option>
+        <option
+          value="FAC-KC01"
+        >
+          Kent
+        </option>
+        <option
+          value="FAC-PL02"
+        >
+          Plant 2
+        </option>
+        <option
+          value="FAC-NW03"
+        >
+          North works
+        </option>
+      </select>
+    </label>
+    <label
+      class="s1-modal__field"
+    >
+      <span>
+        Line name 
+        <span
+          class="s1-optional"
+        >
+          Optional
+        </span>
+      </span>
+      <input
+        class="s1-inline-input"
+        placeholder=""
+        value=""
+      />
+    </label>
+    <div
+      class="s1-modal__actions"
+    >
+      <button
+        class="s1-button s1-button--pri"
+        disabled=""
+        type="button"
+      >
+        Add fuel
+      </button>
+      <button
+        class="s1-button"
+        type="button"
+      >
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+`;

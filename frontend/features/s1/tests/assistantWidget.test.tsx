@@ -1,5 +1,5 @@
 /* @vitest-environment jsdom */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { AssistantWidget, respond } from "../components/AssistantWidget";
@@ -28,16 +28,16 @@ describe("assistant on live data", () => {
   });
 
   it("briefs the live page without demo figures", () => {
-    render(<AssistantWidget page="results" live />);
-    fireEvent.click(screen.getByRole("button", { name: "Open Sustentra assistant" }));
+    const { rerender } = render(<AssistantWidget page="results" live open={false} />);
+    rerender(<AssistantWidget page="results" live open />); // opened from the top row's Ask Sustentra button
     const panel = screen.getByRole("dialog", { name: "Sustentra assistant" });
     expect(panel.textContent).toContain("compares each reported data point with its recalculated value");
     expect(panel.textContent).not.toMatch(DEMO_ONLY);
   });
 
   it("keeps the demo briefing in fixture mode", () => {
-    render(<AssistantWidget page="results" />);
-    fireEvent.click(screen.getByRole("button", { name: "Open Sustentra assistant" }));
+    const { rerender } = render(<AssistantWidget page="results" open={false} />);
+    rerender(<AssistantWidget page="results" open />); // opened from the top row's Ask Sustentra button
     expect(screen.getByRole("dialog", { name: "Sustentra assistant" }).textContent).toContain("13,540");
   });
 });

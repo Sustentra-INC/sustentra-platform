@@ -27,26 +27,45 @@ const FIGURES: DashboardFigures = {
 };
 
 describe("dashboard: progress only", () => {
-  it("shows the timeline, the two meters and what needs attention, most urgent first", () => {
+  it("shows stage cards and what needs attention, most urgent first", () => {
     const onNavigate = vi.fn();
     render(<DashboardScreen engagement={engagementConfig} figures={FIGURES} onNavigate={onNavigate} />);
 
-    const timeline = screen.getByRole("list", { name: "Engagement timeline" });
-    expect(within(timeline).getAllByRole("button").map((b) => b.textContent)).toEqual([
-      expect.stringContaining("Setup"),
-      expect.stringContaining("Evidence intake152 documents in"),
-      expect.stringContaining("67 values to review"),
+    const progress = screen.getByRole("region", { name: "Engagement progress" });
+    const cards = within(progress).getAllByRole("button");
+    expect(cards.map((b) => b.textContent)).toEqual([
+      expect.stringContaining("Evidence intake"),
+      expect.stringContaining("Review"),
       expect.stringContaining("Assessment"),
-      expect.stringContaining("Statement not issued"),
+      expect.stringContaining("Opinion"),
     ]);
-    expect(screen.getByText("9 of 12 in-scope data points have their evidence")).toBeInTheDocument();
-    expect(screen.getByText("41 of 108 values accepted or corrected")).toBeInTheDocument();
+    // Evidence intake: 9 present, 3 missing → 9/12 = 75%
+    expect(cards[0]).toHaveTextContent("75%");
+    expect(cards[0]).toHaveTextContent(/9 of 12 data points/);
+    // Review: 41 reviewed of 108 total = 38%
+    expect(cards[1]).toHaveTextContent("38%");
+    expect(cards[1]).toHaveTextContent(/41/);
+    // Assessment: not started
+    expect(cards[2]).toHaveTextContent(/not started/);
+    // Opinion: not issued
+    expect(cards[3]).toHaveTextContent("Not issued");
 
-    const attention = screen.getAllByRole("button").filter((b) => b.className.includes("s1-attention__item"));
-    expect(attention[0]).toHaveTextContent("1document can't be read");
-    expect(attention.map((b) => b.textContent)).toContain("67values waiting for reviewReview");
+    // blocked item is in focus card; queue shows the remaining open/waiting items
+    const queueRows = screen.getAllByRole("button").filter((b) => b.className.includes("s1-queue__row"));
+    expect(queueRows[0]).toHaveTextContent("documents need a type or facility");
+    expect(queueRows.some((b) => b.textContent?.includes("values waiting for review"))).toBe(true);
     fireEvent.click(screen.getByText("data points missing evidence"));
     expect(onNavigate).toHaveBeenCalledWith("requests");
+  });
+
+  it("only the first unfinished stage shows In progress", () => {
+    // FIGURES has intake/review/assessment all with open work — only intake should be active
+    render(<DashboardScreen engagement={engagementConfig} figures={FIGURES} onNavigate={vi.fn()} />);
+    const progress = screen.getByRole("region", { name: "Engagement progress" });
+    const cards = within(progress).getAllByRole("button");
+    expect(cards[0]).toHaveTextContent("In progress");
+    expect(cards[1]).not.toHaveTextContent("In progress");
+    expect(cards[2]).not.toHaveTextContent("In progress");
   });
 
   it("says so when nothing needs anyone", () => {
@@ -81,7 +100,7 @@ describe("evidence: bird's-eye first", () => {
     const heads = screen.getAllByRole("button", { expanded: false });
     expect(heads.length).toBeGreaterThan(3);
 
-    fireEvent.click(heads.find((b) => b.textContent?.startsWith("Electricity bill"))!);
+    fireEvent.click(heads.find((b) => b.getAttribute("aria-label")?.startsWith("Expand Electricity bill"))!);
     const table = screen.getByRole("table");
     expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
       "Document",
@@ -180,9 +199,9 @@ describe("coverage & requests: one page", () => {
     // Opens on the checks missing their inputs; a filter shows another state.
     const missing = coverageRules.filter((r) => r.status === "inputs_missing");
     expect(screen.getAllByRole("button", { name: /^Request$/ })).toHaveLength(missing.length);
-    fireEvent.click(screen.getByRole("button", { name: /Inputs present/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^\d+ ?Present$/ }));
     expect(screen.queryAllByRole("button", { name: /^Request$/ })).toHaveLength(0);
-    fireEvent.click(screen.getByRole("button", { name: /Inputs present/ })); // off again: every check
+    fireEvent.click(screen.getByRole("button", { name: /^\d+ ?Present$/ })); // off again: every check
 
     fireEvent.click(screen.getAllByRole("button", { name: /^Request$/ })[0]);
     fireEvent.click(screen.getByRole("button", { name: "Add to requests" }));
@@ -337,8 +356,8 @@ describe("extraction review: the document's key, pinned with the cards", () => {
     const key = screen.getByRole("group", { name: "Highlights on the document" });
     expect(key.textContent).toContain("1 not found");
     expect(within(key).getByText("Not found")).toBeInTheDocument();
-    fireEvent.click(within(key).getByRole("button", { name: "Highlight a figure" }));
-    expect(within(key).getByRole("button", { name: "Done highlighting" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(key).getByRole("button", { name: "Extract" }));
+    expect(within(key).getByRole("button", { name: "Done extracting" })).toHaveAttribute("aria-pressed", "true");
     expect(seen.at(-1)).toBe(true);
   });
 
@@ -444,7 +463,7 @@ describe("demo documents: the whole document, values highlighted in place", () =
     const highlighted = Array.from(document.querySelectorAll(".s1-dd-hl")).map((h) => h.textContent);
     expect(highlighted).toEqual(["01 Feb 2025 – 28 Feb 2025", "182,400 kWh", "1,240 kW", "0.223 kgCO2e/kWh", "40.68 tCO2e"]);
     // Its key and highlight switch, like any other demo document.
-    expect(screen.getByRole("button", { name: "Highlight a figure" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Extract" })).toBeInTheDocument();
   });
 
   it("marks a value the reading could not find where it belongs", async () => {
@@ -477,7 +496,7 @@ describe("evidence row menu", () => {
         onOpenExtraction={vi.fn()}
       />
     );
-    fireEvent.click(screen.getAllByRole("button", { expanded: false }).find((b) => b.textContent?.startsWith("Electricity bill"))!);
+    fireEvent.click(screen.getAllByRole("button", { expanded: false }).find((b) => b.getAttribute("aria-label")?.startsWith("Expand Electricity bill"))!);
     fireEvent.click(screen.getAllByRole("button", { name: /^Actions for / })[0]);
     const menu = screen.getByRole("menu");
     expect(menu).toHaveClass("s1-menu__panel--float");
@@ -495,7 +514,7 @@ describe("highlight a figure the reading missed", () => {
       <DemoDocument values={gas} engagement={engagementConfig} selectedId={null} onPick={vi.fn()} onAddValue={onAddValue} />
     );
     expect(container.querySelector(".s1-dd-fig")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Highlight a figure" }));
+    fireEvent.click(screen.getByRole("button", { name: "Extract" }));
     fireEvent.click(container.querySelector('[data-anchor="heat-content"]')!);
 
     expect(screen.getByText("Add this figure as a value")).toBeInTheDocument();
@@ -513,7 +532,7 @@ describe("highlight a figure the reading missed", () => {
     const { container } = render(
       <DemoDocument values={partial} engagement={engagementConfig} selectedId={null} onPick={vi.fn()} onAddValue={onAddValue} />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Highlight a figure" }));
+    fireEvent.click(screen.getByRole("button", { name: "Extract" }));
     fireEvent.click(container.querySelector('[data-anchor="current-read-date"]')!);
     expect(screen.getByText("Fill in a value the reading missed")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Fill in" }));

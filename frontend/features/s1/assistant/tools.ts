@@ -4,6 +4,7 @@ import type { CoverageRule, Examination, Finding } from "../types/verification";
 import type { ResultLine } from "../types/verificationResults";
 import type { ActivityEntry, DashboardFigures } from "../utils/engagementActivity";
 import { buildResultBoxes, examinationKey } from "../utils/verificationTable";
+import { documentFacilityLabel } from "../utils/searchIndex";
 
 /**
  * The assistant's tools, run in the browser over the engagement data the signed-in user
@@ -115,7 +116,7 @@ function searchDocuments(data: AssistantData, input: Record<string, unknown>) {
       ref: `doc:${item.documentId}`,
       file: item.filename,
       type: item.detectedType ?? "type not set",
-      facility: item.facilityName ?? (item.facilityState === "multiple" ? "multiple facilities" : item.facilityState === "not_facility_scoped" ? "entity-level" : "not yet known"),
+      facility: documentFacilityLabel(item),
       period: item.periodStart && item.periodEnd ? `${item.periodStart} to ${item.periodEnd}` : null,
       status: statusOf(item),
       ...(item.haltReason ? { why_blocked: item.haltReason } : {}),
@@ -272,8 +273,8 @@ const REFERENCE: Record<string, string> = {
     "equipment minus its capacity, plus refrigerant added in service, plus the capacity of retired equipment minus what was " +
     "recovered from it, times the refrigerant's GWP (R-404A: 3,943 under AR5). CFCs and HCFCs are reported separately.",
   coverage:
-    "Coverage shows what can and cannot be checked with the evidence held. Inputs present: the evidence and reviewed values " +
-    "a check needs are in. Inputs missing: something is missing, and a request to the client can be raised. Not applicable " +
+    "Coverage shows what can and cannot be checked with the evidence held. Present: the evidence and reviewed values " +
+    "a check needs are in. Missing: something is missing, and a request to the client can be raised. Not applicable " +
     "or out of scope: the check does not apply. It states input readiness, not a pass or fail.",
   review_states:
     "Each value read from a document is to review until the auditor acts: accepted (as read), corrected (changed, with the " +

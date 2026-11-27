@@ -24,9 +24,9 @@ vi.mock("../api/s1Backend", async (importOriginal) => ({
 // Status cell of manufacturerEvidence, in screen order (every type group opened), then each
 // group's status mix. Fixture mode must keep showing exactly this.
 const MANUFACTURER_STATUS_CELLS = [
-  "Extracting", "Extracting", "ExtractedPeriod outside reporting year", "Extracted", "Extracted", "Extracted",
+  "Extracting", "Extracting", "ExtractedOutside period", "Extracted", "Extracted", "Extracted",
   "Extracted", "BlockedScan is unreadable · no extractable text on any page.",
-  "ExtractedPeriod outside reporting year", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
+  "ExtractedOutside period", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "ExtractedDuplicate of tualatin_electric_july_copy.pdf",
@@ -254,7 +254,7 @@ function renderWorkspace(evidence = manufacturerEvidence) {
     />
   );
   // Groups open on a click; open them all so every row is on screen.
-  for (const head of view.container.querySelectorAll(".s1-ws-gr__head")) fireEvent.click(head);
+  for (const toggle of view.container.querySelectorAll(".s1-ws-gr__toggle")) fireEvent.click(toggle);
   return view;
 }
 
@@ -442,7 +442,7 @@ async function setTypeOfOnlyDocument() {
 }
 
 function openGroups() {
-  for (const head of document.querySelectorAll(".s1-ws-gr__head")) fireEvent.click(head);
+  for (const toggle of document.querySelectorAll(".s1-ws-gr__toggle")) fireEvent.click(toggle);
 }
 
 describe("S1WorkpaperApp: reads in the background", () => {

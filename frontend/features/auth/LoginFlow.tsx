@@ -7,6 +7,8 @@ import { ApiError, login, resendOtp, verifyOtp } from "./api";
 import { forgotPath, homePath, type Realm } from "./realm";
 import { rememberRealm, safeNext } from "./lastRealm";
 import { AuthShell } from "./AuthShell";
+import { OtpInput } from "./OtpInput";
+import { IconCheck, IconMail } from "../s1/components/icons";
 import styles from "./auth.module.css";
 
 const OTP_LENGTH = 6;
@@ -14,7 +16,7 @@ const MAX_OTP_ATTEMPTS = 3;
 const RESEND_SECONDS = 60;
 const GENERIC_LOGIN_ERROR = "Invalid email or password.";
 /** `?status=ready` on the org login, after an invite is accepted (FE-003). */
-export const ACCOUNT_READY_NOTICE = "Your account is ready — sign in.";
+export const ACCOUNT_READY_NOTICE = "Your account is ready. Sign in to continue.";
 
 /** Password + email-OTP login (FE-002). Both steps live on the same route. */
 export function LoginFlow({
@@ -146,36 +148,69 @@ export function LoginFlow({
   }
 
   if (step === "otp") {
+    const isInitialNotice = notice === `Enter the ${OTP_LENGTH}-digit code we sent to ${email}.`;
+    const otpSubtitle = isInitialNotice ? (
+      <>
+        Enter the {OTP_LENGTH}-digit code we sent to{" "}
+        <strong className={styles.emailHighlight}>{email}</strong>.
+      </>
+    ) : (notice ?? undefined);
+
     return (
-      <AuthShell title="Check your email" subtitle={notice ?? undefined}>
-        <form className={styles.form} onSubmit={(e) => e.preventDefault()}>
+      <AuthShell
+        title="Check your email"
+        header={
+          <div className={styles.iconTile}>
+            <IconMail size={26} />
+          </div>
+        }
+        subtitle={otpSubtitle}
+      >
+        <form
+          className={`${styles.form} ${styles.verifyForm}`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (code.length === OTP_LENGTH) void submitOtp(code);
+          }}
+          noValidate
+        >
           {error ? (
             <p className={styles.error} role="alert">
               {error}
             </p>
           ) : null}
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="otp">
-              6-digit code
-            </label>
-            <input
-              id="otp"
-              className={styles.otp}
-              value={code}
-              onChange={(e) => onCodeChange(e.target.value)}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              autoFocus
-              maxLength={OTP_LENGTH}
-              disabled={submitting}
-            />
-          </div>
-          <div className={styles.row}>
-            <button type="button" className={styles.link} onClick={onResend} disabled={resendIn > 0}>
-              {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
-            </button>
-            <button type="button" className={styles.link} onClick={() => backToPassword("")}>
-              Use a different account
+          <OtpInput
+            length={OTP_LENGTH}
+            value={code}
+            onChange={onCodeChange}
+            disabled={submitting}
+            hasError={!!error}
+          />
+          <button
+            type="submit"
+            className={`s1-button s1-button--pri s1-button--lg ${styles.submitBtn}`}
+            disabled={submitting || code.length < OTP_LENGTH}
+          >
+            {submitting ? "Verifying…" : "Verify"}
+          </button>
+          <div className={styles.otpLinks}>
+            <span>
+              Didn&apos;t get it?{" "}
+              <button
+                type="button"
+                className={styles.otpResend}
+                onClick={onResend}
+                disabled={resendIn > 0}
+              >
+                {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
+              </button>
+            </span>
+            <button
+              type="button"
+              className={styles.otpDiffAccount}
+              onClick={() => backToPassword("")}
+            >
+              Use a different email
             </button>
           </div>
         </form>
@@ -183,21 +218,31 @@ export function LoginFlow({
     );
   }
 
+  const isReadyBanner = notice === ACCOUNT_READY_NOTICE;
+
   return (
-    <AuthShell title="Sign in" subtitle={notice ?? undefined}>
-      <form className={styles.form} onSubmit={onPasswordSubmit} noValidate>
+    <AuthShell title="Sign in" subtitle={isReadyBanner ? undefined : (notice ?? undefined)}>
+      {isReadyBanner && (
+        <div className={styles.readyBanner} role="status">
+          <span className={styles.readyDot} aria-hidden="true">
+            <IconCheck size={14} />
+          </span>
+          {ACCOUNT_READY_NOTICE}
+        </div>
+      )}
+      <form className={`${styles.form} ${styles.signinForm}`} onSubmit={onPasswordSubmit} noValidate>
         {error ? (
           <p className={styles.error} role="alert">
             {error}
           </p>
         ) : null}
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="email">
+          <label className="s1-field-label" htmlFor="email">
             Email
           </label>
           <input
             id="email"
-            className={styles.input}
+            className="s1-input s1-input--lg"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -206,13 +251,18 @@ export function LoginFlow({
           />
         </div>
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="password">
-            Password
-          </label>
-          <div className={styles.inputWrap}>
+          <div className={styles.labelRow}>
+            <label className="s1-field-label" htmlFor="password">
+              Password
+            </label>
+            <Link className={styles.link} href={forgotPath(realm)}>
+              Forgot password?
+            </Link>
+          </div>
+          <div className={styles.pwWrap}>
             <input
               id="password"
-              className={styles.input}
+              className={styles.pwInput}
               type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -220,7 +270,7 @@ export function LoginFlow({
             />
             <button
               type="button"
-              className={styles.reveal}
+              className={styles.pwShow}
               onClick={() => setShowPassword((v) => !v)}
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
@@ -228,12 +278,23 @@ export function LoginFlow({
             </button>
           </div>
         </div>
-        <button type="submit" className={styles.button} disabled={submitting}>
+        {/* FLAG: Keep me signed in is visual-only, checked by default — not wired */}
+        <label className={styles.keepSignedIn}>
+          <input
+            type="checkbox"
+            className="s1-checkbox"
+            defaultChecked
+            aria-label="Keep me signed in"
+          />
+          Keep me signed in
+        </label>
+        <button
+          type="submit"
+          className={`s1-button s1-button--pri s1-button--lg ${styles.submitBtn}`}
+          disabled={submitting}
+        >
           {submitting ? "Signing in…" : "Sign in"}
         </button>
-        <Link className={styles.link} href={forgotPath(realm)}>
-          Forgot password?
-        </Link>
       </form>
     </AuthShell>
   );

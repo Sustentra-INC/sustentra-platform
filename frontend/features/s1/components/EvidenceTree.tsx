@@ -1,6 +1,9 @@
 "use client";
 
 import { ChevronRight, PanelsTopLeft, Plus } from "lucide-react";
+import { IconBuilding, IconDocument, IconExpandAll, IconCollapseAll, IconPlus, IconTag, IconTrash } from "./icons";
+
+import { Dropdown } from "./Dropdown";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
@@ -27,6 +30,7 @@ import { createAuditIntent, type AuditIntentAction, type SessionAuditEntry } fro
 import { formatPeriod } from "../utils/formatPeriod";
 import { ActionMenu } from "./ActionMenu";
 import { ContainerStateSurface } from "./ContainerStateSurface";
+import { Dialog } from "./Dialog";
 
 /**
  * The Evidence page in backend mode: one tree, Scope > Category > fuel > calculation line, with the
@@ -61,7 +65,7 @@ export interface EvidenceTreeProps {
 type Dialog =
   | { kind: "move"; doc: TreeDocRow; from: string; section: string }
   | { kind: "newLine"; scope: string; category: string; level2: TreeLevel2 }
-  | { kind: "newFuel"; scope: string; category: TreeCategory }
+  | { kind: "newFuel"; scope: string; scopeLabel: string; category: TreeCategory }
   | { kind: "rename"; line: CalculationLine }
   | { kind: "delete"; line: CalculationLine };
 
@@ -161,6 +165,39 @@ export function EvidenceTree(props: EvidenceTreeProps) {
     const from = doc.placement_from ?? section;
     const period = doc.period_start && doc.period_end ? formatPeriod(doc.period_start, doc.period_end) : null;
     const also = doc.also_in.map((key) => lineMap.get(key)).filter((l): l is CalculationLine => Boolean(l));
+    const menu = (
+      <ActionMenu
+        label={`Actions for ${doc.file_name}`}
+        isOpen={menuId === id}
+        onOpenChange={(o) => setMenuId(o ? id : null)}
+        entries={[
+          { label: "Open document", action: () => props.onOpenExtraction(doc.document_id), icon: <IconDocument size={16} /> },
+          { label: "Move to…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "move", doc, from, section }) },
+        ]}
+      />
+    );
+
+    if (isLineKey(section)) {
+      const ext = fileExt(doc.file_name);
+      const statusText = doc.values
+        ? `${doc.accepted} of ${doc.values} accepted`
+        : processingText(doc.processing_status);
+      return (
+        <div key={id} className="s1-et-doc s1-et-doc--line">
+          <span className="s1-et-doc__file">
+            <span aria-hidden className={`s1-et-doc-tag s1-batch__tag--${ext}`}>{ext.toUpperCase()}</span>
+            <button className="s1-doc-link" type="button" onClick={() => props.onOpenExtraction(doc.document_id)}>
+              {doc.file_name}
+            </button>
+            {period ? <span className="s1-et-doc__period">{period}</span> : null}
+            {also.length ? <span className="s1-et-doc__period">Also in {also.map(lineTitle).join(", ")}</span> : null}
+          </span>
+          <span className="s1-et-doc__status">{statusText}</span>
+          {menu}
+        </div>
+      );
+    }
+
     return (
       <div key={id} className="s1-et-doc">
         <button className="s1-doc-link" type="button" onClick={() => props.onOpenExtraction(doc.document_id)}>
@@ -174,15 +211,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           {also.length ? <span>Also in {also.map(lineTitle).join(", ")}</span> : null}
         </span>
         <span className="s1-et-doc__vals">{doc.values ? `${doc.accepted} of ${doc.values} accepted` : "No values yet"}</span>
-        <ActionMenu
-          label={`Actions for ${doc.file_name}`}
-          isOpen={menuId === id}
-          onOpenChange={(o) => setMenuId(o ? id : null)}
-          entries={[
-            { label: "Open document", action: () => props.onOpenExtraction(doc.document_id) },
-            { label: "Move to…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "move", doc, from, section }) },
-          ]}
-        />
+        {menu}
       </div>
     );
   }
@@ -208,7 +237,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         actions={
           <>
             <button
-              className="s1-icon-tile"
+              className="s1-et-review-btn"
               type="button"
               aria-label={`Open supporting schedule for ${lineTitle(line)}`}
               title="Open supporting schedule"
@@ -223,7 +252,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
                 onOpenChange={(o) => setMenuId(o ? id : null)}
                 entries={[
                   { label: "Rename", action: () => setDialog({ kind: "rename", line }) },
-                  { label: "Delete", action: () => setDialog({ kind: "delete", line }) },
+                  { label: "Delete", action: () => setDialog({ kind: "delete", line }), danger: true, icon: <IconTrash size={16} />, separator: true },
                 ]}
               />
             ) : null}
@@ -257,7 +286,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
       <Fold key={id} id={id} depth={2} open={isOpen(id)} onToggle={toggle} title={category.label} counts={category.counts}>
         {category.level2s.map((l2) => level2Node(scope.scope, category, l2))}
         {props.writesEnabled && !filtered ? (
-          <button className="s1-et-add" type="button" onClick={() => setDialog({ kind: "newFuel", scope: scope.scope, category })}>
+          <button className="s1-et-add" type="button" onClick={() => setDialog({ kind: "newFuel", scope: scope.scope, scopeLabel: scope.label, category })}>
             <Plus aria-hidden /> New fuel
           </button>
         ) : null}
@@ -273,23 +302,25 @@ export function EvidenceTree(props: EvidenceTreeProps) {
   return (
     <div className="s1-et">
       <div className="s1-et-bar">
-        <label className="s1-et-facility">
-          <span>Facility</span>
-          <select value={facilityId ?? ""} onChange={(e) => changeFacility(e.target.value || null)} aria-label="Facility">
-            <option value="">All facilities</option>
-            {tree.facilities.map((f) => (
-              <option key={f.facility_id} value={f.facility_id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="s1-et-facility s1-et-facility--pill">
+          <span id="et-facility-label" className="s1-sr-only">Facility</span>
+          <IconBuilding size={16} aria-hidden />
+          <Dropdown
+            value={facilityId ?? ""}
+            onChange={(v) => changeFacility(v || null)}
+            options={[
+              { value: "", label: "All facilities" },
+              ...tree.facilities.map((f) => ({ value: f.facility_id, label: f.name })),
+            ]}
+            labelId="et-facility-label"
+          />
+        </div>
         <span className="s1-et-bar__fold">
-          <button className="s1-linklike" type="button" onClick={() => setOpen(collectIds(tree))}>
-            Expand all
+          <button className="s1-et-fold-btn" type="button" aria-label="Expand all" onClick={() => setOpen(collectIds(tree))}>
+            <IconExpandAll size={16} aria-hidden />
           </button>
-          <button className="s1-linklike" type="button" onClick={() => setOpen([])}>
-            Collapse all
+          <button className="s1-et-fold-btn" type="button" aria-label="Collapse all" onClick={() => setOpen([])}>
+            <IconCollapseAll size={16} aria-hidden />
           </button>
         </span>
       </div>
@@ -304,35 +335,109 @@ export function EvidenceTree(props: EvidenceTreeProps) {
       ) : null}
 
       {!filtered || summary.length ? (
-        <Fold
-          id="b:summary"
-          depth={0}
-          open={isOpen("b:summary")}
-          onToggle={toggle}
-          title="Summary documents and workbook"
-          tag="Company-prepared, not source evidence"
-          counts={tree.blocks.summary_counts}
+        <section
+          className={`s1-et-sumrow${isOpen("b:summary") ? " s1-et-sumrow--open" : ""}`}
+          aria-label="Summary documents and workbook"
         >
-          {summary.length ? docList(summary, BLOCK_SUMMARY) : <p className="s1-et-none">No summary documents yet.</p>}
-        </Fold>
+          <div className="s1-et-sumrow__head">
+            <button
+              className="s1-et-sumrow__toggle"
+              type="button"
+              aria-expanded={isOpen("b:summary")}
+              aria-label={isOpen("b:summary") ? "Collapse summary documents" : "Expand summary documents"}
+              onClick={() => toggle("b:summary")}
+            >
+              <ChevronRight className="s1-et-caret" aria-hidden />
+            </button>
+            <span className="s1-et-sumrow__icon" aria-hidden><IconDocument size={20} /></span>
+            <span className="s1-et-sumrow__label">
+              <span className="s1-et-sumrow__title">Summary documents and workbook</span>
+              <span className="s1-et-sumrow__tag">Company-prepared, not source evidence</span>
+            </span>
+            <span className="s1-et-sumrow__count">
+              {tree.blocks.summary_counts?.documents ?? summary.length}{" "}
+              {(tree.blocks.summary_counts?.documents ?? summary.length) === 1 ? "document" : "documents"}
+            </span>
+            <span className="s1-et-sumrow__pct">
+              {tree.blocks.summary_counts?.pct_accepted ?? 0}% accepted
+            </span>
+          </div>
+          {isOpen("b:summary") ? (
+            <div className="s1-et-sumrow__body">
+              {summary.length ? docList(summary, BLOCK_SUMMARY) : <p className="s1-et-none">No summary documents yet.</p>}
+            </div>
+          ) : null}
+        </section>
       ) : null}
 
-      {!filtered || unassigned.length ? (
-        <Fold
-          id="b:unassigned"
-          depth={0}
-          open={isOpen("b:unassigned")}
-          onToggle={toggle}
-          title="Unassigned documents"
-          subtitle="System could not identify these"
-          counts={tree.blocks.unassigned_counts}
-        >
-          {unassigned.length ? docList(unassigned, BLOCK_UNASSIGNED) : <p className="s1-et-none">Nothing here.</p>}
-        </Fold>
+      {(!filtered || unassigned.length) && unassigned.length ? (
+        <section className="s1-et-uncard" aria-labelledby="et-uncard-title">
+          <div className="s1-et-uncard__head">
+            <span className="s1-et-uncard__tile" aria-hidden><IconTag size={17} /></span>
+            <h2 id="et-uncard-title" className="s1-et-uncard__title">
+              {unassigned.length} unassigned {unassigned.length === 1 ? "document" : "documents"}
+            </h2>
+          </div>
+          {unassigned.map((doc) => {
+            const id = `${BLOCK_UNASSIGNED}|${doc.document_id}`;
+            const ext = fileExt(doc.file_name);
+            return (
+              <div key={id} className="s1-et-uncard__row">
+                <span aria-hidden className={`s1-et-uncard__tag s1-batch__tag--${ext}`}>{ext.toUpperCase()}</span>
+                <button
+                  className="s1-doc-link s1-et-uncard__name"
+                  type="button"
+                  onClick={() => props.onOpenExtraction(doc.document_id)}
+                >
+                  {doc.file_name}
+                </button>
+                <span className="s1-et-uncard__pill">
+                  <span aria-hidden className="s1-et-uncard__dot" />
+                  No type
+                </span>
+                <ActionMenu
+                  label={`Actions for ${doc.file_name}`}
+                  isOpen={menuId === id}
+                  onOpenChange={(o) => setMenuId(o ? id : null)}
+                  entries={[
+                    { label: "Open document", action: () => props.onOpenExtraction(doc.document_id), icon: <IconDocument size={16} /> },
+                    { label: "Move to…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "move", doc, from: doc.placement_from ?? BLOCK_UNASSIGNED, section: BLOCK_UNASSIGNED }) },
+                  ]}
+                />
+              </div>
+            );
+          })}
+        </section>
       ) : null}
 
       {!filtered || visibleScopes.length || supporting.unassigned.length ? (
-        <Fold id="b:supporting" depth={0} open={isOpen("b:supporting")} onToggle={toggle} title="Supporting evidence">
+        <section className={`s1-et-supp${isOpen("b:supporting") ? "" : " s1-et-supp--collapsed"}`}>
+          <div className="s1-et-supp__head">
+            <button
+              className="s1-et-supp__toggle"
+              type="button"
+              aria-expanded={isOpen("b:supporting")}
+              aria-label={isOpen("b:supporting") ? "Collapse supporting evidence" : "Expand supporting evidence"}
+              onClick={() => toggle("b:supporting")}
+            >
+              <ChevronRight aria-hidden />
+            </button>
+            <h2 className="s1-et-supp__title">Supporting evidence</h2>
+            <div className="s1-et-supp__legend" aria-hidden>
+              <span className="s1-et-supp__leg-item s1-et-supp__leg-item--accepted">Accepted</span>
+              <span className="s1-et-supp__leg-item s1-et-supp__leg-item--review">To review</span>
+              <span className="s1-et-supp__leg-item s1-et-supp__leg-item--blocked">Blocked</span>
+            </div>
+          </div>
+          {isOpen("b:supporting") ? (
+          <>
+          <div className="s1-et-supp__cols" aria-hidden>
+            <span className="s1-et-supp__col-title">Data point</span>
+            <span className="s1-et-supp__col-docs">Documents</span>
+            <span className="s1-et-supp__col-bar" />
+            <span className="s1-et-supp__col-pct">Accepted</span>
+            <span className="s1-et-supp__col-act" />
+          </div>
           {visibleScopes.map((scope) => {
             const id = `scope:${scope.scope}`;
             return (
@@ -353,7 +458,9 @@ export function EvidenceTree(props: EvidenceTreeProps) {
               {supporting.unassigned.length ? docList(supporting.unassigned, SUPPORTING_UNASSIGNED) : <p className="s1-et-none">Nothing here.</p>}
             </Fold>
           ) : null}
-        </Fold>
+          </>
+          ) : null}
+        </section>
       ) : null}
 
       {!filtered && tree.set_aside.length ? (
@@ -482,6 +589,16 @@ function processingText(status: string): string {
   return "Needs a document type";
 }
 
+function fileExt(name: string): string {
+  const parts = name.split(".");
+  if (parts.length < 2) return "file";
+  const ext = parts.pop()!.toLowerCase();
+  if (ext === "jpeg") return "jpg";
+  if (ext === "doc") return "docx";
+  if (ext === "xls") return "xlsx";
+  return ext;
+}
+
 /* =============================== fold row =============================== */
 
 function Fold({
@@ -531,6 +648,7 @@ function Fold({
             </span>
             <span
               className="s1-ws-gr__pct"
+              data-pct={counts.pct_accepted}
               title={`${counts.accepted} of ${counts.values} values accepted${counts.issues ? `, ${counts.issues} with issues` : ""}`}
             >
               {counts.pct_accepted}% accepted
@@ -547,33 +665,6 @@ function Fold({
 }
 
 /* =============================== dialogs =============================== */
-
-/** A window that closes on Escape and puts the cursor in its first field. */
-function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  const box = useRef<HTMLDivElement>(null);
-  const close = useRef(onClose);
-  useEffect(() => {
-    close.current = onClose;
-  });
-  useEffect(() => {
-    box.current?.querySelector<HTMLElement>("input, select, textarea, button:not([disabled])")?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close.current();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
-  return (
-    <div className="s1-modal-scrim">
-      <div className="s1-modal" role="dialog" aria-modal="true" aria-label={title} ref={box}>
-        <div className="s1-modal__head">
-          <h2>{title}</h2>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
 
 function useSubmit(onError: OnError) {
   const [busy, setBusy] = useState(false);
@@ -688,7 +779,7 @@ function MoveDialog({
         >
           {confirming ? "Confirm move" : "Move"}
         </button>
-        <button className="s1-linklike" type="button" onClick={confirming ? () => setConfirming(false) : onCancel}>
+        <button className="s1-button" type="button" onClick={confirming ? () => setConfirming(false) : onCancel}>
           {confirming ? "Back" : "Cancel"}
         </button>
       </div>
@@ -734,11 +825,14 @@ function NewLineDialog({
   // A line this fuel already has at that anchor (a new fuel is checked by the server).
   const exists =
     ready && !isFuel && tree.lines.some((l) => l.category === category && l.level2 === dialog.level2.level2 && l.anchor_id === chosen!.id);
-  const title = isFuel ? `New fuel in ${dialog.category.label}` : `New calculation line in ${dialog.level2.label}`;
+  const title = isFuel ? "New fuel" : `New calculation line in ${dialog.level2.label}`;
+
+  const dialogIcon = isFuel ? <IconPlus size={18} /> : undefined;
+  const dialogContext = isFuel ? `${dialog.scopeLabel} · ${dialog.category.label}` : undefined;
 
   if (anchors.length === 0) {
     return (
-      <Dialog title={title} onClose={onCancel}>
+      <Dialog title={title} icon={dialogIcon} context={dialogContext} onClose={onCancel}>
         <p className="s1-modal__note">
           {mobile ? "Add a vehicle group in Setup first. A line needs a vehicle group to sit on." : "Add a facility in Setup first. A line needs a facility to sit on."}
         </p>
@@ -748,7 +842,7 @@ function NewLineDialog({
               Open Setup
             </button>
           ) : null}
-          <button className="s1-linklike" type="button" onClick={onCancel}>
+          <button className="s1-button" type="button" onClick={onCancel}>
             Cancel
           </button>
         </div>
@@ -757,11 +851,11 @@ function NewLineDialog({
   }
 
   return (
-    <Dialog title={title} onClose={onCancel}>
+    <Dialog title={title} icon={dialogIcon} context={dialogContext} onClose={onCancel}>
       {isFuel ? (
         <label className="s1-modal__field">
           <span>Fuel name</span>
-          <input className="s1-inline-input" value={fuel} onChange={(e) => setFuel(e.target.value)} />
+          <input className="s1-inline-input" value={fuel} placeholder="e.g. Fuel oil" onChange={(e) => setFuel(e.target.value)} />
         </label>
       ) : null}
       {company ? null : (
@@ -778,7 +872,7 @@ function NewLineDialog({
         </label>
       )}
       <label className="s1-modal__field">
-        <span>Line name (optional)</span>
+        <span>Line name <span className="s1-optional">Optional</span></span>
         <input className="s1-inline-input" value={name} placeholder={chosen?.label ?? ""} onChange={(e) => setName(e.target.value)} />
       </label>
       {exists ? (
@@ -814,7 +908,7 @@ function NewLineDialog({
         >
           {isFuel ? "Add fuel" : "Add line"}
         </button>
-        <button className="s1-linklike" type="button" onClick={onCancel}>
+        <button className="s1-button" type="button" onClick={onCancel}>
           Cancel
         </button>
       </div>
@@ -857,7 +951,7 @@ function TextDialog({
         <button className="s1-button s1-button--pri" type="button" disabled={!text || text === initial || busy} onClick={() => void run(() => onSubmit(text))}>
           {action}
         </button>
-        <button className="s1-linklike" type="button" onClick={onCancel}>
+        <button className="s1-button" type="button" onClick={onCancel}>
           Cancel
         </button>
       </div>
@@ -893,7 +987,7 @@ function ConfirmDialog({
         <button className="s1-button s1-button--pri" type="button" disabled={busy} onClick={() => void run(onConfirm)}>
           {action}
         </button>
-        <button className="s1-linklike" type="button" onClick={onCancel}>
+        <button className="s1-button" type="button" onClick={onCancel}>
           Cancel
         </button>
       </div>

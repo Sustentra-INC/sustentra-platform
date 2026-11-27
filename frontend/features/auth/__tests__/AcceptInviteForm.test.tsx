@@ -51,7 +51,7 @@ describe("AcceptInviteForm", () => {
     const onAccepted = vi.fn();
     render(<AcceptInviteForm onAccepted={onAccepted} />);
 
-    await waitFor(() => expect(screen.getByText(/join acme foods/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/activate your account/i)).toBeInTheDocument());
     expect(screen.getByDisplayValue("Sam Lee")).toBeInTheDocument();
     expect(screen.getByDisplayValue("sam@acme.com")).toBeInTheDocument();
 
@@ -68,7 +68,7 @@ describe("AcceptInviteForm", () => {
   it("blocks mismatched passwords before calling the API", async () => {
     validateMock.mockResolvedValueOnce(INVITE);
     render(<AcceptInviteForm />);
-    await waitFor(() => expect(screen.getByText(/join acme foods/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/activate your account/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "a-long-enough-password" } });
     fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "different-password" } });
     fireEvent.click(screen.getByRole("button", { name: /activate account/i }));
@@ -90,10 +90,58 @@ describe("AcceptInviteForm", () => {
       ),
     );
     render(<AcceptInviteForm />);
-    await waitFor(() => expect(screen.getByText(/join acme foods/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/activate your account/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "password12345" } });
     fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "password12345" } });
     fireEvent.click(screen.getByRole("button", { name: /activate account/i }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/too common/i));
+  });
+
+  it("shows the invite chip with the org name", async () => {
+    validateMock.mockResolvedValueOnce(INVITE);
+    render(<AcceptInviteForm />);
+    await waitFor(() => expect(screen.getByText(/activate your account/i)).toBeInTheDocument());
+    expect(screen.getByLabelText(/invitation from acme foods/i)).toBeInTheDocument();
+  });
+
+  it("password checklist ticks when the length rule is met", async () => {
+    validateMock.mockResolvedValueOnce(INVITE);
+    render(<AcceptInviteForm />);
+    await waitFor(() => expect(screen.getByText(/activate your account/i)).toBeInTheDocument());
+
+    const lengthHint = screen.getByText(/at least 12 characters/i);
+    // Before typing: no SVG check icon beside the rule
+    expect(lengthHint.closest("li")?.querySelector("svg")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "a-long-enough-password" },
+    });
+    // After typing 12+ chars: SVG check icon appears inside the same li
+    expect(lengthHint.closest("li")?.querySelector("svg")).not.toBeNull();
+  });
+
+  it("confirms match and mismatch on the confirm field", async () => {
+    validateMock.mockResolvedValueOnce(INVITE);
+    render(<AcceptInviteForm />);
+    await waitFor(() => expect(screen.getByText(/activate your account/i)).toBeInTheDocument());
+
+    // No indicator before the user types in Confirm
+    expect(screen.queryByText(/passwords match/i)).toBeNull();
+    expect(screen.queryByText(/passwords don/i)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "a-long-enough-password" },
+    });
+    fireEvent.change(screen.getByLabelText("Confirm password"), {
+      target: { value: "different-password" },
+    });
+    expect(screen.getByText(/passwords don/i)).toBeInTheDocument();
+    expect(screen.queryByText(/passwords match/i)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Confirm password"), {
+      target: { value: "a-long-enough-password" },
+    });
+    expect(screen.getByText(/passwords match/i)).toBeInTheDocument();
+    expect(screen.queryByText(/passwords don/i)).toBeNull();
   });
 });

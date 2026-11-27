@@ -96,6 +96,8 @@ export interface DashboardFigures {
   documents: number;
   documentsReadable: number;
   blockedDocuments: number;
+  /** The file name of the blocked document when there is exactly one (the dashboard names it). */
+  blockedDocumentName?: string;
   documentsNeedingYou: number;
   valuesReviewed: number;
   valuesToReview: number;
@@ -138,10 +140,12 @@ export function dashboardFigures(input: {
   const values = input.values.filter((v) => !v.withdrawn);
   const rules = input.coverage?.filter((r) => !METHOD_CHECK_RULE_IDS.includes(r.ruleId)) ?? null;
   const calculated = input.calculatedIds ?? [];
+  const blocked = documents.filter((e) => e.processingState === "blocked");
   return {
     documents: documents.length,
     documentsReadable: documents.filter((e) => e.processingState === "extracted").length,
-    blockedDocuments: documents.filter((e) => e.processingState === "blocked").length,
+    blockedDocuments: blocked.length,
+    ...(blocked.length === 1 ? { blockedDocumentName: blocked[0].filename } : {}),
     documentsNeedingYou: documents.filter(
       (e) => e.detectedType == null || (!e.typeConfirmed && e.typeReviewBand === "cannot_determine") || e.facilityState === "unresolved"
     ).length,

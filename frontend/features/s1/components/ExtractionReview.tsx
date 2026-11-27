@@ -1,6 +1,7 @@
 "use client";
 
 import { Highlighter, Plus } from "lucide-react";
+import { IconChevronDown, IconInfo } from "./icons";
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { withRequestsFromAsks } from "../adapters/reviewValueAdapter";
@@ -605,7 +606,10 @@ export function ExtractionReview({
         <div className="s1-xr-values" ref={valuesPane} onKeyDown={onListKey}>
           <div className="s1-xr-vhead">
             <div className="s1-xr-vhead__top">
-              <h2>{nodeHeaderLabel(nodeKey, engagement)}</h2>
+              <div className="s1-xr-vhead__title">
+                <span className="s1-xr-vhead__context">Reviewing</span>
+                <h2>{nodeHeaderLabel(nodeKey, engagement)}</h2>
+              </div>
               {allowAddValue && (selected ?? nodeValues[0]) ? (
                 <button className="s1-xr-addvalue" type="button" aria-expanded={adding} onClick={() => setAdding((v) => !v)}>
                   <Plus aria-hidden /> Add a value
@@ -620,6 +624,7 @@ export function ExtractionReview({
                   className={`s1-xr-filter s1-xr-filter--${k}${filter === k ? " is-on" : ""}`}
                   type="button"
                   aria-pressed={filter === k}
+                  data-empty={counts[k] === 0}
                   onClick={() => setFilter((cur) => (cur === k ? null : k))}
                 >
                   <span className="s1-xr-filter__n">{counts[k]}</span>
@@ -799,7 +804,10 @@ function AddValueForm({
       </div>
       <label className="s1-xr-addform__what">
         <span>What it is</span>
-        <input list="s1-xr-addform-suggestions" value={whatItIs} autoFocus onChange={(e) => setWhatItIs(e.target.value)} placeholder="e.g. Peak demand" />
+        <div className="s1-xr-addform__what-wrap">
+          <input list="s1-xr-addform-suggestions" value={whatItIs} autoFocus onChange={(e) => setWhatItIs(e.target.value)} placeholder="e.g. Peak demand" />
+          <IconChevronDown size={16} aria-hidden />
+        </div>
         <datalist id="s1-xr-addform-suggestions">
           {suggestions.map((s) => (
             <option key={s} value={s} />
@@ -819,13 +827,16 @@ function AddValueForm({
         <input type="number" min={1} max={base.pageCount} value={page} onChange={(e) => setPage(Number(e.target.value))} />
       </label>
       <div className="s1-xr-addform__actions">
-        <button className="s1-button s1-button--pri s1-button--compact" type="submit" disabled={!ready}>
-          Add value
-        </button>
+        <span className="s1-xr-addform__note">
+          <IconInfo size={14} aria-hidden />
+          Recorded as keyed by you; it counts as reviewed.
+        </span>
         <button className="s1-linklike" type="button" onClick={onCancel}>
           Cancel
         </button>
-        <span className="s1-xr-addform__note">Recorded as keyed by you; it counts as reviewed.</span>
+        <button className="s1-button s1-button--pri s1-button--compact" type="submit" disabled={!ready}>
+          Add value
+        </button>
       </div>
     </form>
   );
@@ -857,7 +868,7 @@ function DocumentKey({ values, highlight }: { values: ReviewValue[]; highlight?:
             aria-pressed={highlight.on}
             onClick={highlight.toggle}
           >
-            <Highlighter aria-hidden /> {highlight.on ? "Done highlighting" : "Highlight a figure"}
+            <Highlighter aria-hidden /> {highlight.on ? "Done extracting" : "Extract"}
           </button>
         ) : null}
       </div>
@@ -1102,17 +1113,19 @@ function SourcePane({
   return (
     <div className="s1-xr-src">
       <div className="s1-xr-src-head">
-        <div className="s1-xr-src-fn">{value.filename}</div>
-        <div className="s1-muted">
-          {realPage && value.reviewToken
-            ? placed
-              ? "The uploaded document, the value outlined where it was read."
-              : "The uploaded document. Check the value against it."
-            : realPage
-              ? "Click a highlighted figure to review it."
-              : value.span
-              ? "Opened at the page, value highlighted."
-              : "Highlight unavailable for this value."}
+        <div className="s1-xr-src-info">
+          <div className="s1-xr-src-fn">{value.filename}</div>
+          <div className="s1-muted">
+            {realPage && value.reviewToken
+              ? placed
+                ? "The uploaded document, the value outlined where it was read."
+                : "The uploaded document. Check the value against it."
+              : realPage
+                ? "Click a highlighted figure to review it."
+                : value.span
+                ? "Opened at the page, value highlighted."
+                : "Highlight unavailable for this value."}
+          </div>
         </div>
         {value.sourceKind !== "text" && !realPage ? (
           <div className="s1-xr-pager">

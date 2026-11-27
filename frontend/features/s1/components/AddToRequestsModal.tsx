@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { EngagementConfig } from "../types";
 import type { AskOrigin, RequestType } from "../types/requests";
 import { REQUEST_TYPES } from "../types/requests";
+import { Dialog } from "./Dialog";
+import { Dropdown } from "./Dropdown";
+import { IconSend } from "./icons";
 import { problemText, settle, type MaybePromise } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 import { readablePeriod } from "../utils/formatPeriod";
@@ -65,14 +68,6 @@ export function AddToRequestsModal({
     if (!pending) onCancel();
   };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !pending) onCancel();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel, pending]);
-
   const about: [string, string][] = [
     ["Item", target.itemLabel],
     ["Facility", target.facilityName ?? "Not yet known"],
@@ -109,88 +104,78 @@ export function AddToRequestsModal({
   };
 
   return (
-    <div className="s1-modal-scrim" role="presentation" onClick={close}>
-      <div
-        className="s1-modal s1-atr"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="s1-atr-title"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog
+      size="md"
+      closeOnScrim
+      closeDisabled={pending}
+      icon={<IconSend size={18} />}
+      title="Add to requests"
+      context="Saved to Evidence requests as not yet sent. Nothing is emailed from here."
+      onClose={close}
+    >
+      <dl className="s1-req-add__facts" title={target.headerLine}>
+        {about.map(([k, v]) => (
+          <div key={k} className="s1-req-add__fact">
+            <dt>{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <form
+        className="s1-req-add__form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          add();
+        }}
       >
-        <div className="s1-atr__head">
-          <h2 id="s1-atr-title" className="s1-atr__title">
-            Add to requests
-          </h2>
-          <button className="s1-atr__close" type="button" aria-label="Close" disabled={pending} onClick={close}>
-            ×
-          </button>
+        <div className="s1-req-add__row">
+          <div className="s1-req-add__field">
+            <span id="atr-type-label" className="s1-field-label">
+              Request type
+            </span>
+            <Dropdown
+              value={type}
+              onChange={(v) => setType(v as RequestType)}
+              options={REQUEST_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+              labelId="atr-type-label"
+            />
+          </div>
+          {serverRecordsActor ? null : (
+            <div className="s1-req-add__field">
+              <span id="atr-raisedby-label" className="s1-field-label">
+                Raised by
+              </span>
+              <Dropdown
+                value={raisedBy}
+                onChange={(v) => setRaisedBy(v)}
+                options={(team.length ? team : [signed]).map((m) => ({ value: m.login, label: m.name }))}
+                labelId="atr-raisedby-label"
+              />
+            </div>
+          )}
         </div>
 
-        <dl className="s1-atr__about" title={target.headerLine}>
-          {about.map(([k, v]) => (
-            <div key={k} className="s1-atr__fact">
-              <dt>{k}</dt>
-              <dd>{v}</dd>
-            </div>
-          ))}
-        </dl>
+        <label className="s1-req-add__field">
+          <span className="s1-field-label">What is needed</span>
+          <textarea className="s1-textarea s1-req-add__need" autoFocus rows={3} value={whatIsNeeded} onChange={(e) => setWhatIsNeeded(e.target.value)} />
+        </label>
 
-        <form
-          className="s1-atr__form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            add();
-          }}
-        >
-          <div className="s1-atr__row">
-            <label className="s1-modal__field">
-              <span>Request type</span>
-              <select value={type} onChange={(e) => setType(e.target.value as RequestType)}>
-                {REQUEST_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {serverRecordsActor ? null : (
-              <label className="s1-modal__field">
-                <span>Raised by</span>
-                <select value={raisedBy} onChange={(e) => setRaisedBy(e.target.value)}>
-                  {(team.length ? team : [signed]).map((m) => (
-                    <option key={m.login} value={m.login}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-          </div>
+        {problem ? (
+          <p className="s1-system-banner" role="alert">
+            {problem}
+          </p>
+        ) : null}
 
-          <label className="s1-modal__field">
-            <span>What is needed</span>
-            <textarea autoFocus rows={4} value={whatIsNeeded} onChange={(e) => setWhatIsNeeded(e.target.value)} />
-          </label>
-
-          {problem ? (
-            <p className="s1-system-banner" role="alert">
-              {problem}
-            </p>
-          ) : null}
-
-          <div className="s1-atr__foot">
-            <p className="s1-muted s1-modal__note">Saved to Evidence requests as not yet sent. Nothing is emailed from here.</p>
-            <div className="s1-modal__actions">
-              <button className="s1-button" type="button" disabled={pending} onClick={close}>
-                Cancel
-              </button>
-              <button className="s1-button s1-button--pri" type="submit" disabled={!whatIsNeeded.trim() || pending}>
-                Add to requests
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="s1-modal__actions">
+          <button className="s1-button" type="button" disabled={pending} onClick={close}>
+            Cancel
+          </button>
+          <button className="s1-button s1-button--pri" type="submit" disabled={!whatIsNeeded.trim() || pending}>
+            Add to requests
+          </button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

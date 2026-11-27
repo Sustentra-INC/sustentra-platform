@@ -1,6 +1,6 @@
 /* ==========================================================================
-   Sustentra front-end design tokens — v0.1
-   Owner: Claire Qiu. Date: 27 July 2026.
+   Sustentra front-end design tokens — v0.2
+   Owner: Claire Qiu. Date: 27 July 2026. Updated: 25 Nov 2026 (UI redesign).
 
    These are the only values. Do not introduce a hex code, a font size, or a
    spacing value that is not in this file. If something you are building has no
@@ -16,36 +16,41 @@
 :root {
 
   /* --- Base surfaces and ink ---------------------------------------------
-     Warm neutral. This is a workpaper, and it is read for hours at a time.
+     Cool neutral. Clear, light and fast to scan.
      ---------------------------------------------------------------------- */
 
-  --sf-page:        #FBFAF6;   /* application background */
+  --sf-page:        #F3F4F8;   /* application background */
   --sf-card:        #FFFFFF;   /* cards, tables, panels */
-  --sf-sunken:      #F7F5EF;   /* nested / recessed areas, expanded rows */
-  --sf-inset:       #EFEDE4;   /* code, verbatim statute text, quoted blocks */
+  --sf-sunken:      #F7F8FA;   /* nested / recessed areas, expanded rows */
+  --sf-inset:       #F1F2F6;   /* code, verbatim statute text, quoted blocks */
+  --sf-track:       #E9EAF0;   /* page-tabs track background */
 
-  --ink:            #23231F;   /* primary text */
-  --ink-2:          #57564F;   /* secondary text, values in tables */
-  --ink-3:          #6A6961;   /* labels, metadata, column headers; 4.5:1 or better on every surface */
+  --ink:            #14151A;   /* primary text */
+  --ink-2:          #3B3D46;   /* secondary text, values in tables */
+  --ink-3:          #63666F;   /* labels, metadata, column headers; 4.5:1 or better on every surface */
 
-  --line:           #E0DDD3;   /* default hairline */
-  --line-strong:    #C9C5B8;   /* emphasised border, hover, focus ring base */
+  --line:           #E6E7EC;   /* default hairline */
+  --line-strong:    #DCDEE6;   /* emphasised border, hover, focus ring base */
 
-  /* Brand ink, sampled from the Sustentra wordmark. The deep anchor; the logo
-     and the deepest UI accents draw from it. */
-  --brand-ink:      #282870;
+  /* Brand and action are the same colour: indigo. The nav, logo, primary
+     buttons, links and selected states all draw from it. Active and selected
+     states are always indigo, never black. */
+  --brand-ink:      #282870;   /* primary indigo */
+  --brand-dark:     #282870;   /* text on indigo tint, avatar initials */
+  --on-brand:       #FFFFFF;              /* text directly on the indigo brand panel */
+  --on-brand-muted: rgba(255, 255, 255, 0.78); /* muted text on the brand panel */
 
-  /* --- Interactive accent — "baby blue", matched to the warm paper ----------
-     The one interactive colour: tabs, filters, links, primary buttons, focus.
-     Warm tan ground + soft blue accent is a deliberate complementary pairing,
-     not the generic corporate blue. Kept distinct from the engagement STATES
-     below, which stay semantic. ------------------------------------------- */
-  --accent-solid:   #2C6FB3;   /* solid fills: primary buttons, active tab; white text on it is 5.2:1 */
-  --accent:         #2C6FB3;   /* links, icons, active labels on paper */
-  --accent-strong:  #24588F;   /* hover / pressed on solids */
-  --accent-soft:    #EAF3FC;   /* tint: active chip / selected row */
-  --accent-softer:  #F4F8FD;   /* tint: row hover */
-  --accent-line:    #BFDBF4;   /* border on a tinted surface */
+  /* --- Interactive accent — indigo ----------------------------------------
+     Brand and action are unified. --accent-solid / --accent are the same as
+     --brand-ink so there is one colour for all interactive elements.
+     ---------------------------------------------------------------------- */
+  --accent-solid:   #282870;   /* solid fills: primary buttons, active tab; white text on it is 11.5:1 */
+  --accent:         #282870;   /* links, icons, active labels */
+  --accent-strong:  #1E1E58;   /* hover / pressed on solids */
+  --accent-soft:    #E9E9F6;   /* tint: active chip / selected row */
+  --accent-softer:  #F4F4FB;   /* tint: row hover */
+  --accent-line:    #D4D4EC;   /* border on a tinted surface */
+  --accent-mid:     #8F8FC4;   /* mid indigo: partly counted marks */
 
   /* Motion — one strong ease-out for the whole product. */
   --ease-out:       cubic-bezier(0.23, 1, 0.32, 1);
@@ -95,6 +100,7 @@
   --hl-requested-hover:    rgba(160, 170, 185, 0.55);
   --hl-requested-stroke:   rgba(78, 93, 108, 0.5);
   --hl-missing:            rgba(251, 234, 234, 0.9);
+  --hl-passage:            #FFF1DE;   /* PDF passage highlight background */
   --hl-selected-halo:      rgba(61, 131, 199, 0.18);
   --hl-selected-pulse:     rgba(61, 131, 199, 0.45);
   --hl-selected-pulse-end: rgba(61, 131, 199, 0);
@@ -106,33 +112,33 @@
      ---------------------------------------------------------------------- */
 
   /* Prevents conclusion. The engagement cannot be signed while this exists. */
-  --state-blocking-fg:   #A32D2D;
-  --state-blocking-bg:   #FBEAEA;
-  --state-blocking-line: #E8C4C4;
+  --state-blocking-fg:   #A8281C;
+  --state-blocking-bg:   #FDE7E4;
+  --state-blocking-line: #F6D3CD;
 
   /* Needs action, does not prevent conclusion. */
-  --state-open-fg:       #8A5108;
-  --state-open-bg:       #FAEFDC;
-  --state-open-line:     #EBD5AC;
+  --state-open-fg:       #8A4B12;
+  --state-open-bg:       #FFF1DE;
+  --state-open-line:     #FFE7BF;
 
   /* Done — judgment recorded, request closed, field verified. */
-  --state-resolved-fg:   #3B6D11;
-  --state-resolved-bg:   #EDF4E2;
-  --state-resolved-line: #CFE0B4;
+  --state-resolved-fg:   #19663E;
+  --state-resolved-bg:   #E3F5EA;
+  --state-resolved-line: #C6E8D3;
 
   /* In progress — the system or a human is partway through. Neutral, not good
      or bad. Use for processing states and "under review". */
-  --state-active-fg:     #185FA5;
-  --state-active-bg:     #E8F1FB;
-  --state-active-line:   #C3DAF2;
+  --state-active-fg:     #282870;
+  --state-active-bg:     #E9E9F6;
+  --state-active-line:   #D4D4EC;
 
   /* Checked, and cannot be verified from any client document. This is an
      honest scope boundary, NOT a failure. It must never share a treatment with
      --state-blocking. Applies to `limit`-type rules and to any assertion the
      system does not evaluate. */
-  --state-unverifiable-fg:   #4E5D6C;
-  --state-unverifiable-bg:   #EDF1F4;
-  --state-unverifiable-line: #D0D8DF;
+  --state-unverifiable-fg:   #55585F;
+  --state-unverifiable-bg:   #F1F2F6;
+  --state-unverifiable-line: #DCDEE6;
 
   /* Not applicable under an unmet condition. Deliberately colourless: this is
      an absence of obligation, not a state with weight. Render as muted text on
@@ -140,6 +146,15 @@
   --state-na-fg:         #6A6961;
   --state-na-bg:         transparent;
   --state-na-line:       #D6D3C8;   /* use dashed */
+
+  /* --- Status pill dots ---------------------------------------------------
+     The colored dot inside fully-round status pills. One dot per state.
+     ---------------------------------------------------------------------- */
+  --dot-success:  #1F8A55;   /* resolved / done */
+  --dot-warning:  #E9A23B;   /* open / needs attention */
+  --dot-danger:   #D9473A;   /* blocking */
+  --dot-progress: #282870;   /* active / in progress */
+  --dot-neutral:  #8A8D96;   /* unverifiable / not applicable */
 
 
   /* --- Modifiers ---------------------------------------------------------
@@ -166,24 +181,35 @@
 
 
   /* --- Typography --------------------------------------------------------
-     Four sizes. Two weights. No exceptions.
+     Eight sizes. Four weights. One family. No exceptions.
      ---------------------------------------------------------------------- */
 
-  /* The interface uses one family and three sizes (docs/design_standard.md). */
-  --font-sans: var(--font-plex, "IBM Plex Sans"), "Helvetica Neue", Helvetica, Arial, sans-serif;   /* IBM Plex Sans, self-hosted (app/layout.tsx) */
+  /* System font stack — Inter loaded by next/font and exposed as --font-inter. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", var(--font-inter, "Inter"), "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;   /* client documents only */
 
-  --text-lg:   20px;   /* the page title, and the few key figures a page leads with */
-  --text-md:   14px;   /* everything people read or type; section titles in medium weight */
-  --text-sm:   12px;   /* labels, column headers, metadata, chips, timestamps */
-  --text-xs:   11px;   /* client documents only (the small print of a drawn bill) */
+  /* Type scale — smallest to largest. Use --text-md as the base. */
+  --text-xs:      11px;   /* group labels, badges */
+  --text-sm:      12px;   /* labels, column headers, metadata, chips, timestamps, form fields */
+  --text-base:    13px;   /* secondary body text */
+  --text-md:      14px;   /* body, table cells, buttons, values */
+  --text-title:   16px;   /* card titles */
+  --text-lg:      20px;   /* section titles, key figures */
+  --text-xl:      26px;   /* page titles */
+  --text-display: 30px;   /* key figures, big numbers on the page */
 
-  --weight-regular: 400;
-  --weight-strong:  600;   /* the interface's second weight: titles, labels, emphasis (Plex SemiBold) */
-  --weight-medium:  500;   /* client documents only */
+  --weight-regular: 400;   /* content */
+  --weight-medium:  500;   /* nav, pills, buttons */
+  --weight-strong:  600;   /* titles, labels, emphasis */
+  --weight-bold:    700;   /* page titles, big numbers */
 
   --leading-tight: 1.35;   /* table rows, chips */
   --leading-body:  1.6;    /* prose, explanations, statute text */
+  --leading-prose: 1.5;    /* short definitions in cards */
+  --measure-prose: 72ch;   /* comfortable line length for intro paragraphs */
+
+  --tracking-tight: -0.01em;   /* tight tracking for large value figures */
+  --tracking-title: -0.02em;   /* tight tracking for page-level titles */
 
   /* Field_IDs, rule IDs, Node_IDs and timestamps are identifiers, not content:
      --text-sm in --ink-3, with tabular figures (.s1-num), in the one interface font. */
@@ -209,13 +235,18 @@
      4px base. Dense by design: a reviewer scans hundreds of rows.
      ---------------------------------------------------------------------- */
 
-  --sp-1:   4px;
-  --sp-2:   8px;
-  --sp-3:  12px;
-  --sp-4:  16px;
-  --sp-5:  24px;
-  --sp-6:  32px;
-  --sp-7:  48px;
+  --sp-half:  2px;
+  --sp-1:     4px;
+  --sp-1-5:   6px;
+  --sp-2:     8px;
+  --sp-2-5:  10px;   /* textarea block padding */
+  --sp-3:    12px;
+  --sp-3-5:  14px;
+  --sp-4:    16px;
+  --sp-4-5:  18px;
+  --sp-5:    24px;
+  --sp-6:    32px;
+  --sp-7:    48px;
 
   --row-height-compact: 36px;   /* evidence tables, coverage matrix */
   --row-height-default: 44px;   /* register rows, queue rows */
@@ -228,17 +259,107 @@
   --upload-min-height: 72px;
   --table-min-width: 1180px;
   --viewport-full-height: 100vh;
-  --state-chip-min-height: 24px;
+  --state-chip-min-height: 22px;
   --state-chip-radius: 999px;
-  --state-chip-padding-block: 3px;
+  --state-chip-padding-block: 2px;
+  --badge-h: 20px;
   --tooltip-min-width: 180px;
   --tooltip-max-width: 280px;
-  --icon-button-size: 32px;
+  --icon-button-size: 34px;
+  --icon-btn-quiet-size: 28px;
+  --button-h: 36px;
+  --button-h-sm: 32px;
+  --button-h-lg: 48px;
   --compact-button-padding-block: 2px;
   --hidden-input-size: 1px;
   --provisional-marker-padding-block: 1px;
   --underline-offset: 2px;
   --menu-min-width: 190px;
+  --menu-w:         250px;   /* floating action menu panel width */
+  --menu-item-h:     34px;   /* action menu item row height */
+  --menu-sep-my:      5px;   /* separator vertical margin */
+  --modal-sm-w:     460px;   /* small dialog panel width */
+  --modal-md-w:     520px;   /* medium dialog panel width (two-column forms) */
+  --req-add-fact-min:  136px; /* Add to requests: narrowest fact column (3 fit at 520px, 1 on a phone) */
+  --req-add-field-min: 190px; /* Add to requests: narrowest field column before it stacks */
+  --button-h-md:     40px;   /* dialog footer button height */
+  --dlg-icon-box:    22px;   /* small dialog leading icon box */
+  --rail-min-w:      72px;   /* collapsed icon rail (document view) */
+  --xr-nav-w:       240px;   /* document navigator width */
+  --xr-addform-page-col: 70px;   /* page-number field width in the add-value form */
+  --xr-nav-min:     200px;   /* navigator minimum (flex clamp lower bound) */
+  --xr-panel-w:     380px;   /* review panel width */
+  --dd-hlform-w:    296px;   /* extract pick popover width */
+
+  /* Supporting schedule: page actions and coverage chart */
+  --page-action-h:    42px;   /* page header action buttons */
+  --card-pad-lg:      20px;   /* large card padding */
+  --sch-cov-basis:   520px;   /* coverage card flex basis */
+  --sch-ids-basis:   320px;   /* source identifiers card flex basis */
+  --sch-chart-h:     236px;   /* coverage bar plot height */
+  --sch-bar-max-h:   190px;   /* tallest bar */
+  --sch-bar-min-h:    10px;   /* shortest visible bar */
+  --sch-col-max:     120px;   /* bar column cap when there are few periods */
+  --sch-stripe:        6px;   /* diagonal stripe width on bars */
+  --sch-agree-bar-h:   5px;   /* identifier agreement bar height */
+  --sch-table-min-w: 760px;   /* accepted values table minimum width */
+  --sch-col-days:     70px;   /* accepted values: days column */
+  --sch-col-doc:     150px;   /* accepted values: document column */
+  --sch-col-period-min: 150px; /* accepted values: service period floor */
+  --table-row-h-lg:   48px;   /* roomy table row */
+  --avatar-sm:        26px;   /* small person avatar in table rows */
+  --avatar-md:        34px;   /* person avatar in activity rows */
+  --actlog-w:        468px;   /* activity log drawer width */
+  --actlog-badge:     18px;   /* kind badge on an activity avatar */
+  --toprow-h:           44px; /* top row: Ask Sustentra and ⋯ buttons */
+  --toprow-search-basis: 280px; /* top row: search field basis (top bar 2/3) */
+  --ai-panel-w:        404px; /* Ask Sustentra panel width */
+  --search-panel-w:    640px; /* search panel width (capped to the viewport) */
+  --search-panel-top:  12vh;  /* search panel distance from the top */
+  --search-input-h:     52px; /* search panel input row */
+  --search-body-max-h:  60vh; /* search panel results, scroll past this */
+  --search-option-h:    40px; /* search panel result row (minimum) */
+  --search-option-h-2:  52px; /* search panel two-line result row (documents) */
+  --search-icon:        18px; /* page icon in a search result */
+  --toprow-search-icon: 17px; /* magnifier in the top-row search field */
+  --key-pad-y:           2px; /* key hint chip (⌘K, Esc) */
+  --key-pad-x:           7px;
+  --r-key:               6px;
+
+  /* Dashboard: exact design px (the general --sp-4 to --sp-7 render larger, see audit 00) */
+  --dash-stack-gap:      20px; /* between header, stage cards and the focus / queue row */
+  --dash-gap:            16px; /* between cards; button side padding */
+  --dash-gap-lg:         24px; /* details card: column gap and side padding */
+  --dash-chip-h:         26px; /* Details toggle height */
+  --dash-detail-col-min: 170px; /* details card: narrowest column */
+  --dash-ring:           64px; /* review progress ring */
+  --dash-stripe:          5px; /* opinion bar stripe width */
+  --dash-focus-basis:   340px; /* focus card flex basis */
+  --dash-queue-basis:   420px; /* queue card flex basis */
+  --dash-focus-pad:      22px; /* focus card padding and row gap */
+  --dash-tag-h:          28px; /* focus card tag height */
+  --dash-doc-w:          96px; /* focus card document thumbnail */
+  --dash-doc-h:         120px;
+  --dash-doc-gap:         7px; /* thumbnail: gap between lines */
+  --dash-doc-line:        5px; /* thumbnail: line height */
+  --dash-doc-badge:      34px; /* thumbnail: round mark */
+  --dash-tile:           40px; /* queue count tile */
+  --dash-row-min-h:      56px; /* queue row */
+
+  /* Coverage & requests: header review card */
+  --cr-review-icon-box: 22px; /* leading icon box */
+  --chip-action-h:      34px; /* action chip inside a card link */
+  --cr-rule-icon-col:   22px; /* checks list: icon column */
+  --cr-search-w:       200px; /* requests search field */
+  --cr-req-table-min-w: 720px; /* requests table: scrolls inside its card below this */
+  --cr-req-col-state:  124px; /* requests: state pill column (fits "Requested · #NN") */
+  --cr-req-col-actions: 112px; /* requests: Resolve + row menu */
+  --sch-row-action-h:   30px; /* small row action buttons */
+  --cr-resolve-field-basis: 260px; /* resolve panel field flex basis */
+  --xr-panel-min:   320px;   /* review panel minimum (flex clamp lower bound) */
+  --cv-sheet-max-w: 760px;   /* spreadsheet card max width */
+  --cv-doc-max-w:   620px;   /* PDF / drawn document card max width */
+  --icon-btn-lg:     44px;   /* large icon button: rail items + expand toggle */
   --empty-content-max-width: 720px;
   --queue-width: 190px;
   --source-pane-width: 300px;
@@ -247,11 +368,68 @@
   --source-pane-max-width: 380px;
   --csv-preview-min-width: 520px;
   --glossary-table-max-width: 900px;
+  --glossary-card-min:   260px; /* glossary term card minimum width (2 fit at 900px) */
+  --glossary-title-basis: 420px; /* glossary title block before the tabs wrap under it */
+  --glossary-dot:          8px; /* glossary term group dot */
+  --glossary-state-col-name:    210px; /* glossary states: enumeration column */
+  --glossary-state-col-applies: 190px; /* glossary states: attaches-to column */
   --field-value-max-height: 8rem;
   --source-snippet-max-height: 7.5rem;
   --selected-source-max-height: 8rem;
   --source-notice-max-width: 280px;
+  /* Setup: exact design px (rem would render at 82%; --sp-4 to --sp-7 render larger) */
+  --setup-col-left-min: 170px;      /* setup two-col: left column min basis */
+  --setup-col-left-max: 220px;      /* setup two-col: left column max width */
+  --setup-col-right-min: 420px;     /* setup two-col: right column min basis */
+  --setup-grid-col-min: 280px;      /* setup field grid: column min */
+  --setup-stack-gap: 20px;          /* between header, tabs and cards */
+  --setup-card-pad: 24px;           /* card padding */
+  --setup-card-gap-x: 40px;         /* section title column to fields */
+  --setup-grid-gap-x: 16px;         /* between field columns */
+  --fac-name-min: 140px;            /* facility name input: min flex basis before wrapping */
+  --fac-addr-min: 240px;            /* facility address wrapper: min flex basis before wrapping */
+  --contact-fields-min: 360px;      /* contact panel: fields area min flex basis */
+  --contact-field-min: 160px;       /* contact panel: field grid column min */
+  --team-card-min: 176px;           /* team member card: grid column min */
+  --avatar-team: 38px;              /* team member avatar diameter */
+  /* In-scope data points table */
+  --dot-sm: 7px;              /* small inline dot: scope chip, evidence indicator */
+  --chip-count-h: 34px;       /* in-scope count chip height */
+  --chip-bar-w: 60px;         /* in-scope count chip progress bar width */
+  --points-table-min: 680px;  /* in-scope table minimum scrollable width */
+  --points-col-toggle: 64px;  /* in-scope toggle column width */
+  --points-col-scope: 110px;  /* scope chip column width */
+  --points-col-req: 120px;    /* requirement level column width */
+  --points-col-ev: 110px;     /* evidence / checked-by column width */
+  --scope2-chip-bg: #E3F1FB;  /* scope 2 category chip background (sky tint) */
+  --scope2-chip-fg: #165A8A;  /* scope 2 category chip text */
+  /* Upload modal */
+  --modal-upload-w: 1120px;        /* large upload modal max width */
+  --modal-upload-h: 800px;         /* large upload modal max height */
+  --shadow-modal: 0 32px 80px rgba(10, 12, 40, 0.35);   /* large modal drop shadow */
+  --shadow-dz-icon: 0 6px 18px rgba(40, 40, 112, 0.14); /* drop zone icon tile shadow */
+  --r-drop: 20px;                  /* drop zone and right panel corner radius */
+  --eml-chip-bg: #F3E5F7;          /* EML file type chip background (purple tint) */
+  --eml-chip-fg: #6B2A80;          /* EML file type chip text (purple) */
+  --chip-h-file: 24px;             /* file type chip height */
+  --updlg-icon-tile: 44px;         /* upload modal header icon tile size */
+  --updlg-close-size: 38px;        /* upload modal close button size */
+  --updlg-dz-icon: 64px;           /* upload modal drop zone icon tile size */
+  --updlg-empty-bars-max: 240px;   /* upload modal empty state bars max width */
+  --updlg-pad-x: 28px;             /* upload modal side padding; drop zone padding */
+  --updlg-pad-y: 22px;             /* upload modal body top and bottom */
+  --updlg-pad-top: 24px;           /* upload modal header top and right */
+  --updlg-gap: 16px;               /* upload modal header gap; footer top and bottom */
+  /* Upload processing UI */
+  --upq-thumb-w: 40px;    /* file thumbnail / batch tag width */
+  --upq-tag-h: 16px;      /* small file-type tag height inside thumbnails */
+  --upq-stage-h: 34px;    /* upload progress stage pill height */
+  --batch-row-min-h: 54px;/* batch file row minimum height */
+  --batch-mini-w: 90px;   /* batch row inline mini progress bar width */
+  --upq-spin-border: 2px; /* spinner ring border width */
+  --disabled-opacity: 0.45; /* withdrawn / disabled content */
   --hairline-width: 1px;
+  --ring-width: 1.5px;
   --active-row-marker-width: 3px;
   --nav-current-marker-width: 2px;
   --shadow-subtle: none;
@@ -259,21 +437,142 @@
 
   /* --- Shape -------------------------------------------------------------- */
 
+  /* Legacy radius tokens — kept so existing components don't break. */
   --radius-chip:  6px;
   --radius-card: 10px;
   --radius-input: 6px;
+
+  /* New radius scale (use these for new components). */
+  --r-xs:      4px;    /* checkboxes */
+  --r-sm:      8px;    /* small chips */
+  --r-seg:     9px;    /* segmented-control segments */
+  --r-md:     10px;    /* avatars, small buttons, standard inputs */
+  --r-ctl:    11px;    /* buttons, search fields, nav items */
+  --r-card-sm: 12px;   /* small cards, large auth inputs */
+  --r-card:   14px;    /* cards */
+  --r-pop:    16px;    /* floating dropdown panels */
+  --r-lg:     18px;    /* large cards, modals */
+  --r-xl:     24px;    /* auth brand panel */
+  --r-pill:  999px;    /* pills, badges */
+
+  --auth-form-w: 400px; /* activate / sign-in form inner max-width */
+  /* Auth pages: exact design px (the general --sp-4 to --sp-7 render larger, see audit 00) */
+  --auth-brand-basis:  520px; /* brand panel flex basis */
+  --auth-brand-min:    360px; /* brand panel never narrower than this beside the form */
+  --auth-form-basis:   460px; /* form side flex basis */
+  --auth-brand-pad-y:   56px; /* brand panel top and bottom padding */
+  --auth-pad-lg:        48px; /* brand panel sides; form side top and bottom */
+  --auth-pad-md:        32px; /* stacked (narrow) layout: top and bottom */
+  --auth-pad:           24px; /* form side left and right */
+  --auth-brand-gap:     36px; /* logo to brand copy */
+  --auth-logo-w:       560px; /* brand logo, capped to the panel */
+  --auth-logo-w-sm:    140px; /* brand logo in the stacked layout */
+  --auth-stack-gap:     28px; /* heading, banner, form */
+  --auth-form-gap:      18px; /* sign-in form rows */
+  --auth-form-gap-sm:   16px; /* activate form rows; hint columns */
+  --auth-form-gap-lg:   20px; /* verify form rows */
+  --auth-chip-h:        30px; /* invitation chip */
+  --auth-dot:           22px; /* chip avatar, ready banner mark */
+  --auth-icon-tile:     56px; /* verify screen icon tile */
+  --auth-otp-h:         60px; /* one code box */
+  --auth-check:         18px; /* keep me signed in checkbox */
+
+  --input-h:    40px;   /* standard form input height */
+  --input-h-md: 44px;   /* medium form input — setup and similar screens */
+  --input-h-lg: 46px;   /* large auth input height */
+  --panel-max-h: 320px;  /* floating dropdown panel max height */
+  --drp-panel-w: 640px;  /* date range picker panel width */
+  --checkbox-size: 16px;  /* native checkbox width/height */
 
   --border-hairline: 1px solid var(--line);
   --border-strong:   1px solid var(--line-strong);
   --border-dashed:   1px dashed var(--line-strong);
 
-  /* No shadows. No gradients. This is a document, not an interface. */
+  /* --- Shadows ------------------------------------------------------------ */
+
+  --shadow-card:        0 1px 2px rgba(20, 21, 26, 0.05);
+  --shadow-card-soft:   0 1px 2px rgba(20, 21, 26, 0.04);
+  --shadow-primary:     0 4px 12px rgba(40, 40, 112, 0.25);
+  --shadow-primary-lg:  0 6px 16px rgba(40, 40, 112, 0.28);
+  --shadow-focus:       0 0 0 3px #D4D4EC;
+  --shadow-inset:       inset 0 0 0 1px #DCDEE6;
+  --shadow-pop:         0 0 0 1px rgba(20, 21, 26, 0.06), 0 24px 48px rgba(20, 21, 26, 0.16);
+  --shadow-doc:         0 8px 24px rgba(20, 21, 26, 0.10);   /* document viewer card (sheet, PDF) */
+  --shadow-tab-active:  0 -1px 0 var(--line), 1px 0 0 var(--line), -1px 0 0 var(--line);   /* active sheet tab border illusion */
+  --shadow-subtle: none;   /* kept for backward compat */
 
 
   /* --- Focus and interaction ---------------------------------------------- */
 
-  --focus-ring: 2px solid var(--state-active-fg);
+  --focus-ring: 2px solid var(--accent);
   --focus-offset: 2px;
+
+  /* --- Evidence tree columns and layout --------------------------------------- */
+
+  --et-col-docs:      110px;
+  --et-col-bar:       170px;
+  --et-col-pct:       124px;   /* fits "97.1% accepted" on one line */
+  --ws-stack-gap:      16px;   /* Evidence: between header, toolbar and cards (exact px) */
+  --et-col-act:        40px;
+  --et-col-doc-mid:   280px;
+  --et-indent-step:    22px;
+  --et-tag-w:          34px;
+  --et-tag-h:          18px;
+  --et-node-min-h:     44px;
+  --et-doc-row-min-h:  46px;
+  --et-legend-dot:     10px;
+  --et-toggle-size:    28px;
+  --et-toggle-icon:    16px;
+
+  /* --- Evidence workspace: by-type groups and document table --- */
+  --ws-gr-head-h:     54px;
+  --ws-gr-toggle:     28px;
+  --ws-gr-col-n:     100px;
+  --ws-gr-col-bar:   150px;
+  --ws-gr-col-pct:    46px;
+  --ws-gr-bar-h:       8px;
+  --ws-gr-chip-h:     22px;
+  --ws-gr-chip-dot:    7px;
+  --ws-doc-row-h:     58px;
+  --ws-doc-tag-w:     38px;
+  --ws-doc-menu-col:  56px;
+  --ws-doc-menu-btn:  32px;
+  --ws-gr-warn-bg:    #FFF8EE;
+  --ws-gr-warn-line:  #F5DDB5;
+
+  /* --- Evidence tree: summary row and unassigned card --- */
+  --et-sumrow-icon-box:   22px;
+  --et-sumrow-toggle:     28px;
+  --et-sumrow-tag-h:      22px;
+  --et-sumrow-pct-w:     110px;
+  --et-sumrow-row-gap:    14px;
+  --et-sumrow-pad-y:      14px;
+  --et-sumrow-pad-x:      18px;
+  --et-uncard-tile:       34px;
+  --et-uncard-tile-bg:  #FFE9C7;    /* amber tile, stronger than state-open-bg */
+  --et-uncard-tag-w:      40px;
+  --et-uncard-tag-h:      20px;
+  --et-uncard-pill-h:     24px;
+  --et-uncard-dot:         6px;
+  --et-uncard-row-gap:    12px;
+  --et-uncard-row-pad:    10px;
+  --et-uncard-btn:        32px;
+  --et-uncard-btn-line: #E8D3B3;    /* inset amber ring on the action button */
+}
+
+
+/* ==========================================================================
+   Base document styles — travel with the tokens, applied globally.
+   ========================================================================== */
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  color: var(--ink);
+  background: var(--sf-page);
 }
 
 

@@ -34,7 +34,8 @@ async function signInThroughOtp(props: Partial<Parameters<typeof LoginFlow>[0]> 
   render(<LoginFlow realm={{ kind: "org", slug: "acme" }} onAuthenticated={onAuthenticated} {...props} />);
   fillCredentials();
   fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
-  fireEvent.change(await screen.findByLabelText(/6-digit code/i), { target: { value: "123456" } });
+  const digit1 = await screen.findByLabelText("Digit 1");
+  fireEvent.paste(digit1, { clipboardData: { getData: () => "123456" } });
   await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
   return onAuthenticated.mock.calls[0][0] as string;
 }
@@ -71,9 +72,9 @@ describe("LoginFlow", () => {
     fillCredentials();
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
-    const otp = await screen.findByLabelText(/6-digit code/i);
+    const digit1 = await screen.findByLabelText("Digit 1");
     expect(verifyMock).not.toHaveBeenCalled();
-    fireEvent.change(otp, { target: { value: "123456" } });
+    fireEvent.paste(digit1, { clipboardData: { getData: () => "123456" } });
 
     await waitFor(() => expect(verifyMock).toHaveBeenCalledWith("ch_1", "123456"));
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith("/"));
@@ -104,6 +105,6 @@ describe("LoginFlow", () => {
 describe("LoginFlow notices", () => {
   it("shows the account-ready message after an accepted invite (FE-003)", () => {
     render(<LoginFlow realm={{ kind: "org", slug: "acme" }} initialNotice={ACCOUNT_READY_NOTICE} />);
-    expect(screen.getByText("Your account is ready — sign in.")).toBeInTheDocument();
+    expect(screen.getByText("Your account is ready. Sign in to continue.")).toBeInTheDocument();
   });
 });

@@ -188,8 +188,8 @@ describe("the panel", () => {
         ndjson([{ t: "done", stop_reason: "end_turn", content: [{ type: "text", text: `**One** value is missing [val:${value.id}].` }] }])
       )
     );
-    render(<AssistantWidget page="evidence" assistant={connection} />);
-    fireEvent.click(screen.getByRole("button", { name: "Open Sustentra assistant" }));
+    const { rerender } = render(<AssistantWidget page="evidence" assistant={connection} open={false} />);
+    rerender(<AssistantWidget page="evidence" assistant={connection} open />); // opened from the top row's Ask Sustentra button
     fireEvent.change(screen.getByLabelText("Ask the assistant"), { target: { value: "What's missing?" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
@@ -202,8 +202,8 @@ describe("the panel", () => {
 
   it("falls back to the built-in help when the assistant is not connected", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: "The assistant is not connected yet." }, { status: 503 })));
-    render(<AssistantWidget page="results" assistant={connection} />);
-    fireEvent.click(screen.getByRole("button", { name: "Open Sustentra assistant" }));
+    const { rerender } = render(<AssistantWidget page="results" assistant={connection} open={false} />);
+    rerender(<AssistantWidget page="results" assistant={connection} open />); // opened from the top row's Ask Sustentra button
     fireEvent.change(screen.getByLabelText("Ask the assistant"), { target: { value: "Explain materiality" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(screen.getByText("Built-in help")).toBeInTheDocument());

@@ -27,10 +27,13 @@ describe("EngagementPicker (S1-BE-002)", () => {
   it("lists the org's engagements and switches between them", () => {
     const onSelect = vi.fn();
     render(<EngagementPicker engagements={LIST} selectedId="e1" onSelect={onSelect} onCreate={vi.fn()} />);
-    const select = screen.getByLabelText("Working on");
-    expect(select).toHaveValue("e1");
+    const trigger = screen.getByLabelText("Working on");
+    expect(trigger).toHaveTextContent("FY2024 — Acme Foods");
+    // Open the dropdown panel
+    fireEvent.click(trigger);
     expect(screen.getByRole("option", { name: "FY2024 — Acme Foods" })).toBeInTheDocument();
-    fireEvent.change(select, { target: { value: "e2" } });
+    // Select the second option
+    fireEvent.click(screen.getByRole("option", { name: "FY2025" }));
     expect(onSelect).toHaveBeenCalledWith("e2");
   });
 

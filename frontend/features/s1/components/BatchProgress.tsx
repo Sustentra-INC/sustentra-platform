@@ -11,7 +11,15 @@ export const BATCH_STATUS: Record<BatchDocumentStatus, { label: string; role: st
   not_started: { label: "Not started", role: "open" },
 };
 
-const ORDER: BatchDocumentStatus[] = ["queued", "reading", "done", "partial", "failed", "not_started"];
+const TOTAL_ORDER: BatchDocumentStatus[] = ["queued", "reading", "done", "partial", "failed", "not_started"];
+const TOTAL_LABELS: Record<BatchDocumentStatus, string> = {
+  queued: "waiting",
+  reading: "reading",
+  done: "done",
+  partial: "partly read",
+  failed: "couldn't read",
+  not_started: "not started",
+};
 
 /** What a large PDF's reading has got through; nothing for a document read whole. */
 function progressText(item: BatchDocument): string | null {
@@ -20,10 +28,26 @@ function progressText(item: BatchDocument): string | null {
   return `${chunks.completed} of ${chunks.total} parts read${chunks.failed ? `, ${chunks.failed} failed` : ""}`;
 }
 
+/** Fraction complete (0–100) for a file being read in chunks; null otherwise. */
+function chunkPct(item: BatchDocument): number | null {
+  if (item.status !== "reading" || !item.chunks || item.chunks.total === 0) return null;
+  return Math.round((item.chunks.completed / item.chunks.total) * 100);
+}
+
+/** Normalise a filename extension to a chip key. */
+function batchFileExt(name: string): string {
+  const parts = name.split(".");
+  if (parts.length < 2) return "file";
+  const ext = parts.pop()!.toLowerCase();
+  if (ext === "jpeg") return "jpg";
+  if (ext === "doc") return "docx";
+  if (ext === "xls") return "xlsx";
+  return ext;
+}
+
 /**
- * One compact table for a batch of uploads: a row per file with where its reading stands, what it
- * was recognised as, how many records were found and, when it was not read in full, why. A file
- * that has been read opens its extraction review. The API supplies every count and sentence.
+ * Card rows for a batch of uploads: one row per file showing its reading status, recognised
+ * type, and an inline progress bar while it is being read. The API supplies every sentence.
  */
 export function BatchProgress({
   batch,
@@ -32,57 +56,69 @@ export function BatchProgress({
   batch: BatchView;
   onOpenDocument: (documentId: string) => void;
 }) {
-  const totals = ORDER.filter((status) => batch.totals[status] > 0);
+  const totals = TOTAL_ORDER
+    .filter((k) => batch.totals[k] > 0)
+    .map((k) => `${batch.totals[k]} ${TOTAL_LABELS[k]}`)
+    .join(" · ");
+
   return (
-    <div className="s1-batch" aria-live="polite">
-      <div className="s1-batch__head">
-        <strong>Reading this batch</strong>
-        <span className="s1-muted">
-          {totals.map((status) => `${batch.totals[status]} ${BATCH_STATUS[status].label.toLowerCase()}`).join(" · ")}
-        </span>
+    <div className="s1-batch" aria-live="polite" role="table">
+      <div role="row" className="s1-sr-only">
+        <span role="columnheader">File</span>
+        <span role="columnheader">Status</span>
+        <span role="columnheader">Type</span>
+        <span role="columnheader">Records</span>
       </div>
-      <table className="s1-batch__table">
-        <thead>
-          <tr>
-            <th scope="col">File</th>
-            <th scope="col">Status</th>
-            <th scope="col">Type</th>
-            <th scope="col" className="s1-batch__num">
-              Records
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {batch.items.map((item) => {
-            const status = BATCH_STATUS[item.status];
-            const progress = progressText(item);
-            const type = item.canonical_type_id
-              ? resolveCanonicalTypeDisplayName({ canonical_type_id: item.canonical_type_id })
-              : null;
-            const note = item.halt_reason;
-            return (
-              <tr key={item.document_id} className="s1-batch__row">
-                <td className="s1-batch__file">
-                  {item.status === "queued" || item.status === "reading" ? (
-                    item.file_name
-                  ) : (
-                    <button className="s1-linklike" type="button" onClick={() => onOpenDocument(item.document_id)}>
-                      {item.file_name}
-                    </button>
-                  )}
-                  {note ? <span className="s1-batch__note">{note}</span> : null}
-                </td>
-                <td>
-                  <span className={`s1-state s1-state--${status.role}`}>{status.label}</span>
-                  {progress ? <span className="s1-muted s1-batch__progress">{progress}</span> : null}
-                </td>
-                <td className="s1-muted">{type ?? "–"}</td>
-                <td className="s1-batch__num">{item.status === "queued" || item.status === "reading" || item.status === "not_started" ? "–" : item.records_found}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      {batch.items.map((item) => {
+        const status = BATCH_STATUS[item.status];
+        const type = item.canonical_type_id
+          ? resolveCanonicalTypeDisplayName({ canonical_type_id: item.canonical_type_id })
+          : null;
+        const progress = progressText(item);
+        const pct = chunkPct(item);
+        const ext = batchFileExt(item.file_name);
+        const canOpen = item.status !== "queued" && item.status !== "reading";
+        const subLine = [type, progress].filter(Boolean).join(" · ") || null;
+        const isFinished = item.status === "done" || item.status === "partial" || item.status === "failed";
+        const recordsDisplay = isFinished ? String(item.records_found) : "–";
+
+        return (
+          <div key={item.document_id} className="s1-batch__row" role="row">
+            <span aria-hidden="true" className={`s1-batch__tag s1-batch__tag--${ext}`}>
+              {ext.toUpperCase()}
+            </span>
+            <span className="s1-batch__info">
+              {canOpen ? (
+                <button
+                  className="s1-linklike s1-batch__name"
+                  type="button"
+                  onClick={() => onOpenDocument(item.document_id)}
+                >
+                  {item.file_name}
+                </button>
+              ) : (
+                <span className="s1-batch__name">{item.file_name}</span>
+              )}
+              {subLine ? <span className="s1-batch__sub">{subLine}</span> : null}
+              {item.halt_reason ? (
+                <span className={`s1-batch__halt s1-batch__halt--${item.status === "failed" ? "blocking" : "open"}`}>
+                  {item.halt_reason}
+                </span>
+              ) : null}
+            </span>
+            <span className="s1-batch__records" aria-label={`${recordsDisplay} records`}>
+              {recordsDisplay}
+            </span>
+            {item.status === "reading" ? (
+              <span className="s1-batch__mini" aria-hidden="true">
+                <span className="s1-batch__mini-fill" style={{ width: `${pct ?? 0}%` }} />
+              </span>
+            ) : null}
+            <span className={`s1-state s1-state--${status.role}`}>{status.label}</span>
+          </div>
+        );
+      })}
+      {totals ? <div className="s1-batch__totals">{totals}</div> : null}
     </div>
   );
 }

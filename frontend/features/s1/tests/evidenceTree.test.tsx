@@ -175,8 +175,7 @@ describe("the Evidence tree", () => {
   it("shows the three blocks, the scopes, document counts and % accepted", async () => {
     render(<Harness />);
     expect(await screen.findByText("Summary documents and workbook")).toBeInTheDocument();
-    expect(screen.getByText("Unassigned documents")).toBeInTheDocument();
-    expect(screen.getByText("System could not identify these")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /unassigned document/ })).toBeInTheDocument();
     expect(screen.getByText("Supporting evidence")).toBeInTheDocument();
     expect(screen.getByText("Scope 1")).toBeInTheDocument();
     expect(screen.getByText("Scope 2")).toBeInTheDocument();
@@ -222,6 +221,29 @@ describe("the Evidence tree", () => {
     await expandAll();
     fireEvent.click(screen.getByRole("button", { name: "Open supporting schedule for Natural gas · Kent" }));
     expect(onOpenSchedule).toHaveBeenCalledWith(KENT.key);
+  });
+
+  it("draws the Move and New fuel dialogs as it always has", async () => {
+    // Generated ids depend on test order; swap them for a fixed placeholder before snapshotting.
+    const stable = (node: Element | null) => {
+      const copy = node!.cloneNode(true) as Element;
+      for (const el of [copy, ...Array.from(copy.querySelectorAll("*"))]) {
+        for (const attr of Array.from(el.attributes)) {
+          if (/_r_[a-z0-9]+_/.test(attr.value)) el.setAttribute(attr.name, attr.value.replace(/_r_[a-z0-9]+_/g, "ID"));
+        }
+      }
+      return copy;
+    };
+    render(<Harness />);
+    await expandAll();
+    const row = screen.getByRole("button", { name: "feb.pdf" }).closest(".s1-et-doc") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Actions for feb.pdf" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to…" }));
+    const move = screen.getByRole("dialog", { name: "Move to…" });
+    expect(stable(move.closest(".s1-modal-scrim"))).toMatchSnapshot("move dialog");
+    fireEvent.click(within(move).getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New fuel" })[0]);
+    expect(stable(screen.getByRole("dialog", { name: "New fuel" }).closest(".s1-modal-scrim"))).toMatchSnapshot("new fuel dialog");
   });
 
   it("asks before a move that changes a calculation, then saves it once", async () => {
@@ -331,7 +353,9 @@ describe("the Evidence tree", () => {
     }
     render(<Filtered />);
     await screen.findByText("Supporting evidence");
-    fireEvent.change(screen.getByLabelText("Facility"), { target: { value: "FAC-PL02" } });
+    // Open the Dropdown and select a facility option
+    fireEvent.click(screen.getByLabelText("Facility"));
+    fireEvent.click(screen.getByRole("option", { name: "Plant 2" }));
     expect(await screen.findByRole("button", { name: "mar.pdf" })).toBeInTheDocument();
     expect(mocks.calls.some((c) => c.path === `${TREE_PATH}?facility_id=FAC-PL02`)).toBe(true);
     expect(screen.queryByRole("button", { name: "feb.pdf" })).toBeNull();
@@ -376,7 +400,7 @@ describe("the Evidence tree", () => {
     render(<Harness onSaveLines={onSaveLines} />);
     await expandAll();
     fireEvent.click(screen.getByRole("button", { name: "New fuel" }));
-    const dialog = screen.getByRole("dialog", { name: "New fuel in Mobile combustion" });
+    const dialog = screen.getByRole("dialog", { name: "New fuel" });
     fireEvent.change(within(dialog).getByLabelText("Fuel name"), { target: { value: "Biodiesel" } });
     fireEvent.change(within(dialog).getByLabelText("Vehicle group"), { target: { value: "vg-fleet-a" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Add fuel" }));
@@ -603,26 +627,35 @@ describe("the supporting schedule", () => {
     expect(screen.getByText("Supporting schedule")).toBeInTheDocument();
     expect(screen.getByText("Reporting year 2025")).toBeInTheDocument();
     const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
-    expect(crumbs).toHaveTextContent("Evidence › Scope 1 › Stationary combustion › Natural gas › Kent");
-    // Every status has a word, not only a colour.
-    const legend = screen.getByRole("list", { name: "Legend" });
-    for (const word of ["Counted", "Counted in part", "Not reviewed", "No document"]) expect(within(legend).getByText(word)).toBeInTheDocument();
+    expect(crumbs).toHaveTextContent("Evidence/Scope 1/Stationary combustion/Natural gas/Kent");
+    // Every status has a word, not only a colour: a count pill per state present, and the period type.
+    const counts = screen.getByRole("list", { name: "Coverage counts" });
+    for (const word of ["1 counted", "1 in part", "1 not reviewed", "1 no document"]) expect(within(counts).getByText(word)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Coverage Monthly" })).toBeInTheDocument();
+    const chart = screen.getByRole("group", { name: /^Coverage by month, Jan to Apr 2025\./ });
+    expect(chart).toHaveAccessibleName(expect.stringContaining("Jan 2025: Counted, 120 therm"));
+    expect(chart).toHaveAccessibleName(expect.stringContaining("Apr 2025: No document"));
     expect(screen.getByText("11 of 11 documents")).toBeInTheDocument();
     expect(screen.getByText("2 of 3 documents")).toBeInTheDocument();
     expect(screen.getByText("Activity quantity: fuel quantity combusted")).toBeInTheDocument();
     expect(screen.getByText("Matched by: Service address in Setup")).toBeInTheDocument();
-    expect(screen.getByText(/M\. Osei accepted 120 therm from jan\.pdf, page 2/)).toBeInTheDocument();
+    const history = screen.getByRole("region", { name: "Line history" });
+    const [event] = within(history).getAllByRole("listitem");
+    expect(event).toHaveTextContent("M. Osei accepted 120 therm from jan.pdf, page 2");
+    expect(within(event).getByText("M. Osei").tagName).toBe("STRONG");
   });
 
   it("shows one row per record with units, MM/DD/YY dates, server day counts and a word for each unreviewed row", async () => {
     renderSchedule();
     await screen.findByRole("heading", { name: "Kent · Natural gas" });
     const table = screen.getByRole("table");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Date", "Activity quantity", "Heat content (HHV)", "Saved by", "Document"]);
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Date", "Days", "Activity quantity", "Heat content (HHV)", "Saved by", "Document"]);
     const [, jan, feb, mar] = within(table).getAllByRole("row");
-    expect(jan).toHaveTextContent("01/01/25 – 01/31/25 · 31 days");
+    expect(within(jan).getAllByRole("cell")[0]).toHaveTextContent("01/01/25 – 01/31/25");
+    expect(within(jan).getAllByRole("cell")[1]).toHaveTextContent("31 days");
     expect(jan).toHaveTextContent("120 therm");
-    expect(jan).toHaveTextContent("Saved by M. Osei · 03/02/25");
+    // Who reviewed it, labelled as the design standard says (section 7).
+    expect(jan).toHaveTextContent("Accepted by M. Osei · 03/02/25");
     expect(jan).not.toHaveTextContent("Not reviewed");
     expect(feb).toHaveTextContent("Not reviewed");
     expect(feb).toHaveTextContent("1.03 MMBtu/Mcf");
@@ -661,6 +694,7 @@ describe("the supporting schedule", () => {
     expect(row).not.toHaveTextContent("2,019");
     expect(row).toHaveTextContent("1.0312345 MMBtu/Mcf");
     expect(row).toHaveTextContent("Edited");
+    expect(row).toHaveTextContent("Corrected by M. Osei · 03/02/25");
     expect(row).not.toHaveClass("s1-sch-row--pending");
     expect(within(table).getByRole("columnheader", { name: "Vehicle type" })).not.toHaveClass("s1-num");
     expect(within(table).getByRole("columnheader", { name: "Model year" })).toHaveClass("s1-num");
@@ -680,13 +714,13 @@ describe("the supporting schedule", () => {
     expect(props.onOpenDocument).toHaveBeenCalledWith("mar");
   });
 
-  it("keeps a short identifier summary on one line, so it never breaks mid-word", async () => {
+  it("keeps an identifier summary on one line, never breaking mid-word, with the full value on hover", async () => {
     renderSchedule();
     const toggle = await screen.findByRole("button", { name: /Meter number/ });
     const value = toggle.querySelector(".s1-sch-ids__value") as HTMLElement;
-    expect(value.className).toContain("s1-sch-ids__value--short");
+    expect(value).toHaveAttribute("title", "2 values");
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
-    expect(css).toMatch(/\.s1-sch-ids__value--short\s*\{[^}]*white-space:\s*nowrap/);
+    expect(css).toMatch(/\.s1-sch-ids__value\s*\{[^}]*white-space:\s*nowrap[^}]*text-overflow:\s*ellipsis/);
     expect(css).not.toMatch(/\.s1-sch-ids__value\s*\{[^}]*overflow-wrap:\s*anywhere/);
   });
 
@@ -715,7 +749,7 @@ describe("the supporting schedule", () => {
 
   it("goes back to Evidence and to the calculation line through its callbacks", async () => {
     const props = renderSchedule();
-    fireEvent.click(await screen.findByRole("button", { name: "Open calculation line ›" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open calculation line" }));
     expect(props.onOpenCalculationLine).toHaveBeenCalledWith(KENT.key);
     fireEvent.click(screen.getAllByRole("button", { name: /Back to Evidence|^Evidence$/ })[0]);
     expect(props.onBack).toHaveBeenCalled();
@@ -741,7 +775,7 @@ describe("the supporting schedule", () => {
     await screen.findByRole("heading", { name: "Kent · Natural gas" });
     expect(screen.getAllByText("Waiting on: Fuel type")).toHaveLength(2); // the month and the row
     expect(screen.getByText("Not calculated yet: values on this line are waiting for review.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Open calculation line ›" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open calculation line" })).toBeNull();
     expect(props.onOpenCalculationLine).not.toHaveBeenCalled();
   });
 

@@ -30,7 +30,7 @@ describe("frontend contract checks", () => {
     }
   });
 
-  // docs/design_standard.md, section 2: one family, three sizes, two weights.
+  // docs/design_standard.md, section 2: one family, eight sizes, four weights.
   it("lets the context bar wrap at phone width, so the header never scrolls the page sideways", () => {
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
     const phone = css.slice(css.indexOf("Context bar tidies up on a phone"));
@@ -41,30 +41,34 @@ describe("frontend contract checks", () => {
     expect(block).toMatch(/\.s1-ctx__user\s*\{[^}]*flex-wrap:\s*wrap/);
   });
 
-  it("keeps the interface to one font family, three text sizes and two weights", () => {
+  it("keeps the interface to one font family, eight text sizes and four weights", () => {
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
     const values = (property: string) => [...css.matchAll(new RegExp(`${property}:\\s*([^;}]+)`, "g"))].map((m) => m[1].trim());
 
-    const sizes = new Set(["var(--text-sm)", "var(--text-md)", "var(--text-lg)", "inherit", "82%" /* the root scale */]);
+    const sizes = new Set([
+      "var(--text-xs)", "var(--text-sm)", "var(--text-base)", "var(--text-md)",
+      "var(--text-title)", "var(--text-lg)", "var(--text-xl)", "var(--text-display)",
+      "inherit", "82%" /* the root scale */,
+    ]);
     expect(values("font-size").filter((v) => !sizes.has(v))).toEqual([]);
     expect(css.match(/font-size:\s*82%/g)).toHaveLength(1);
-    const weights = new Set(["var(--weight-regular)", "var(--weight-strong)", "inherit"]);
+    const weights = new Set(["var(--weight-regular)", "var(--weight-medium)", "var(--weight-strong)", "var(--weight-bold)", "inherit"]);
     expect(values("font-weight").filter((v) => !weights.has(v))).toEqual([]);
     const families = new Set(["var(--font-sans)", "inherit"]);
     expect(values("font-family").filter((v) => !families.has(v))).toEqual([]);
     expect(css).not.toContain("--font-mono");
-    expect(css).not.toContain("--text-xs");
   });
 
-  // docs/design_standard.md, section 2: the text in a field is smaller than the section title above it.
-  it("sets the text in form fields at the small size", () => {
+  // docs/design_standard.md, section 2: standard inputs use --text-md, search inner input uses --text-base.
+  it("sets the text in form fields at an allowed size", () => {
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
     const field = /(^|[\s,>+~(])(input|select|textarea)\b|[-_](input|select)\b/;
+    const allowed = new Set(["var(--text-sm)", "var(--text-md)", "var(--text-base)", "var(--text-title)", "inherit"]);
     const offenders: string[] = [];
     postcss.parse(css).walkRules((rule) => {
       if (!field.test(rule.selector)) return;
       rule.walkDecls("font-size", (d) => {
-        if (d.value !== "var(--text-sm)" && d.value !== "inherit") offenders.push(`${rule.selector} { font-size: ${d.value} }`);
+        if (!allowed.has(d.value)) offenders.push(`${rule.selector} { font-size: ${d.value} }`);
       });
     });
     expect(offenders).toEqual([]);

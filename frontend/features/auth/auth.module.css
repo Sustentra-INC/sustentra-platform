@@ -1,88 +1,196 @@
-/* Scoped styles for the MVP auth pages. Uses the global design tokens from
-   sustentra-tokens.css; CSS-Module-scoped so it never leaks into the workpaper. */
+/* Scoped styles for the auth pages. Uses the global design tokens from
+   sustentra-tokens.css; CSS-Module-scoped so it never leaks into the workpaper.
+   Sizes come from the --auth-* tokens (exact design px): the general --sp-4 to --sp-7
+   render larger than their names say. The only raw lengths left are the breakpoints,
+   which a media query cannot read from a custom property. */
 
-.page {
+/* ---- Split layout (MVP-273) ---------------------------------------------- */
+
+.authLayout {
   min-height: 100vh;
+  display: flex;
+  flex-wrap: nowrap;
+  background: var(--sf-card);
+  color: var(--ink);
+}
+
+.brandPanel {
+  /* Shares the row with the form at every desktop width: it shrinks, it never wraps into a block. */
+  flex: 1 1 var(--auth-brand-basis);
+  min-width: var(--auth-brand-min);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--auth-brand-gap);
+  padding: var(--auth-brand-pad-y) var(--auth-pad-lg);
+  margin: var(--sp-3);
+  border-radius: var(--r-xl);
+  background: var(--accent-solid);
+  color: var(--on-brand);
+  text-align: center;
+}
+
+/* Mobile: stacks as a shorter logo band above the form */
+@media (max-width: 899px) {
+  .authLayout {
+    flex-wrap: wrap;
+    align-content: flex-start; /* the logo band is as tall as its content, the form follows it */
+  }
+
+  .brandPanel {
+    flex-basis: 100%;
+    min-width: 0;
+    justify-content: center;
+    gap: var(--auth-form-gap-sm);
+    padding: var(--auth-pad-md) var(--auth-pad);
+    margin: var(--sp-2) var(--sp-2) 0;
+    border-radius: var(--r-lg);
+  }
+}
+
+.brandLogo {
+  width: min(var(--auth-logo-w), 100%);
+  height: auto;
+  display: block;
+  /* FLAG: no white logo in /public — dark PNG inverted with CSS filter */
+  filter: brightness(0) invert(1);
+}
+
+@media (max-width: 899px) {
+  .brandLogo {
+    width: var(--auth-logo-w-sm);
+  }
+}
+
+.brandCopy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2-5);
+  max-width: 100%;
+}
+
+@media (max-width: 899px) {
+  .brandCopy {
+    display: none; /* hide on mobile to keep form above the fold */
+  }
+}
+
+.brandHeadline {
+  margin: 0;
+  /* Scales with the window so the line stays on one row in a narrow panel. */
+  font-size: clamp(var(--text-md), 1.45vw, var(--text-lg));
+  line-height: 1.25;
+  font-weight: var(--weight-strong);
+  letter-spacing: var(--tracking-tight);
+  white-space: nowrap;
+}
+
+.brandTagline {
+  margin: 0;
+  font-size: clamp(var(--text-sm), 1.1vw, var(--text-title));
+  color: var(--on-brand-muted);
+  white-space: nowrap;
+}
+
+.formSide {
+  flex: 1.2 1 var(--auth-form-basis);
+  min-width: 0;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem;
-  background: var(--sf-page, #fbfaf6);
+  padding: var(--auth-pad-lg) var(--auth-pad);
 }
 
-.card {
+@media (max-width: 899px) {
+  .formSide {
+    padding: var(--auth-pad-md) var(--auth-pad);
+  }
+}
+
+.formInner {
   width: 100%;
-  max-width: 24rem;
-  background: var(--sf-card, #ffffff);
-  border: 0.0625rem solid var(--border-default, #e4e2da);
-  border-radius: var(--radius-card, 0.75rem);
-  box-shadow: 0 0.5rem 1.75rem rgba(40, 40, 112, 0.08);
-  padding: 2rem 1.75rem;
+  max-width: var(--auth-form-w);
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: var(--auth-stack-gap);
 }
 
-.logo {
-  height: 1.5rem;
-  width: auto;
-  align-self: flex-start;
+/* Field labels on the auth pages: one step larger and in the primary ink, as designed. */
+.formInner :global(.s1-field-label) {
+  font-size: var(--text-base);
+  color: var(--ink);
 }
+
+/* ---- Form heading --------------------------------------------------------- */
 
 .heading {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--sp-2);
 }
 
 .title {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 650;
-  color: var(--ink, #1b1b17);
-  letter-spacing: -0.01em;
+  font-size: var(--text-display);       /* 30px */
+  line-height: 1.15;
+  font-weight: var(--weight-bold);      /* 700 */
+  color: var(--ink);
+  letter-spacing: -0.02em;
 }
 
 .subtitle {
   margin: 0;
-  font-size: 0.85rem;
-  color: var(--ink-3, #6b6b63);
+  font-size: var(--text-md);
+  color: var(--ink-3);
 }
+
+/* ---- Shared form primitives (used by all auth forms) --------------------- */
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--auth-form-gap-sm);         /* base for all auth forms */
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: var(--sp-1-5);                   /* 6px */
 }
 
 .label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--ink-2, #3a3a33);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+  color: var(--ink-3);
 }
 
 .input {
   width: 100%;
   box-sizing: border-box;
   font: inherit;
-  font-size: 0.95rem;
-  color: var(--ink, #1b1b17);
-  background: var(--sf-page, #fbfaf6);
-  border: 0.0625rem solid var(--border-default, #d7d5cc);
-  border-radius: var(--radius-input, 0.5rem);
-  padding: 0.6rem 0.7rem;
+  font-size: var(--text-md);
+  color: var(--ink);
+  background: var(--sf-card);
+  border: var(--border-strong);
+  border-radius: var(--r-card-sm);
+  padding: 0 var(--sp-3-5);
+  height: var(--input-h-lg);
 }
 
-.input:focus {
-  outline: none;
-  border-color: var(--accent, #2c6fb3);
-  box-shadow: 0 0 0 0.1875rem var(--accent-line, #bfdbf4);
+.input:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+.input:disabled,
+.input[readonly] {
+  background: var(--sf-sunken);
+  color: var(--ink-3);
+  cursor: not-allowed;
 }
 
 .inputWrap {
@@ -97,96 +205,96 @@
 
 .reveal {
   position: absolute;
-  right: 0.5rem;
+  right: var(--sp-2);
   font: inherit;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--accent, #2c6fb3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+  color: var(--accent);
   background: none;
   border: 0;
   cursor: pointer;
-  padding: 0.25rem 0.4rem;
+  padding: var(--sp-1) var(--sp-1-5);
 }
 
 .otp {
   width: 100%;
   box-sizing: border-box;
   font: inherit;
-  font-size: 1.5rem;
+  font-size: var(--text-display);
   letter-spacing: 0.5rem;
   text-align: center;
-  color: var(--ink, #1b1b17);
-  background: var(--sf-page, #fbfaf6);
-  border: 0.0625rem solid var(--border-default, #d7d5cc);
-  border-radius: var(--radius-input, 0.5rem);
-  padding: 0.7rem;
+  color: var(--ink);
+  background: var(--sf-card);
+  border: var(--border-strong);
+  border-radius: var(--r-card-sm);
+  padding: var(--sp-3);
   font-variant-numeric: tabular-nums;
 }
 
-.otp:focus {
-  outline: none;
-  border-color: var(--accent, #2c6fb3);
-  box-shadow: 0 0 0 0.1875rem var(--accent-line, #bfdbf4);
+.otp:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
 }
 
 .button {
   font: inherit;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #ffffff;
-  background: var(--accent, #2c6fb3);
+  font-size: var(--text-md);
+  font-weight: var(--weight-strong);
+  color: var(--sf-card);
+  background: var(--accent-solid);
   border: 0;
-  border-radius: var(--radius-input, 0.5rem);
-  padding: 0.65rem 1rem;
+  border-radius: var(--r-card-sm);
+  padding: 0 var(--sp-4);
+  height: var(--button-h-lg);
   cursor: pointer;
 }
 
 .button:hover {
-  background: var(--accent-strong, #255d97);
+  background: var(--accent-strong);
 }
 
 .button:disabled {
-  opacity: 0.6;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .error {
-  font-size: 0.85rem;
-  color: var(--state-blocking-fg, #a12d2d);
-  background: var(--state-blocking-bg, #fbeceb);
-  border: 0.0625rem solid var(--state-blocking-line, #f0cfcd);
-  border-radius: var(--radius-input, 0.5rem);
-  padding: 0.5rem 0.65rem;
+  font-size: var(--text-sm);
+  color: var(--state-blocking-fg);
+  background: var(--state-blocking-bg);
+  border: var(--hairline-width) solid var(--state-blocking-line);
+  border-radius: var(--r-card-sm);
+  padding: var(--sp-2) var(--sp-3);
   margin: 0;
 }
 
 .notice {
-  font-size: 0.85rem;
-  color: var(--ink-2, #3a3a33);
+  font-size: var(--text-sm);
+  color: var(--ink-2);
   margin: 0;
 }
 
 .hints {
   margin: 0;
   padding-left: 1.1rem;
-  font-size: 0.78rem;
-  color: var(--ink-3, #6b6b63);
+  font-size: var(--text-sm);
+  color: var(--ink-3);
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: var(--sp-half);
 }
 
 .row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--sp-2);
 }
 
 .link {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--accent, #2c6fb3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-strong);
+  color: var(--accent);
   background: none;
   border: 0;
   cursor: pointer;
@@ -199,14 +307,312 @@
 }
 
 .muted {
-  font-size: 0.82rem;
-  color: var(--ink-3, #6b6b63);
+  font-size: var(--text-sm);
+  color: var(--ink-3);
 }
 
 .footer {
   display: flex;
   justify-content: center;
-  gap: 0.35rem;
-  font-size: 0.82rem;
-  color: var(--ink-3, #6b6b63);
+  gap: var(--sp-1-5);
+  font-size: var(--text-sm);
+  color: var(--ink-3);
+}
+
+/* ---- Sign-in form restyling (MVP-274) ------------------------------------- */
+
+.signinForm {
+  gap: var(--auth-form-gap);
+}
+
+/* Password label row: label on left, Forgot password link on right */
+.labelRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+/* Password field wrapper — mimics s1-input--lg but holds input + Show button */
+.pwWrap {
+  display: flex;
+  align-items: center;
+  height: var(--input-h-lg);            /* 46px */
+  padding: 0 var(--sp-1-5) 0 var(--sp-3-5); /* 0 6px 0 14px */
+  border: var(--border-strong);
+  border-radius: var(--r-card-sm);      /* 12px */
+  background: var(--sf-card);
+  box-sizing: border-box;
+}
+
+.pwWrap:has(:focus-visible) {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+.pwInput {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-title);         /* 16px — matches s1-input--lg */
+  color: var(--ink);
+  outline: none;
+}
+
+.pwShow {
+  flex: none;
+  height: var(--icon-button-size);
+  padding: 0 var(--sp-2-5);
+  border: 0;
+  border-radius: var(--r-sm);           /* 8px */
+  background: var(--sf-inset);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--text-sm);            /* 12px */
+  font-weight: var(--weight-strong);    /* 600 */
+  cursor: pointer;
+}
+
+/* Keep me signed in checkbox + label */
+.keepSignedIn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2-5);                   /* 10px */
+  font-size: var(--text-md);            /* 14px */
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.keepSignedIn :global(.s1-checkbox) {
+  width: var(--auth-check);
+  height: var(--auth-check);
+  margin: 0;
+  flex: none;
+}
+
+/* Sign-in link beside the password label */
+.labelRow .link {
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+
+/* Full-width submit button override */
+.submitBtn {
+  width: 100%;
+}
+
+/* ---- Activate account form (MVP-275) -------------------------------------- */
+
+/* Invite chip: shown above the title on the activate screen */
+.inviteChip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);                      /* 8px */
+  height: var(--auth-chip-h);
+  margin-bottom: var(--sp-2);            /* the title sits 16px under the chip */
+  padding: 0 var(--sp-3) 0 var(--sp-1);
+  border-radius: var(--r-pill);
+  background: var(--sf-inset);
+  font-size: var(--text-base);           /* 13px */
+  font-weight: var(--weight-medium);     /* 500 */
+  color: var(--ink-2);
+}
+
+/* Circle avatar inside the chip showing org initials */
+.inviteAvatar {
+  width: var(--auth-dot);
+  height: var(--auth-dot);
+  flex: none;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--brand-dark);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);            /* 11px — nearest to design's 10px */
+  font-weight: var(--weight-bold);       /* 700 */
+}
+
+/* Live password rules checklist */
+.hintList {
+  list-style: none;
+  margin: var(--sp-1) 0 0;              /* 4px top gap from input */
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1-5) var(--auth-form-gap-sm);
+}
+
+.hintItem {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);                    /* 6px */
+  font-size: var(--text-base);           /* 13px */
+  color: var(--ink-3);
+}
+
+.hintMet {
+  color: var(--state-resolved-fg);
+}
+
+/* Confirm password match/mismatch indicator */
+.confirmFeedback {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);                    /* 6px */
+  font-size: var(--text-base);
+}
+
+.confirmMatch {
+  color: var(--state-resolved-fg);
+}
+
+.confirmMismatch {
+  color: var(--state-blocking-fg);
+}
+
+/* Extra top gap before the activate submit button */
+.activateSubmit {
+  margin-top: var(--sp-1);              /* 4px */
+}
+
+/* ---- Verification code screen (MVP-276) ----------------------------------- */
+
+/* Icon tile above the title; the title starts one stack gap below it. */
+.iconTile {
+  width: var(--auth-icon-tile);
+  height: var(--auth-icon-tile);
+  margin-bottom: calc(var(--auth-stack-gap) - var(--sp-2));
+  border-radius: var(--r-pop);
+  background: var(--accent-soft);
+  color: var(--brand-dark);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+}
+
+/* Bold email address in the OTP subtitle */
+.emailHighlight {
+  color: var(--ink);
+  font-weight: var(--weight-strong);
+}
+
+/* Tighter gap for the verify form */
+.verifyForm {
+  gap: var(--auth-form-gap-lg);
+}
+
+/* OTP multi-box fieldset */
+.otpFieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.otpLegend {
+  margin-bottom: var(--sp-2-5);
+  padding: 0;
+}
+
+.otpGrid {
+  display: grid;
+  grid-template-columns: repeat(var(--otp-cols, 6), minmax(0, 1fr));
+  gap: var(--sp-2-5); /* 10px */
+}
+
+.otpBox {
+  height: var(--auth-otp-h);
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  border: var(--border-strong);
+  border-radius: var(--r-card-sm);
+  background: var(--sf-card);
+  font: inherit;
+  font-size: var(--text-xl); /* 26px */
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+  outline: none;
+}
+
+.otpBox:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+.otpBoxEmpty {
+  background: var(--sf-sunken);
+}
+
+.otpBoxError,
+.otpBoxError:focus-visible {
+  border-color: var(--state-blocking-fg);
+}
+
+/* Resend / change-account links row */
+.otpLinks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: var(--text-md);
+  color: var(--ink-3);
+}
+
+.otpResend {
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-md);
+  font-weight: var(--weight-strong);
+  cursor: pointer;
+}
+
+.otpResend:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.otpDiffAccount {
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+/* Account-ready banner shown on the sign-in screen after activation */
+.readyBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2-5); /* 10px */
+  padding: var(--sp-3) var(--sp-3-5); /* 12px 14px */
+  border-radius: var(--r-card-sm);
+  background: var(--state-resolved-bg);
+  color: var(--state-resolved-fg);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
+/* 22px green dot with check icon */
+.readyDot {
+  width: var(--auth-dot);
+  height: var(--auth-dot);
+  flex: none;
+  border-radius: var(--r-pill);
+  background: var(--dot-success);
+  color: var(--sf-card);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }

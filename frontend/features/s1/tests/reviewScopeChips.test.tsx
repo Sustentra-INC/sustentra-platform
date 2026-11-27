@@ -105,7 +105,7 @@ describe("a backend electricity card's chips", () => {
     expect(chips(account)).toEqual([["General", "s1-xr-scope s1-xr-scope--general"]]);
 
     fireEvent.click(within(quantity as HTMLElement).getByRole("button", { name: "Request" }));
-    const about = document.querySelector(".s1-atr__about")!;
+    const about = document.querySelector(".s1-req-add__facts")!;
     expect(about.getAttribute("title")).toContain(" · Scope 2 · location- and market-based · ");
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toContain("Scope 2 · location- and market-based");
   });
