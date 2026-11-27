@@ -398,6 +398,7 @@
 
   --focus-ring: 2px solid var(--accent);
   --focus-offset: 2px;
+  --field-focus-shadow: 0 0 0 4px #E8E9FB;   /* outer glow on focused inputs */
 
   /* --- Evidence tree columns and layout --------------------------------------- */
 

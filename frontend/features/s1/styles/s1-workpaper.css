@@ -4082,22 +4082,68 @@ textarea.s1-req-message { width: 100%; box-sizing: border-box; font-variant-nume
 }
 .s1-xr-addvalue:hover, .s1-xr-addvalue[aria-expanded="true"] { background: var(--accent-softer); border-color: var(--accent-solid); }
 .s1-xr-addvalue svg { width: 0.9rem; height: 0.9rem; }
+/* ============================================================
+   TICKET 11: Add a value form
+   ============================================================ */
 .s1-xr-addform {
-  display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2) var(--sp-3); padding: var(--sp-3);
-  background: var(--accent-softer); border: var(--hairline-width) solid var(--accent-line); border-radius: var(--radius-card);
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) var(--xr-addform-page-col);
+  row-gap: var(--sp-3); column-gap: var(--sp-2);
+  padding: var(--sp-4);
+  border-radius: var(--r-pop);
+  background: var(--accent-softer);
+  box-shadow: inset 0 0 0 var(--hairline-width) var(--accent-line);
   transition: opacity 0.18s var(--ease-out), transform 0.18s var(--ease-out);
 }
-@starting-style { .s1-xr-addform { opacity: 0; transform: translateY(-0.25rem); } }
+@starting-style { .s1-xr-addform { opacity: 0; transform: translateY(calc(var(--sp-1) * -1)); } }
+/* Full-width rows */
 .s1-xr-addform__title, .s1-xr-addform__what, .s1-xr-addform__actions { grid-column: 1 / -1; }
-.s1-xr-addform__title { font-size: var(--text-sm); color: var(--ink-2); overflow-wrap: anywhere; }
-.s1-xr-addform label { display: flex; flex-direction: column; gap: 0.125rem; font-size: var(--text-sm); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
-.s1-xr-addform input {
-  box-sizing: border-box; width: 100%; min-width: 0; height: 2.25rem; padding: 0 var(--sp-2); font: inherit; font-size: var(--text-sm); text-transform: none; letter-spacing: normal;
-  color: var(--ink); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input);
+/* Title */
+.s1-xr-addform__title { font-size: var(--text-title); font-weight: var(--weight-bold); color: var(--ink); overflow-wrap: anywhere; }
+/* Labels: flex column, label text on top, field below */
+.s1-xr-addform label { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink); text-transform: none; letter-spacing: 0; }
+/* What-it-is input: inset ring, focus shows accent ring + outer glow */
+.s1-xr-addform__what input {
+  box-sizing: border-box; width: 100%; min-width: 0;
+  height: var(--button-h-md); padding: 0 var(--sp-3);
+  font: inherit; font-size: var(--text-md); color: var(--ink);
+  background: var(--sf-card); border: none; border-radius: var(--r-ctl);
+  box-shadow: inset 0 0 0 var(--hairline-width) var(--line-strong);
+  outline: none; text-transform: none; letter-spacing: normal;
 }
-.s1-xr-addform input:focus { outline: var(--focus-ring); outline-offset: 0; border-color: var(--accent-solid); }
-.s1-xr-addform__actions { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
-.s1-xr-addform__note { font-size: var(--text-sm); color: var(--ink-3); }
+.s1-xr-addform__what input:focus {
+  box-shadow: inset 0 0 0 var(--nav-current-marker-width) var(--accent-solid), var(--field-focus-shadow);
+}
+/* Value / Unit / Page inputs */
+.s1-xr-addform > label:not(.s1-xr-addform__what) input {
+  box-sizing: border-box; width: 100%; min-width: 0;
+  height: var(--button-h-md); padding: 0 var(--sp-3);
+  font: inherit; font-size: var(--text-md); color: var(--ink);
+  background: var(--sf-card); border: none; border-radius: var(--r-md);
+  box-shadow: inset 0 0 0 var(--hairline-width) var(--line-strong);
+  outline: none; text-transform: none; letter-spacing: normal;
+}
+.s1-xr-addform > label:not(.s1-xr-addform__what) input:focus {
+  box-shadow: inset 0 0 0 var(--nav-current-marker-width) var(--accent-solid), var(--field-focus-shadow);
+}
+/* Actions footer: note on its own line above, then Cancel + Add */
+.s1-xr-addform__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--sp-2); }
+.s1-xr-addform__note { flex: 0 0 100%; order: -1; font-size: var(--text-sm); color: var(--ink-2); }
+/* Cancel: s1-linklike restyled as secondary button, no TSX change */
+.s1-xr-addform__actions .s1-linklike {
+  order: 1; display: inline-flex; align-items: center; justify-content: center;
+  height: var(--button-h); padding: 0 var(--sp-3-5);
+  border: none; border-radius: var(--r-md);
+  background: var(--sf-card); box-shadow: inset 0 0 0 var(--hairline-width) var(--line-strong);
+  color: var(--ink); font: inherit; font-size: var(--text-base); font-weight: var(--weight-strong);
+  cursor: pointer; text-decoration: none;
+}
+.s1-xr-addform__actions .s1-linklike:hover { background: var(--sf-inset); text-decoration: none; }
+/* Add value button: standard height, override compact */
+.s1-xr-addform__actions .s1-button--pri {
+  order: 2; height: var(--button-h); border-radius: var(--r-md);
+  font-size: var(--text-base); padding: 0 var(--sp-3-5);
+}
 
 .s1-xr-pages, .s1-pv__pages { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
 .s1-pv__pages { padding: var(--sp-2) 0; font-size: var(--text-sm); color: var(--ink-3); }
