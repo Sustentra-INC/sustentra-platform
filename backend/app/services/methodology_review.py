@@ -45,8 +45,19 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.services import workpaper_item_service
+from backend.app.services import review_field, workpaper_item_service
 from backend.app.services.request_service import Actor, stamp
+from backend.app.services.review_field import (  # the state machine lives in review_field; these names stay here
+    ACCEPTED as ACCEPTED,
+    EDITED as EDITED,
+    HISTORY_ROOM as HISTORY_ROOM,
+    MAX_HISTORY as MAX_HISTORY,
+    MAX_REASON as MAX_REASON,
+    MAX_VALUE_HISTORY as MAX_VALUE_HISTORY,
+    PENDING as PENDING,
+    REJECTED as REJECTED,
+    STATUSES as STATUSES,
+)
 from backend.app.services.workpaper_item_service import MAX_PAYLOAD_BYTES, payload_size
 
 KIND = "methodology"
@@ -68,18 +79,12 @@ GASES = (("co2", "CO2"), ("ch4", "CH4"), ("n2o", "N2O"), ("hfcs", "HFCs"), ("pfc
          ("nf3", "NF3"))
 GAS_IDS = tuple(f"gas:{key}" for key, _ in GASES)
 
-PENDING, ACCEPTED, EDITED, REJECTED = "pending", "accepted", "edited", "rejected"
-STATUSES = (PENDING, ACCEPTED, EDITED, REJECTED)
 
 MAX_TEXT = 2000
-MAX_REASON = 500
 BOUNDARY_SENTENCE_ID = "boundary:entities"
 MAX_APPLIES_TO = 200  # a GWP set's use note, in the company's words
 MAX_FACILITIES = 20
 MAX_FACILITY = 100
-MAX_HISTORY = 50
-MAX_VALUE_HISTORY = 10  # earlier decisions kept per field, for Revert
-HISTORY_ROOM = 10 * 1024  # bytes of event history a record keeps room for before it keeps earlier decisions
 MAX_ADDED_ROWS = 200
 MAX_SUGGESTION_BYTES = 8 * 1024  # the value and its quote; the per-entry quotes have their own room
 MAX_ENTRIES = 10  # entries in an entry_list value
@@ -139,12 +144,9 @@ ROW_GROUPS: dict[str, tuple[str, str, str, str]] = {
 _ROW_ID = re.compile(r"^(entity|factor:scope1|factor:scope2|gwp):[a-z0-9]{4,32}$")
 
 
-class MethodologyConflict(Exception):
-    """The field's state does not allow the action (HTTP 409). The message is for the user."""
-
-
-class MethodologyInvalid(ValueError):
-    """The action's input does not fit the field (HTTP 422). The message is for the user."""
+# The refusals are the state machine's own (review_field), under the names this page has always used.
+MethodologyConflict = review_field.ReviewConflict  # the state does not allow the action (HTTP 409)
+MethodologyInvalid = review_field.ReviewInvalid  # the input does not fit the field (HTTP 422)
 
 
 _GROUP_LABELS = dict(GROUPS)
@@ -555,8 +557,7 @@ def validate_value(field: Mapping[str, Any], value: Any) -> Any:
 
 # --- records and actions ------------------------------------------------------------------
 
-def _by(actor: Actor) -> dict[str, str]:
-    return {"name": actor.name, "login": actor.login}
+_by = review_field.by
 
 
 def new_record(field_id: str) -> dict[str, Any]:
@@ -575,115 +576,27 @@ def new_row(field_id: str, actor: Actor, now: datetime) -> dict[str, Any]:
     return record
 
 
-def status_of(record: Mapping[str, Any]) -> str:
-    decision = record.get("decision")
-    return str(decision["status"]) if decision else PENDING
+status_of = review_field.status_of
 
 
-def _transition(record: Mapping[str, Any], action: str, decision: dict[str, Any], actor: Actor, now: datetime,
-                to: Any = None) -> dict[str, Any]:
-    out = copy.deepcopy(dict(record))
-    event: dict[str, Any] = {"at": stamp(now), "by": _by(actor), "action": action}
-    if to is not None:
-        event["to"] = to
-    previous = record.get("decision")
-    if previous and previous.get("status") != PENDING and action != "revert":  # the decision this one replaces, for Revert
-        out["value_history"] = [*record.get("value_history", []), copy.deepcopy(previous)]
-    out["decision"] = {**decision, "by": _by(actor), "at": stamp(now)}
-    pushed = out.get("value_history", [])[-1:] if previous and previous.get("status") != PENDING and action != "revert" else []
-    _trim_value_history(out)
-    if pushed:  # the decision just replaced could not be kept (too large): Revert must say so, not go elsewhere
-        if out.get("value_history", [])[-1:] == pushed:
-            out.pop("previous_lost", None)
-        else:
-            out["previous_lost"] = True
-    out["history"] = _fit([*record.get("history", []), event], out)
-    return out
-
-
-def _trim_value_history(record: dict[str, Any]) -> None:
-    """At most MAX_VALUE_HISTORY earlier decisions, fewer (oldest first) if the record would pass MAX_PAYLOAD_BYTES
-    once room (HISTORY_ROOM) is left for the event history, so a field can always take one more change."""
-
-    prior: list[dict[str, Any]] = record.get("value_history") or []
-    del prior[:-MAX_VALUE_HISTORY]
-    while prior and payload_size({**record, "history": []}) + HISTORY_ROOM > MAX_PAYLOAD_BYTES:
-        prior.pop(0)
-    if prior:
-        record["value_history"] = prior
-    else:
-        record.pop("value_history", None)
-
-
-def _fit(history: list[dict[str, Any]], record: dict[str, Any]) -> list[dict[str, Any]]:
-    """The newest MAX_HISTORY events, fewer if the record would not fit MAX_PAYLOAD_BYTES. The
-    audit log keeps the full trail."""
-
-    kept = history[-MAX_HISTORY:]
-    while kept and payload_size({**record, "history": kept}) > MAX_PAYLOAD_BYTES:
-        kept = kept[1:]
-    return kept
-
-
-def _already(field: Mapping[str, Any], status: str) -> MethodologyConflict:
-    return MethodologyConflict(
-        f"'{field['label']}' is already {status}. Revert it to pending first if you want to decide again.")
+def _validator(field: Mapping[str, Any]) -> Any:
+    return lambda value: validate_value(field, value)
 
 
 def accept(record: Mapping[str, Any], field: Mapping[str, Any], actor: Actor, now: datetime) -> dict[str, Any]:
     """Take the suggestion's value, or the value already set on the field."""
 
-    status = status_of(record)
-    if status != PENDING:
-        raise _already(field, status)
-    suggestion = record.get("suggestion")
-    value = suggestion["value"] if suggestion else (record.get("decision") or {}).get("value")
-    if value is None:
-        raise MethodologyConflict(
-            f"There is nothing to accept for '{field['label']}': nothing was suggested and no value is set. "
-            "Edit it to enter the value.")
-    value = validate_value(field, value)
-    return _transition(record, "accept", {"status": ACCEPTED, "value": value}, actor, now, to=value)
+    return review_field.accept(record, field["label"], _validator(field), actor, now)
 
 
 def edit(record: Mapping[str, Any], field: Mapping[str, Any], value: Any, actor: Actor,
          now: datetime) -> dict[str, Any]:
-    value = validate_value(field, value)
-    return _transition(record, "edit", {"status": EDITED, "value": value}, actor, now, to=value)
+    return review_field.edit(record, _validator(field), value, actor, now)
 
 
 def reject(record: Mapping[str, Any], field: Mapping[str, Any], reason: Any, actor: Actor,
            now: datetime) -> dict[str, Any]:
-    status = status_of(record)
-    if status != PENDING:
-        raise _already(field, status)
-    if not isinstance(reason, str) or not reason.strip():
-        raise MethodologyInvalid(f"Say why '{field['label']}' is rejected: a reason is required.")
-    reason = reason.strip()
-    if len(reason) > MAX_REASON:
-        raise MethodologyInvalid(f"The reason is too long: at most {MAX_REASON} characters.")
-    return _transition(record, "reject", {"status": REJECTED, "value": None, "reason": reason}, actor, now)
-
-
-def _cannot_restore(reason: str) -> MethodologyConflict:
-    return MethodologyConflict(f"The previous value can no longer be restored ({reason}). Edit the value instead.")
-
-
-def _restorable(field: Mapping[str, Any], entry: Any) -> dict[str, Any]:
-    """An earlier decision as Revert restores it: only its status, value and reason, with the value checked against
-    the field again. A stored entry that is not a decision the field accepts is refused (409), never skipped."""
-
-    if not isinstance(entry, Mapping) or entry.get("status") not in (ACCEPTED, EDITED, REJECTED):
-        raise _cannot_restore("the saved entry is not a decision")
-    if entry["status"] == REJECTED:
-        reason = entry.get("reason")
-        return {"status": REJECTED, "value": None,
-                "reason": reason[:MAX_REASON] if isinstance(reason, str) and "\x00" not in reason else ""}
-    try:
-        return {"status": entry["status"], "value": validate_value(field, entry.get("value"))}
-    except MethodologyInvalid as exc:
-        detail = str(exc).split(": ", 1)[-1].rstrip(".")
-        raise _cannot_restore(f"it no longer fits the field: {detail}") from None
+    return review_field.reject(record, field["label"], reason, actor, now)
 
 
 def revert(record: Mapping[str, Any], field: Mapping[str, Any], actor: Actor, now: datetime) -> dict[str, Any]:
@@ -691,32 +604,8 @@ def revert(record: Mapping[str, Any], field: Mapping[str, Any], actor: Actor, no
     restored (it no longer validates, is not a decision, or was too large to keep) the revert is refused with 409:
     it never quietly falls back to the detected value or to empty."""
 
-    if status_of(record) == PENDING:
-        raise MethodologyConflict(f"'{field['label']}' is already pending, so there is nothing to revert.")
-    out = copy.deepcopy(dict(record))
-    prior: list[dict[str, Any]] = out.get("value_history") or []
-    if prior:
-        decision = _restorable(field, prior[-1])
-        prior.pop()
-        source = "previous"
-    elif record.get("previous_lost"):
-        raise _cannot_restore("it was too large to keep")
-    else:
-        # No earlier decision was ever saved: the detected value (the suggestion stays, pending) or nothing. A row
-        # the reviewer added goes back to its blank value.
-        blank = blank_value(field["field_id"]) if record.get("user_added") else None
-        decision = {"status": PENDING, "value": blank}
-        source = "detected" if record.get("suggestion") else "empty"
-    if prior:
-        out["value_history"] = prior
-    else:
-        out.pop("value_history", None)
-    event: dict[str, Any] = {"at": stamp(now), "by": _by(actor), "action": "revert", "restored": source}
-    if decision.get("value") is not None:
-        event["to"] = decision["value"]
-    out["decision"] = {**decision, "by": _by(actor), "at": stamp(now)}
-    out["history"] = _fit([*record.get("history", []), event], out)
-    return out
+    return review_field.revert(record, field["label"], _validator(field), lambda: blank_value(field["field_id"]),
+                               actor, now)
 
 
 def remove(record: Mapping[str, Any], field: Mapping[str, Any], actor: Actor, now: datetime) -> dict[str, Any]:
@@ -727,7 +616,7 @@ def remove(record: Mapping[str, Any], field: Mapping[str, Any], actor: Actor, no
             f"'{field['label']}' comes from the report, so it can't be removed. Reject it instead.")
     out = copy.deepcopy(dict(record))
     out["removed"] = True
-    out["history"] = _fit([*record.get("history", []), {"at": stamp(now), "by": _by(actor), "action": "remove_row"}],
+    out["history"] = review_field.fit([*record.get("history", []), {"at": stamp(now), "by": _by(actor), "action": "remove_row"}],
                           out)
     return out
 

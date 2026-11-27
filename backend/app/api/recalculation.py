@@ -30,7 +30,8 @@ from backend.app.reference.emission_factor_loader import (
     GWP_SETS,
     default_emission_factor_reference,
 )
-from backend.app.services import emissions_rollup, methodology_gwp, workpaper_export_service, workpaper_item_service
+from backend.app.services import calc_line_review, emissions_rollup, methodology_gwp, workpaper_export_service
+from backend.app.services import workpaper_item_service
 from backend.app.services import workpaper_copy_service
 from backend.app.services.audit_log import write_audit_event
 from backend.app.services.engagement_recalculation_service import (
@@ -75,6 +76,18 @@ async def get_recalculation(
     return _service().recalculate(engagement, lambda record: can_see(record, user), decisions)
 
 
+async def traced_recalculation(db: AsyncSession, engagement: dict, user: CurrentUser) -> dict:
+    """One engine run with every line's trace (``with_traces``): the trace endpoint and the reviewer's decisions on
+    a line (``calculation_line_review``) both read the line from it, so they agree with the recalculation."""
+
+    decisions = {
+        str(item["payload"].get("documentId") or item["item_key"]): item["payload"]
+        for item in await workpaper_item_service.list_items(db, engagement["id"], "document")
+    }
+    engagement = await methodology_gwp.attach_choice(db, engagement)
+    return _service().recalculate(engagement, lambda record: can_see(record, user), decisions, with_traces=True)
+
+
 @router.get("/engagements/{engagement_id}/recalculation/lines/{line_key}/trace")
 async def get_line_trace(
     engagement_id: str,
@@ -84,19 +97,19 @@ async def get_line_trace(
 ) -> dict:
     """The step-level working of one calculation line (``services/calc_trace``), fetched when a panel is opened.
     The same engine run as the recalculation, so it agrees with it; the recalculation response itself never
-    carries traces. ``trace`` is null when the line cannot be traced."""
+    carries traces. ``trace`` is null when the line cannot be traced. Each choice and input side also carries
+    the reviewer's decision on it (``decision``) and any AI suggestion, for display: no total reads them yet."""
 
     engagement = await _visible(db, engagement_id, user)
-    decisions = {
-        str(item["payload"].get("documentId") or item["item_key"]): item["payload"]
-        for item in await workpaper_item_service.list_items(db, engagement["id"], "document")
-    }
-    engagement = await methodology_gwp.attach_choice(db, engagement)
-    result = _service().recalculate(engagement, lambda record: can_see(record, user), decisions, with_traces=True)
+    result = await traced_recalculation(db, engagement, user)
     line = next((ln for ln in result.get("calculation_lines", []) if ln.get("key") == line_key), None)
     if line is None:
         raise HTTPException(status_code=404, detail="No such calculation line.")
-    return {"line_key": line_key, "trace": line.get("trace")}
+    trace = line.get("trace")
+    if trace:
+        events = await calc_line_review.current(db, engagement["id"], line_key)
+        trace = calc_line_review.with_decisions(trace, calc_line_review.records_of(events))
+    return {"line_key": line_key, "trace": trace}
 
 
 def copy_store(db: AsyncSession) -> WorkpaperCopyStore:

@@ -13,7 +13,7 @@ from sqlalchemy import Text, bindparam, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 
-KINDS = ("ask", "finding", "examination", "document", "methodology")
+KINDS = ("ask", "finding", "examination", "document", "methodology", "calc_line")
 # An item's key (a request's id, a finding's id ...): it appears in URLs.
 ITEM_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._\-]{0,199}$")
 MAX_PAYLOAD_BYTES = 32 * 1024
@@ -29,7 +29,9 @@ def _row(mapping: Any) -> dict[str, Any]:
 
 
 async def list_items(db: AsyncSession, engagement_id: uuid.UUID, kind: str | None = None) -> list[dict[str, Any]]:
-    where = "engagement_id = :engagement_id" + (" AND kind = :kind" if kind else "")
+    # An unfiltered list leaves out ``calc_line``: one row per decision ever made on a calculation line, read only
+    # through ``calc_line_review``, never by the screens' generic list or the workpaper export.
+    where = "engagement_id = :engagement_id" + (" AND kind = :kind" if kind else " AND kind <> 'calc_line'")
     params: dict[str, Any] = {"engagement_id": engagement_id}
     if kind:
         params["kind"] = kind
