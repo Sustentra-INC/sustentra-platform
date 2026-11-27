@@ -387,6 +387,16 @@ export function AssistantWidget({
 
   useEffect(() => () => abort.current?.abort(), []);
 
+  // Escape closes the open panel.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   // A cited ref, resolved to what the user recognizes (a few per answer, so a plain lookup).
   const resolve = (kind: ResolvedRef["kind"], id: string): ResolvedRef | null => {
     if (!assistant) return null;
@@ -586,15 +596,6 @@ export function AssistantWidget({
           </form>
         </section>
       ) : null}
-      <button
-        className={`s1-ai-fab${open ? " is-open" : ""}`}
-        type="button"
-        aria-label={open ? "Close assistant" : "Open Sustentra assistant"}
-        title="Sustentra assistant"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <IconSparkle aria-hidden />
-      </button>
     </>
   );
 }

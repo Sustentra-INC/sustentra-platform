@@ -2717,18 +2717,30 @@ html { font-size: 82%; }
 .s1-side--min .s1-side__toggle { justify-content: center; padding: var(--sp-3); }
 .s1-side--min .s1-side__toggle .s1-side__label { display: none; }
 
-/* Top row — ⋯ More actions button, pushed to the right */
-.s1-toprow { display: flex; justify-content: flex-end; margin-bottom: var(--sp-4); }
+/* Top row: (search, 2/3) · Ask Sustentra · ⋯ More actions */
+.s1-toprow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2-5); margin-bottom: var(--sp-4); }
+.s1-toprow__spacer { flex: 1 1 var(--toprow-search-basis); }
+.s1-toprow__ask {
+  display: inline-flex; align-items: center; gap: var(--sp-2); height: var(--toprow-h); padding: 0 var(--sp-4);
+  border: 0; border-radius: var(--r-card); background: var(--sf-card); box-shadow: var(--shadow-card-soft);
+  font: inherit; font-size: var(--text-md); font-weight: var(--weight-strong); color: var(--ink); white-space: nowrap; cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.s1-toprow__ask svg { flex: none; color: var(--accent); }
+.s1-toprow__ask:hover { background: var(--accent-softer); }
+.s1-toprow__ask.is-on { background: var(--accent-solid); color: var(--on-brand); }
+.s1-toprow__ask.is-on svg { color: var(--on-brand); }
+.s1-toprow__ask:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 .s1-toprow .s1-menu .s1-button--icon {
-  width: calc(var(--input-h) + var(--sp-1));
-  height: calc(var(--input-h) + var(--sp-1));
+  width: var(--toprow-h);
+  height: var(--toprow-h);
   border-radius: var(--r-card);
   background: var(--sf-card);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-card-soft);
   color: var(--ink-2);
   display: inline-flex; align-items: center; justify-content: center;
 }
-.s1-toprow .s1-menu .s1-button--icon:hover { background: var(--sf-card); box-shadow: var(--shadow-card), var(--shadow-inset); color: var(--ink); }
+.s1-toprow .s1-menu .s1-button--icon:hover { background: var(--accent-softer); color: var(--ink); }
 
 /* Context bar — engagement info, minimized by default */
 .s1-ctx { margin-bottom: var(--sp-4); }
@@ -2793,24 +2805,13 @@ html { font-size: 82%; }
 html, body { margin: 0; padding: 0; }
 
 /* ===================================================================
-   Sustentra assistant — floating agent, bottom-right on every screen.
+   Sustentra assistant: opened from "Ask Sustentra" in the top row; a full-height panel on the right.
    ========================================================================== */
-.s1-ai-fab {
-  position: fixed; right: var(--sp-5); bottom: var(--sp-5); z-index: 80;
-  width: 3.2rem; height: 3.2rem; border-radius: 50%; border: 0; cursor: pointer;
-  background: var(--brand-ink); box-shadow: var(--shadow-primary);
-  display: inline-flex; align-items: center; justify-content: center; color: white;
-  transition: transform 0.16s var(--ease-out), box-shadow 0.16s var(--ease-out);
-}
-.s1-ai-fab:hover { transform: translateY(-0.125rem); box-shadow: var(--shadow-primary-lg); }
-.s1-ai-fab:active { transform: scale(0.95); }
-.s1-ai-fab svg { width: 1.1rem; height: 1.1rem; }
-
 .s1-ai {
-  position: fixed; top: var(--sp-3); right: var(--sp-3); z-index: 80;
-  width: min(25.25rem, calc(100% - var(--sp-6)));
-  height: calc(100dvh - calc(var(--sp-3) * 2));
-  background: var(--sf-card); border-radius: var(--r-lg);
+  position: fixed; top: var(--sp-4); right: var(--sp-4); z-index: 80;
+  width: min(var(--ai-panel-w), calc(100% - var(--sp-4) * 2));
+  height: calc(100dvh - var(--sp-4) * 2);
+  background: var(--sf-card); border-radius: var(--r-drop);
   box-shadow: var(--shadow-pop);
   display: flex; flex-direction: column; overflow: hidden;
 }
@@ -2893,7 +2894,6 @@ html, body { margin: 0; padding: 0; }
 
 @media (max-width: 48rem) {
   .s1-ai { top: 0; right: 0; left: 0; width: 100%; height: 100dvh; border-radius: 0; }
-  .s1-ai-fab { right: var(--sp-3); bottom: var(--sp-3); }
 }
 
 /* ---- Verification results (screen 6): folding boxes, a calculation panel from the right ---- */

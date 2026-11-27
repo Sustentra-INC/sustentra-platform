@@ -311,6 +311,9 @@
   --avatar-md:        34px;   /* person avatar in activity rows */
   --actlog-w:        468px;   /* activity log drawer width */
   --actlog-badge:     18px;   /* kind badge on an activity avatar */
+  --toprow-h:           44px; /* top row: Ask Sustentra and ⋯ buttons */
+  --toprow-search-basis: 280px; /* top row: search field basis (top bar 2/3) */
+  --ai-panel-w:        404px; /* Ask Sustentra panel width */
 
   /* Coverage & requests: header review card */
   --cr-review-icon-box: 22px; /* leading icon box */

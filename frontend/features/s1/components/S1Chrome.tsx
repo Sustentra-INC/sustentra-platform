@@ -1,9 +1,9 @@
 "use client";
 
 import { ChevronDown, History } from "lucide-react";
-import { IconTrash } from "./icons";
+import { IconSparkle, IconTrash } from "./icons";
 import Link from "next/link";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import type { EngagementConfig } from "../types";
 import { formatReportingPeriod } from "../utils/formatPeriod";
@@ -89,6 +89,12 @@ export function S1Chrome({
   const [ctxExpanded, setCtxExpanded] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const assistantPanelId = useId();
+  const askButton = useRef<HTMLButtonElement>(null);
+  const changeAssistant = (open: boolean) => {
+    setAssistantOpen(open);
+    // Closed from the panel (X or Escape): focus goes back to the button that opens it.
+    if (!open) setTimeout(() => askButton.current?.focus());
+  };
   return (
     <div className="s1-shell">
       <Sidebar
@@ -105,7 +111,13 @@ export function S1Chrome({
         navCounts={navCounts}
       />
       <section className="s1-main">
-        <TopRow onReset={onReset} />
+        <TopRow
+          onReset={onReset}
+          assistantOpen={assistantOpen}
+          onToggleAssistant={() => changeAssistant(!assistantOpen)}
+          assistantPanelId={assistantPanelId}
+          askRef={askButton}
+        />
         <ContextBar
           engagement={engagement}
           expanded={ctxExpanded}
@@ -123,7 +135,7 @@ export function S1Chrome({
         live={Boolean(user)}
         assistant={assistant}
         open={assistantOpen}
-        onOpenChange={setAssistantOpen}
+        onOpenChange={changeAssistant}
         panelId={assistantPanelId}
       />
     </div>
@@ -317,7 +329,19 @@ function Sidebar({
 
 /* ========================= top row: ⋯ More actions ========================= */
 
-function TopRow({ onReset }: { onReset?: () => void }) {
+function TopRow({
+  onReset,
+  assistantOpen,
+  onToggleAssistant,
+  assistantPanelId,
+  askRef,
+}: {
+  onReset?: () => void;
+  assistantOpen: boolean;
+  onToggleAssistant: () => void;
+  assistantPanelId: string;
+  askRef: RefObject<HTMLButtonElement | null>;
+}) {
   const [moreOpen, setMoreOpen] = useState(false);
   const entries: ActionMenuEntry[] = [];
   if (onReset) {
@@ -332,10 +356,23 @@ function TopRow({ onReset }: { onReset?: () => void }) {
       },
     });
   }
-  if (!entries.length) return null;
   return (
     <div className="s1-toprow">
-      <ActionMenu label="More actions" entries={entries} isOpen={moreOpen} onOpenChange={setMoreOpen} />
+      {/* Holds the place of the search field (top bar 2/3). */}
+      <span className="s1-toprow__spacer" aria-hidden />
+      <button
+        ref={askRef}
+        className={`s1-toprow__ask${assistantOpen ? " is-on" : ""}`}
+        type="button"
+        aria-pressed={assistantOpen}
+        aria-expanded={assistantOpen}
+        aria-controls={assistantPanelId}
+        onClick={onToggleAssistant}
+      >
+        <IconSparkle size={18} aria-hidden />
+        Ask Sustentra
+      </button>
+      {entries.length ? <ActionMenu label="More actions" entries={entries} isOpen={moreOpen} onOpenChange={setMoreOpen} /> : null}
     </div>
   );
 }
