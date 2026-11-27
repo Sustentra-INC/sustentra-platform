@@ -64,7 +64,10 @@ export function BackendVerificationResults({
   focusLineKey,
   onOpenEvidence,
   onOpenEvidenceTree,
+  canDecide = true,
 }: {
+  /** False for a role that cannot write (provider_admin): decision states show, no action does. */
+  canDecide?: boolean;
   engagement: EngagementConfig;
   store: VerificationStore;
   /** Saves settings.recalculation on the engagement; rejects with the API error. */
@@ -88,6 +91,8 @@ export function BackendVerificationResults({
   const [saveError, setSaveError] = useState<string | null>(null);
   // Bumped to fetch again (after a save, or "Try again"); also resets the inputs panel.
   const [attempt, setAttempt] = useState(0);
+  // Bumped after a reviewer decision: fetches again without remounting the inputs panel, so unsaved edits there survive.
+  const [decided, setDecided] = useState(0);
   // The parent passes a fresh callback every render; keep the latest without refetching.
   const onErrorRef = useRef(onError);
   useEffect(() => {
@@ -112,7 +117,7 @@ export function BackendVerificationResults({
     return () => {
       live = false;
     };
-  }, [engagementId, attempt]);
+  }, [engagementId, attempt, decided]);
 
   /** Saves and refetches. Resolves to the error message, or null when saved (or the session ended). */
   async function save(next: RecalculationSettings, { quiet = false }: { quiet?: boolean } = {}): Promise<string | null> {
@@ -183,6 +188,9 @@ export function BackendVerificationResults({
     signedInLogin: engagement.signedInLogin,
     onOpenDocument,
     onOpenEvidence,
+    // A decision on a line's working: fetch the recalculation again (the result stays on screen while it loads).
+    onDecided: () => setDecided((n) => n + 1),
+    canDecide,
   };
 
   return (

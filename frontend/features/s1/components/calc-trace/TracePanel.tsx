@@ -3,9 +3,10 @@
 import { ChevronRight } from "lucide-react";
 
 import type {
+  DecisionEntry,
+  LineDecisions,
   LineTrace,
   TraceBlock,
-  TraceChoice,
   TraceColumn,
   TraceInput,
   TraceInputRow,
@@ -14,13 +15,18 @@ import type {
   TraceStep,
 } from "../../api/calcTrace";
 import { differenceText, operandText, prettyUnit } from "./format";
+import { ChoicePills } from "./ChoicePills";
+export { ChoicePills };
+import { InputActions } from "./InputActions";
+import { NotAppliedNote, NotAppliedProvider } from "./NotApplied";
+import { SuggestionChip } from "./TraceActions";
 import { TraceSourceNote } from "./TraceSourceNote";
 
 /**
  * The step-by-step calculation of one line, drawn from its trace (api/calcTrace.ts): method pills,
  * Steps 1 to 4 and Results, each block a Company row and a Recomputed row of `a × b × c = result`.
  * It draws what the trace says and calculates nothing: every number, difference and source is the
- * backend's. Read-only; reviewer actions come later.
+ * backend's. Reviewer actions (choose, accept, edit, reject, revert) appear when a TraceActionsProvider wraps it; without one it is read-only.
  */
 
 type Side = "company" | "recomputed";
@@ -79,10 +85,14 @@ function OperandValue({
           ? differenceText(operand.difference, operand.value, column?.display)
           : null
       : null;
+  const value = input ? <TraceSourceNote label={text} source={input[side]?.source} side={side} onOpenDocument={onOpenDocument} /> : text;
+  // A company-side suggestion is shown as the AI's, never as reviewed. A recomputed side's is not drawn here.
+  const chip = side === "company" && input?.company?.suggestion ? <SuggestionChip suggestion={input.company.suggestion} onOpenDocument={onOpenDocument} /> : null;
   return (
     <>
-      {input ? <TraceSourceNote label={text} source={input[side]?.source} side={side} onOpenDocument={onOpenDocument} /> : text}
+      {side === "recomputed" && input?.recomputed ? <InputActions input={input} onOpenDocument={onOpenDocument}>{value}</InputActions> : value}
       {diff ? <span className="s1-cp-diff"> ({diff})</span> : null}
+      {chip}
     </>
   );
 }
@@ -199,7 +209,9 @@ function RowsTable({ block, input, name, onOpenDocument }: { block: TraceBlock; 
   };
   const total = (side: Side, op: TraceOperation | undefined) => {
     if (!op) return <em className="s1-muted">{side === "company" ? "not reported" : "Awaiting review"}</em>;
-    return <OperandValue operand={op.result} column={column} side={side} inputs={{}} withDifference={side === "recomputed" && hasValue(block.company)} isResult onOpenDocument={onOpenDocument} />;
+    const value = <OperandValue operand={op.result} column={column} side={side} inputs={{}} withDifference={side === "recomputed" && hasValue(block.company)} isResult onOpenDocument={onOpenDocument} />;
+    // The summed total is the line's main decision: it can be accepted or entered outright.
+    return side === "recomputed" && input.recomputed ? <InputActions input={input} onOpenDocument={onOpenDocument}>{value}</InputActions> : value;
   };
   return (
     <div className="s1-vw-scroll">
@@ -225,9 +237,9 @@ function RowsTable({ block, input, name, onOpenDocument }: { block: TraceBlock; 
                   {rc === null ? (
                     <em className="s1-muted">Awaiting review</em>
                   ) : (
-                    <>
+                    <InputActions input={input} row={r} onOpenDocument={onOpenDocument}>
                       <TraceSourceNote label={rc} source={r.recomputed?.source} onOpenDocument={onOpenDocument} />
-                    </>
+                    </InputActions>
                   )}
                 </td>
               </tr>
@@ -259,7 +271,7 @@ function BlockView({ block, step, trace, onOpenDocument }: { block: TraceBlock; 
         <div className="s1-cp-block__head">
           <h6>{block.label}</h6>
           {block.tag && TAG_TEXT[block.tag] ? <span className="s1-cp-tag">{TAG_TEXT[block.tag]}</span> : null}
-          {choice ? <ChoicePills choice={choice} compact /> : null}
+          {choice ? <ChoicePills choice={choice} compact onOpenDocument={onOpenDocument} /> : null}
         </div>
       ) : null}
       {summed?.rows?.length ? (
@@ -288,44 +300,23 @@ function StepView({ step, trace, onOpenDocument }: { step: TraceStep; trace: Lin
   );
 }
 
-/* ------------------------------------------ method pills ------------------------------------------ */
-
-/** The options of a choice, the one used marked. Read-only: a choice is changed elsewhere. */
-export function ChoicePills({ choice, compact = false }: { choice: TraceChoice; compact?: boolean }) {
-  return (
-    <div className="s1-cp-pills" role="group" aria-label={choice.label}>
-      {compact ? null : <span className="s1-cp-pills__label">{choice.label}</span>}
-      {choice.options.map((o) => {
-        const chosen = o.id === choice.chosen;
-        const why = o.why_unavailable ?? "not available for this line";
-        return (
-          <span
-            key={o.id}
-            className={`s1-cp-pill${chosen ? " is-chosen" : ""}${o.available ? "" : " is-unavailable"}`}
-            aria-current={chosen ? "true" : undefined}
-            title={o.available ? undefined : why}
-          >
-            {o.label}
-            {o.available ? null : <span className="s1-cp-sr"> (not available: {why})</span>}
-            {o.detection && TAG_TEXT[o.detection] ? <span className="s1-cp-pill__tag"> · {TAG_TEXT[o.detection]}</span> : null}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
 /* ------------------------------------------ the panel ------------------------------------------ */
 
-export function TracePanel({ trace, onOpenDocument }: { trace: LineTrace; onOpenDocument?: OpenDocument }) {
+export function TracePanel({ trace, decisions, onOpenDocument }: { trace: LineTrace; decisions?: LineDecisions; onOpenDocument?: OpenDocument }) {
   const choices = trace.choices ?? [];
   const placed = new Set((trace.steps ?? []).flatMap((s) => (s.blocks ?? []).map((b) => b.choice_id)));
   const method = choices.find((c) => c.id === "method");
   const route = method?.options.find((o) => o.id === method.chosen);
   // A choice with one option has nothing to pick: the route line already says it.
   const loose = choices.filter((c) => !placed.has(c.id) && c.options.length > 1);
+  // A not-applied decision is said on its input or choice; one whose target is gone is said on the line.
+  const notApplied = decisions?.not_applied ?? [];
+  const here = (e: DecisionEntry) => (e.target === "choice" ? choices.some((c) => c.id === e.id) : Boolean(trace.inputs?.[e.id.split("/")[0]]));
+  const onLine = notApplied.filter((e) => !here(e) || e.side === "company");
   return (
+    <NotAppliedProvider entries={notApplied}>
     <div className="s1-cp-trace" data-trace-state={trace.state}>
+      <NotAppliedNote entries={onLine} />
       {route ? (
         <p className="s1-cp-route">
           <span className="s1-muted">Route: </span>
@@ -335,7 +326,7 @@ export function TracePanel({ trace, onOpenDocument }: { trace: LineTrace; onOpen
       {loose.length ? (
         <div className="s1-cp-pillrow">
           {loose.map((c) => (
-            <ChoicePills key={c.id} choice={c} />
+            <ChoicePills key={c.id} choice={c} onOpenDocument={onOpenDocument} />
           ))}
         </div>
       ) : null}
@@ -363,5 +354,6 @@ export function TracePanel({ trace, onOpenDocument }: { trace: LineTrace; onOpen
         <StepView key={s.id} step={s} trace={trace} onOpenDocument={onOpenDocument} />
       ))}
     </div>
+    </NotAppliedProvider>
   );
 }

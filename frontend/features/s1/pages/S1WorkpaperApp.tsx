@@ -85,6 +85,7 @@ import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence"
 import { manufacturerValues } from "../fixtures/extraction/manufacturerValues";
 import { seedAsks } from "../fixtures/requests/seedAsks";
 import { makeUploadItem, classifyGuess } from "../fixtures/upload/simulateUpload";
+import { resetDemoDecisions } from "../demo-backend/calcTrace/decisions";
 import { loadDemoState, saveDemoState, clearDemoState, loadSignedIn, saveSignedIn, type DemoSnapshot } from "../utils/demoPersistence";
 import { DemoSignIn } from "../components/DemoSignIn";
 import { SessionEndedPanel } from "../components/SessionEndedPanel";
@@ -426,6 +427,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
 
   function resetDemo() {
     clearDemoState();
+    resetDemoDecisions();
     if (typeof window !== "undefined") window.location.reload();
   }
 
@@ -1712,6 +1714,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               onError={handleSessionEnded}
               onOpenDocument={openExtraction}
               focusLineKey={activeView.lineKey}
+              canDecide={dataMode !== "backend" || user?.role === "org_admin" || user?.role === "org_member"}
               onOpenEvidence={(key) => setActiveView(scheduleViewForLine(key))}
               onOpenEvidenceTree={() => setActiveView({ name: "evidence" })}
             />
