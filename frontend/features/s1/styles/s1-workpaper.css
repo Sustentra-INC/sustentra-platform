@@ -3987,3 +3987,9 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-cp-ops td:first-child { width: 6.5rem; white-space: nowrap; }
 .s1-cp-ops td.s1-vw-num { min-width: 9rem; }
 .s1-cp-ops td.s1-cp-out { min-width: 10rem; }
+.s1-cp-diffcell { display: inline-flex; flex-direction: column; align-items: flex-end; gap: var(--sp-1); }
+.s1-cp-diffnote { font-size: var(--text-sm); white-space: normal; text-align: right; }
+.s1-cp-scroll.is-expanded { max-height: none; }
+.s1-cp-lines td:nth-child(2) .s1-vw-rowbtn { white-space: nowrap; }
+.s1-cp-lines td:nth-child(2) { min-width: 12rem; }
+.s1-cp--bare .s1-cp-scroll { border-top: var(--border-hairline); }

@@ -75,6 +75,7 @@ export function VerificationResults({
   registerFindings = false,
   liveMateriality,
   panels,
+  lineDetail,
 }: {
   rows: VerificationRow[];
   store: VerificationStore;
@@ -103,6 +104,8 @@ export function VerificationResults({
   liveMateriality?: number;
   /** Live results: the per-line calculation panels, under the boxes. */
   panels?: ReactNode;
+  /** Live results: what a row's drawer shows in place of its facility table, or null to keep the table. */
+  lineDetail?: (line: ResultLine) => ReactNode | null;
 }) {
   const [tab, setTab] = useState<"results" | "findings">("results");
   const [findingFor, setFindingFor] = useState<FindingTarget | null>(null);
@@ -146,6 +149,7 @@ export function VerificationResults({
               onOpenDocument={onOpenDocument}
               onRegisterFinding={registerFindings ? setFindingFor : undefined}
               materiality={liveMateriality}
+              detail={lineDetail}
             />
           ) : (
             <ResultsTab

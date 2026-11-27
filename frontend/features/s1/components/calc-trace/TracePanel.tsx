@@ -55,9 +55,12 @@ function OperandValue({
   side,
   inputs,
   withDifference,
+  isResult = false,
   onOpenDocument,
 }: {
   operand: TraceOperand;
+  /** A boxed result cell: the only operand (with the Step 1 total) that carries a numeric difference, as on the boards. */
+  isResult?: boolean;
   column?: TraceColumn;
   side: Side;
   inputs: Inputs;
@@ -72,7 +75,9 @@ function OperandValue({
     side === "recomputed" && withDifference
       ? operand.differs === true && typeof operand.value === "string"
         ? "differs"
-        : differenceText(operand.difference, operand.value, column?.display)
+        : isResult
+          ? differenceText(operand.difference, operand.value, column?.display)
+          : null
       : null;
   return (
     <>
@@ -112,8 +117,8 @@ function OperationTable({ block, name, inputs, onOpenDocument }: { block: TraceB
       );
     }
     const withDifference = side === "recomputed" && companyHasValue;
-    const cell = (operand: TraceOperand) => (
-      <OperandValue operand={operand} column={columns.get(operand.column)} side={side} inputs={inputs} withDifference={withDifference} onOpenDocument={onOpenDocument} />
+    const cell = (operand: TraceOperand, isResult = false) => (
+      <OperandValue operand={operand} column={columns.get(operand.column)} side={side} inputs={inputs} withDifference={withDifference} isResult={isResult} onOpenDocument={onOpenDocument} />
     );
     const own = isSingle(op);
     return (
@@ -132,7 +137,7 @@ function OperationTable({ block, name, inputs, onOpenDocument }: { block: TraceB
               </td>,
             ])}
         {own ? null : <td className="s1-cp-op">=</td>}
-        <td className="s1-vw-num s1-cp-out">{cell(op.result)}</td>
+        <td className="s1-vw-num s1-cp-out">{cell(op.result, true)}</td>
       </tr>
     );
   };
@@ -178,7 +183,7 @@ function RowsTable({ block, input, name, onOpenDocument }: { block: TraceBlock; 
   };
   const total = (side: Side, op: TraceOperation | undefined) => {
     if (!op) return <em className="s1-muted">{side === "company" ? "not reported" : "Awaiting review"}</em>;
-    return <OperandValue operand={op.result} column={column} side={side} inputs={{}} withDifference={side === "recomputed" && hasValue(block.company)} onOpenDocument={onOpenDocument} />;
+    return <OperandValue operand={op.result} column={column} side={side} inputs={{}} withDifference={side === "recomputed" && hasValue(block.company)} isResult onOpenDocument={onOpenDocument} />;
   };
   return (
     <div className="s1-vw-scroll">
@@ -195,7 +200,6 @@ function RowsTable({ block, input, name, onOpenDocument }: { block: TraceBlock; 
           {(input.rows ?? []).map((r) => {
             const co = cellText("company", r);
             const rc = cellText("recomputed", r);
-            const diff = co !== null ? differenceText(r.difference, r.recomputed?.value, column?.display) : null;
             return (
               <tr key={r.id}>
                 <td className="s1-cp-wrap">{r.label}</td>
@@ -207,7 +211,6 @@ function RowsTable({ block, input, name, onOpenDocument }: { block: TraceBlock; 
                   ) : (
                     <>
                       <TraceSourceNote label={rc} source={r.recomputed?.source} onOpenDocument={onOpenDocument} />
-                      {diff ? <span className="s1-cp-diff"> ({diff})</span> : null}
                     </>
                   )}
                 </td>
