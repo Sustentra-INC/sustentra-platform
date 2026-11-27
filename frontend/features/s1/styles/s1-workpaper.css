@@ -3634,7 +3634,17 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 
 /* Evidence tree (backend mode): Scope > Category > fuel > calculation line, folds that stay where you left them. */
 .s1-et { display: flex; flex-direction: column; gap: var(--sp-2); }
-.s1-et-bar { display: flex; gap: var(--sp-4); justify-content: flex-end; font-size: var(--text-sm); }
+/* The filter row: facility and the view switch on the left, Expand all / Collapse all on the right, on both tabs. */
+.s1-et-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3) var(--sp-4); font-size: var(--text-sm); }
+.s1-et-bar { min-height: 2rem; } /* the same row height with or without the facility select, so the content does not jump between tabs */
+.s1-et-bar .s1-et-bar__fold { margin-inline-start: auto; }
+.s1-et-views { display: inline-flex; gap: var(--sp-1); }
+.s1-et-views .s1-xr-tab:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+/* On the Supporting evidence tab the scopes are the top rows: one indent step less all the way down. */
+.s1-et-panel--supporting .s1-et-node--d1 { --et-depth: 0; }
+.s1-et-panel--supporting .s1-et-node--d2 { --et-depth: 1; }
+.s1-et-panel--supporting .s1-et-node--d3 { --et-depth: 2; }
+.s1-et-panel--supporting .s1-et-node--d4 { --et-depth: 3; }
 .s1-et-node { background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); }
 .s1-et-node .s1-et-node { border-radius: 0; border-width: var(--hairline-width) 0 0 0; }
 /* One rhythm for every row of the tree: the same height, one indent step per level (the width of
@@ -3686,6 +3696,9 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
   padding: 0 var(--sp-3) 0 calc(var(--sp-3) + (var(--et-depth, 0) + 1) * var(--et-step) + var(--et-step));
   border-top: var(--border-hairline); min-height: var(--et-row);
 }
+/* Block 1 rows: the status ("Not read yet · Read") stays on one line, so the column fits its text. */
+.s1-et-doc--summary { grid-template-columns: fit-content(50%) minmax(0, 1fr) max-content 5.5rem; }
+.s1-et-doc--summary .s1-et-doc__vals { white-space: nowrap; }
 .s1-et-doc .s1-doc-link { font-weight: var(--weight-regular); }
 .s1-et-doc > .s1-action-menu, .s1-et-doc > :last-child { justify-self: end; }
 .s1-et-body > .s1-et-docs > .s1-et-doc:first-child { border-top: 0; }
@@ -3714,8 +3727,11 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
   /* Title, percent and actions stay on one row (the count and the bar are hidden here). */
   .s1-et-head { grid-template-columns: 1fr auto auto; }
   .s1-et-n, .s1-et-bar-track, .s1-et-fill { display: none; }
-  .s1-et-doc { grid-template-columns: 1fr auto; }
-  .s1-et-doc__meta, .s1-et-doc__vals { grid-column: 1; text-align: left; }
+  /* A file's name, what is known about it and its status flow along one line and wrap to a second at most;
+     the row menu stays at the end. */
+  .s1-et-doc, .s1-et-doc--summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-3); padding-block: var(--sp-2); }
+  .s1-et-doc__meta, .s1-et-doc__vals { text-align: left; }
+  .s1-et-doc > .s1-action-menu, .s1-et-doc > :last-child { margin-inline-start: auto; }
 }
 @media (prefers-reduced-motion: reduce) { .s1-et-caret { transition: none; } }
 

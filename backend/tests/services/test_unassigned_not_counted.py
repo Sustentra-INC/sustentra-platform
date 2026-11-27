@@ -98,12 +98,32 @@ def test_moving_the_document_onto_a_line_counts_it_and_moving_it_off_again_leave
     assert moved_off["uncounted_values"]["documents"][0]["document_id"] == "GAS-STL"
 
 
-def test_a_document_parked_in_a_block_is_not_on_a_line_either() -> None:
+def test_a_document_parked_in_unassigned_is_not_on_a_line_either() -> None:
     store = _store(("GAS-KC", [_kc()]), ("GAS-STL", [_stl()]))
-    for block in (cl.BLOCK_UNASSIGNED, cl.BLOCK_SUMMARY):
-        result = _run(store, {"GAS-STL": {"placements": [{"from": GAS_STL, "to": block}]}})
-        assert set(_by_key(result)) == {GAS_KC}
-        assert result["uncounted_values"]["accepted_records"] > 0
+    result = _run(store, {"GAS-STL": {"placements": [{"from": GAS_STL, "to": cl.BLOCK_UNASSIGNED}]}})
+    assert set(_by_key(result)) == {GAS_KC}
+    assert result["uncounted_values"]["accepted_records"] > 0
+
+
+def test_a_stationary_bill_moved_into_block_1_adds_nothing_and_is_left_out_of_every_count() -> None:
+    """Block 1 is reference only, decided by placement: no calculation, no 'left out', no 'to review'."""
+
+    kc_only = _run(_store(("GAS-KC", [_kc()])))
+    store = _store(("GAS-KC", [_kc()]), ("GAS-STL", [_stl()]))
+    store.add_document("GAS-OPEN", "CT-S1-FUELQTY", [_stl(300)], decision=None)  # an unreviewed bill, to be moved too
+    moved = {"GAS-STL": {"placements": [{"from": GAS_STL, "to": cl.BLOCK_SUMMARY}]},
+             "GAS-OPEN": {"placements": [{"from": GAS_STL, "to": cl.BLOCK_SUMMARY}]}}
+    result = _run(store, moved)
+    assert _total(result) == pytest.approx(_total(kc_only))
+    assert set(_by_key(result)) == {GAS_KC}
+    assert result["uncounted_values"] == {"accepted_records": 0, "documents": []}
+    assert result["awaiting_review"] == kc_only["awaiting_review"]  # the unreviewed bill queues nothing
+    assert result["documents_considered"] == 1
+    assert not any(c.get("facility") == "St Louis Plant" for c in result["quality_checks"])
+    # moved back onto its line, the same bill counts again
+    back = _run(store, {"GAS-STL": {"placements": [{"from": GAS_STL, "to": cl.BLOCK_SUMMARY},
+                                                   {"from": cl.BLOCK_SUMMARY, "to": GAS_STL}]}})
+    assert _total(back) > _total(kc_only)
 
 
 def test_a_document_placed_on_two_lines_counts_on_each_and_not_twice() -> None:

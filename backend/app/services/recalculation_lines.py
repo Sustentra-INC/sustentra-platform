@@ -488,6 +488,12 @@ class Filing:
     # of the old type, count on no line until the new read arrives.
     awaiting_reread: frozenset[str] = frozenset()
 
+    def in_summary_block(self, record: ReviewedRecord) -> bool:
+        """True when the record's document sits in Block 1 (reference only), by placement and not by type."""
+
+        slot = self.slot_of.get(id(record))
+        return slot is not None and cl.in_summary_block([slot])
+
     def on_a_line(self, record: ReviewedRecord) -> bool:
         """True when the record's document is placed on a calculation line (not unassigned, not a block)."""
 

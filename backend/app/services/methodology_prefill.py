@@ -1337,7 +1337,7 @@ def _in_summary_block(canonical_type_id: str, placements: Any) -> bool:
     summary document moved out is no longer read. Whatever the machine type."""
 
     default = cl.document_slots(canonical_type_id or None, [cl.RecordPlacement(category=None)])
-    return any(s.target == cl.BLOCK_SUMMARY for s in cl.apply_placements(default, placements))
+    return cl.in_summary_block(cl.apply_placements(default, placements))
 
 
 def candidate_documents(upload_service: Any, pipeline_service: Any, engagement_id: str,

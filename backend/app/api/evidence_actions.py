@@ -405,8 +405,8 @@ async def move_document(
                                                   "error": None}}
     else:
         chain = _next_chain(_chain(existing), move, doc, known)
-    if "folderId" in existing and not any(
-            s.target == cl.BLOCK_SUMMARY for s in cl.apply_placements(doc.default_slots, chain, known)):
+    if "folderId" in existing and not cl.in_summary_block(
+            cl.apply_placements(doc.default_slots, chain, known)):
         existing = {k: v for k, v in existing.items() if k != "folderId"}  # it leaves Block 1, so it leaves its folder
     payload = await _save_chain(db, engagement, user, document_id, existing, chain)
     await _audit(db, request, user, DOCUMENT_MOVED, engagement,
@@ -555,7 +555,7 @@ async def delete_folder(
     folders = _stored_folders(engagement)
     found = _folder_or_404(folders, folder_id)
     loaded, decisions = await _load(db, engagement, user)
-    shown = {d.document_id for d in loaded.docs if any(s.target == cl.BLOCK_SUMMARY for s in d.slots)}
+    shown = {d.document_id for d in loaded.docs if cl.in_summary_block(d.slots)}
     changed: dict[str, dict[str, Any]] = {}
     moved = 0
     for document_id, existing in decisions.items():  # every saved decision that names the folder, shown or not
@@ -595,7 +595,7 @@ async def set_document_folder(
     doc = next((d for d in loaded.docs if d.document_id == document_id), None)
     if doc is None:
         raise HTTPException(status_code=404, detail="That document isn't on the Evidence page for this engagement.")
-    if not any(s.target == cl.BLOCK_SUMMARY for s in doc.slots):
+    if not cl.in_summary_block(doc.slots):
         raise HTTPException(status_code=422, detail="Only documents in Summary documents and workbook can go in a folder.")
     folders = _stored_folders(engagement)
     target = _folder_or_404(folders, body.folder_id) if body.folder_id is not None else None

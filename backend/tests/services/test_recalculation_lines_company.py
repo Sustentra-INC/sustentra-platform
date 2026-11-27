@@ -118,8 +118,10 @@ def test_a_record_on_no_line_is_listed_as_not_counted_whatever_the_reason() -> N
     store = _gas_store()
     store.add_document("NOPLANT", "CT-S1-FUELQTY", [_gas_record(5, plant="Somewhere Else Ltd")])
     assert left_out(_run(store)) == ["NOPLANT"]  # no Setup facility
-    moved = _run(_gas_store(), {"GAS-STL": {"placements": [{"from": GAS_STL, "to": "block:summary"}]}})
-    assert left_out(moved) == ["GAS-STL"]  # moved to a block
+    moved = _run(_gas_store(), {"GAS-STL": {"placements": [{"from": GAS_STL, "to": "block:unassigned"}]}})
+    assert left_out(moved) == ["GAS-STL"]  # moved to Unassigned documents
+    summary = _run(_gas_store(), {"GAS-STL": {"placements": [{"from": GAS_STL, "to": "block:summary"}]}})
+    assert left_out(summary) == []  # Block 1 is reference only: it is not "left out", it is not a value at all
     gone = _run(_gas_store(), {"GAS-STL": {"placements": [{"from": GAS_STL, "to": "s1:stationary:coal:fac-x"}]}})
     assert left_out(gone) == ["GAS-STL"]  # parked on a line that does not exist
 

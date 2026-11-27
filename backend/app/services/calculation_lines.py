@@ -776,6 +776,14 @@ def file_documents(documents: Iterable[tuple[str, str | None, list[RecordPlaceme
     return out
 
 
+def in_summary_block(slots: Iterable[Slot]) -> bool:
+    """Whether a document's slots put it in Block 1 (Summary documents and workbook). Block 1 is decided by where
+    the document sits, not by its type: those documents are reference only, so their values are never accepted,
+    counted or reviewed."""
+
+    return any(s.target == BLOCK_SUMMARY for s in slots)
+
+
 # --- numbers of a set of records ------------------------------------------------------------
 def tally(records: Iterable[ReviewedRecord]) -> dict[str, int]:
     """values / accepted / to_review / issues over every extracted field of the records."""
