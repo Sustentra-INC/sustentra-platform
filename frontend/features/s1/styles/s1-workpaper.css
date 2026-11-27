@@ -934,17 +934,6 @@ button.s1-state:focus-visible { outline: none; box-shadow: var(--shadow-focus); 
   padding: var(--spacing-md);
 }
 
-.s1-glossary {
-  display: grid;
-  gap: var(--spacing-lg);
-  max-width: var(--glossary-table-max-width);
-}
-
-.s1-glossary h2,
-.s1-glossary h3 {
-  margin: 0;
-}
-
 .s1-panel h3,
 .s1-card h3,
 .s1-band h3 {
@@ -1245,28 +1234,6 @@ button.s1-state:focus-visible { outline: none; box-shadow: var(--shadow-focus); 
   align-items: flex-start;
 }
 
-.s1-printable-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.s1-glossary-table {
-  max-width: var(--glossary-table-max-width);
-}
-
-.s1-glossary-table th,
-.s1-glossary-table td {
-  border-bottom: var(--hairline-width) solid var(--border-muted);
-  padding: var(--spacing-sm);
-  text-align: left;
-  vertical-align: top;
-}
-
-.s1-glossary-table thead th {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  text-transform: uppercase;
-}
 
 /* Glossary: Back, title with intro and tabs, then one panel at a time (term cards or the states table). */
 .s1-glossary-page { display: flex; flex-direction: column; gap: var(--sp-4); }
@@ -1291,6 +1258,28 @@ button.s1-state:focus-visible { outline: none; box-shadow: var(--shadow-focus); 
 .s1-glossary__dot--attention { background: var(--dot-warning); }
 .s1-glossary__dot--evidence { background: var(--dot-success); }
 .s1-glossary__dot--measure { background: var(--dot-neutral); }
+
+/* Glossary States: one card; a header row, then one row per enumeration (name, what it attaches to, its values). */
+.s1-glossary-states { container-type: inline-size; display: flex; flex-direction: column; border-radius: var(--r-lg); background: var(--sf-card); box-shadow: var(--shadow-card-soft); overflow: hidden; }
+.s1-glossary-states__row {
+  display: grid; grid-template-columns: var(--glossary-state-col-name) var(--glossary-state-col-applies) minmax(0, 1fr);
+  gap: var(--sp-4); align-items: center; padding: var(--sp-2-5) var(--sp-4-5); border-top: var(--hairline-width) solid var(--line);
+}
+.s1-glossary-states__row--head {
+  padding-block: var(--sp-2); border-top: 0; background: var(--sf-sunken);
+  font-size: var(--text-xs); font-weight: var(--weight-strong); color: var(--ink-3);
+}
+.s1-glossary-states__name { display: flex; flex-direction: column; gap: var(--sp-half); min-width: 0; }
+.s1-glossary-states__display { font-size: var(--text-md); font-weight: var(--weight-strong); color: var(--ink); overflow-wrap: anywhere; }
+.s1-glossary-states__code { font-size: var(--text-xs); color: var(--ink-3); }
+.s1-glossary-states__applies { font-size: var(--text-base); color: var(--ink-2); }
+.s1-glossary-states__values { display: flex; flex-wrap: wrap; gap: var(--sp-1-5); }
+/* When the card is narrow (a 900-wide window or smaller) each enumeration stacks: name, then what it attaches to, then its values. */
+@container (max-width: 45rem) {
+  .s1-glossary-states__row { grid-template-columns: minmax(0, 1fr); gap: var(--sp-1-5); }
+  .s1-glossary-states__row--head { display: none; }
+  .s1-glossary-states__row:nth-child(2) { border-top: 0; }
+}
 @media print {
   .s1-glossary__back, .s1-glossary__tabs { display: none; }
   /* Print the whole glossary, both panels, as a plain list. */
@@ -1299,6 +1288,9 @@ button.s1-state:focus-visible { outline: none; box-shadow: var(--shadow-focus); 
   .s1-glossary__cards { display: block; }
   .s1-glossary__card { padding: var(--sp-2) 0; border-radius: 0; box-shadow: none; border-bottom: var(--hairline-width) solid var(--line); break-inside: avoid; }
   .s1-glossary__dot { print-color-adjust: exact; }
+  .s1-glossary-states { border-radius: 0; box-shadow: none; overflow: visible; }
+  .s1-glossary-states__row { padding-inline: 0; break-inside: avoid; }
+  .s1-glossary-states__row--head { background: none; }
 }
 
 button:focus-visible,

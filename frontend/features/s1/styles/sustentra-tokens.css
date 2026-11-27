@@ -334,6 +334,8 @@
   --glossary-card-min:   260px; /* glossary term card minimum width (2 fit at 900px) */
   --glossary-title-basis: 420px; /* glossary title block before the tabs wrap under it */
   --glossary-dot:          8px; /* glossary term group dot */
+  --glossary-state-col-name:    210px; /* glossary states: enumeration column */
+  --glossary-state-col-applies: 190px; /* glossary states: attaches-to column */
   --field-value-max-height: 8rem;
   --source-snippet-max-height: 7.5rem;
   --selected-source-max-height: 8rem;

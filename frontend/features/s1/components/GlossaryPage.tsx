@@ -14,6 +14,11 @@ const TABS: { key: GlossaryTab; label: string }[] = [
   { key: "states", label: "States" },
 ];
 
+/** "processing" reads as "Processing"; a camelCase or multi-word code has no display name yet. */
+function displayName(code: string): string | null {
+  return /^[a-z]+$/.test(code) ? code[0].toUpperCase() + code.slice(1) : null;
+}
+
 /** A term's anchor on the page, so a card can be linked to. */
 function slug(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -109,38 +114,33 @@ export function GlossaryPage({ onBack }: { onBack: () => void }) {
         aria-labelledby={`${id}-tab-states`}
         hidden={tab !== "states"}
       >
-        <section className="s1-glossary">
-          <h3 className="s1-glossary__print-title">State enumerations</h3>
-          <table className="s1-printable-table s1-glossary-table">
-            <thead>
-              <tr>
-                <th>Enumeration</th>
-                <th>Attaches to</th>
-                <th>Values</th>
-              </tr>
-            </thead>
-            <tbody>
-              {STATE_ENUMERATION_ROWS.map((row) => (
-                <tr key={row.dimension}>
-                  <th>{row.enumeration}</th>
-                  <td>{row.attachesTo}</td>
-                  <td>
-                    <div className="s1-chip-stack">
-                      {row.values.map((value) => (
-                        <StateIndicator
-                          key={`${row.dimension}-${value.value}`}
-                          dimension={row.dimension}
-                          value={value.value}
-                          label={value.label}
-                        />
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+        <h2 className="s1-glossary__print-title">State enumerations</h2>
+        <div className="s1-glossary-states" role="table" aria-label="State enumerations">
+          <div className="s1-glossary-states__row s1-glossary-states__row--head" role="row">
+            <span role="columnheader">Enumeration</span>
+            <span role="columnheader">Attaches to</span>
+            <span role="columnheader">Values</span>
+          </div>
+          {STATE_ENUMERATION_ROWS.map((row) => {
+            const name = displayName(row.enumeration);
+            return (
+              <div key={row.dimension} className="s1-glossary-states__row" role="row">
+                <span className="s1-glossary-states__name" role="rowheader">
+                  {name ? <span className="s1-glossary-states__display">{name}</span> : null}
+                  <span className={name ? "s1-glossary-states__code" : "s1-glossary-states__display"}>{row.enumeration}</span>
+                </span>
+                <span className="s1-glossary-states__applies" role="cell">
+                  {row.attachesTo}
+                </span>
+                <span className="s1-glossary-states__values" role="cell">
+                  {row.values.map((value) => (
+                    <StateIndicator key={`${row.dimension}-${value.value}`} dimension={row.dimension} value={value.value} label={value.label} />
+                  ))}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
