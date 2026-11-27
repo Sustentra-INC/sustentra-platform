@@ -3956,7 +3956,7 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-mb-nameinput { width: 100%; max-width: 100%; }
 
 /* Calculation trace panel (components/calc-trace) */
-.s1-cp-trace { display: flex; flex-direction: column; gap: var(--sp-3); }
+.s1-cp-trace { display: flex; flex-direction: column; gap: var(--sp-3); width: 0; min-width: 100%; }
 .s1-cp-trace .s1-cp-route { margin: 0; font-size: var(--text-sm); }
 .s1-cp-pillrow { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
 .s1-cp-pills { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); font-size: var(--text-sm); }
@@ -3981,3 +3981,9 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-cp-ops tr.s1-cp-rec td { background: var(--sf-page); }
 .s1-cp-diff { font-weight: var(--weight-regular); color: var(--state-blocking-fg); }
 .s1-cp-wrap { overflow-wrap: anywhere; }
+.s1-cp-ops .s1-cp-out-head { color: var(--accent); border: var(--border-hairline); border-bottom: 0; border-radius: var(--radius-input) var(--radius-input) 0 0; }
+.s1-cp-ops tbody tr:last-child .s1-cp-out { border-bottom: var(--border-hairline); border-radius: 0 0 var(--radius-input) var(--radius-input); }
+.s1-cp-unit { text-transform: none; letter-spacing: 0; }
+.s1-cp-ops td:first-child { width: 6.5rem; white-space: nowrap; }
+.s1-cp-ops td.s1-vw-num { min-width: 9rem; }
+.s1-cp-ops td.s1-cp-out { min-width: 10rem; }

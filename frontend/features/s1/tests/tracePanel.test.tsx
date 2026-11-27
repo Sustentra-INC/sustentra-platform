@@ -32,7 +32,7 @@ describe("TracePanel", () => {
     expect(recomputed.textContent).toContain("0.001 t/kg");
     expect(recomputed.textContent).toContain("=");
     expect(recomputed.textContent).toContain("3,448.9 t");
-    expect(within(table).getByText("Mass (t)")).toBeTruthy();
+    expect(table.querySelector(".s1-cp-out-head")?.textContent).toBe("Mass (t)");
     // the line total, with the share as a percent
     const total = screen.getByRole("table", { name: "Results · Line total" });
     expect(total.textContent).toContain("3,452.44 t CO₂e");

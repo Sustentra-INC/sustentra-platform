@@ -94,7 +94,7 @@ function OperationTable({ block, name, inputs, onOpenDocument }: { block: TraceB
   const single = isSingle(shape);
   const resultColumn = columns.get(shape.result.column);
   const label = (key: string) => columns.get(key)?.label ?? key;
-  const resultLabel = `${label(shape.result.column)}${resultColumn?.is_result && resultColumn.unit ? ` (${prettyUnit(resultColumn.unit)})` : ""}`;
+  const resultUnit = resultColumn?.is_result && resultColumn.unit ? ` (${prettyUnit(resultColumn.unit)})` : "";
   const span = single ? 1 : shape.terms.length * 2 + 1;
   // No company number, or no company operation at all: the recomputed row shows no difference.
   const companyHasValue = hasValue(block.company);
@@ -152,7 +152,10 @@ function OperationTable({ block, name, inputs, onOpenDocument }: { block: TraceB
                   </th>,
                 ])}
             {single ? null : <th />}
-            <th className="s1-vw-num">{resultLabel}</th>
+            <th className="s1-vw-num s1-cp-out-head">
+              {label(shape.result.column)}
+              {resultUnit ? <span className="s1-cp-unit">{resultUnit}</span> : null}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -231,11 +234,13 @@ function BlockView({ block, step, trace, onOpenDocument }: { block: TraceBlock; 
   const unused = block.tag === "not_used_for_this_line";
   return (
     <div className={`s1-cp-block${unused ? " is-unused" : ""}`}>
-      <div className="s1-cp-block__head">
-        <h6>{block.label}</h6>
-        {block.tag && TAG_TEXT[block.tag] ? <span className="s1-cp-tag">{TAG_TEXT[block.tag]}</span> : null}
-        {choice ? <ChoicePills choice={choice} /> : null}
-      </div>
+      {step.blocks.length > 1 || block.tag || choice ? (
+        <div className="s1-cp-block__head">
+          <h6>{block.label}</h6>
+          {block.tag && TAG_TEXT[block.tag] ? <span className="s1-cp-tag">{TAG_TEXT[block.tag]}</span> : null}
+          {choice ? <ChoicePills choice={choice} compact /> : null}
+        </div>
+      ) : null}
       {summed?.rows?.length ? (
         <RowsTable block={block} input={summed} name={name} onOpenDocument={onOpenDocument} />
       ) : (
@@ -265,10 +270,10 @@ function StepView({ step, trace, onOpenDocument }: { step: TraceStep; trace: Lin
 /* ------------------------------------------ method pills ------------------------------------------ */
 
 /** The options of a choice, the one used marked. Read-only: a choice is changed elsewhere. */
-export function ChoicePills({ choice }: { choice: TraceChoice }) {
+export function ChoicePills({ choice, compact = false }: { choice: TraceChoice; compact?: boolean }) {
   return (
     <div className="s1-cp-pills" role="group" aria-label={choice.label}>
-      <span className="s1-cp-pills__label">{choice.label}</span>
+      {compact ? null : <span className="s1-cp-pills__label">{choice.label}</span>}
       {choice.options.map((o) => {
         const chosen = o.id === choice.chosen;
         const why = o.why_unavailable ?? "not available for this line";
@@ -296,7 +301,8 @@ export function TracePanel({ trace, onOpenDocument }: { trace: LineTrace; onOpen
   const placed = new Set((trace.steps ?? []).flatMap((s) => (s.blocks ?? []).map((b) => b.choice_id)));
   const method = choices.find((c) => c.id === "method");
   const route = method?.options.find((o) => o.id === method.chosen);
-  const loose = choices.filter((c) => !placed.has(c.id));
+  // A choice with one option has nothing to pick: the route line already says it.
+  const loose = choices.filter((c) => !placed.has(c.id) && c.options.length > 1);
   return (
     <div className="s1-cp-trace" data-trace-state={trace.state}>
       {route ? (

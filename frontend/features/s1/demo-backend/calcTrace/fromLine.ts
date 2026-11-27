@@ -190,7 +190,7 @@ export function traceFromLine(line: CalculationLine): LineTrace {
       id: `emissions.${g.gas}`,
       label,
       choice_id: `equation:${g.gas}`,
-      columns: [col("activity", "Activity", undefined, false), col("ef", "Emission factor", undefined, false), col("conversion", "To metric tons", undefined, false), col("mass", "Mass", "t", true, { sig: 6 })],
+      columns: [col("activity", "Activity", undefined, false), col("ef", "Emission factor", undefined, false), col("conversion", "To metric tons", undefined, false), col("mass", "Mass", "t", true, { dp: 3 })],
       ...(cg ? { company: massOp(cg) } : {}),
       recomputed: withDifferences(massOp(g), cg ? massOp(cg) : undefined),
     });
@@ -201,7 +201,7 @@ export function traceFromLine(line: CalculationLine): LineTrace {
     gwp.push({
       id: `gwp.${g.gas}`,
       label,
-      columns: [col("mass", "Mass", "t", false), col("gwp", "GWP", "t CO2e/t", false), col("co2e", "CO₂e", "t CO2e", true, { dp: 2 })],
+      columns: [col("mass", "Mass", "t", false, { dp: 3 }), col("gwp", "GWP", "t CO2e/t", false), col("co2e", "CO₂e", "t CO2e", true, { dp: 2 })],
       ...(cg ? { company: gwpOp(cg) } : {}),
       recomputed: withDifferences(gwpOp(g), cg ? gwpOp(cg) : undefined),
     });
@@ -228,14 +228,14 @@ export function traceFromLine(line: CalculationLine): LineTrace {
       {
         id: "results.sum",
         label: "Gases added",
-        columns: [col("co2e", "CO₂e", "t CO2e", false), col("sum", "Sum of gases", "t CO2e", true, { dp: 2 })],
+        columns: [col("co2e", "CO₂e", "t CO2e", false, { dp: 2 }), col("sum", "Sum of gases", "t CO2e", true, { dp: 2 })],
         ...(companySum ? { company: companySum } : {}),
         recomputed: withDifferences(recomputedSum, companySum),
       },
       {
         id: "results.total",
         label: "Line total",
-        columns: [col("sum", "Sum of gases", "t CO2e", false), col("share", "Consolidated share", undefined, false), col("total", "Total", "t CO2e", true, { dp: 2 })],
+        columns: [col("sum", "Sum of gases", "t CO2e", false, { dp: 2 }), col("share", "Consolidated share", undefined, false), col("total", "Total", "t CO2e", true, { dp: 2 })],
         ...(companySum ? { company: totalOp(companySum, false) } : {}),
         recomputed: withDifferences(totalOp(recomputedSum, true), companySum ? totalOp(companySum, false) : undefined),
       },
