@@ -294,6 +294,13 @@ DECIDED_GWP_SOURCE = "Component GWPs decided on the calculation lines"
 NEGATIVE = "negative_refrigerant_emissions"
 
 
+def _first_decided(item: DecidedLine) -> str:
+    """When the line's earliest applied decision was made (ISO 8601 sorts as text); "~" (last) when none says."""
+
+    times = [str(e.get("decided_at")) for e in item.decided.applied if e.get("decided_at")]
+    return min(times) if times else "~"
+
+
 def fugitive_sums(lines: Iterable[Mapping[str, Any]]) -> dict[str, float]:
     """Σ of the fugitive lines' (and unplaced records') mass by refrigerant. A line whose refrigerant has no GWP holds
     no mass: the category does not count it either."""
@@ -317,16 +324,19 @@ def _apply_fugitive(categories: dict[str, calc.CategoryResult | None], mine: lis
     category = categories.get(FUGITIVE)
     counted = {line.key: float(line.mass_t.get(line.key, 0.0)) for line in category.lines} if category else {}
     sums = fugitive_sums(every)
-    if (category is not None and len(counted) != len(category.lines)) or set(sums) != set(counted) or any(
-            not _close(sums[gas], counted[gas]) for gas in counted):
+    # a refrigerant missing on one side counts 0 there (a line with the company's figures and no record holds 0 t)
+    if (category is not None and len(counted) != len(category.lines)) or any(
+            not _close(sums.get(gas, 0.0), counted.get(gas, 0.0)) for gas in {*sums, *counted}):
         for item in mine:
             _refuse(item, "category_does_not_add_up", "Not applied: this category's lines do not add up to its "
                     "total, so a change on one line cannot be counted. Check the lines marked as not calculated.")
         return []
     gwp: dict[str, dict[str, Any]] = {k: dict(v) for k, v in (category.gwp if category else {}).items()}
-    added: dict[str, float] = {}
+    added: dict[str, tuple[float, DecidedLine]] = {}
     usable: list[DecidedLine] = []
-    for item in mine:
+    # A refrigerant counted for the first time takes the GWP of the line decided first (then by line key): every later
+    # line of it with another GWP is refused, naming that line, whatever order the lines are built in.
+    for item in sorted(mine, key=lambda d: (_first_decided(d), str(d.line.get("key")))):
         gas = item.sub[0]
         decided_gwp = (item.figures.rows.get(gas) or {}).get("gwp")
         if not isinstance(decided_gwp, (int, float)) or gas not in item.figures.mass_t:
@@ -336,12 +346,14 @@ def _apply_fugitive(categories: dict[str, calc.CategoryResult | None], mine: lis
                 _refuse(item, "could_not_count", "Not applied: the line's GWP is not the one its category uses.")
             else:
                 usable.append(item)
-        elif gas in added and not math.isclose(added[gas], float(decided_gwp), rel_tol=1e-12, abs_tol=0.0):
+        elif gas in added and not math.isclose(added[gas][0], float(decided_gwp), rel_tol=1e-12, abs_tol=0.0):
+            first = added[gas][1].line
             _refuse(item, "gwp_differs_between_lines",
-                    f"Not applied: another {gas} line is worked with other component GWPs (its GWP is "
-                    f"{added[gas]:,.6g}). Decide the same component GWPs on every {gas} line.")
+                    f"Not applied: the {gas} line at {first.get('label') or first.get('key')} was decided first, with "
+                    f"component GWPs that give {gas} a GWP of {added[gas][0]:,.6g}. Decide the same component GWPs "
+                    f"here, or change that line's.")
         else:
-            added.setdefault(gas, float(decided_gwp))
+            added.setdefault(gas, (float(decided_gwp), item))
             usable.append(item)
     if not usable:
         return []
@@ -352,7 +364,8 @@ def _apply_fugitive(categories: dict[str, calc.CategoryResult | None], mine: lis
         line = new_lines.get(gas)
         if line is None:  # a refrigerant counted for the first time, from its decided lines
             line = new_lines[gas] = calc.LineResult(gas, {gas: calc.REFRIGERANT_EQUATION}, {gas: 0.0})
-            gwp[gas] = {"value": added[gas], "source": DECIDED_GWP_SOURCE}
+            own = (added[gas][1].line.get("smb") or {}).get("gwp")  # a GWP the line had (no record yet), else decided
+            gwp[gas] = {"value": added[gas][0], "source": own.get("source") if own else DECIDED_GWP_SOURCE}
         if gas in added:  # the Working sheet lists the records it counted, as for every other refrigerant
             entry = next((e for e in details.setdefault("inputs", []) if e.get("fuel") == gas), None)
             if entry is None:

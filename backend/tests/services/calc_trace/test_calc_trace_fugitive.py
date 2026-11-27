@@ -21,6 +21,7 @@ from backend.app.services.calc_trace import decisions, fugitive
 from backend.app.services.calc_line_review import Refused, decide_input
 from backend.app.services.engagement_recalculation_service import EngagementRecalculationService
 from backend.app.services.request_service import Actor
+from backend.app.services.review_field import ReviewInvalid
 from backend.tests.services.calc_trace.fixture_replay import FIXTURES
 from backend.tests.services.calc_trace.test_calc_trace_decisions import block, event, line_of
 from backend.tests.services.test_calculation_lines import GAS_KC, KC, STL
@@ -238,6 +239,7 @@ def test_two_lines_of_one_blend_must_agree_on_its_component_gwps() -> None:
     kc, stl = line_of(response, R448A_KC), line_of(response, R448A_STL)
     refused = stl["decisions"]["not_applied"]
     assert {r["reason"] for r in refused} == {"gwp_differs_between_lines"}
+    assert all("Kansas City Plant was decided first" in r["message"] for r in refused)  # names the line that won
     assert stl["results"]["total_co2e_t"] == 0.0 and stl["trace"]["state"] == "blocked"  # the working counted
     assert category(response)["total_co2e"] == pytest.approx(kc["results"]["total_co2e_t"], rel=1e-12)
     # one R-448A line still has no GWP: the engagement keeps asking for it
@@ -309,7 +311,7 @@ def test_a_negative_balance_is_kept_and_flagged() -> None:
     assert "negative_refrigerant_emissions" in category(response)["flags"]
 
 
-@pytest.mark.parametrize("value,unit", [(0, "lb"), (-5, "lb"), (float("nan"), "lb"), (1e16, "lb"), (90, "kg"),
+@pytest.mark.parametrize("value,unit", [(-0.0001, "lb"), (-5, "lb"), (float("nan"), "lb"), (1e16, "lb"), (90, "kg"),
                                         ("ninety", "lb"), (True, "lb")])
 def test_hostile_values_are_reported_never_used(value: Any, unit: str) -> None:
     before = run(r404a_store())
@@ -417,3 +419,121 @@ def test_a_company_mass_that_is_not_a_mass_asks_instead_of_guessing() -> None:
     trace = line_of(kg, R404A_KC)["trace"]
     assert trace["result"]["company"] == pytest.approx(0.0585 * 3943, rel=1e-12)
     assert "difference" not in block(trace, "emitted_t")["recomputed"]["terms"][0]["operand"]  # lb against kg
+
+
+# --- review fixes: one refrigerant per line, zero terms, lines with no records, export, which line wins ---------------
+def two_refrigerants_on_one_line() -> tuple[FakeStore, dict[str, dict]]:
+    store = r404a_store()
+    store.add_document("R410", "CT-S1-REFRSVC", [rec("R-410A", "2025-04-09", added=40)])
+    store.add_document("STL", "CT-S1-REFRSVC", [rec("R-404A", "2025-06-01", added=10, plant="St Louis Plant")])
+    return store, {"R410": {"placements": [{"from": R410A_KC, "to": R404A_KC}]}}
+
+
+def run_with(store: FakeStore, document_decisions: dict | None, line_decisions: list[dict] | None = None,
+             **recalculation: Any) -> dict:
+    engagement = {"id": "ENG-1", "reporting_period_start": "2025-01-01", "reporting_period_end": "2025-12-31",
+                  "settings": {"facilities": [KC, STL], "recalculation": recalculation}}
+    return EngagementRecalculationService(store, store, store).recalculate(
+        engagement, _own, document_decisions, with_traces=True, line_decisions=line_decisions)
+
+
+def test_a_line_holding_two_refrigerants_is_blocked_and_the_category_counts_each_on_its_own_gwp() -> None:
+    store, moved = two_refrigerants_on_one_line()
+    apart = run(store)
+    response = run_with(store, moved, reported_lines={R404A_KC: 300.0})
+    line = line_of(response, R404A_KC)
+    assert "mixed_refrigerants" in line["flags"] and line["smb"]["gases"] == ["R-404A", "R-410A"]
+    trace = line["trace"]
+    assert trace["state"] == "blocked" and trace["steps"] == []
+    assert trace["blocking"][0]["message"] == ("This line mixes refrigerants (R-404A, R-410A): move the R-410A records "
+                                               "to their own line.")
+    assert all(i["decidable"] is False and "mixes refrigerants" in i["why_not"] for i in trace["inputs"].values())
+    assert [r["label"].split(" · ")[0] for r in trace["inputs"]["P_S"]["rows"]] == ["R-404A"] * 4 + ["R-410A"]
+    # never one balance under one GWP: each refrigerant's mass and CO2e as the category counts them, and no verdict
+    assert line["results"]["mass_t"] == {"R-404A": pytest.approx(99 * T_PER_LB, rel=1e-12),
+                                         "R-410A": pytest.approx(40 * T_PER_LB, rel=1e-12)}
+    assert line["results"]["gas_co2e_t"]["R-410A"] == pytest.approx(40 * T_PER_LB * 1924, rel=1e-12)
+    assert line["reported_total_co2e_t"] == 300.0 and line["difference_t"] is None
+    assert line["status"] == "not_reported" and line["company"] is None
+    assert category(response) == category(apart)  # the category is exactly as with the records on their own lines
+    jsonschema.validate(trace, SCHEMA)
+
+
+def test_a_decision_on_a_mixed_line_is_refused_and_one_on_another_fugitive_line_still_applies() -> None:
+    store, moved = two_refrigerants_on_one_line()
+    before = run_with(store, moved)
+    stl_key = "s1:fugitive:r-404a:fac-stl2"
+    decided = [event(R404A_KC, "input|P_S|recomputed", "edited", 120, "lb"),
+               event(stl_key, "input|P_S|recomputed", "edited", 20, "lb")]
+    response = run_with(store, moved, decided)
+    mixed = line_of(response, R404A_KC)
+    assert [(n["id"], n["reason"]) for n in mixed["decisions"]["not_applied"]] == [("P_S", "line_mixes_runs")]
+    assert "move the R-410A records" in mixed["decisions"]["not_applied"][0]["message"]
+    stl = line_of(response, stl_key)
+    assert stl["results"]["total_co2e_t"] == pytest.approx(20 * T_PER_LB * 3943, rel=1e-12)
+    assert category(response)["total_co2e"] - category(before)["total_co2e"] == pytest.approx(
+        10 * T_PER_LB * 3943, rel=1e-9)
+
+
+def test_a_balance_term_may_be_decided_as_zero_but_never_below() -> None:
+    zero = run(r404a_store(), line_decisions=[event(R404A_KC, "input|C_N|recomputed", "edited", 0, "lb")])
+    line = line_of(zero, R404A_KC)
+    assert [a["id"] for a in line["decisions"]["applied"]] == ["C_N"]
+    assert line["step1"]["total"]["quantity"] == 139.0  # 42 - 0 + 90 + 55 - 48
+    assert category(zero)["total_co2e"] == pytest.approx(139 * T_PER_LB * 3943, rel=1e-12)
+    below = run(r404a_store(), line_decisions=[event(R404A_KC, "input|R_D|recomputed", "edited", -1, "lb")])
+    assert line_of(below, R404A_KC)["decisions"]["not_applied"][0]["reason"] == "invalid_value"
+    gwp_zero = run(r448a_store(), line_decisions=[gwp_event(R448A_KC, "HFO-1234yf", 0)])
+    assert line_of(gwp_zero, R448A_KC)["decisions"]["not_applied"][0]["reason"] == "invalid_value"
+    trace = line_of(run(r404a_store()), R404A_KC)["trace"]
+    actor = Actor(user_id="u1", login="rev@example.com", name="Rev Iewer")
+    now = __import__("datetime").datetime.now()
+    made = decide_input({}, trace["inputs"]["C_N"], None, "recomputed", "edit", value=0, unit="lb", reason="none new",
+                        actor=actor, now=now)
+    assert made["decision"]["value"] == 0
+    with pytest.raises(ReviewInvalid):
+        decide_input({}, trace["inputs"]["C_N"], None, "recomputed", "edit", value=-1, unit="lb", reason="x",
+                     actor=actor, now=now)
+
+
+def test_a_refrigerant_line_with_company_figures_and_no_record_resolves() -> None:
+    key = "s1:fugitive:r-404a:fac-stl2"
+    response = run(r404a_store(), reported_lines={key: 50.0})
+    line = line_of(response, key)
+    assert "no_evidence" in line["flags"] and line["level2"] == "R-404A"
+    assert line["results"]["total_co2e_t"] == 0.0 and line["reported_total_co2e_t"] == 50.0
+    assert line["status"] == "above"
+    assert not any(u["key"] == key for u in response["calculation_line_inputs"]["unknown_line_keys"])
+    assert category(response)["total_co2e"] == 177.06295677609  # nothing added
+    decided = run(r404a_store(), reported_lines={key: 50.0},
+                  line_decisions=[event(R404A_KC, "input|P_S|recomputed", "edited", 120, "lb")])
+    assert line_of(decided, R404A_KC)["decisions"]["applied"]  # the empty line keeps the lines adding up
+    assert category(decided)["total_co2e"] == pytest.approx(230.71839822339, rel=1e-12)
+    for bad in ("s1:fugitive:hcfc-22:fac-stl2", "s1:fugitive:r-404a:fac-nowhere", "s1:fugitive:nothing:fac-stl2"):
+        assert any(u["key"] == bad for u in run(r404a_store(), reported_lines={bad: 1.0})[
+            "calculation_line_inputs"]["unknown_line_keys"]), bad
+
+
+def test_the_working_sheet_marks_a_refrigerant_awaiting_component_gwps_as_not_counted() -> None:
+    from backend.app.services.workpaper_export_service import _source_rows
+
+    rows = _source_rows(run(r448a_store()), {})
+    mine = [r for r in rows if r[1] and "R-448A" in str(r[1])]
+    assert len(mine) == 1
+    assert mine[0][4] == 10 and mine[0][7] == "not counted: component GWPs awaiting review"
+    counted = _source_rows(run(r448a_store(), line_decisions=[gwp_event(R448A_KC, n, v)
+                                                               for n, v in zip(HFO, (4, 6), strict=True)]), {})
+    assert [r[7] for r in counted if r[1] and "R-448A" in str(r[1])] == [10]
+
+
+def test_the_line_decided_first_keeps_the_blend_gwp_whatever_its_key() -> None:
+    store = r448a_store("Kansas City Plant", "St Louis Plant")
+    early = [gwp_event(R448A_STL, n, v) for n, v in zip(HFO, (1, 6), strict=True)]
+    for e in early:
+        e["record"]["decision"]["at"] = "2026-11-20T09:00:00Z"
+    later = [gwp_event(R448A_KC, n, v) for n, v in zip(HFO, (4, 6), strict=True)]
+    response = run(store, line_decisions=[*later, *early])
+    assert line_of(response, R448A_STL)["results"]["total_co2e_t"] > 0
+    refused = line_of(response, R448A_KC)["decisions"]["not_applied"]
+    assert {r["reason"] for r in refused} == {"gwp_differs_between_lines"}
+    assert "St Louis Plant was decided first" in refused[0]["message"]

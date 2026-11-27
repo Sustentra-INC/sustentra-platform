@@ -515,6 +515,10 @@ def _source_rows(recalculation: Mapping[str, Any], register: Mapping[str, Any]) 
         name = _NOT_ON_A_LINE if line.get("key") is None and line in unplaced else (
             f"{level2}, {label}" if level2 and label and level2 != label else str(level2 or label or ""))
         step1 = line.get("step1")
+        smb = line.get("smb") if isinstance(line.get("smb"), Mapping) else None
+        # a refrigerant line still waiting for a GWP counts nothing: its records show their quantity, marked so
+        waiting = (f"not counted: {smb.get('awaiting') or 'a GWP'} awaiting review" if smb is not None
+                   and smb.get("gwp") is None and not smb.get("decided_gwp") and not smb.get("mixed") else None)
         for row in (step1.get("rows") if isinstance(step1, Mapping) else None) or []:
             if not isinstance(row, Mapping):
                 continue
@@ -526,7 +530,7 @@ def _source_rows(recalculation: Mapping[str, Any], register: Mapping[str, Any]) 
             labels = {str(m["doc"].get("record")) for m in matches}
             file_name, record = _split_record(next(iter(labels)) if len(labels) == 1 else None)
             rows.append([category, name or None, row.get("file_name") or file_name or _NO_FILE, record,
-                         row.get("quantity"), row.get("unit"), row.get("share_in_period"), counted,
+                         row.get("quantity"), row.get("unit"), row.get("share_in_period"), waiting or counted,
                          pages.get((str(row.get("document_id")), str(row.get("candidate_id"))))])
     for entry in entries:
         if entry["used"]:

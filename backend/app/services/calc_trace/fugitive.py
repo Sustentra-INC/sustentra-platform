@@ -66,6 +66,13 @@ UNIT_SOURCE = "fuel_units conversion table"
 NEGATIVE_FLAG = "negative_refrigerant_emissions"
 NO_GWP_FLAG = "refrigerant_gwp_needed"
 COMPONENTS_FLAG = "awaiting_component_gwps"
+MIXED_FLAG = "mixed_refrigerants"
+
+
+def zero_allowed(input_id: str) -> bool:
+    """A balance term (or one record of it) may be decided as 0: no new equipment, nothing recovered. A GWP may not."""
+
+    return input_id.split("/", 1)[0] in TERMS
 DECIDED = ("accepted", "edited")
 NOT_IN_HUB = Path(__file__).resolve().parents[4] / "reference-data" / "emission-factors" / \
     "refrigerant_blends_not_in_hub.json"
@@ -172,11 +179,47 @@ def _kind(terms: Mapping[str, float]) -> str:
     return "service"
 
 
+def mixed_parts(by_gas: Mapping[str, list[Any]], *, own: str, gwps: Mapping[str, Mapping[str, Any] | None],
+                gwp_set: str, share_pct: float, iso: Callable[[Any], str | None]) -> dict[str, Any]:
+    """A line holding records of more than one refrigerant: it is blocked (never one balance under one GWP). Its results
+    still hold each refrigerant's mass and CO2e on its own GWP, exactly what the category counts of them, so the lines
+    keep adding up to the category; the line has no total of its own to compare (``MIXED_FLAG``)."""
+
+    gases = sorted(by_gas, key=lambda g: (g != own, g))
+    parts = {g: line_parts(by_gas[g], gas=g, gwp=gwps.get(g), gwp_set=gwp_set, share_pct=share_pct, iso=iso)
+             for g in gases}
+    rows = [{**r, "gas": g} for g in gases for r in parts[g]["step1"]["rows"]]
+    mass = {k: v for p in parts.values() for k, v in p["results"]["mass_t"].items()}
+    co2e = {k: v for p in parts.values() for k, v in p["results"]["gas_co2e_t"].items()}
+    first = parts[gases[0]]
+    flags = sorted({MIXED_FLAG, *(f for p in parts.values() for f in p["flags"])})
+    return {
+        "method": {"route": ROUTE, "equations": {}},
+        "step1": {"rows": rows, "total": {"quantity": 0.0, "unit": first["smb"]["unit"]}},
+        "step2": {**first["step2"], "result": {"quantity": 0.0, "unit": "t"}},
+        "step3": {"gases": []},
+        "results": {"mass_t": mass, "gas_co2e_t": co2e, "sum_co2e_t": sum(co2e.values()),
+                    "total_co2e_t": sum(co2e.values()) * share_pct / 100, "biogenic_co2_t": 0.0},
+        "smb": {"gas": own, "gases": gases, "mixed": True, "unit": first["smb"]["unit"],
+                "terms": dict.fromkeys(TERMS, 0.0), "emitted": 0.0, "factor": first["smb"]["factor"],
+                "emitted_t": 0.0, "gwp": None, "gwp_set": gwp_set},
+        "flags": flags,
+    }
+
+
+def mixed_message(smb: Mapping[str, Any]) -> str:
+    gases = [str(g) for g in smb.get("gases") or []]
+    others = [g for g in gases if g != smb.get("gas")] or gases[1:]
+    return (f"This line mixes refrigerants ({', '.join(gases)}): move the {', '.join(others)} records to their own "
+            "line.")
+
+
 def line_parts(contribs: list[Any], *, gas: str, gwp: Mapping[str, Any] | None, gwp_set: str, share_pct: float,
-               iso: Callable[[Any], str | None]) -> dict[str, Any]:
+               iso: Callable[[Any], str | None], awaiting: str | None = None) -> dict[str, Any]:
     """The line's Steps 1 to 3 and results from its records (``Contribution`` with ``terms``), all in the unit the
     category holds the refrigerant in. ``gwp`` is the category's ({value, source}), or None when the category did not
-    count the refrigerant (no GWP): the line then counts nothing (its results hold no mass)."""
+    count the refrigerant (no GWP): the line then counts nothing (its results hold no mass), and ``awaiting`` says
+    what it waits for ("component GWPs" or "a GWP")."""
 
     unit = contribs[0].unit if contribs else "lb"
     totals = dict.fromkeys(TERMS, 0.0)
@@ -212,7 +255,7 @@ def line_parts(contribs: list[Any], *, gas: str, gwp: Mapping[str, Any] | None, 
                     "sum_co2e_t": co2e, "total_co2e_t": co2e * share_pct / 100, "biogenic_co2_t": 0.0},
         "smb": {"gas": gas, "unit": unit, "terms": totals, "emitted": emitted, "factor": factor, "emitted_t": emitted_t,
                 "gwp": {"value": float(gwp["value"]), "source": gwp.get("source")} if gwp is not None else None,
-                "gwp_set": gwp_set},
+                "gwp_set": gwp_set, **({"awaiting": awaiting or "a GWP"} if gwp is None else {})},
         "flags": flags,
     }
 
@@ -279,6 +322,8 @@ def build(line: dict[str, Any], context: dict[str, Any] | None = None) -> LineTr
 
     if not line.get("key") or not isinstance(line.get("smb"), Mapping):
         return None
+    if line["smb"].get("mixed"):
+        return _mixed_trace(line)
     try:
         return _build(line, context or {}, {})
     except (ops.TraceError, KeyError, TypeError, ValueError):
@@ -580,6 +625,31 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided) -> L
         choices=[_choice()], inputs=inputs, steps=steps, flags=sorted(flags),
         result=TraceResult("t CO2e", their_total, recomputed_total,
                            ops.difference(recomputed_total, their_total, "t CO2e", "t CO2e")))
+
+
+def _mixed_trace(line: dict[str, Any]) -> LineTrace:
+    """A line mixing refrigerants: blocked, its records listed per term (each with its refrigerant), nothing worked and
+    nothing decidable (``decisions.mark_decidable`` says why)."""
+
+    smb = line["smb"]
+    inputs: dict[str, TraceInput] = {}
+    for term in TERMS:
+        rows: list[InputRow] = []
+        for i, r in enumerate(line["step1"]["rows"]):
+            if term not in (r.get("terms") or {}):
+                continue
+            cand = (r.get("candidates") or {}).get(term) or r.get("candidate_id") or str(i)
+            rows.append(InputRow(f"{r['document_id']}/{cand}#{i}", " · ".join(
+                str(x) for x in (r.get("gas"), r.get("file_name") or r["document_id"], r.get("period_start")) if x),
+                recomputed=Side(float(r["terms"][term]), str(r["unit"]), "accepted", SourceRef(
+                    "document", document_id=r["document_id"], candidate_id=cand, file_name=r.get("file_name")))))
+        inputs[term] = TraceInput(term, TERM_LABEL[term], "evidence_sum", symbol=term, required_for=[METHOD],
+                                  recomputed=Side(None, str(smb["unit"]), "awaiting_review"), rows=rows)
+    return LineTrace(
+        line_key=str(line["key"]), panel="fugitive", state="blocked",
+        blocking=[Blocking("P_S", mixed_message(smb))], choices=[_choice()], inputs=inputs, steps=[],
+        flags=sorted({*(line.get("flags") or []), MIXED_FLAG}),
+        result=TraceResult("t CO2e", None, None, None))
 
 
 def _cited(gwp: Mapping[str, Any]) -> str:

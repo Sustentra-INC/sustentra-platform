@@ -136,6 +136,11 @@ def not_decidable(input_id: str) -> str | None:
 
 
 MIXED_RUNS = "this line mixes fuels or units: move the other records to their own line first"
+MIXED_REFRIGERANTS = "this line mixes refrigerants: move the other refrigerant's records to their own line first"
+
+
+def _is_zero(value: Any) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and value == 0
 
 
 def mark_decidable(trace: LineTrace) -> None:
@@ -145,6 +150,8 @@ def mark_decidable(trace: LineTrace) -> None:
     for input_id, item in trace.inputs.items():
         why = not_decidable(input_id)
         # A fugitive line blocked on a GWP still has its working: its terms and missing component GWPs can be decided.
+        if why is None and trace.panel == "fugitive" and fugitive.MIXED_FLAG in trace.flags:
+            why = MIXED_REFRIGERANTS
         if why is None and (mixed or (trace.state == "blocked" and (trace.panel != "fugitive" or not trace.steps))):
             why = MIXED_RUNS if mixed else "this line has no working to calculate from"
         item.decidable, item.why_not = why is None, why
@@ -212,6 +219,8 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
                                                       "decision, so the new automatic value is used. Decide again."))
             continue
         number = _number(decision.get("value"))
+        if number is None and panel == "fugitive" and fugitive.zero_allowed(target_id) and _is_zero(decision.get("value")):
+            number = 0.0  # a balance term may be 0 (no new equipment, nothing recovered); never below
         if number is None:
             outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="invalid_value",
                                               message="Not applied: the value is not a number above 0."))
@@ -305,6 +314,11 @@ def _fugitive(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any]
                 values.pop(input_id)
                 _move_to_not_applied(outcome, input_id, "total_decided", "Not applied: this term's total is decided.")
     line = (context or {}).get("line")
+    if fugitive.MIXED_FLAG in trace.flags and values:  # one balance per refrigerant: nothing is worked on this line
+        message = fugitive.mixed_message(line["smb"]) if line is not None else MIXED_REFRIGERANTS
+        for input_id in list(values):
+            _move_to_not_applied(outcome, input_id, "line_mixes_runs", f"Not applied: {message}")
+        values.clear()
     worked: dict[str, float] | None = None
     if values and line is not None:
         decided: dict[str, tuple[float, Side]] = {}

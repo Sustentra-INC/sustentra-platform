@@ -373,6 +373,13 @@ export interface CalcLineSmb {
   emitted_t: number;
   gwp: { value: number; source: string | null } | null;
   gwp_set: string;
+  /** Set once the line counts from its decided component GWPs (`gwp` stays null: the reference has none). */
+  decided_gwp?: { value: number; source: string | null };
+  /** What a line with no GWP waits for: "component GWPs" or "a GWP". */
+  awaiting?: string;
+  /** The line holds records of more than one refrigerant (`gases`): it is blocked and has no total of its own. */
+  mixed?: boolean;
+  gases?: string[];
 }
 
 export type CalcUnplacedReason =

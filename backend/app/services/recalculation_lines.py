@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
 from backend.app.domain import fuel_units
+from backend.app.domain.refrigerants import find_refrigerant
 from backend.app.reference.emission_factor_loader import EmissionFactorNotFoundError, EmissionFactorReference
 from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
@@ -417,9 +418,26 @@ class _Builder:
         """One refrigerant's line: its records' terms, the balance, and the GWP the category counted it with."""
 
         line = bucket.line
-        gas = bucket.contribs[0].sub[0] if bucket.contribs else bucket.level2
-        parts = fugitive.line_parts(bucket.contribs, gas=gas, gwp=self.ledger.refrigerant_gwp.get(gas),
-                                    gwp_set=self.inputs.refrigerant_gwp_set, share_pct=share_pct, iso=_iso)
+        by_gas: dict[str, list[Contribution]] = {}
+        for c in bucket.contribs:
+            by_gas.setdefault(c.sub[0], []).append(c)
+        own = line.level2_label if line else bucket.level2
+        gwp_set = self.inputs.refrigerant_gwp_set
+        if len(by_gas) > 1:  # one balance per refrigerant: a line holding two is blocked, never summed under one GWP
+            parts = fugitive.mixed_parts(by_gas, own=own, gwps={g: self.ledger.refrigerant_gwp.get(g) for g in by_gas},
+                                         gwp_set=gwp_set, share_pct=share_pct, iso=_iso)
+        else:
+            gas = next(iter(by_gas), own)
+            gwp = self.ledger.refrigerant_gwp.get(gas)
+            if gwp is None and not by_gas:  # the company's figures, no evidence: the reference GWP, when it has one
+                try:
+                    found = self.ref.gwp(gas, gwp_set)
+                    gwp = {"value": found.value, "source": found.source}
+                except EmissionFactorNotFoundError:
+                    gwp = None
+            awaiting = "component GWPs" if fugitive.blend_of(gas, self.ref) is not None else "a GWP"
+            parts = fugitive.line_parts(bucket.contribs, gas=gas, gwp=gwp, gwp_set=gwp_set, share_pct=share_pct,
+                                        iso=_iso, awaiting=awaiting)
         out: dict[str, Any] = {
             "key": line.key if line else None, "scope": line.scope if line else "s1",
             "category": line.category if line else "fugitive", "counts_toward": "fugitive",
@@ -431,7 +449,8 @@ class _Builder:
             "results": parts["results"], "smb": parts["smb"],
             "company": None, "reported_total_co2e_t": None, "difference_t": None,
             "difference_pct_of_base": None, "status": "not_reported",
-            "inputs_incomplete": self.open_sources.get(ROLLUP_SOURCE["fugitive"], False), "flags": parts["flags"],
+            "inputs_incomplete": self.open_sources.get(ROLLUP_SOURCE["fugitive"], False),
+            "flags": sorted({*parts["flags"], *(["no_evidence"] if bucket.no_evidence else [])}),
         }
         if line is None:
             out["reason"] = bucket.reason or "no_calculation_line"
@@ -439,6 +458,9 @@ class _Builder:
             return out
         key = line.key
         reported = self.inputs.reported_lines.get(key)
+        if parts["smb"].get("mixed"):  # no total of its own: nothing to compare until the records are moved apart
+            out["reported_total_co2e_t"] = reported
+            return out
         if reported is not None:
             recomputed = out["results"]["total_co2e_t"]
             out["reported_total_co2e_t"], out["difference_t"] = reported, recomputed - reported
@@ -679,6 +701,11 @@ def _resolve_key(key: str, known: dict[str, cl.CalculationLine], facilities: lis
             if level2 != "electricity" or facility is None:
                 return None
             line = cl.facility_line(category, "electricity", ELECTRICITY_LEVEL2, facility)
+        elif category == "fugitive":  # a refrigerant the company gave figures for at a facility, with no record yet
+            gas = find_refrigerant(level2.replace("-", " ")) if facility is not None else None
+            if gas is None or gas.montreal or facility is None:
+                return None
+            line = cl.facility_line(category, level2, gas.name, facility)
         elif category in ("stationary", "mobile", "biogenic"):
             stationary = [n for n in ref.stationary_fuel_types() if cl.slug(n) == level2]
             mobile = [r["fuel_type"] for r in ref.data["mobile_co2"] if cl.slug(r["fuel_type"]) == level2]
@@ -701,6 +728,8 @@ def _resolve_key(key: str, known: dict[str, cl.CalculationLine], facilities: lis
         family = "mobile"
     elif line.category in ("stationary", "biogenic") and line.anchor_kind == "facility":
         family = "stationary"
+    elif line.category == "fugitive":
+        family = "fugitive"
     else:
         return None
     facility = next((f for f in facilities if cl.facility_anchor_id(f) == line.anchor_id), None)
