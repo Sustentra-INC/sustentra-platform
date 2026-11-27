@@ -1,5 +1,6 @@
 "use client";
 
+import { ProvenanceLabel } from "./ProvenanceLabel";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ChevronDown, ChevronRight, SquareDashed, TextAlignJustify } from "lucide-react";
@@ -630,11 +631,17 @@ export function FieldRow({
     />
   ) : null;
   const statusChip = chip ? <span className={`s1-mr-chip s1-mr-chip--${chip}`}>{statusWord(status)}</span> : !pendingStatus ? <span className="s1-chip">{statusWord(status)}</span> : null;
-  const decidedBy = decision && status !== "pending" ? (
-    <span className="s1-mr-muted">
-      {decision.by.name} · {when(decision.at)}
-    </span>
-  ) : null;
+  const decidedBy =
+    decision && status !== "pending" ? (
+      <ProvenanceLabel
+        source="human"
+        action={status === "edited" ? "corrected" : status === "rejected" ? "rejected" : "accepted"}
+        by={decision.by?.name}
+        at={decision.at}
+      />
+    ) : suggestion ? (
+      <ProvenanceLabel source="ai" />
+    ) : null;
   const actions =
     mode === "view" ? (
         <span className="s1-mr-actions s1-mb-actions">

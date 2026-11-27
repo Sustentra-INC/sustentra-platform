@@ -150,6 +150,11 @@ export function EvidenceRequests({
   const isRequested = (rule: CoverageRule) =>
     asks.some((a) => a.source.origin === "data_point" && a.source.fieldKey === rule.ruleId && a.state !== "withdrawn");
 
+  const requestOf = (rule: CoverageRule) => {
+    const a = asks.find((x) => x.source.origin === "data_point" && x.source.fieldKey === rule.ruleId && x.state !== "withdrawn");
+    return a ? { by: a.raisedByName, at: a.raisedAt } : null;
+  };
+
   return (
     <section className="s1-content s1-req s1-cr">
       <header className="s1-ws-header">
@@ -186,7 +191,7 @@ export function EvidenceRequests({
         </button>
       ) : null}
 
-      <CoveragePanel coverage={coverage} isRequested={isRequested} onRequest={setRequestRule} onReview={onReviewRule} />
+      <CoveragePanel coverage={coverage} isRequested={isRequested} requestOf={requestOf} onRequest={setRequestRule} onReview={onReviewRule} />
 
       <section className="s1-cr-reqs" aria-labelledby="s1-cr-reqs-title">
         <div className="s1-cr-sectionhead">

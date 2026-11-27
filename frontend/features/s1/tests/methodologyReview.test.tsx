@@ -51,7 +51,7 @@ describe("Methodology review", () => {
     fireEvent.change(approach, { target: { value: "Equity Share" } });
     expect(entityHeads()[1]).toBe("Equity share");
     expect((screen.getByRole("spinbutton", { name: "Equity share for Stockton Cold Storage JV" }) as HTMLInputElement).value).toBe("50");
-    expect(screen.getByText(/^Adjusted by verifier M\. Osei · /)).toBeTruthy();
+    expect(screen.getByText(/^Adjusted by M\. Osei · /)).toBeTruthy();
 
     fireEvent.change(approach, { target: { value: "Financial Control" } });
     expect(entityHeads()[1]).toBe("Consolidated share");
@@ -61,7 +61,7 @@ describe("Methodology review", () => {
     expect(revert.getAttribute("title")).toBe("Revert to: Operational Control");
     fireEvent.click(revert);
     expect(approach.value).toBe("Operational Control");
-    expect(screen.queryByText(/^Adjusted by verifier/)).toBeNull();
+    expect(screen.queryByText(/^Adjusted by M\. Osei/)).toBeNull();
   });
 
   it("accepts an entity, shows a correction, and resets it when the value changes again", () => {
@@ -69,13 +69,13 @@ describe("Methodology review", () => {
     expect(screen.getByRole("columnheader", { name: "Review · 0 of 3" })).toBeTruthy();
 
     fireEvent.click(within(entityRow("Cascade Provisions Co.")).getByRole("button", { name: "Accept" }));
-    expect(within(entityRow("Cascade Provisions Co.")).getByText("Accepted")).toBeTruthy();
+    expect(within(entityRow("Cascade Provisions Co.")).getByText(/^Accepted by M\. Osei/)).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Review · 1 of 3" })).toBeTruthy();
 
     const stockton = screen.getByRole("combobox", { name: "Included: Stockton Cold Storage JV" });
     fireEvent.change(stockton, { target: { value: "Yes" } });
     fireEvent.click(within(entityRow("Stockton Cold Storage JV")).getByRole("button", { name: "Accept" }));
-    expect(within(entityRow("Stockton Cold Storage JV")).getByText("Corrected from No")).toBeTruthy();
+    expect(within(entityRow("Stockton Cold Storage JV")).getByText(/^Corrected by M\. Osei .*from No/)).toBeTruthy();
 
     // Changing the value again sends the row back to Accept.
     fireEvent.change(stockton, { target: { value: "No" } });
@@ -99,7 +99,7 @@ describe("Methodology review", () => {
     const process = screen.getByRole("combobox", { name: "Included: Process Emissions" }) as HTMLSelectElement;
     fireEvent.change(process, { target: { value: "Yes" } });
     const row = process.closest("tr") as HTMLElement;
-    expect(within(row).getByText(/^Adjusted by verifier M\. Osei · /)).toBeTruthy();
+    expect(within(row).getByText(/^Adjusted by M\. Osei · /)).toBeTruthy();
     fireEvent.click(within(row).getByRole("button", { name: "Revert" }));
     expect(process.value).toBe("Not detected");
     expect(within(row).queryByText(/Adjusted/)).toBeNull();
@@ -107,7 +107,7 @@ describe("Methodology review", () => {
     // Scope 2: the line goes under the row.
     const cooling = screen.getByRole("combobox", { name: "Market-Based, included: Purchased Cooling" });
     fireEvent.change(cooling, { target: { value: "No" } });
-    expect((cooling.closest("tr")!.nextElementSibling as HTMLElement).textContent?.trim()).toMatch(/^Adjusted by verifier M\. Osei · .*Revert$/);
+    expect((cooling.closest("tr")!.nextElementSibling as HTMLElement).textContent?.trim()).toMatch(/^Adjusted by M\. Osei · .*Revert$/);
   });
 
   it("edits a stated text through Edit, then Save or Cancel, and drops its citation once changed", () => {
@@ -125,7 +125,7 @@ describe("Methodology review", () => {
     fireEvent.click(within(row).getByRole("button", { name: "Save" }));
     expect(within(row).getByText("Backup diesel generators at Tualatin Plant.")).toBeTruthy();
     expect(within(row).queryByText("GHG Report p. 5")).toBeNull();
-    expect(within(row).getByText(/^Adjusted by verifier M\. Osei · /)).toBeTruthy();
+    expect(within(row).getByText(/^Adjusted by M\. Osei · /)).toBeTruthy();
 
     fireEvent.click(within(row).getByRole("button", { name: "Revert" }));
     expect(within(row).getByText("GHG Report p. 5")).toBeTruthy();
@@ -154,7 +154,7 @@ describe("Methodology review", () => {
     expect(within(set).getByText("Set by verifier")).toBeTruthy();
     expect(within(set).queryByText("Mismatch")).toBeNull();
     expect(groupHead("Emission factors source").textContent).toBe("Emission factors source");
-    expect(screen.queryByText(/^Adjusted by verifier/)).toBeNull();
+    expect(screen.queryByText(/^Adjusted by M\. Osei/)).toBeNull();
 
     // Revert restores the stated row and the mismatch it resolved.
     fireEvent.click(within(set).getByRole("button", { name: "Revert" }));

@@ -1,5 +1,6 @@
 "use client";
 
+import { ProvenanceLabel, type ProvenanceAction } from "./ProvenanceLabel";
 import { ClipboardList, FileUp, History, ListChecks, Scale, Search, Send, PenLine, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -24,6 +25,19 @@ const ICON: Record<ActivityEntry["kind"], ReactNode> = {
   finding: <Scale />,
   methodology: <ClipboardList />,
 };
+
+/** The provenance word for a logged person's decision; uploads and edits to a document carry none. */
+export function activityAction(entry: ActivityEntry): ProvenanceAction | null {
+  if (entry.kind === "request") return "requested";
+  if (entry.kind !== "review" && entry.kind !== "methodology") return null;
+  const what = entry.what.toLowerCase();
+  if (what.includes("reject")) return "rejected";
+  if (what.includes("correct")) return "corrected";
+  if (what.includes("adjust") || what.includes("edit") || what.includes("changed")) return "adjusted";
+  if (what.includes("added a value") || what.includes("filled in")) return "keyed";
+  if (what.includes("request") || what.includes("added to requests")) return "requested";
+  return "accepted";
+}
 
 /** The engagement's activity log: who did what, and when, newest first. */
 export function ActivityDrawer({
@@ -123,6 +137,12 @@ export function ActivityDrawer({
                       </span>
                       <span className="s1-actlog__what">
                         <strong>{entry.who}</strong> {entry.what}
+                        {activityAction(entry) ? (
+                          <>
+                            {" "}
+                            <ProvenanceLabel source="human" action={activityAction(entry)!} by={entry.who} at={entry.at} />
+                          </>
+                        ) : null}
                       </span>
                       <time className="s1-actlog__when" dateTime={entry.at}>
                         {timeLabel(entry.at)}

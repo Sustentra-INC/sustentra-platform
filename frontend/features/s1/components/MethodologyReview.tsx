@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronRight, TextAlignJustify, Pencil, Plus, SquareDashed } from "lucide-react";
+import { ProvenanceLabel } from "./ProvenanceLabel";
+import { ChevronRight, TextAlignJustify, Plus, SquareDashed } from "lucide-react";
 import { Fragment, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 
 import {
@@ -239,9 +240,7 @@ function Group({
 function Adjusted({ by, at, original, onRevert }: { by: string; at: string; original: string; onRevert: () => void }) {
   return (
     <div className="s1-mr-adjusted">
-      <span>
-        <Pencil className="s1-mr-ico" aria-hidden /> Adjusted by verifier {by} · {formatWhen(at)}
-      </span>
+      <ProvenanceLabel source="human" action="adjusted" by={by} at={at} />
       <button className="s1-mr-link" type="button" onClick={onRevert} title={`Revert to: ${original}`}>
         Revert
       </button>
@@ -366,9 +365,9 @@ function Boundary({ stated, review, onChange, who }: { stated: MethodologyStated
                           Accept
                         </button>
                       ) : view.corrected ? (
-                        <span className="s1-mr-chip s1-mr-chip--corrected">Corrected from {view.originalLabel}</span>
+                        <ProvenanceLabel source="human" action="corrected" {...who()} detail={`from ${view.originalLabel}`} />
                       ) : (
-                        <span className="s1-mr-chip s1-mr-chip--accepted">Accepted</span>
+                        <ProvenanceLabel source="human" action="accepted" {...who()} />
                       )}
                     </td>
                   </tr>

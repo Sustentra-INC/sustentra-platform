@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { ProvenanceLabel } from "../ProvenanceLabel";
 import { useState, type ReactNode } from "react";
 
 import { decideInput, type InputDecisionBody, type TraceInput, type TraceInputRow, type TraceSide } from "../../api/calcTrace";
@@ -64,20 +64,16 @@ export function InputActions({
   const unit = rawUnit ? prettyUnit(rawUnit) : "";
   const numeric = isNumeric(sides);
 
-  const mark =
-    status === "accepted" ? (
-      <span className="s1-cp-mark" title={`Accepted by ${decision?.by}`} aria-label={`Accepted by ${decision?.by}`} role="img">
-        <Check className="s1-vw-ico" aria-hidden />
-      </span>
-    ) : status === "edited" ? (
-      <span className="s1-cp-mark s1-cp-mark--word" tabIndex={0} title={`Edited by ${decision?.by}${decision?.reason ? `: ${decision.reason}` : ""}`}>
-        Edited<span className="s1-cp-sr"> by {decision?.by}</span>
-      </span>
-    ) : status === "rejected" ? (
-      <span className="s1-cp-mark s1-cp-mark--word" tabIndex={0} title={`Rejected by ${decision?.by}${decision?.reason ? `: ${decision.reason}` : ""}`}>
-        Rejected<span className="s1-cp-sr"> by {decision?.by}</span>
-      </span>
-    ) : null;
+  const mark = decision ? (
+    <span className="s1-cp-mark s1-cp-mark--word" tabIndex={0} title={decision.reason ? `Reason: ${decision.reason}` : undefined}>
+      <ProvenanceLabel
+        source="human"
+        action={status === "edited" ? "edited" : status === "rejected" ? "rejected" : "accepted"}
+        by={decision.by}
+        at={decision.at}
+      />
+    </span>
+  ) : null;
 
   // Only the trace's own word decides whether a reviewer can act: `decidable` is true. Otherwise the value says why not.
   const decidable = input.decidable === true;

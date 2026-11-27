@@ -1,5 +1,6 @@
 "use client";
 
+import { ProvenanceLabel } from "../ProvenanceLabel";
 import { useState } from "react";
 
 import { decideChoice, type TraceChoice, type TraceChoiceOption, type TraceTag } from "../../api/calcTrace";
@@ -100,8 +101,13 @@ export function ChoicePills({
       ) : null}
       {decision ? (
         <span className="s1-cp-change s1-muted">
-          {decision.status === "rejected" ? "Suggestion rejected" : decision.status === "accepted" ? "Accepted" : "Chosen"} by {decision.by}
-          {decision.reason ? ` · ${decision.reason}` : ""}
+          <ProvenanceLabel
+            source="human"
+            action={decision.status === "rejected" ? "rejected" : decision.status === "accepted" ? "accepted" : "chosen"}
+            by={decision.by}
+            at={decision.at}
+            detail={decision.reason || undefined}
+          />
           {editable ? (
             <>
               {" · "}

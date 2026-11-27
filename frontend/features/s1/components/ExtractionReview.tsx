@@ -1,5 +1,6 @@
 "use client";
 
+import { ProvenanceLabel } from "./ProvenanceLabel";
 import { Highlighter, Plus } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
@@ -1198,6 +1199,7 @@ function ValueCard({
           </span>
         ) : null}
       </div>
+      <div className="s1-xr-prov">{cardProvenance(v, request)}</div>
       {v.reviewState === "rejected" ? <div className="s1-muted s1-xr-reread">{REJECT.notUsed}</div> : null}
       <EstimatedReadNote value={v} />
       <AiValueNote value={v} />
@@ -1798,6 +1800,22 @@ function wasSent(ask: Ask): boolean {
 
 /** A card's state chip. A value added to requests says where its request stands: the
  *  client is only "Requested" once the request was sent. */
+/** The one provenance label of a value card: read by AI until a person decides, then who and when. */
+export function cardProvenance(v: ReviewValue, ask: Ask | null) {
+  const human = [...v.record].reverse().find((r) => r.kind === "human");
+  if (v.reviewState === "to_review" || !human) return <ProvenanceLabel source="ai" />;
+  if (v.reviewState === "corrected") {
+    return v.originalValue ? (
+      <ProvenanceLabel source="human" action="corrected" by={human.actor} at={human.at} detail={`was ${v.originalValue}`} />
+    ) : (
+      <ProvenanceLabel source="human" action="keyed" by={human.actor} at={human.at} detail={`highlighted on page ${v.page}`} />
+    );
+  }
+  if (v.reviewState === "rejected") return <ProvenanceLabel source="human" action="rejected" by={human.actor} at={human.at} />;
+  if (v.reviewState === "requested") return <ProvenanceLabel source="human" action={ask && !wasSent(ask) ? "queued" : "requested"} by={ask?.raisedByName ?? human.actor} at={ask?.raisedAt ?? human.at} />;
+  return <ProvenanceLabel source="human" action="accepted" by={human.actor} at={human.at} />;
+}
+
 function valueStateLabel(state: ValueReviewState, ask: Ask | null): string {
   if (state !== "requested" || !ask) return reviewStateLabel(state);
   if (ask.state === "not_yet_sent") return "Request not sent";

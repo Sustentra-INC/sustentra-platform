@@ -1,6 +1,6 @@
 "use client";
 
-import { Cpu } from "lucide-react";
+import { ProvenanceLabel } from "./ProvenanceLabel";
 import { useState } from "react";
 
 import type { EngagementConfig } from "../types";
@@ -555,9 +555,7 @@ function LiveOutcome({ outcome, state }: { outcome: StatementRow["outcome"] | nu
 /** Design standard §7: what the system worked out is labelled as the system's. */
 function CheckedBySystem() {
   return (
-    <span className="s1-out-by">
-      <Cpu className="s1-out-by__icon" aria-hidden /> Checked by system
-    </span>
+    <ProvenanceLabel source="system" />
   );
 }
 
