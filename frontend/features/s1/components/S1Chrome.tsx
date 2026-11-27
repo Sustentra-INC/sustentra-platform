@@ -10,7 +10,7 @@ import { formatReportingPeriod } from "../utils/formatPeriod";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AssistantWidget, type AssistantConnection } from "./AssistantWidget";
 import { KeyHint } from "./KeyHint";
-import { SearchPanel, type SearchPage } from "./SearchPanel";
+import { SearchPanel, type SearchData, type SearchPage } from "./SearchPanel";
 
 export type NavKey =
   | "dashboard"
@@ -56,6 +56,8 @@ interface S1ChromeProps {
   hiddenNav?: NavKey[];
   /** Live counts shown as badges on nav items. */
   navCounts?: Partial<Record<"evidence" | "requests" | "results", number>>;
+  /** What top-bar search finds besides pages: the loaded documents and facilities. */
+  search?: SearchData & { onOpenDocument: (documentId: string) => void };
 }
 
 const DESTINATIONS: Array<{ key: NavKey; label: string }> = [
@@ -86,6 +88,7 @@ export function S1Chrome({
   assistant,
   hiddenNav,
   navCounts,
+  search,
 }: S1ChromeProps) {
   const [navExpanded, setNavExpanded] = useState(true);
   const [ctxExpanded, setCtxExpanded] = useState(false);
@@ -197,6 +200,11 @@ export function S1Chrome({
       {searchOpen ? (
         <SearchPanel
           pages={searchPages}
+          data={search}
+          onOpenDocument={(documentId) => {
+            closeSearch();
+            search?.onOpenDocument(documentId);
+          }}
           onClose={closeSearch}
           onPick={(page) => {
             closeSearch();

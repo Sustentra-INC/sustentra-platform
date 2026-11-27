@@ -4,6 +4,7 @@ import type { CoverageRule, Examination, Finding } from "../types/verification";
 import type { ResultLine } from "../types/verificationResults";
 import type { ActivityEntry, DashboardFigures } from "../utils/engagementActivity";
 import { buildResultBoxes, examinationKey } from "../utils/verificationTable";
+import { documentFacilityLabel } from "../utils/searchIndex";
 
 /**
  * The assistant's tools, run in the browser over the engagement data the signed-in user
@@ -115,7 +116,7 @@ function searchDocuments(data: AssistantData, input: Record<string, unknown>) {
       ref: `doc:${item.documentId}`,
       file: item.filename,
       type: item.detectedType ?? "type not set",
-      facility: item.facilityName ?? (item.facilityState === "multiple" ? "multiple facilities" : item.facilityState === "not_facility_scoped" ? "entity-level" : "not yet known"),
+      facility: documentFacilityLabel(item),
       period: item.periodStart && item.periodEnd ? `${item.periodStart} to ${item.periodEnd}` : null,
       status: statusOf(item),
       ...(item.haltReason ? { why_blocked: item.haltReason } : {}),

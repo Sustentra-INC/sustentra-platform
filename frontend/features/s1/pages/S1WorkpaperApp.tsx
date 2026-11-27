@@ -1044,6 +1044,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           )
         }
         glossaryOpen={activeView.name === "glossary"}
+        // Top-bar search: the documents and facilities already loaded, in both modes.
+        search={{ evidence: evidenceView, facilities: engagement.facilities, onOpenDocument: openExtraction }}
       >
         {activeView.name === "dashboard" ? (
           STAGING_SCREENS ? (

@@ -4,7 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import { S1Chrome } from "../components/S1Chrome";
-import type { EngagementConfig } from "../types";
+import type { EngagementConfig, EvidenceItem } from "../types";
 
 const ENGAGEMENT: EngagementConfig = {
   clientName: "Acme Foods",
@@ -19,13 +19,34 @@ const ENGAGEMENT: EngagementConfig = {
   scopeBoundaryStatement: "",
 };
 
-function setup() {
+const FACILITIES = [
+  { facilityId: "kent", name: "Kent Cannery" },
+  { facilityId: "tual", name: "Tualatin Plant" },
+];
+
+function evidence(n: number): EvidenceItem[] {
+  return Array.from({ length: n }, (_, i) => ({
+    documentId: `d${i}`,
+    filename: `kent_bill_${String(i).padStart(2, "0")}.pdf`,
+    disposition: "active",
+    detectedType: "Electricity bill",
+    facilityState: "resolved",
+    facilityId: "kent",
+    facilityName: "Kent Cannery",
+    periodStart: "2025-09-01",
+    periodEnd: "2025-09-30",
+  })) as EvidenceItem[];
+}
+
+function setup(docs: EvidenceItem[] = evidence(8)) {
   const onNavigate = vi.fn();
   const onOpenActivity = vi.fn();
   const onOpenGlossary = vi.fn();
+  const onOpenDocument = vi.fn();
   render(
     <S1Chrome
       engagement={ENGAGEMENT}
+      search={{ evidence: docs, facilities: FACILITIES, onOpenDocument }}
       current="dashboard"
       onNavigate={onNavigate}
       onOpenActivity={onOpenActivity}
@@ -34,7 +55,7 @@ function setup() {
       <p>content</p>
     </S1Chrome>
   );
-  return { onNavigate, onOpenActivity, onOpenGlossary };
+  return { onNavigate, onOpenActivity, onOpenGlossary, onOpenDocument };
 }
 
 const field = () => screen.getByRole("button", { name: /Search documents, facilities, pages/ });
@@ -148,5 +169,71 @@ describe("top bar search: pages", () => {
     fireEvent.keyDown(window, { key: "k", metaKey: true });
     expect(screen.queryByRole("combobox")).toBeNull();
     other.remove();
+  });
+
+  it("shows no documents or facilities until something is typed", () => {
+    setup();
+    fireEvent.click(field());
+    expect(screen.queryByRole("group", { name: /Documents/ })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Facilities" })).toBeNull();
+  });
+
+  it("groups documents and facilities, caps documents at 6 and shows all on request", () => {
+    setup();
+    fireEvent.click(field());
+    fireEvent.change(box(), { target: { value: "kent" } });
+    const docs = screen.getByRole("group", { name: "Documents 8" });
+    expect(docs.querySelectorAll('[role="option"]')).toHaveLength(7);
+    expect(screen.getByRole("option", { name: "Show all 8 documents" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Facilities" })).toHaveTextContent("Kent Cannery8 documents");
+    expect(screen.getByRole("option", { name: /kent_bill_00\.pdf/ })).toHaveTextContent(
+      "kent_bill_00.pdfElectricity bill · Kent Cannery · September 2025"
+    );
+    for (let i = 0; i < 6; i += 1) fireEvent.keyDown(box(), { key: "ArrowDown" });
+    expect(active()).toHaveTextContent("Show all 8 documents");
+    fireEvent.keyDown(box(), { key: "Enter" });
+    expect(docs.querySelectorAll('[role="option"]')).toHaveLength(8);
+    expect(active()).toHaveTextContent("kent_bill_06.pdf");
+  });
+
+  it("opens a document through the app's handler and closes", () => {
+    const { onOpenDocument } = setup();
+    fireEvent.click(field());
+    fireEvent.change(box(), { target: { value: "bill 03" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    expect(onOpenDocument).toHaveBeenCalledWith("d3");
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  it("filters to a facility with a removable chip; Escape lifts the chip, then closes", () => {
+    setup();
+    fireEvent.click(field());
+    fireEvent.change(box(), { target: { value: "tualatin" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    expect(box()).toHaveValue("");
+    expect(screen.getByText("No documents for Tualatin Plant")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove Tualatin Plant" }));
+    fireEvent.change(box(), { target: { value: "kent cannery" } });
+    fireEvent.click(screen.getByRole("option", { name: /^Kent Cannery\d/ }));
+    expect(screen.getByRole("group", { name: "Documents 8" }).querySelectorAll('[role="option"]')).toHaveLength(8);
+    fireEvent.keyDown(box(), { key: "Backspace" });
+    expect(screen.queryByRole("button", { name: "Remove Kent Cannery" })).toBeNull();
+    fireEvent.change(box(), { target: { value: "kent cannery" } });
+    fireEvent.keyDown(box(), { key: "End" });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    expect(screen.getByRole("button", { name: "Remove Kent Cannery" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "Remove Kent Cannery" })).toBeNull();
+    expect(box()).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  it("works with nothing loaded yet", () => {
+    setup([]);
+    fireEvent.click(field());
+    fireEvent.change(box(), { target: { value: "kent" } });
+    expect(screen.queryByRole("group", { name: /Documents/ })).toBeNull();
+    expect(screen.getByRole("group", { name: "Facilities" })).toHaveTextContent("0 documents");
   });
 });

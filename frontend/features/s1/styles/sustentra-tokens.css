@@ -319,6 +319,7 @@
   --search-input-h:     52px; /* search panel input row */
   --search-body-max-h:  60vh; /* search panel results, scroll past this */
   --search-option-h:    40px; /* search panel result row (minimum) */
+  --search-option-h-2:  52px; /* search panel two-line result row (documents) */
   --search-icon:        18px; /* page icon in a search result */
   --toprow-search-icon: 17px; /* magnifier in the top-row search field */
   --key-pad-y:           2px; /* key hint chip (⌘K, Esc) */
