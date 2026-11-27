@@ -3258,12 +3258,6 @@ html, body { margin: 0; padding: 0; }
   font-weight: var(--weight-bold); letter-spacing: var(--tracking-title); color: var(--ink-3);
 }
 .s1-stage-card__state--issued { color: var(--ink); }
-.s1-stage-card--current {
-  box-shadow: var(--shadow-card-soft), inset 0 0 0 var(--sp-half) var(--accent-line);
-}
-.s1-stage-card--current:hover {
-  box-shadow: var(--shadow-card), inset 0 0 0 var(--sp-half) var(--accent-line);
-}
 .s1-stage-card__missing--nav { cursor: pointer; text-decoration: underline; text-underline-offset: var(--sp-half); }
 
 /* ---- focus card: thumbnail on the left, then title, detail and action in one column, top aligned.

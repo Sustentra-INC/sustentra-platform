@@ -158,7 +158,7 @@ export function DashboardScreen({
 
       <section aria-label="Engagement progress" className="s1-stage-cards">
         {/* A: Evidence intake */}
-        <button type="button" className={`s1-stage-card${intakeStage === "active" ? " s1-stage-card--current" : ""}`} onClick={go("evidence")}>
+        <button type="button" className="s1-stage-card" onClick={go("evidence")}>
           <span className="s1-stage-card__top">
             <span className="s1-stage-card__name">Evidence intake</span>
             {intakeStage === "done"
@@ -190,7 +190,7 @@ export function DashboardScreen({
         </button>
 
         {/* B: Review */}
-        <button type="button" className={`s1-stage-card${reviewStage === "active" ? " s1-stage-card--current" : ""}`} onClick={go("evidence")}>
+        <button type="button" className="s1-stage-card" onClick={go("evidence")}>
           <span className="s1-stage-card__top">
             <span className="s1-stage-card__name">Review</span>
             {reviewStage === "done"
@@ -224,7 +224,7 @@ export function DashboardScreen({
         </button>
 
         {/* C: Assessment */}
-        <button type="button" className={`s1-stage-card${assessStage === "active" ? " s1-stage-card--current" : ""}`} onClick={go("results")}>
+        <button type="button" className="s1-stage-card" onClick={go("results")}>
           <span className="s1-stage-card__top">
             <span className="s1-stage-card__name">Assessment</span>
             {assessStage === "done"
