@@ -21,14 +21,18 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable, Sequence
 from datetime import date
 
+from backend.app.services import printed_numbers as pn
+from backend.tools.accuracy.keys import KeyCell
 from backend.tools.accuracy.mapping import FAMILIES
 from backend.tools.accuracy.model import MISSED, ExtractedDoc, Outcome
 from backend.tools.accuracy.normalize import _MONTH_NAMES, norm_id, norm_name, parse_date, parse_number
+from backend.tools.accuracy.scorer import SetScorer
 
 NOT_PRINTED = "not_printed"
 PRINTED_MISSED = "printed_missed"
 ELSEWHERE = "elsewhere"
-CLASSES = (NOT_PRINTED, PRINTED_MISSED, ELSEWHERE)
+NO_TEXT = "no_text"  # the file has no text to search (a scan read with OCR off, or not read at all)
+CLASSES = (NOT_PRINTED, PRINTED_MISSED, ELSEWHERE, NO_TEXT)
 
 _DATES = (
     re.compile(r"\b\d{4}-\d{1,2}-\d{1,2}\b"),
@@ -36,8 +40,6 @@ _DATES = (
     re.compile(rf"\b(?:{_MONTH_NAMES})\.?\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+\d{{4}}\b", re.I),
     re.compile(rf"\b\d{{1,2}}(?:st|nd|rd|th)?\s+(?:{_MONTH_NAMES})\.?,?\s+\d{{4}}\b", re.I),
 )
-# A number standing on its own: not a piece of an id ("88-1200"), a date or a word ("GEN-1").
-_STANDALONE_NUMBER = re.compile(r"(?<![\w.\-/])\$?\d[\d,]*(?:\.\d+)?(?![\w\-/]|\.\d)")
 MIN_TOKEN = 3  # an id or name shorter than this is found everywhere: never counted as printed
 
 
@@ -50,14 +52,16 @@ def dates_in(text: str) -> set[date]:
     return {d for pattern in _DATES for m in pattern.finditer(text) if (d := parse_date(m.group(0)))}
 
 
-def printed_in(kind: str, expected: str, texts: Iterable[str]) -> bool:
-    """Whether ``expected`` is printed in any of ``texts``, compared the way the family's kind compares."""
+def printed_in(kind: str, expected: str, texts: Iterable[str], decimal_comma: bool | None = None) -> bool:
+    """Whether ``expected`` is printed in any of ``texts``, compared the way the family's kind compares. Printed
+    numbers are read by the app's own reader (``printed_numbers``, with the document's convention): a number whose
+    comma could be read two ways is not counted as printed."""
 
     if kind in ("number", "year"):
         wanted = parse_number(expected)
         if wanted is None:
             return False
-        return any(parse_number(m.group(0)) == wanted for text in texts for m in _STANDALONE_NUMBER.finditer(text))
+        return any(pn.read_number(token, decimal_comma) == wanted for text in texts for token in pn.tokens(text))
     if kind == "date":
         day = parse_date(expected)
         return day is not None and any(day in dates_in(text) for text in texts)
@@ -72,28 +76,48 @@ def is_multi_record(doc: ExtractedDoc) -> bool:
     return len({i.record for i in doc.items if i.record is not None}) > 1
 
 
+def keyed_multi_record(cells: Iterable[KeyCell]) -> set[str]:
+    """The files the answer key gives two or more records for (rows, periods, vehicles...), whatever the extractor
+    made of them."""
+
+    selectors: dict[str, set[object]] = defaultdict(set)
+    for cell in cells:
+        selector = SetScorer._parse(cell).selector
+        if not selector.empty:
+            selectors[cell.filename].add(selector)
+    return {name for name, found in selectors.items() if len(found) > 1}
+
+
 def sort_miss(outcome: Outcome, doc: ExtractedDoc) -> str:
     kind = kind_of(outcome.family)
-    if not printed_in(kind, outcome.expected, doc.line_texts):
+    if not doc.line_texts:
+        return NO_TEXT
+    decimal_comma = pn.document_convention(doc.line_texts)
+    if not printed_in(kind, outcome.expected, doc.line_texts, decimal_comma):
         return ELSEWHERE if printed_in(kind, outcome.expected, [_file_words(doc.filename)]) else NOT_PRINTED
     if outcome.record is not None:
         own: Sequence[str] = doc.record_texts.get(outcome.record, ())
     else:
         own = [text for texts in doc.record_texts.values() for text in texts]
-    return PRINTED_MISSED if printed_in(kind, outcome.expected, own) else ELSEWHERE
+    if not own and not is_multi_record(doc):  # read as one record although the key has several
+        own = list(doc.line_texts)
+    return PRINTED_MISSED if printed_in(kind, outcome.expected, own, decimal_comma) else ELSEWHERE
 
 
 def _file_words(filename: str) -> str:
     return re.sub(r"[_]+", " ", filename.rsplit(".", 1)[0])
 
 
-def sort_misses(outcomes: Iterable[Outcome], docs: dict[str, ExtractedDoc]) -> dict[str, dict[str, int]]:
-    """Per family, the misses on multi-record files counted by class (counts only)."""
+def sort_misses(outcomes: Iterable[Outcome], docs: dict[str, ExtractedDoc],
+                keyed_multi: Iterable[str] = ()) -> dict[str, dict[str, int]]:
+    """Per family, the misses on multi-record files counted by class (counts only). A file is multi-record when the
+    extractor read two or more records from it, or the answer key gives two or more (``keyed_multi``)."""
 
+    keyed = set(keyed_multi)
     counts: dict[str, Counter[str]] = defaultdict(Counter)
     for outcome in outcomes:
         doc = docs.get(outcome.filename)
-        if outcome.status != MISSED or doc is None or not is_multi_record(doc):
+        if outcome.status != MISSED or doc is None or not (is_multi_record(doc) or outcome.filename in keyed):
             continue
         counts[outcome.family][sort_miss(outcome, doc)] += 1
     return {family: {c: counts[family][c] for c in CLASSES} for family in sorted(counts)}
@@ -118,12 +142,13 @@ def record_fields(docs: dict[str, ExtractedDoc]) -> dict[str, int]:
 
 def render_sort(name: str, sorted_misses: dict[str, dict[str, int]], fields: dict[str, int] | None = None) -> str:
     lines = [f"== {name}: misses on multi-record files ==",
-             f"{'family':<24} {'not_printed':>11} {'printed_missed':>14} {'elsewhere':>9}"]
+             f"{'family':<24} {'not_printed':>11} {'printed_missed':>14} {'elsewhere':>9} {'no_text':>7}"]
     total: Counter[str] = Counter()
     for family, c in sorted_misses.items():
-        lines.append(f"{family:<24} {c[NOT_PRINTED]:>11} {c[PRINTED_MISSED]:>14} {c[ELSEWHERE]:>9}")
+        lines.append(f"{family:<24} {c[NOT_PRINTED]:>11} {c[PRINTED_MISSED]:>14} {c[ELSEWHERE]:>9} {c[NO_TEXT]:>7}")
         total.update(c)
-    lines.append(f"{'ALL':<24} {total[NOT_PRINTED]:>11} {total[PRINTED_MISSED]:>14} {total[ELSEWHERE]:>9}")
+    lines.append(f"{'ALL':<24} {total[NOT_PRINTED]:>11} {total[PRINTED_MISSED]:>14} {total[ELSEWHERE]:>9} "
+                 f"{total[NO_TEXT]:>7}")
     if fields:
         lines.append(f"record fields on {fields['files']} multi-record files: {fields['fields']}, empty {fields['empty']}, "
                      f"filled by Sustentra's AI {fields['ai_filled']}")

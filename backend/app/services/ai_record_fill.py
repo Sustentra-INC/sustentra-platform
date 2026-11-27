@@ -28,6 +28,10 @@ Every value is verified (``verify``):
   checks (``ai_extraction.verify_reading``); a quote on another record's row or on a header row is dropped
   (``quote_not_in_record``);
 * two different values for one field of one record are both dropped (``record_conflict``): there is no guess.
+  This differs on purpose from the single-record path, which keeps both as ``ai_conflict`` candidates: a record
+  holds one candidate per field (its id, record index and key), so a second one would have no place to go;
+* a number is stored as printed on the record's row, never as the AI wrote it, and a comma that could mean two
+  things is not read (``ai_extraction.printed_number``, ``printed_numbers``).
 
 A kept value fills the record's empty candidate in place (same candidate id, record index and record key; the
 source reference is the record's own row, carrying the record key), confidence at most 0.6, flagged
@@ -111,6 +115,7 @@ def record_rows(lines: Sequence[DocumentLine], items: Sequence[Mapping[str, Any]
 
     block_line = _line_of_block(lines)
     citing: dict[tuple[str, int], set[int]] = defaultdict(set)  # (field, line) -> records citing it for that field
+    cited_by: dict[int, set[int]] = defaultdict(set)  # line -> records citing it for any field
     cited_blocks: dict[int, set[str]] = defaultdict(set)
     for item in items:
         record = item.get("record_index")
@@ -122,6 +127,7 @@ def record_rows(lines: Sequence[DocumentLine], items: Sequence[Mapping[str, Any]
             position = block_line.get(str(block))
             if position is not None:
                 citing[(str(item.get("field_name")), position)].add(int(record))
+                cited_by[position].add(int(record))
     owners: dict[int, set[int]] = defaultdict(set)  # line -> records it is an own row of
     shared: set[int] = set()
     for (_, position), records in citing.items():
@@ -134,19 +140,28 @@ def record_rows(lines: Sequence[DocumentLine], items: Sequence[Mapping[str, Any]
         if len(records) == 1:  # a line that would be two records' row belongs to neither
             own[next(iter(records))].append(position)
     taken = {p for positions in own.values() for p in positions}
-    for record, positions in own.items():
-        own[record] = _with_lines_between(lines, sorted(positions), taken - set(positions))
     first_rows: dict[str, int] = {}  # a sheet's first row: its likely column headers
     for position, line in enumerate(lines):
         if isinstance(line, RowLine):
             first_rows.setdefault(str(line.source_reference.get("sheet_name")), position)
     header = sorted(p for p in shared | set(first_rows.values()) if p not in taken)
+    header_texts = {norm(lines[p].text) for p in shared | set(first_rows.values())}
+    def not_this_records(record: int) -> Callable[[int], bool]:
+        def skipped(p: int) -> bool:
+            return bool(cited_by.get(p, set()) - {record}) or p in shared or norm(lines[p].text) in header_texts
+        return skipped
+
+    for record, positions in own.items():
+        own[record] = _with_lines_between(lines, sorted(positions), blocked=taken - set(positions),
+                                          skipped=not_this_records(record))
     return RecordRows(dict(own), header, dict(cited_blocks))
 
 
-def _with_lines_between(lines: Sequence[DocumentLine], positions: list[int], others: set[int]) -> list[int]:
-    """On a paged document, the lines between a record's first and last own line of a page, when no other
-    record's line is in between."""
+def _with_lines_between(lines: Sequence[DocumentLine], positions: list[int], *, blocked: set[int],
+                        skipped: Callable[[int], bool]) -> list[int]:
+    """On a paged document, the lines between a record's first and last own line of a page, when no other record's
+    own row is in between (``blocked``). A line in between that is a header (shared, or the same text as a header
+    row: a column header repeated on the page) or that the extractor placed on another record is not taken."""
 
     out = set(positions)
     by_page: dict[int, list[int]] = defaultdict(list)
@@ -157,8 +172,8 @@ def _with_lines_between(lines: Sequence[DocumentLine], positions: list[int], oth
     for found in by_page.values():
         low, high = min(found), max(found)
         between = range(low, high + 1)
-        if high - low < MAX_RECORD_LINES and not any(p in others for p in between):
-            out.update(between)
+        if high - low < MAX_RECORD_LINES and not any(p in blocked for p in between):
+            out.update(p for p in between if p in found or not skipped(p))
     return sorted(out)
 
 
@@ -424,7 +439,9 @@ def _printed_elsewhere(quote: str, own: Sequence[DocumentLine], lines: Sequence[
 def fill(extraction_result: Mapping[str, Any], found: Mapping[tuple[int, str], list[Any]]
          ) -> tuple[dict[str, Any], int, int]:
     """The extraction result with each verified value in its record's empty candidate (the input is not changed);
-    the number filled, and the number of (record, field) pairs dropped because they had two different values."""
+    the number filled, and the number of (record, field) pairs dropped because they had two different values.
+
+    Two different values for one field of one record: both are dropped (the module docstring says why)."""
 
     from backend.app.services.ai_extraction import AI_SUGGESTED, same_value
 

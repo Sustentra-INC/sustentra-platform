@@ -129,7 +129,10 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
    windows were read and the cost; one above 50 pages says which pages were not read.
 5. Each window is one `ai_usage` row with feature `extraction`. Inline mode reads at most 2
    windows. "Accept all" skips Claude's readings: the note says "n suggested by Claude need
-   individual review". A multi-record fuel log is not read (warning `multi_record_document`).
+   individual review". In a multi-record fuel log whose rows leave a field empty, Sustentra's AI
+   fills only those empty fields, each on its own row's card as "Read by AI". A row's facility and
+   dates are never filled, and the values the rules read are unchanged. With the monthly limit
+   nearly reached, the run says "Read in part" and names the records not read.
 6. Switch AI off and upload the same bill: the cards are exactly as before, with no Claude chips
    and no `ai_*` warnings.
 

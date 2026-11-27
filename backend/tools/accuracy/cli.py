@@ -24,7 +24,7 @@ from typing import Any
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
 from backend.tools.accuracy.ai_replay import RecordingClaude, ReplayClaude
 from backend.tools.accuracy.keys import KeyCell, read_key
-from backend.tools.accuracy.misses import record_fields, render_sort, sort_misses
+from backend.tools.accuracy.misses import keyed_multi_record, record_fields, render_sort, sort_misses
 from backend.tools.accuracy.report import baseline_payload, render_markdown, render_table, summarize_set
 from backend.tools.accuracy.runner import build_service, run_folder
 from backend.tools.accuracy.scorer import SetScorer
@@ -74,7 +74,7 @@ def score_set(label: str, docs_dir: Path, key_path: Path, service: PipelineOrche
         extracted_unscored=dict(scorer.extracted_unscored), unmapped_labels=dict(scorer.unmapped_labels),
     )
     if sort:
-        summary["miss_sort"] = sort_misses(outcomes, docs)
+        summary["miss_sort"] = sort_misses(outcomes, docs, keyed_multi_record(cells))
         summary["record_fields"] = record_fields(docs)
     return summary
 

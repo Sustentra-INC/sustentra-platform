@@ -195,8 +195,8 @@ only suggests.
   them out unless `include_ai_only=True`). When a call is made anyway, the rule-read
   document-level fields are included as read-only cross-checks. Candidates of a layout
   extractor's records: a document with exactly one record is filled inside that record (the new
-  candidate takes its `record_index`); a document with several records is not read at all and is
-  counted as dropped `multi_record_document`. No record is ever created. Nothing is asked when
+  candidate takes its `record_index`); a document with several records (a bundle, a log, a fuel
+  card) is filled record by record by `ai_record_fill` (see **Records** below). No record is ever created. Nothing is asked when
   nothing is missing and the type has no known-gap field. With AI on, every document of a type
   with a known-gap field (fuel, mobile fuel, electricity, thermal) is read in full, up to the
   window limit.
@@ -204,7 +204,29 @@ only suggests.
   a whole token), the value must be a bare number for numeric fields, and the unit must be in
   the field's allowed list (for `activity_unit`, the value is the unit). Dropped and counted by
   reason: `empty_value`, `unknown_line`, `quote_not_on_document`, `ambiguous_quote`,
-  `value_not_in_quote`, `invalid_value`, `unit_not_allowed`.
+  `value_not_in_quote`, `invalid_value`, `unit_not_allowed`, `number_not_as_printed`.
+- **Numbers are read from the page, not from the AI's answer** (`printed_numbers`). The stored
+  number (and `raw_value`) is the token printed on the quoted line (for a sheet, its cell) that
+  equals the AI's value. When the line prints the same digits as a different number (printed
+  "88,0", AI "880"), the value is dropped (`number_not_as_printed`). A comma that could mean two
+  things is not read (`invalid_value`): "0,500", "1234,567", "1,20", "12,34". The exception is a
+  document whose other numbers settle a decimal comma ("1.234,56", "88,0"). "1,204" and "12,345.6"
+  are read as thousands, as before, unless the document uses a decimal comma.
+- **Records** (`ai_record_fill`, MVP-238). For a file with several records, each record's own
+  empty fields are asked from that record's own rows only. Own rows are the lines the extractor
+  cited for that record alone. On a page, they also include the lines between them, but never a
+  header line, a repeated header or a line placed on another record. Lines several records cite
+  are shown as header rows, for context only. A record's placement fields (facility, address,
+  period and transaction dates) are never asked. Up to 20 records go in one call, keyed `R<n>`.
+  A value is dropped for any of these reasons: it is for a record not asked about
+  (`unknown_record`) or a field not asked for that record (`field_not_asked`); its quote is not
+  on that record's rows (`quote_not_in_record`); or two different values were read for one
+  field of one record (`record_conflict`). In the last case both values are dropped: a record
+  cannot hold two candidates for one field the way a document can, and the system does not pick
+  one. A kept value fills the record's empty candidate in place, with the same id, record index
+  and record key, flagged `ai_suggested`. A value the extractor read is never asked about or
+  changed. The spend limit and the deadline are checked before every call. When the read stops,
+  `ai_read_in_part` names the records not read ("records 41–50").
 - **Merge.** A verified value fills the empty candidate (same `candidate_id`; raw, normalized,
   unit; `source_reference` is the parser's reference of the quoted line; `confidence` =
   min(0.6, the line's parser confidence); flags: `field_not_found` removed, `ai_suggested`

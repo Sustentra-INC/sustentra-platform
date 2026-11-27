@@ -159,6 +159,25 @@ def test_a_missing_field_is_filled_with_a_verified_value_and_flagged() -> None:
     assert [r["outcome"] for r in ledger.rows] == ["ok"]
 
 
+@pytest.mark.parametrize(("printed", "said", "stored", "dropped"), [
+    ("12,400", "12400", 12400, None),  # the printed token is stored, read as printed
+    ("88,0", "880", None, "number_not_as_printed"),
+    ("880", "88,0", None, "number_not_as_printed"),
+    ("120", "1,20", None, "invalid_value"),
+    ("0,500", "0,500", None, "invalid_value"),
+])
+def test_the_stored_number_is_read_from_the_printed_line_not_the_ais_string(
+        printed: str, said: str, stored: Any, dropped: str | None) -> None:
+    lines = [(1, "Meridian Power & Light"), (1, f"Total usage {printed} kWh this period")]
+    claude = FakeClaude([read("activity_quantity", said, f"Total usage {printed} kWh", "L2", "kWh")])
+    outcome, _ = assist(claude, [candidate("activity_quantity"), candidate("supplier_name", "Meridian")], lines=lines)
+    (value,) = by_field(outcome, "activity_quantity")
+    assert value["normalized_value"] == stored
+    if stored is not None:
+        assert value["raw_value"] == printed
+    assert outcome.dropped == ({dropped: 1} if dropped else {})
+
+
 def test_confidence_is_the_lower_of_point_six_and_the_parsers() -> None:
     output = parsed()
     output["text_blocks"][1]["confidence"] = 0.4

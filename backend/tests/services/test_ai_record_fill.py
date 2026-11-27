@@ -356,3 +356,77 @@ def test_a_bill_in_a_bundle_takes_the_lines_between_its_own_on_its_page() -> Non
     assert filled["normalized_value"] == "88-1200" and filled["source_reference"]["page_number"] == 1
     assert outcome.suggested == 1 and outcome.dropped == {"quote_not_in_record": 1}
     assert by_key(outcome)[(2, "account_number")] == items[-1]
+
+
+def test_a_repeated_header_or_a_line_placed_on_another_record_is_not_this_records_row() -> None:
+    lines = [(1, "Statement 1 Harbor Gas"),      # L1 record 1
+             (1, "Date Gallons Price"),          # L2 the column header, cited by both records
+             (1, "Fee line 7.00 billed to 2"),   # L3 placed on record 2 by the extractor
+             (1, "Delivered 2025-01-02 410.0"),  # L4 record 1
+             (2, "Statement 2 Harbor Gas"),      # L5 record 2
+             (2, "Date Gallons Price"),          # L6 the header repeated on page 2
+             (2, "Delivered 2025-02-02 300.0")]  # L7 record 2
+    parser_output = parsed(lines)
+    blocks = [b["block_id"] for b in parser_output["text_blocks"]]
+    items = [item("supplier_name", 1, "Harbor Gas", blocks[0]), item("activity_unit", 1, "gal", blocks[1]),
+             item("transaction_date", 1, "2025-01-02", blocks[3]), item("activity_quantity", 1),
+             item("supplier_name", 2, "Harbor Gas", blocks[4]), item("activity_unit", 2, "gal", blocks[1]),
+             item("account_number", 2, "7.00", blocks[2]), item("transaction_date", 2, "2025-02-02", blocks[6])]
+    document = row_lines(parser_output)
+    rows = arf.record_rows(document, items)
+    lines_of = {r: [document[p].alias for p in ps] for r, ps in rows.own.items()}
+    assert lines_of[1] == ["L1", "L4"]  # not L2 (the header) nor L3 (placed on record 2)
+    assert "L6" not in lines_of[2] and "L7" in lines_of[2]
+
+
+# --- the stored number is the printed one -------------------------------------------------------------------------
+
+QUANTITY_TARGETS = [target("transaction_date", "Transaction date", "date"),
+                    target("activity_quantity", "Activity quantity", "quantity", ("gal", "L"))]
+
+
+def _one_row_each(printed: list[str]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    rows = [[f"2025-01-0{i + 1}", f"GEN-{i + 1}", "Diesel", value, ""] for i, value in enumerate(printed)]
+    items: list[dict[str, Any]] = []
+    for record in range(1, len(printed) + 1):
+        items += [item("transaction_date", record, rows[record - 1][0], _cell_id(0, record + 1)),
+                  item("activity_quantity", record)]
+    return workbook(rows), items
+
+
+def test_the_number_stored_is_the_printed_token_never_the_ais_string() -> None:
+    def answer(printed: list[str], said: list[str]) -> AssistOutcome:
+        parser_output, items = _one_row_each(printed)
+        claude = FakeClaude([reading(f"R{r}", "activity_quantity", said[r - 1], f"Diesel | {printed[r - 1]}",
+                                     alias_of(parser_output, r + 1), "gal") for r in range(1, len(said) + 1)])
+        return run(claude, parser_output, items, targets=QUANTITY_TARGETS)[0]
+
+    # A US-style log: printed 880 / AI 88,0 and printed 120 / AI 1,20 are dropped; printed 1,204 / AI 1204 is
+    # stored as printed.
+    us = answer(["880", "120", "1,204"], ["88,0", "1,20", "1204"])
+    filled = by_key(us)
+    assert filled[(1, "activity_quantity")]["normalized_value"] is None
+    assert filled[(2, "activity_quantity")]["normalized_value"] is None
+    assert us.dropped == {"number_not_as_printed": 1, "invalid_value": 1}  # "1,20" is not one readable number
+    assert filled[(3, "activity_quantity")]["normalized_value"] == 1204
+    assert filled[(3, "activity_quantity")]["raw_value"] == "1,204"
+    # A decimal-comma log: printed 88,0 / AI 880 is dropped.
+    comma = answer(["88,0", "5,0"], ["880"])
+    assert by_key(comma)[(1, "activity_quantity")]["normalized_value"] is None
+    assert comma.dropped == {"number_not_as_printed": 1}
+
+
+def test_a_decimal_comma_document_reads_its_ambiguous_commas_as_decimals() -> None:
+    parser_output, items = _one_row_each(["1.234,5", "12,34"])
+    claude = FakeClaude([reading("R2", "activity_quantity", "12,34", "Diesel | 12,34", alias_of(parser_output, 3), "L")])
+    outcome, _ = run(claude, parser_output, items, targets=QUANTITY_TARGETS)
+    assert by_key(outcome)[(2, "activity_quantity")]["normalized_value"] == 12.34
+
+
+def test_an_ambiguous_comma_is_not_read_when_the_document_does_not_settle_it() -> None:
+    parser_output, items = _one_row_each(["0,500", "1234,567"])
+    claude = FakeClaude([reading("R1", "activity_quantity", "0,500", "Diesel | 0,500", alias_of(parser_output, 2), "gal"),
+                         reading("R2", "activity_quantity", "1234,567", "Diesel | 1234,567",
+                                 alias_of(parser_output, 3), "gal")])
+    outcome, _ = run(claude, parser_output, items, targets=QUANTITY_TARGETS)
+    assert outcome.suggested == 0 and outcome.dropped == {"invalid_value": 2}

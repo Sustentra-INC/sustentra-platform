@@ -61,6 +61,7 @@ from backend.app.adapters.llm.base import MAX_RETRIES, REQUEST_TIMEOUT_S, LlmCli
 from backend.app.core.config import Settings, get_settings
 from backend.app.services import ai_record_fill, ai_usage
 from backend.app.services import document_parts as dp
+from backend.app.services import printed_numbers as pn
 from backend.app.services.ai_locator import (
     DocumentLine,
     Located,
@@ -289,18 +290,35 @@ class Verified:
     confidence: float
 
 
-_NUMBER = re.compile(r"-?\d[\d,]*(?:\.\d+)?|-?\.\d+")
+def parse_number(value: str, decimal_comma: bool | None = None) -> float | None:
+    """The whole value as a number ("1,915.3"), else None: "12 kWh" is not a bare number, and neither is a number
+    whose comma could be read two ways ("1,20", "0,500"; ``printed_numbers.read_number``, with the document's
+    convention ``decimal_comma``)."""
+
+    read = pn.read_number(" ".join(value.split()), decimal_comma)
+    return float(read) if read is not None else None
 
 
-def parse_number(value: str) -> float | None:
-    """The whole value as a number ("1,915.3"), else None: "12 kWh" is not a bare number. A decimal comma is a
-    decimal point ("88,0" is 88.0, never 880); "1,204" is a thousands separator (``_read_number``)."""
+NUMBER_MISMATCH = "number_not_as_printed"
 
-    cleaned = " ".join(value.split())
-    if not _NUMBER.fullmatch(cleaned) and not _GROUPED.fullmatch(cleaned) and not _PLAIN.fullmatch(cleaned):
-        return None
-    read = _read_number(cleaned)
-    return float(read[0]) if read is not None else None
+
+def printed_number(value: str, line_text: str, decimal_comma: bool | None) -> tuple[str, float] | str:
+    """The number as printed on the line that matches the AI's ``value``: (the token as printed, its number). The
+    stored number is always the printed token's, never the AI's string. Dropped: ``invalid_value`` when the AI's value
+    is not one readable number; ``number_not_as_printed`` when the line prints the same digits as a different number
+    (printed "88,0", read "880"); ``value_not_in_quote`` when no token on the line is that number."""
+
+    number = parse_number(value, decimal_comma)
+    if number is None:
+        return "invalid_value"
+    digits = re.sub(r"\D", "", value)
+    same_digits = False
+    for token in pn.tokens(line_text):
+        printed = pn.read_number(token, decimal_comma)
+        if printed is not None and math.isclose(float(printed), number, rel_tol=1e-12, abs_tol=1e-12):
+            return token, float(printed)
+        same_digits = same_digits or re.sub(r"\D", "", token) == digits
+    return NUMBER_MISMATCH if same_digits else "value_not_in_quote"
 
 
 def _allowed_unit(unit: str, allowed: Sequence[str]) -> str | None:
@@ -309,7 +327,7 @@ def _allowed_unit(unit: str, allowed: Sequence[str]) -> str | None:
 
 
 def verify_reading(reading: Any, by_name: Mapping[str, AskField], lines: Sequence[DocumentLine],
-                   confidence_of: Callable[[DocumentLine], float]) -> Verified | str:
+                   confidence_of: Callable[[DocumentLine], float], decimal_comma: bool | None = None) -> Verified | str:
     """The reading as a verified value, or the code it is dropped under."""
 
     field_ = by_name.get(str(reading.field_name))
@@ -326,16 +344,19 @@ def verify_reading(reading: Any, by_name: Mapping[str, AskField], lines: Sequenc
         if isinstance(cell, NotLocated):
             return cell.reason
         found = Located(line=cell, source_reference=copy.deepcopy(cell.source_reference))
-    return _checked(field_, reading, found, confidence_of)
+    return _checked(field_, reading, found, confidence_of, decimal_comma)
 
 
-def _checked(field_: AskField, reading: Any, found: Located, confidence_of: Callable[[DocumentLine], float]
-             ) -> Verified | str:
+def _checked(field_: AskField, reading: Any, found: Located, confidence_of: Callable[[DocumentLine], float],
+             decimal_comma: bool | None = None) -> Verified | str:
     raw = " ".join(str(reading.value).split())
     unit: str | None = None
     if field_.value_type in NUMERIC_TYPES:
-        number = parse_number(raw)
-        if number is None or (field_.value_type == "integer" and number != int(number)):
+        printed = printed_number(raw, found.line.text, decimal_comma)
+        if isinstance(printed, str):
+            return printed
+        raw, number = printed
+        if field_.value_type == "integer" and number != int(number):
             return "invalid_value"
         if field_.units:
             unit = _allowed_unit(str(reading.unit), field_.units)
@@ -573,6 +594,7 @@ class AiExtraction:
         output_type = reading_output(tuple(by_name))
         header = document_header(canonical_type_id, file_name, items)
         confidence_of = _confidence_of(parser_output)
+        decimal_comma = pn.document_convention(line.text for line in lines)
 
         # No part starts after the run's deadline (inline: a short budget inside the request; queued: 80% of the
         # reader's run), and none starts unless a call's worst case still ends before the run's own limit.
@@ -616,7 +638,7 @@ class AiExtraction:
                 warnings.append(dp.read_in_part(not_read, dp.FAILED_REASON))
                 break
             for reading in getattr(reply.output, "readings"):
-                verdict = verify_reading(reading, by_name, window_lines, confidence_of)
+                verdict = verify_reading(reading, by_name, window_lines, confidence_of, decimal_comma)
                 if isinstance(verdict, str):
                     dropped[verdict] += 1
                 else:
@@ -641,6 +663,7 @@ class AiExtraction:
         ledger = self._ledger or DbLedger(feature=FEATURE)
         spend = dp.Spend(ledger, org_id, settings.ai_monthly_cap_usd)
         confidence_of = _confidence_of(parser_output)
+        decimal_comma = pn.document_convention(line.text for line in lines)
         document_id = str(extraction_result.get("document_id") or parser_output.get("document_id") or "") or None
         if spend.reached(fresh=False):
             asks, _ = ai_record_fill.record_asks(lines, items, set(fields), ai_record_fill.record_rows(lines, items))
@@ -652,7 +675,7 @@ class AiExtraction:
             settings=settings, client=client, ledger=ledger, org_id=org_id, engagement_id=_uuid_or_none(engagement_id),
             document_id=document_id, lines=lines, extraction_result=extraction_result, targets=fields,
             header=document_header(canonical_type_id, file_name, items),
-            verify=lambda reading, by_name, own: verify_reading(reading, by_name, own, confidence_of),
+            verify=lambda reading, by_name, own: verify_reading(reading, by_name, own, confidence_of, decimal_comma),
             min_quote=MIN_QUOTE, spend=spend, deadline=dp.deadline_for(settings, started, self._clock),
             worst_case_s=CALL_WORST_CASE_S, max_chars=part_chars(settings), clock=self._clock)
         if filled is None:
