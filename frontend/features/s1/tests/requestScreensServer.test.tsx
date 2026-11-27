@@ -85,7 +85,7 @@ const secondUnsent: Ask = {
 
 function openResolve(label = SCAN) {
   fireEvent.click(within(rowOf(label)).getByRole("button", { name: "Resolve" }));
-  return within(openBox()!).getByRole("button", { name: "Resolve" });
+  return within(openBox()!).getByRole("button", { name: "Mark resolved" });
 }
 
 function openWithdraw(reason: string, label = SCAN) {

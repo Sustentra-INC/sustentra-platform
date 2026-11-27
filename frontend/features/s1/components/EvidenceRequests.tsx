@@ -593,10 +593,10 @@ function ResolveBox({
         }
       }}
     >
-      <strong className="s1-req-box__title">Resolve</strong>
+      <strong className="s1-req-box__title">Resolve this request</strong>
       <label className="s1-req-box__field">
         <span className="s1-field-label">
-          Link to the document or value that answered it <span className="s1-optional">(optional)</span>
+          What answered it <span className="s1-optional">(optional)</span>
         </span>
         <input className="s1-input" value={link} autoFocus onChange={(e) => setLink(e.target.value)} placeholder="e.g. the re-sent file, or the client's reply" />
       </label>
@@ -611,7 +611,7 @@ function ResolveBox({
           Cancel
         </button>
         <button className="s1-button s1-button--pri" type="button" disabled={pending} onClick={() => onResolve(link.trim() || null, note.trim() || null)}>
-          Resolve
+          Mark resolved
         </button>
       </div>
     </div>
