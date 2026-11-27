@@ -377,6 +377,20 @@
 
   --focus-ring: 2px solid var(--accent);
   --focus-offset: 2px;
+
+  /* --- Evidence tree columns and layout --------------------------------------- */
+
+  --et-col-docs:      110px;
+  --et-col-bar:       170px;
+  --et-col-pct:        90px;
+  --et-col-act:        40px;
+  --et-col-doc-mid:   280px;
+  --et-indent-step:    22px;
+  --et-tag-w:          34px;
+  --et-tag-h:          18px;
+  --et-node-min-h:     44px;
+  --et-doc-row-min-h:  46px;
+  --et-legend-dot:     10px;
 }
 
 

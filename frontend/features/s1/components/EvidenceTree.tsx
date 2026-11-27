@@ -164,6 +164,39 @@ export function EvidenceTree(props: EvidenceTreeProps) {
     const from = doc.placement_from ?? section;
     const period = doc.period_start && doc.period_end ? formatPeriod(doc.period_start, doc.period_end) : null;
     const also = doc.also_in.map((key) => lineMap.get(key)).filter((l): l is CalculationLine => Boolean(l));
+    const menu = (
+      <ActionMenu
+        label={`Actions for ${doc.file_name}`}
+        isOpen={menuId === id}
+        onOpenChange={(o) => setMenuId(o ? id : null)}
+        entries={[
+          { label: "Open document", action: () => props.onOpenExtraction(doc.document_id) },
+          { label: "Move to…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "move", doc, from, section }) },
+        ]}
+      />
+    );
+
+    if (isLineKey(section)) {
+      const ext = fileExt(doc.file_name);
+      const statusText = doc.values
+        ? `${doc.accepted} of ${doc.values} accepted`
+        : processingText(doc.processing_status);
+      return (
+        <div key={id} className="s1-et-doc s1-et-doc--line">
+          <span className="s1-et-doc__file">
+            <span aria-hidden className={`s1-et-doc-tag s1-batch__tag--${ext}`}>{ext.toUpperCase()}</span>
+            <button className="s1-doc-link" type="button" onClick={() => props.onOpenExtraction(doc.document_id)}>
+              {doc.file_name}
+            </button>
+            {period ? <span className="s1-et-doc__period">{period}</span> : null}
+            {also.length ? <span className="s1-et-doc__period">Also in {also.map(lineTitle).join(", ")}</span> : null}
+          </span>
+          <span className="s1-et-doc__status">{statusText}</span>
+          {menu}
+        </div>
+      );
+    }
+
     return (
       <div key={id} className="s1-et-doc">
         <button className="s1-doc-link" type="button" onClick={() => props.onOpenExtraction(doc.document_id)}>
@@ -177,15 +210,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           {also.length ? <span>Also in {also.map(lineTitle).join(", ")}</span> : null}
         </span>
         <span className="s1-et-doc__vals">{doc.values ? `${doc.accepted} of ${doc.values} accepted` : "No values yet"}</span>
-        <ActionMenu
-          label={`Actions for ${doc.file_name}`}
-          isOpen={menuId === id}
-          onOpenChange={(o) => setMenuId(o ? id : null)}
-          entries={[
-            { label: "Open document", action: () => props.onOpenExtraction(doc.document_id) },
-            { label: "Move to…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "move", doc, from, section }) },
-          ]}
-        />
+        {menu}
       </div>
     );
   }
@@ -211,10 +236,10 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         actions={
           <>
             <button
-              className="s1-icon-tile"
+              className="s1-et-review-btn"
               type="button"
-              aria-label={`Open supporting schedule for ${lineTitle(line)}`}
-              title="Open supporting schedule"
+              aria-label={`Open data point review for ${lineTitle(line)}`}
+              title="Open data point review"
               onClick={() => props.onOpenSchedule(line.key)}
             >
               <PanelsTopLeft aria-hidden />
@@ -337,7 +362,22 @@ export function EvidenceTree(props: EvidenceTreeProps) {
       ) : null}
 
       {!filtered || visibleScopes.length || supporting.unassigned.length ? (
-        <Fold id="b:supporting" depth={0} open={isOpen("b:supporting")} onToggle={toggle} title="Supporting evidence">
+        <section className="s1-et-supp">
+          <div className="s1-et-supp__head">
+            <h2 className="s1-et-supp__title">Supporting evidence</h2>
+            <div className="s1-et-supp__legend" aria-hidden>
+              <span className="s1-et-supp__leg-item s1-et-supp__leg-item--accepted">Accepted</span>
+              <span className="s1-et-supp__leg-item s1-et-supp__leg-item--review">To review</span>
+              <span className="s1-et-supp__leg-item s1-et-supp__leg-item--blocked">Blocked</span>
+            </div>
+          </div>
+          <div className="s1-et-supp__cols" aria-hidden>
+            <span className="s1-et-supp__col-title">Data point</span>
+            <span className="s1-et-supp__col-docs">Documents</span>
+            <span className="s1-et-supp__col-bar" />
+            <span className="s1-et-supp__col-pct">Accepted</span>
+            <span className="s1-et-supp__col-act" />
+          </div>
           {visibleScopes.map((scope) => {
             const id = `scope:${scope.scope}`;
             return (
@@ -358,7 +398,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
               {supporting.unassigned.length ? docList(supporting.unassigned, SUPPORTING_UNASSIGNED) : <p className="s1-et-none">Nothing here.</p>}
             </Fold>
           ) : null}
-        </Fold>
+        </section>
       ) : null}
 
       {!filtered && tree.set_aside.length ? (
@@ -487,6 +527,16 @@ function processingText(status: string): string {
   return "Needs a document type";
 }
 
+function fileExt(name: string): string {
+  const parts = name.split(".");
+  if (parts.length < 2) return "file";
+  const ext = parts.pop()!.toLowerCase();
+  if (ext === "jpeg") return "jpg";
+  if (ext === "doc") return "docx";
+  if (ext === "xls") return "xlsx";
+  return ext;
+}
+
 /* =============================== fold row =============================== */
 
 function Fold({
@@ -536,6 +586,7 @@ function Fold({
             </span>
             <span
               className="s1-ws-gr__pct"
+              data-pct={counts.pct_accepted}
               title={`${counts.accepted} of ${counts.values} values accepted${counts.issues ? `, ${counts.issues} with issues` : ""}`}
             >
               {counts.pct_accepted}% accepted

@@ -220,7 +220,7 @@ describe("the Evidence tree", () => {
     const onOpenSchedule = vi.fn();
     render(<Harness onOpenSchedule={onOpenSchedule} />);
     await expandAll();
-    fireEvent.click(screen.getByRole("button", { name: "Open supporting schedule for Natural gas · Kent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open data point review for Natural gas · Kent" }));
     expect(onOpenSchedule).toHaveBeenCalledWith(KENT.key);
   });
 
