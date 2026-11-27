@@ -842,6 +842,9 @@ _BEAT = text("""
 _RELEASE = text("""
     UPDATE workpaper_items SET payload = payload - 'claim'
      WHERE engagement_id = :eid AND kind = :kind AND item_key = :key AND payload->'claim'->>'by' = :by""")
+_OWNED = text("""
+    SELECT EXISTS (SELECT 1 FROM workpaper_items
+     WHERE engagement_id = :eid AND kind = :kind AND item_key = :key AND payload->'claim'->>'by' = :by)""")
 _FREE = text("""
     SELECT NOT EXISTS (SELECT 1 FROM workpaper_items
      WHERE engagement_id = :eid AND kind = :kind AND item_key = :key AND payload->'claim' IS NOT NULL
@@ -882,7 +885,7 @@ async def _heartbeat(sessions: async_sessionmaker[AsyncSession], engagement: dic
 
 @asynccontextmanager
 async def _claimed(sessions: async_sessionmaker[AsyncSession], engagement: dict[str, Any],
-                   token: str | None = None) -> AsyncIterator[None]:
+                   token: str | None = None) -> AsyncIterator[str]:
     """One read of the engagement at a time, in this process (``_RUNNING``) and across processes (the claim,
     renewed while the read lasts, released at the end). Another read in flight: ``_Declined("busy")``. With
     ``token``, the claim was already taken (and the engagement put in ``_RUNNING``) by the request that started the
@@ -900,7 +903,7 @@ async def _claimed(sessions: async_sessionmaker[AsyncSession], engagement: dict[
                 raise _Declined("busy", _BUSY)
         beat = asyncio.ensure_future(_heartbeat(sessions, engagement, token))
         try:
-            yield
+            yield token
         finally:
             beat.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -1011,7 +1014,7 @@ async def _requested_read(sessions: async_sessionmaker[AsyncSession], info: _Req
         async with _claimed(sessions, engagement, token=token):
             with scoped(S1Scope.tenant(engagement["org_id"])):
                 try:
-                    result = await _run_prefill(info, user, engagement, sessions, plan)
+                    result = await _run_prefill(info, user, engagement, sessions, plan, token)
                 except _ReadFailed as exc:
                     await _mark_auto_read(sessions, user, engagement, "failed", names, exc.detail, status=exc.status)
                     return
@@ -1069,7 +1072,8 @@ async def _reuse_last_read(request: Request | None, user: CurrentUser | _Caller,
             "failed_sections": []}
 
 
-def _document_read(document: prefill.PrefillDocument, not_read: str | None) -> dict[str, Any]:
+def _document_read(document: prefill.PrefillDocument, not_read: str | None,
+                   reason: str = dp.LIMIT_REASON) -> dict[str, Any]:
     """One document of the read: ``truncated`` (and the "Read in part" sentence) when the monthly limit stopped the
     read before its end, so a partly read document is never shown as read."""
 
@@ -1077,7 +1081,7 @@ def _document_read(document: prefill.PrefillDocument, not_read: str | None) -> d
                            "truncated": bool(not_read)}
     if not_read:
         out["not_read"] = not_read
-        out["note"] = dp.read_in_part(not_read).split(": ", 1)[1]
+        out["note"] = dp.read_in_part(not_read, reason).split(": ", 1)[1]
     return out
 
 
@@ -1150,6 +1154,15 @@ class _LoopLedger:
 
         return int(self._wait(spend()))
 
+    def owns(self, engagement: dict[str, Any], token: str) -> bool:
+        """Whether this read still holds the engagement's claim (a stalled heartbeat lets it expire and be taken)."""
+
+        async def owned() -> bool:
+            async with _short_transaction(self._sessions, self._org_id) as db:
+                return bool((await db.execute(_OWNED, _claim_params(engagement, by=token))).scalar())
+
+        return bool(self._wait(owned()))
+
     def record(self, reply: StructuredReply[Any], document_id: str | None) -> None:
         async def write() -> None:
             async with _short_transaction(self._sessions, self._org_id) as db:
@@ -1160,8 +1173,13 @@ class _LoopLedger:
         self._wait(write())
 
 
+SHUTTING_DOWN = "the service restarted while Sustentra's AI was reading"
+CLAIM_LOST = "another read of this engagement took over"
+
+
 async def _run_prefill(info: _RequestInfo | None, user: CurrentUser | _Caller, engagement: dict[str, Any],
-                       sessions: async_sessionmaker[AsyncSession], plan: _Plan) -> dict[str, Any]:
+                       sessions: async_sessionmaker[AsyncSession], plan: _Plan,
+                       token: str | None = None) -> dict[str, Any]:
     """Read the documents part by part and store what holds up. No transaction is held while documents are parsed
     or Sustentra's AI answers. Raises ``_ReadFailed`` (a call made, nothing saved), ``HTTPException`` (nothing
     read, or every call failed) or ``_Declined`` (the limit stopped the read before its first part)."""
@@ -1175,10 +1193,24 @@ async def _run_prefill(info: _RequestInfo | None, user: CurrentUser | _Caller, e
                                                     "Upload a readable copy of the report or methodology document.")
     started = time.monotonic()
     ledger = _LoopLedger(sessions, asyncio.get_running_loop(), org_id, engagement["id"], user.id, client.provider)
-    # Every part of every document; each call recorded as it comes back, the limit checked before each part.
+    from backend.app.services import auto_read
+
+    def stop() -> str | None:
+        """Before every part: the service shutting down, or the claim gone to another read, stops the read there."""
+
+        if auto_read.stopping():
+            return SHUTTING_DOWN
+        if token is not None and not ledger.owns(engagement, token):
+            return CLAIM_LOST
+        return None
+
+    # Every part of every document; each call recorded as it comes back, the limit and the claim checked before each
+    # part.
     whole = await asyncio.to_thread(prefill.run_chunks, client, documents, spent_microusd=plan.spent,
-                                    cap_usd=settings.ai_monthly_cap_usd, ledger=ledger)
+                                    cap_usd=settings.ai_monthly_cap_usd, ledger=ledger, stop=stop)
     results = whole.results
+    if not results and whole.not_read and whole.reason != dp.LIMIT_REASON:
+        raise HTTPException(status_code=503, detail=f"Sustentra's AI did not read the documents: {whole.reason}. Try again.")
     if not results and whole.not_read:  # the next part's cost would pass the limit: nothing was sent
         raise _Declined("cap_reached", f"This month's limit on Sustentra's AI and scans (${settings.ai_monthly_cap_usd:,.2f}) "
                                        "would be passed by reading the documents, so they were not read.")
@@ -1203,7 +1235,7 @@ async def _run_prefill(info: _RequestInfo | None, user: CurrentUser | _Caller, e
             await _audit_prefill(failed, info, user, engagement, {
                 "outcome": reply.outcome, "documents": len(documents), "cost_usd": cost_usd})
         raise _ReadFailed(409, _FAILED.get(reply.outcome, _FAILED["invalid"]))
-    read = [_document_read(d, whole.not_read.get(d.document_id)) for d in documents]
+    read = [_document_read(d, whole.not_read.get(d.document_id), whole.reason) for d in documents]
     try:
         verified, dropped = prefill.verify(reply.output, documents, model=reply.model, request_id=reply.request_id,
                                            now_iso=stamp(_now()))
@@ -1246,14 +1278,15 @@ async def _run_prefill(info: _RequestInfo | None, user: CurrentUser | _Caller, e
 
 
 async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagement: dict[str, Any],
-                   db: AsyncSession, sessions: async_sessionmaker[AsyncSession], settings: Settings) -> Any:
+                   db: AsyncSession, sessions: async_sessionmaker[AsyncSession], settings: Settings,
+                   token: str | None = None) -> Any:
     """The gate and the read in one go: the automatic read's path (it already runs on the background reader)."""
 
     plan = await _plan_prefill(request, user, engagement, db, settings)
     if isinstance(plan, dict):
         return plan
     try:
-        return await _run_prefill(_request_info(request), user, engagement, sessions, plan)
+        return await _run_prefill(_request_info(request), user, engagement, sessions, plan, token)
     except _ReadFailed as exc:
         return JSONResponse(status_code=exc.status, content={"detail": exc.detail})
 
@@ -1336,11 +1369,11 @@ async def _read_when_free(sessions: async_sessionmaker[AsyncSession], caller: _C
 
     for attempt in (1, 2):
         try:
-            async with _claimed(sessions, engagement):
+            async with _claimed(sessions, engagement) as token:
                 await _mark_auto_read(sessions, caller, engagement, "reading", file_names)
                 async with sessions() as db, db.begin():
                     await set_tenant(db, caller.org_id)
-                    answer = await _prefill(None, caller, engagement, db, sessions, settings)
+                    answer = await _prefill(None, caller, engagement, db, sessions, settings, token)
                 if isinstance(answer, JSONResponse):  # the call was made but gave nothing, or nothing was saved
                     detail = json.loads(bytes(answer.body)).get("detail")
                     await _mark_auto_read(sessions, caller, engagement, "failed", file_names, str(detail))

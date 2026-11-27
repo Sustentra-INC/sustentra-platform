@@ -11,10 +11,12 @@ file name and one part of its text: the whole document is read, part by part (``
 text is data, not instructions: the prompt says so, the reply is a strict schema, and Claude has no tools.
 
 Deciding once. Every part is read. Each part's answer is checked as below and, when it holds up, kept as a
-candidate site with its quote. Then one decision: the candidates name one facility, and that is the suggestion (the
-first part's quote); they name two or more, and there is none (the document points two ways). The monthly limit is
-checked before every part; when it stops the read, what was read is still decided on, and the suggestion says
-which pages were not read (``read_in_part``, and the run warning ``ai_read_in_part``).
+candidate site with its quote. Then one decision (``decide``): the candidates name one facility, and that is the
+suggestion (the first part's quote); they name two or more, and the first stays the card's facility, marked
+``several``, with every facility read kept as a candidate with its quote and page, so the reviewer chooses. The
+monthly limit and the run's time budget are checked before every part, the first included; when one stops the read,
+what was read is still decided on, and the suggestion says which pages were not read (``read_in_part``, and the run
+warning ``ai_read_in_part``).
 
 What is kept. A suggestion, never a placement. It is used only when the facility id exists in Setup and the quote is
 printed in the file name or on a line of the part it was read in (``ai_locator``); otherwise there is no suggestion. The bill stays
@@ -290,8 +292,8 @@ class AiFacility:
             if read and spend.reached():
                 not_read = dp.not_read(lines, part)
                 break
-            if read and deadline is not None and not deadline.allows(CALL_WORST_CASE_S):
-                not_read, reason = dp.not_read(lines, part), dp.TIME_REASON  # inline: inside the upload request
+            if deadline is not None and not deadline.allows(CALL_WORST_CASE_S):
+                not_read, reason = (dp.not_read(lines, part) if lines else None), dp.TIME_REASON  # inline: the upload
                 break
             try:
                 reply = client.structured(system=system_prompt(), content=render(facilities, file_name, part.lines),
@@ -309,13 +311,12 @@ class AiFacility:
             if reply.outcome != "ok" or reply.output is None:
                 not_read, reason = (dp.not_read(lines, part) if lines else None), dp.FAILED_REASON
                 break
-            # The quote is found in this part; "points two ways" looks at the whole document.
             # The quote is found in this part, and "points two ways" looks at this part: across parts, every site
             # read is kept as a candidate (``decide``), so the reviewer sees all of them.
             found = verified(reply.output, facilities, file_name, part.lines, company)
             if found is not None:
                 candidates.append((found, reply))
-        if not_read is not None and read:
+        if not_read is not None:  # stopped in the document (or, out of time, before it): said, never silent
             warnings.append(dp.read_in_part(not_read, reason))
         return decide(candidates, not_read)
 

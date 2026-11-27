@@ -21,6 +21,7 @@ It never raises into the caller: a document's read is recorded as it ended whate
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import threading
 from collections.abc import Awaitable, Callable
@@ -30,6 +31,10 @@ from backend.app.core.config import get_settings
 from backend.app.services.calculation_lines import SUMMARY_TYPES
 
 logger = logging.getLogger("sustentra.auto_read")
+
+# How long shutdown waits for reads under way to end (their calls recorded, their claim released). Inside the api
+# container's stop grace period (40 s, deploy/docker-compose.prod.yml), with room for the rest of the shutdown.
+SHUTDOWN_DRAIN_SECONDS = 25.0
 
 # (org_id, engagement_id, file names) -> whether to go on; writes the page's "will read ... shortly" marker.
 Prepare = Callable[[str, str, list[str]], Awaitable[bool]]
@@ -48,7 +53,10 @@ class AutoReader:
         self._busy: dict[str, asyncio.Lock] = {}
         self._sessions: Any = None
         self._engine: Any = None
-        self._jobs: set[Any] = set()  # reads started by ``submit`` and not yet ended
+        # Reads under way (started by ``submit``, or an automatic read past its wait) and not yet ended: shutdown waits
+        # for them, so every call they paid for is written to the ledger and their claim is released.
+        self._jobs: set[concurrent.futures.Future[Any]] = set()
+        self._stopping = threading.Event()
 
     def debounce_seconds(self) -> float:
         value = self._debounce
@@ -92,17 +100,27 @@ class AutoReader:
             logger.error("auto_read_not_scheduled", extra={"error_type": type(exc).__name__})
             return
         self._pending.pop(engagement_id, None)  # from here on a new document starts the next wait
-        async with self._busy.setdefault(engagement_id, asyncio.Lock()):  # one read of an engagement at a time
-            try:
-                await self._run_fn()(org_id, engagement_id, names)
-            except Exception as exc:
-                logger.error("auto_read_failed", extra={"error_type": type(exc).__name__})
+        if self._stopping.is_set():
+            return  # shutting down: nothing new starts (the next summary document asks again)
+        running: concurrent.futures.Future[Any] = concurrent.futures.Future()
+        self._jobs.add(running)
+        try:
+            async with self._busy.setdefault(engagement_id, asyncio.Lock()):  # one read of an engagement at a time
+                try:
+                    await self._run_fn()(org_id, engagement_id, names)
+                except Exception as exc:
+                    logger.error("auto_read_failed", extra={"error_type": type(exc).__name__})
+        finally:
+            running.set_result(None)
+            self._jobs.discard(running)
 
     def submit(self, job: Callable[[Any], Awaitable[Any]]) -> None:
         """Run ``job(sessions)`` on this reader's loop, with its own database pool, now (no debounce): the read a
         reviewer asked for (``methodology_review.prefill_methodology``). It outlives the request that asked for it.
         Safe from any thread; never raises from the job into the caller."""
 
+        if self._stopping.is_set():
+            raise RuntimeError("the reader is shutting down")
         loop = self._ensure_loop()
 
         async def run() -> None:
@@ -120,13 +138,34 @@ class AutoReader:
         if self._sessions is None:
             from backend.app.core.db import build_sessionmaker, create_engine, runtime_database_url
 
-            self._engine = create_engine(runtime_database_url(get_settings()), pool_size=2, max_overflow=0)
+            # Four: a read's ledger rows (up to four calls of a part at once), its claim heartbeat and its marker.
+            self._engine = create_engine(runtime_database_url(get_settings()), pool_size=4, max_overflow=2)
             self._sessions = build_sessionmaker(self._engine)
         return self._sessions
 
-    def shutdown(self, timeout: float = 5.0) -> None:
-        """Stop the background loop and close its database pool (the API's shutdown)."""
+    def is_stopping(self) -> bool:
+        """True once shutdown has begun: a read under way starts no new part (``methodology_review``)."""
 
+        return self._stopping.is_set()
+
+    def shutdown(self, timeout: float = 5.0, drain_seconds: float = SHUTDOWN_DRAIN_SECONDS) -> None:
+        """Stop the background loop and close its database pool (the API's shutdown), without losing what was paid
+        for: (1) nothing new starts, and a read under way starts no new part or call; (2) the reads under way get up
+        to ``drain_seconds`` to finish the calls already sent, write their ledger rows, leave their marker and release
+        their claim, while the loop still runs; (3) the waits are cancelled and the pool is closed. A read still going
+        after ``drain_seconds`` is cut off: its claim expires on its own (CLAIM_TTL_SECONDS) and reads as interrupted.
+        ``drain_seconds`` stays inside the api container's stop grace period (deploy/docker-compose.prod.yml)."""
+
+        self._stopping.set()
+        with self._lock:
+            loop = self._loop
+        if loop is None:
+            return
+        jobs = list(self._jobs)
+        if jobs:
+            _done, left = concurrent.futures.wait(jobs, timeout=drain_seconds)
+            if left:
+                logger.error("auto_read_shutdown_cut_off", extra={"reads": len(left)})
         with self._lock:
             loop, self._loop = self._loop, None
         if loop is None:
@@ -171,6 +210,13 @@ class AutoReader:
 
 _reader: AutoReader | None = None
 _reader_lock = threading.Lock()
+
+
+def stopping() -> bool:
+    """Whether the process's reader is shutting down (a read under way then starts no new part)."""
+
+    reader = _reader
+    return reader is not None and reader.is_stopping()
 
 
 def default_reader() -> AutoReader:

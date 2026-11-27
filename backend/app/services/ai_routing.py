@@ -311,7 +311,7 @@ class AiRouting:
             if read and spend.reached():
                 not_read = dp.not_read(lines, part)
                 break
-            if read and deadline is not None and not deadline.allows(worst_case):
+            if deadline is not None and not deadline.allows(worst_case):
                 # Out of time (inline: inside the upload request): what was read decides, the rest is said
                 not_read, stop_reason = dp.not_read(lines, part), dp.TIME_REASON
                 break
@@ -339,6 +339,8 @@ class AiRouting:
             if verdict.status == "suggested" and verdict.confidence == HIGH:
                 break  # decided with high confidence: the remaining parts are not needed
         if not verdicts:
+            if failure is None and not_read is not None:  # out of time before the first part: said, not silent
+                return RoutingResult("off", warning=dp.read_in_part(not_read, stop_reason))
             return failure or RoutingResult("off")
         return dataclasses.replace(combine(verdicts), not_read=not_read, stop_reason=stop_reason, parts_read=read,
                                    warning=failure.warning if failure else None)

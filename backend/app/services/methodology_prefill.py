@@ -1310,7 +1310,7 @@ class WholeRead:
 
     results: list[PartResult]
     not_read: dict[str, str]
-
+    reason: str = dp.LIMIT_REASON  # why the read stopped, when it did
     def for_document(self, document_id: str) -> list[PartResult]:
         return [r for r in self.results if r.document_id == document_id]
 
@@ -1369,21 +1369,29 @@ def run_parts(client: LlmClient, documents: Sequence[PrefillDocument], chunk: tu
 
 
 def run_chunks(client: LlmClient, documents: Sequence[PrefillDocument], *, spent_microusd: int = 0,
-               cap_usd: float | None = None, ledger: PrefillLedger | None = None) -> WholeRead:
+               cap_usd: float | None = None, ledger: PrefillLedger | None = None,
+               stop: Callable[[], str | None] | None = None) -> WholeRead:
     """Read every part of every document (the four questions each), in order.
 
     Spend: each call is written to ``ledger`` as soon as it comes back. Before every part, this month's spend is
     read again from ``ledger`` (AI and scans; without one, ``spent_microusd`` plus what this read has cost) and the
     part's four calls are sent only if that spend plus their estimated cost (``estimate_microusd``) stays under
     ``cap_usd``. So the limit is passed by at most the estimate's error, never by a part's worth of unchecked calls.
-    When the limit stops the read, each document left unfinished is in ``not_read``."""
+    When the limit stops the read, each document left unfinished is in ``not_read``. ``stop`` is asked before every
+    part: a reason (the service is shutting down, the read no longer owns its claim) stops the read there, without
+    spending, with that reason."""
 
     results: list[PartResult] = []
     not_read: dict[str, str] = {}
     cost = 0
     stopped = False
+    reason = dp.LIMIT_REASON
     for document in documents:
         for part in chunks(document):
+            if not stopped and stop is not None:
+                told = stop()
+                if told:
+                    stopped, reason = True, told
             if not stopped and cap_usd is not None:
                 content = render_chunk(document, part)
                 estimate = sum(estimate_microusd(client, PART_PROMPTS[name], content, PART_MAX_OUTPUT_TOKENS)
@@ -1399,7 +1407,7 @@ def run_chunks(client: LlmClient, documents: Sequence[PrefillDocument], *, spent
             cost += sum(int(r.reply.cost_microusd or 0) for r in answered if r.reply is not None)
             logger.info("methodology prefill: document=%s part=%d cost_microusd=%d", document.document_id, part.index,
                         cost)
-    return WholeRead(results, not_read)
+    return WholeRead(results, not_read, reason)
 
 
 def render_documents(documents: Sequence[PrefillDocument]) -> str:

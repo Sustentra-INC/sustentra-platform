@@ -101,6 +101,9 @@ services:
       - "8000"
     # idle about 160 MB; uploads (25 MB a file) and the Excel workpaper are its peaks
     mem_limit: 896m
+    # Longer than auto_read.SHUTDOWN_DRAIN_SECONDS (25): a methodology read under way records its calls and releases
+    # its claim before the kill (the default is 10 s).
+    stop_grace_period: 40s
 
   # Reads the queued processing runs (S1_PROCESSING=queued). Runs the api image with the
   # api's settings. Active whenever S1_STORE is postgres-backed; under jsonl it idles and

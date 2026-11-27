@@ -650,3 +650,36 @@ def test_sheet_rows_are_read_in_parts_of_a_hundred_rows() -> None:
     assert len(parts) == 1  # 250 rows are three "pages" of 100, under five
     parts = list(dp.iter_parts(lines, max_chars=1_000_000, max_pages=1))
     assert [len(p.own_lines) for p in parts] == [100, 100, 50] and parts[0].label() == "lines L1–L100"
+
+
+def test_the_type_and_facility_reads_check_the_time_budget_before_the_first_part_too() -> None:
+    spent = dp.Deadline(stop_starting=60.0, hard_limit=900.0, clock=lambda: 61.0)  # out of time already
+    claude = Scripted(_says)
+    service = AiRouting(settings=settings(ai_part_tokens=10_000), client_factory=lambda s: claude, ledger=Ledger())
+    found = service.suggest(parsed(_typed_bundle()), org_id=ORG, engagement_id="ENG-1", has_targets=lambda t: True,
+                            deadline=spent)
+    assert claude.calls == [] and found.status == "off"
+    assert found.warning == dp.read_in_part("pages 1–20", dp.TIME_REASON)  # said, never silent
+    claude = Scripted(_names)
+    facility = AiFacility(settings=settings(ai_part_tokens=10_000), client_factory=lambda s: claude, ledger=Ledger(),
+                          facilities_for=lambda org, eng: (FACILITIES, COMPANY), decided_for=lambda org, eng, doc: None)
+    warnings: list[str] = []
+    assert facility.suggest(parser_output=parsed(_log({})), extraction_result={"items": ITEMS},
+                            canonical_type_id=STATIONARY, file_name="generator-log.csv", org_id=ORG,
+                            engagement_id=str(uuid.uuid4()), document_id="DOC-1", warnings=warnings,
+                            deadline=spent) is None
+    assert claude.calls == [] and warnings == [dp.read_in_part("pages 1–20", dp.TIME_REASON)]
+
+
+def test_the_methodology_read_stops_between_parts_when_told_without_spending() -> None:
+    documents = [_report("D1", "DOC-A", 12, {}), _report("D2", "DOC-B", 2, {})]
+    claude = Scripted(_prefill_answer)
+    asked = {"n": 0}
+
+    def stop() -> str | None:
+        asked["n"] += 1
+        return "the service restarted" if asked["n"] > 1 else None
+
+    whole = mp.run_chunks(claude, documents, spent_microusd=0, cap_usd=100.0, stop=stop)
+    assert len(claude.calls) == 4 and whole.reason == "the service restarted"
+    assert whole.not_read == {"DOC-A": "pages 8–12", "DOC-B": "pages 1–2"}
