@@ -5218,3 +5218,59 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 /* "Requested" tile: softer indigo tint when count > 0 */
 .s1-xr-filter--requested:not([data-empty="true"]) { background: var(--accent-softer); }
 .s1-xr-filter--requested:not([data-empty="true"]):hover { background: var(--accent-soft); }
+
+/* ============================================================
+   TICKET 10: Review panel value cards
+   ============================================================ */
+
+/* -- List header -- */
+.s1-xr-doc { font-size: var(--text-base); justify-content: space-between; gap: var(--sp-2); }
+.s1-xr-doc__fn { font-size: var(--text-base); font-weight: var(--weight-strong); }
+.s1-xr-doc .s1-xr-acceptall {
+  flex: none; display: inline-flex; align-items: center;
+  height: var(--button-h-sm); padding: 0 var(--sp-2); margin-left: 0;
+  font: inherit; font-size: var(--text-sm); font-weight: var(--weight-strong);
+  color: var(--ink-2); background: var(--sf-inset);
+  border: none; border-radius: var(--r-seg);
+  cursor: pointer; white-space: nowrap;
+  transition: background-color 0.15s ease;
+}
+.s1-xr-doc .s1-xr-acceptall:hover { background: var(--sf-sunken); color: var(--ink); }
+
+/* -- Value card -- */
+.s1-xr-card {
+  gap: var(--sp-2-5); padding: var(--sp-3-5);
+  border-radius: var(--r-pop); background: var(--sf-card);
+  border: none;
+  box-shadow: inset 0 0 0 var(--hairline-width) var(--line);
+}
+.s1-xr-card:hover { background: var(--sf-card); box-shadow: var(--shadow-card), inset 0 0 0 var(--hairline-width) var(--line-strong); }
+.s1-xr-card.is-sel { background: var(--sf-card); box-shadow: inset 0 0 0 var(--nav-current-marker-width) var(--accent-solid); }
+
+/* Card top row: label at --text-base */
+.s1-xr-card__top { font-size: var(--text-base); }
+.s1-xr-card__top .s1-xr-what { font-size: var(--text-base); }
+
+/* Value (big figure) and unit */
+.s1-xr-card .s1-xr-val { font-size: var(--text-lg); font-weight: var(--weight-bold); }
+.s1-xr-card .s1-xr-unit { font-size: var(--text-base); color: var(--ink-2); }
+
+/* Scope chips: --state-chip-min-height, no border */
+.s1-xr-card .s1-xr-scope {
+  display: inline-flex; align-items: center;
+  height: var(--state-chip-min-height); padding: 0 var(--sp-2);
+  font-size: var(--text-sm); font-weight: var(--weight-strong);
+  border-radius: var(--r-sm); border: none; line-height: 1;
+}
+.s1-xr-card .s1-xr-scope--scope1 { border: none; }
+.s1-xr-card .s1-xr-scope--scope2_location, .s1-xr-card .s1-xr-scope--scope2_market { border: none; }
+
+/* Expanded source / record box */
+.s1-xr-card .s1-xr-record {
+  background: var(--sf-page); border-radius: var(--r-ctl);
+  padding: var(--sp-2-5) var(--sp-3); margin: 0; border: 0; gap: var(--sp-1);
+}
+
+/* Action buttons: standard height, --r-ctl radius, Accept fills available width */
+.s1-xr-card .s1-xr-actions .s1-button { height: var(--button-h); padding: 0 var(--sp-3); font-size: var(--text-md); border-radius: var(--r-ctl); }
+.s1-xr-card .s1-xr-actions .s1-button--pri { flex: 1; }
