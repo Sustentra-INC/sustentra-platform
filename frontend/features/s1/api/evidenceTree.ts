@@ -1,6 +1,6 @@
 import type { AiExplanation } from "./aiExplanation";
 import { api } from "../../../lib/api";
-import type { DocumentDecision } from "../types";
+import type { DocumentDecision, EngagementConfig } from "../types";
 
 /**
  * The Evidence tree and the supporting schedule (backend routes of the calculation-lines work).
@@ -102,10 +102,17 @@ export interface TreeLineNode {
 }
 
 export interface TreeLevel2 {
+  /** The fuel's id: it never changes, whatever the fuel is called (it is in every line key under it). */
   level2: string;
   label: string;
   counts: TreeCounts;
   lines: TreeLineNode[];
+  /** True when every line under it is a reviewer's: only then may it be deleted. Absent on an older server. */
+  created_by_user?: boolean;
+  created_by?: string | null;
+  created_at?: string | null;
+  /** The creator's name (their login when they have none); null when the user is unknown. */
+  created_by_name?: string | null;
 }
 
 export interface TreeCategory {
@@ -354,6 +361,30 @@ export function deleteEvidenceLine(engagementId: string, lineKey: string): Promi
   return api<LineAnswer>(`${lines(engagementId)}/${encodeURIComponent(lineKey)}`, { method: "DELETE" });
 }
 
+/** What a fuel (Level 2) action answers: a delete moves documents, which come back whole as saved. */
+export interface FuelAnswer {
+  evidenceLines?: EvidenceLineSetting[];
+  /** The renamed fuels as they now stand (the client keeps them, as it keeps the lines). */
+  evidenceLevel2Names?: NonNullable<EngagementConfig["evidenceLevel2Names"]>;
+  level2?: { category: string; level2: string; label: string };
+  documents_moved?: number;
+  documents?: Record<string, DocumentDecision>;
+}
+
+const fuel = (engagementId: string, category: string, level2: string) =>
+  `/engagements/${encodeURIComponent(engagementId)}/evidence-fuels/${encodeURIComponent(category)}/${encodeURIComponent(level2)}`;
+
+/** Renames a fuel. Its id stays, so the documents, lines and decisions under it stay attached. 409 when the
+ *  category already has a fuel of that name. */
+export function renameEvidenceFuel(engagementId: string, category: string, level2: string, name: string): Promise<FuelAnswer> {
+  return api<FuelAnswer>(fuel(engagementId, category, level2), { method: "PATCH", body: { name } });
+}
+
+/** Deletes a fuel the reviewers made, with its lines; the documents move to Unassigned supporting evidence. */
+export function deleteEvidenceFuel(engagementId: string, category: string, level2: string): Promise<FuelAnswer> {
+  return api<FuelAnswer>(fuel(engagementId, category, level2), { method: "DELETE" });
+}
+
 /** One entry of the engagement setting `evidenceFolders`; the server makes the id and records who added it. */
 export interface EvidenceFolderSetting {
   id: string;
@@ -460,6 +491,8 @@ export interface EvidenceActivityItem {
     | "evidence_line_created"
     | "evidence_line_renamed"
     | "evidence_line_deleted"
+    | "evidence_level2_renamed"
+    | "evidence_level2_deleted"
     | "evidence_document_moved"
     | "evidence_document_facility_set"
     | "evidence_folder_created"
@@ -474,6 +507,8 @@ export interface EvidenceActivityItem {
   old_label?: string;
   new_label?: string;
   documents_moved?: number;
+  /** A fuel's delete: how many lines went with it. */
+  lines_deleted?: number;
   document_id?: string;
   from_label?: string;
   to_label?: string;

@@ -176,7 +176,7 @@ class EvidenceTreeService:
             for doc in docs for record in doc.records
         }
         system = cl.default_lines(placements.values(), facilities, inputs.vehicle_groups)
-        lines = cl.merge_lines(system, cl.user_lines(settings))
+        lines = cl.merge_lines(system, cl.user_lines(settings), cl.stored_level2_names(settings))
         known = {line.key for line in lines}
         filed = cl.file_documents(
             [(doc.document_id, doc.canonical_type_id, [placements[id(r)] for r in doc.records]) for doc in docs],
@@ -222,6 +222,9 @@ class EvidenceTreeService:
         loaded = loaded or self.load(engagement, can_see, decisions)
         by_key = {line.key: line for line in loaded.lines}
         shown_lines = [ln for ln in loaded.lines if facility_id is None or ln.facility_id == facility_id]
+        made_by: dict[tuple[str, str], list[cl.CalculationLine]] = {}  # every line of a Level 2, shown or not
+        for ln in loaded.lines:
+            made_by.setdefault((ln.category, ln.level2), []).append(ln)
         facility_names = {cl.facility_anchor_id(f): str(f.get("name")) for f in loaded.facilities}
         setup_names = {str(f.get("facilityId")): str(f.get("name")) for f in loaded.facilities}
         rows: dict[str, list[tuple[dict[str, Any], DocState, cl.Slot]]] = {}
@@ -268,9 +271,18 @@ class EvidenceTreeService:
                                             "documents": documents(line.key)})
                 for level2 in level2s.values():
                     level2["counts"] = counts_of([entry["line"]["key"] for entry in level2["lines"]])
+                    # Whose it is: every line of it a reviewer's, so the reviewer may delete it. The first one made names it.
+                    every = made_by[(category, level2["level2"])]
+                    level2["created_by_user"] = all(ln.created_by_user for ln in every)
+                    if level2["created_by_user"]:
+                        first = min(every, key=lambda ln: (ln.created_at or "", ln.key))
+                        level2["created_by"], level2["created_at"] = first.created_by, first.created_at
+                        level2["created_by_name"] = (
+                            (creator_names or {}).get(str(first.created_by)) if first.created_by else None)
                 categories.append({
                     "category": category, "label": label, "counts": counts_of([ln.key for ln in in_category]),
-                    "level2s": [{k: level2[k] for k in ("level2", "label", "counts", "lines")}
+                    "level2s": [{k: level2[k] for k in ("level2", "label", "counts", "lines", "created_by_user", "created_by",
+                                             "created_at", "created_by_name") if k in level2}
                                 for level2 in level2s.values()]})
             in_scope = [ln.key for ln in shown_lines if cl.CATEGORY_SCOPE[ln.category] == scope]
             scopes.append({"scope": scope, "label": scope_label, "categories": categories,

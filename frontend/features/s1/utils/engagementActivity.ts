@@ -142,6 +142,13 @@ function evidenceEventText(event: EvidenceActivityItem, filename: Map<string, st
       const moved = n === 0 ? "" : n === 1 ? ", moving 1 document to Unassigned supporting evidence" : `, moving ${n} documents to Unassigned supporting evidence`;
       return `deleted the line ${event.label ?? ""}${moved}`;
     }
+    case "evidence_level2_renamed":
+      return `renamed the fuel ${event.old_label ?? ""} to ${event.new_label ?? ""}`.replace("  ", " ");
+    case "evidence_level2_deleted": {
+      const n = event.documents_moved ?? 0;
+      const moved = n === 0 ? "" : n === 1 ? ", moving 1 document to Unassigned supporting evidence" : `, moving ${n} documents to Unassigned supporting evidence`;
+      return `deleted the fuel ${event.label ?? ""}${moved}`;
+    }
     case "evidence_document_moved":
       return `moved ${(event.document_id && filename.get(event.document_id)) || "a document"} from ${event.from_label ?? "its place"} to ${event.to_label ?? "another place"}${event.reread_as_label ? (event.reread_choice === "move_only" ? `, without reading it again as ${event.reread_as_label}` : `, and had it read again as ${event.reread_as_label}`) : ""}`;
     case "evidence_folder_created":

@@ -56,6 +56,11 @@ export function addedByText(name: string | null | undefined, at: string | null |
   return day ? `${head} · ${day}` : head;
 }
 
+/** "Created by J. Park · Nov 4": who made a fuel a reviewer added, and when (same name rules as `addedByText`). */
+export function createdByText(name: string | null | undefined, at: string | null | undefined): string {
+  return addedByText(name, at).replace(/^Added by/, "Created by");
+}
+
 /** A date read from a client's document, the way a bill prints it: "01 Feb 2025". Anything
  *  that is not an ISO date comes back as it was read. */
 export function formatPrintedDate(iso: string): string {

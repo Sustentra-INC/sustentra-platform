@@ -3,6 +3,8 @@
 * POST   /v1/engagements/{id}/evidence-lines                       add a line
 * PATCH  /v1/engagements/{id}/evidence-lines/{line_key}            rename a line
 * DELETE /v1/engagements/{id}/evidence-lines/{line_key}            delete a line
+* PATCH  /v1/engagements/{id}/evidence-fuels/{category}/{level2}   rename a Level 2 (fuel); its id never changes
+* DELETE /v1/engagements/{id}/evidence-fuels/{category}/{level2}   delete a Level 2 the reviewers made, with its lines
 * POST   /v1/engagements/{id}/documents/{document_id}/placements   move a document ({from, to})
 * POST   /v1/engagements/{id}/documents/{document_id}/facility     place a document on a Setup facility ({facility_id})
 * POST   /v1/engagements/{id}/evidence-folders                      add a folder to Block 1
@@ -45,12 +47,14 @@ LINE_CREATED = "evidence_line_created"
 LINE_RENAMED = "evidence_line_renamed"
 LINE_DELETED = "evidence_line_deleted"
 DOCUMENT_MOVED = "evidence_document_moved"
+LEVEL2_RENAMED = "evidence_level2_renamed"
+LEVEL2_DELETED = "evidence_level2_deleted"
 FACILITY_SET = "evidence_document_facility_set"
 FOLDER_CREATED = "evidence_folder_created"
 FOLDER_RENAMED = "evidence_folder_renamed"
 FOLDER_DELETED = "evidence_folder_deleted"
 DOCUMENT_FOLDERED = "evidence_document_folder_set"
-EVENT_TYPES = (LINE_CREATED, LINE_RENAMED, LINE_DELETED, DOCUMENT_MOVED, FACILITY_SET,
+EVENT_TYPES = (LINE_CREATED, LINE_RENAMED, LINE_DELETED, LEVEL2_RENAMED, LEVEL2_DELETED, DOCUMENT_MOVED, FACILITY_SET,
                FOLDER_CREATED, FOLDER_RENAMED, FOLDER_DELETED, DOCUMENT_FOLDERED)
 
 BLOCK_NAMES = {
@@ -71,6 +75,9 @@ class LineCreate(BaseModel):
 
     category: str = Field(max_length=40)
     level2_label: str = Field(max_length=cl.MAX_LABEL)
+    # The id of the fuel the line goes under, when the client knows it (a fuel already on the page): a renamed fuel
+    # keeps its id, so a line added under its new name must not start a second fuel.
+    level2: str | None = Field(default=None, max_length=60)
     anchor_kind: str = Field(max_length=20)
     anchor_id: str | None = Field(default=None, max_length=200)
     label: str = Field(max_length=cl.MAX_LABEL)
@@ -81,6 +88,14 @@ class LineRename(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     label: str = Field(max_length=cl.MAX_LABEL)
+
+
+class Level2Name(BaseModel):
+    """A fuel's new name. No length limit here: ``clean_level2_name`` answers with a sentence."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(max_length=2000)
 
 
 class FolderName(BaseModel):
@@ -238,8 +253,33 @@ async def create_line(
 ) -> dict[str, Any]:
     engagement = await _locked(db, engagement_id)
     stored = _stored_lines(engagement)
+    wanted = body.model_dump(exclude_none=True)
+    if "level2" not in wanted:
+        renamed_ids = {fid.partition(":")[2] for fid in cl.stored_level2_names(engagement.get("settings"))
+                       if fid.partition(":")[0] == body.category}
+        # a name a reviewer gave a fuel is that fuel, whatever it was called before
+        for found_id, renamed in cl.stored_level2_names(engagement.get("settings")).items():
+            found_category, _, found_level2 = found_id.partition(":")
+            if found_category == body.category and cl.folder_name_key(renamed["label"]) == cl.folder_name_key(body.level2_label):
+                wanted["level2"] = found_level2
+        base = cl.slug(body.level2_label)
+        if "level2" not in wanted and base in renamed_ids:
+            # a fuel made under this name since (it has an id of its own): the line joins it
+            for line in stored:
+                same = cl.folder_name_key(str(line.get("level2_label"))) == cl.folder_name_key(body.level2_label)
+                if line.get("category") == body.category and same and line.get("level2") not in renamed_ids:
+                    wanted["level2"] = line.get("level2") or cl.slug(str(line.get("level2_label")))
+                    break
+        if "level2" not in wanted and base in renamed_ids:
+            # A different fuel was renamed away from this id: the new fuel gets an id of its own, never the renamed one's.
+            taken = renamed_ids | {str(line.get("level2") or cl.slug(str(line.get("level2_label"))))
+                                   for line in stored if line.get("category") == body.category}
+            number = 2
+            while f"{base[:56]}-{number}" in taken:
+                number += 1
+            wanted["level2"] = f"{base[:56]}-{number}"
     try:
-        entry = cl.normalize_line(body.model_dump(exclude_none=True))
+        entry = cl.normalize_line(wanted)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if entry["key"] in {line.get("key") for line in stored}:
@@ -322,22 +362,7 @@ async def delete_line(
     stored = _stored_lines(engagement)
     loaded, decisions = await _load(db, engagement, user)
     found = await _own_line(db, engagement, user, line_key, {line.key for line in loaded.system})
-    known_before = {line.key for line in loaded.lines}
-    known_after = known_before - {line_key}
-    move = {"from": line_key, "to": cl.SUPPORTING_UNASSIGNED}
-    shown = {d.document_id for d in loaded.docs}
-    changed: dict[str, dict[str, Any]] = {}
-    moved = 0
-    # Every document with a placement on the line (set-aside ones too: if one comes back it stays where
-    # its owner left it). A document that cannot take the move fails the whole delete, by name.
-    for doc in [*loaded.docs, *loaded.aside]:
-        existing = decisions.get(doc.document_id) or {}
-        chain = _chain(existing)
-        if not any(s.target == line_key for s in cl.apply_placements(doc.default_slots, chain, known_before)):
-            continue
-        changed[doc.document_id] = await _save_chain(db, engagement, user, doc.document_id, existing,
-                                                     _next_chain(chain, move, doc, known_after))
-        moved += doc.document_id in shown
+    changed, moved = await _move_to_unassigned(db, engagement, user, loaded, decisions, {line_key})
     lines = [line for line in stored if line is not found]
     await _save_lines(db, engagement, lines)
     await _audit(db, request, user, LINE_DELETED, engagement,
@@ -345,9 +370,127 @@ async def delete_line(
     return _answer(lines, documents_moved=moved, documents=changed)
 
 
+async def _move_to_unassigned(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser, loaded: Loaded,
+                              decisions: dict[str, dict[str, Any]], gone: set[str]) -> tuple[dict[str, dict[str, Any]], int]:
+    """Every document filed on one of the lines ``gone`` moves to Unassigned supporting evidence, by explicit moves
+    saved now. Returns the saved decisions by document and how many of the documents the page shows moved."""
+
+    known_before = {line.key for line in loaded.lines}
+    known_after = known_before - gone
+    shown = {d.document_id for d in loaded.docs}
+    changed: dict[str, dict[str, Any]] = {}
+    moved = 0
+    # Every document with a placement on a line (set-aside ones too: if one comes back it stays where
+    # its owner left it). A document that cannot take the move fails the whole delete, by name.
+    for doc in [*loaded.docs, *loaded.aside]:
+        existing = decisions.get(doc.document_id) or {}
+        chain = _chain(existing)
+        touched = False
+        for line_key in sorted(gone):
+            if not any(s.target == line_key for s in cl.apply_placements(doc.default_slots, chain, known_before)):
+                continue
+            chain = _next_chain(chain, {"from": line_key, "to": cl.SUPPORTING_UNASSIGNED}, doc, known_after)
+            touched = True
+        if not touched:
+            continue
+        changed[doc.document_id] = await _save_chain(db, engagement, user, doc.document_id, existing, chain)
+        moved += doc.document_id in shown
+    return changed, moved
+
+
 def _chain(existing: dict[str, Any]) -> list[Any]:
     chain = existing.get("placements")
     return list(chain) if isinstance(chain, list) else []
+
+
+# --- Level 2 (fuel) -----------------------------------------------------------------------------
+def _refuse(status: int, code: str, message: str) -> HTTPException:
+    return HTTPException(status_code=status, detail={"code": code, "message": message})
+
+
+def _fuel(loaded: Loaded, category: str, level2: str) -> list[cl.CalculationLine]:
+    """The lines of one fuel, or 404 (another tab deleted it, or it never was here)."""
+
+    group = [ln for ln in loaded.lines if ln.category == category and ln.level2 == level2]
+    if category not in cl.CATEGORY_SCOPE or not group:
+        raise HTTPException(status_code=404, detail="This fuel was already deleted. Reload Evidence to see the current fuels.")
+    return group
+
+
+@router.patch("/engagements/{engagement_id}/evidence-fuels/{category}/{level2}")
+async def rename_fuel(
+    engagement_id: str,
+    category: str,
+    level2: str,
+    body: Level2Name,
+    request: Request,
+    user: CurrentUser = Depends(s1_writer),
+    _open: dict[str, Any] = Depends(require_open_engagement),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> dict[str, Any]:
+    """Rename a fuel (Level 2), the system's or the reviewers' own. Only the name shown changes: the fuel's id (its
+    slug, in every line key) stays, so the documents, the lines and the decisions on them stay where they are.
+    422 for an empty, too long or control-character name; 409 (``level2_name_taken``) when another fuel of the
+    category has the name; 404 for a fuel that is not there."""
+
+    engagement = await _locked(db, engagement_id)
+    loaded, _ = await _load(db, engagement, user)
+    group = _fuel(loaded, category, level2)
+    try:
+        name = cl.clean_level2_name(body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    old = group[0].level2_label
+    names = cl.stored_level2_names(engagement.get("settings"))
+    if name == old:  # nothing to write, nothing to log
+        return {"level2": {"category": category, "level2": level2, "label": old}, "evidenceLevel2Names": names}
+    if any(ln.category == category and ln.level2 != level2 and cl.folder_name_key(ln.level2_label) == cl.folder_name_key(name)
+           for ln in loaded.lines):
+        raise _refuse(409, "level2_name_taken", f"{name} already exists in this category. Use another name.")
+    fuel_id = cl.level2_id(category, level2)
+    if fuel_id not in names and len(names) >= cl.MAX_LEVEL2_NAMES:
+        raise HTTPException(status_code=422, detail=f"An engagement can have at most {cl.MAX_LEVEL2_NAMES} renamed fuels.")
+    names = {**names, fuel_id: {"label": name, "renamed_by": str(user.id), "renamed_at": _now()}}
+    settings = {**(engagement.get("settings") or {}), cl.LEVEL2_NAMES_KEY: names}
+    await engagement_service.update_engagement(db, engagement["id"], {"settings": settings})
+    await _audit(db, request, user, LEVEL2_RENAMED, engagement,
+                 {"category": category, "level2": level2, "old_label": old, "new_label": name})
+    return {"level2": {"category": category, "level2": level2, "label": name}, "evidenceLevel2Names": names}
+
+
+@router.delete("/engagements/{engagement_id}/evidence-fuels/{category}/{level2}")
+async def delete_fuel(
+    engagement_id: str,
+    category: str,
+    level2: str,
+    request: Request,
+    user: CurrentUser = Depends(s1_writer),
+    _open: dict[str, Any] = Depends(require_open_engagement),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> dict[str, Any]:
+    """Delete a fuel the reviewers made, with the lines under it. Each document filed on them moves to Unassigned
+    supporting evidence by an explicit move saved now (a line made again later does not pull them back), and the
+    audit trail keeps the event. A fuel the system creates, or one that now holds a line the system makes, answers
+    409 (``level2_system_created``). One transaction: the documents move and the fuel goes, or nothing changes."""
+
+    engagement = await _locked(db, engagement_id)
+    # Server scope: the fuel's documents move whoever may see them, so none is left filed on a deleted line.
+    decisions = await tree_api.document_decisions(db, engagement)
+    loaded = tree_api._service().load(engagement, lambda record: True, decisions)
+    group = _fuel(loaded, category, level2)
+    system_keys = {line.key for line in loaded.system}
+    if any(ln.key in system_keys or not ln.created_by_user for ln in group):
+        raise _refuse(409, "level2_system_created", "Created by the system from your Setup; can't be deleted.")
+    gone = {ln.key for ln in group}
+    changed, moved = await _move_to_unassigned(db, engagement, user, loaded, decisions, gone)
+    lines = [line for line in _stored_lines(engagement) if line.get("key") not in gone]
+    names = {k: v for k, v in cl.stored_level2_names(engagement.get("settings")).items() if k != cl.level2_id(category, level2)}
+    settings = {**(engagement.get("settings") or {}), "evidenceLines": lines, cl.LEVEL2_NAMES_KEY: names}
+    await engagement_service.update_engagement(db, engagement["id"], {"settings": settings})
+    await _audit(db, request, user, LEVEL2_DELETED, engagement,
+                 {"category": category, "level2": level2, "label": group[0].level2_label,
+                  "lines_deleted": len(gone), "documents_moved": moved})
+    return _answer(lines, documents_moved=moved, documents=changed, evidenceLevel2Names=names)
 
 
 # --- a document's placement -------------------------------------------------------------------
@@ -713,7 +856,7 @@ async def evidence_activity(
         items.append({
             "id": str(r["id"]), "event_type": r["event_type"], "at": r["created_at"].isoformat(),
             "actor_name": r["actor_name"] or ("Unknown user" if r["actor_user_id"] else None),
-            **{k: meta.get(k) for k in ("line_key", "label", "level2_label", "old_label", "new_label",
+            **{k: meta.get(k) for k in ("line_key", "label", "level2_label", "category", "level2", "lines_deleted", "old_label", "new_label",
                                         "documents_moved", "document_id", "from", "to", "from_label", "to_label",
                                         "facility_id", "facility_name", "suggested", "folder_id", "folder_name",
                                         "reread_as", "reread_as_label", "reread_choice")

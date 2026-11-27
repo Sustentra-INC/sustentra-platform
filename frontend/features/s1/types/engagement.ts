@@ -81,6 +81,8 @@ export interface EngagementConfig {
   evidenceLines?: EvidenceLineSetting[];
   /** Folders a reviewer made in Evidence Block 1 (summary documents). Changed only through the Evidence actions. */
   evidenceFolders?: EvidenceFolderSetting[];
+  /** Fuels (Level 2) a reviewer renamed in Evidence, by `<category>:<level2>`. Changed only through the Evidence actions. */
+  evidenceLevel2Names?: Record<string, { label: string; renamed_by?: string; renamed_at?: string }>;
 }
 
 /** A renewable energy certificate applied to the market-based Scope 2 total. */

@@ -548,12 +548,13 @@
   text-align: left;
 }
 
-.s1-menu__item:hover:not(:disabled),
+.s1-menu__item:hover:not(:disabled):not(.is-unavailable),
 .s1-menu__item:focus-visible {
   background: var(--surface-muted);
 }
 
-.s1-menu__item:disabled {
+.s1-menu__item:disabled,
+.s1-menu__item.is-unavailable {
   color: var(--text-muted);
   cursor: not-allowed;
 }

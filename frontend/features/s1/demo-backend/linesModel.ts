@@ -404,7 +404,15 @@ export function buildModel(): Model {
   }
   const created = (engagement.evidenceLines ?? []).map(userLine).filter((l): l is ModelLine => l !== null);
   const merged = new Map<string, ModelLine>();
-  for (const l of [...created, ...system.values()]) merged.set(l.key, l);
+  const names = engagement.evidenceLevel2Names ?? {};
+  // A renamed fuel shows its new name; its id (the slug in every line key) is what the lines and documents keep.
+  const renamed = (l: ModelLine): ModelLine => {
+    const name = names[`${l.category}:${l.level2}`]?.label;
+    if (!name || name === l.level2_label) return l;
+    const old = l.level2_label;
+    return { ...l, level2_label: name, label: l.label === old || l.label.startsWith(`${old}, `) ? name + l.label.slice(old.length) : l.label };
+  };
+  for (const l of [...created, ...system.values()].map(renamed)) merged.set(l.key, l);
   const order = new Map(CATEGORIES.map(([k], i) => [k, i]));
   const lines = [...merged.values()].sort((a, b) => (order.get(a.category)! - order.get(b.category)!) || a.level2_label.toLowerCase().localeCompare(b.level2_label.toLowerCase()) || a.label.toLowerCase().localeCompare(b.label.toLowerCase()) || a.key.localeCompare(b.key));
   const known = new Set(lines.map((l) => l.key));

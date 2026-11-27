@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
 export interface ActionMenuEntry {
   label: string;
   action: () => void;
   disabled?: boolean;
+  /** Why the entry can't be used now. It stays in the menu (reachable by keyboard), reads as unavailable and does nothing
+   *  when chosen. The sentence shows as its tooltip and as visible text in the menu, which the entry is described by;
+   *  choosing it keeps the menu open, so it never closes without saying why. */
+  unavailable?: string;
 }
 
 /**
@@ -25,6 +29,7 @@ export function ActionMenu({
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const hintId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   // Where the floating menu opens: under the button, or above it near the bottom of the window.
@@ -109,14 +114,18 @@ export function ActionMenu({
               onKeyDown={onMenuKey}
               style={{ top: place.top, left: place.left, transformOrigin: place.up ? "bottom right" : "top right" }}
             >
-              {entries.map((entry) => (
+              {entries.map((entry, index) => (
                 <button
                   key={entry.label}
-                  className="s1-menu__item"
+                  className={`s1-menu__item${entry.unavailable ? " is-unavailable" : ""}`}
                   type="button"
                   role="menuitem"
                   disabled={entry.disabled}
+                  aria-disabled={entry.unavailable ? true : undefined}
+                  title={entry.unavailable}
+                  aria-describedby={entry.unavailable ? `${hintId}-${index}` : undefined}
                   onClick={() => {
+                    if (entry.unavailable) return; // stays open: the reason is on show under the entries
                     entry.action();
                     onOpenChange(false);
                   }}
@@ -124,6 +133,13 @@ export function ActionMenu({
                   {entry.label}
                 </button>
               ))}
+              {entries.map((entry, index) =>
+                entry.unavailable ? (
+                  <p key={`hint-${entry.label}`} id={`${hintId}-${index}`} className="s1-menu__empty">
+                    {entry.label}: {entry.unavailable}
+                  </p>
+                ) : null
+              )}
             </div>,
             document.querySelector(".s1-app") ?? document.body
           )

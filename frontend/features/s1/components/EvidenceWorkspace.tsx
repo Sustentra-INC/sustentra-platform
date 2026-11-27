@@ -120,7 +120,7 @@ interface EvidenceWorkspaceProps {
   /** Backend mode: shows the calculation-line tree instead of the grouping by document type. */
   tree?: Pick<
     EvidenceTreeProps,
-    "openIds" | "onOpenIdsChange" | "onOpenSchedule" | "onMovePlacement" | "onPlaceOnFacility" | "onCreateLine" | "onRenameLine" | "onDeleteLine" | "onCreateFolder" | "onRenameFolder" | "onDeleteFolder" | "onSetDocumentFolder" | "rereads" | "onRetryReread" | "onError" | "facilityId" | "onFacilityChange" | "tab" | "onTabChange"
+    "openIds" | "onOpenIdsChange" | "onOpenSchedule" | "onMovePlacement" | "onPlaceOnFacility" | "onCreateLine" | "onRenameLine" | "onDeleteLine" | "onRenameFuel" | "onDeleteFuel" | "onCreateFolder" | "onRenameFolder" | "onDeleteFolder" | "onSetDocumentFolder" | "rereads" | "onRetryReread" | "onError" | "facilityId" | "onFacilityChange" | "tab" | "onTabChange"
   > & {
     /** Which grouping shows, and a change to it; kept by the app with the tree's open rows. */
     view: "lines" | "types";
@@ -480,6 +480,8 @@ export function EvidenceWorkspace({
               onCreateLine={tree.onCreateLine}
               onRenameLine={tree.onRenameLine}
               onDeleteLine={tree.onDeleteLine}
+              onRenameFuel={tree.onRenameFuel}
+              onDeleteFuel={tree.onDeleteFuel}
               rereads={tree.rereads}
               onRetryReread={tree.onRetryReread}
               onCreateFolder={tree.onCreateFolder}

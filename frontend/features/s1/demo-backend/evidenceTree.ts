@@ -94,7 +94,18 @@ export function buildTree(facilityId: string | null): EvidenceTree {
         level2.lines.push({ line: lineOf(line), counts: countsOf([line.key]), documents: documents(line.key) });
         level2s.set(line.level2, level2);
       }
-      for (const level2 of level2s.values()) level2.counts = countsOf(level2.lines.map((e) => e.line.key));
+      for (const level2 of level2s.values()) {
+        level2.counts = countsOf(level2.lines.map((e) => e.line.key));
+        // Whose it is: every line of it a reviewer's (in the whole model, filtered or not); the first one made names it.
+        const every = model.lines.filter((l) => l.category === category && l.level2 === level2.level2);
+        level2.created_by_user = every.every((l) => l.created_by_user);
+        if (level2.created_by_user) {
+          const first = [...every].sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? "") || a.key.localeCompare(b.key))[0];
+          level2.created_by = first?.created_by ?? null;
+          level2.created_at = first?.created_at ?? null;
+          level2.created_by_name = first?.created_by_name ?? null;
+        }
+      }
       return { category, label: clabel, counts: countsOf(inCategory.map((l) => l.key)), level2s: [...level2s.values()] };
     });
     return { scope, label, categories, counts: countsOf(shown.filter((l) => CATEGORY_SCOPE[l.category] === scope).map((l) => l.key)) };

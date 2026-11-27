@@ -70,6 +70,8 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
       if (parsed && typeof parsed === "object" && "detail" in parsed) {
         const d = (parsed as { detail: unknown }).detail;
         if (typeof d === "string") detail = d;
+        // A refusal with a code: {"code": "...", "message": "..."}. The sentence shows; the code stays in `body`.
+        else if (d && typeof d === "object" && "message" in d && typeof (d as { message: unknown }).message === "string") detail = (d as { message: string }).message;
         // FastAPI 422s: [{loc, msg, type}, ...] -> "body.slug: String should match pattern ..."
         else if (Array.isArray(d)) detail = d.map(validationMessage).join("; ");
       }
