@@ -177,10 +177,6 @@
   font-size: var(--text-sm);
 }
 
-.s1-content {
-  padding: var(--spacing-lg);
-}
-
 .s1-demo-controls {
   display: flex;
   align-items: center;
@@ -1367,7 +1363,7 @@ select:focus-visible,
   gap: var(--sp-4); flex-wrap: wrap;
 }
 .s1-ws-header__id { display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; }
-.s1-ws-header__id h1 { font-size: var(--text-lg); font-weight: var(--weight-strong); margin: 0; }
+.s1-ws-header__id h1 { margin: 0; font-size: var(--text-display); font-weight: var(--weight-bold); letter-spacing: var(--tracking-title); }
 .s1-ws-header__counts { display: flex; gap: var(--sp-2); }
 .s1-ws-count {
   font: inherit; font-size: var(--text-sm); cursor: pointer;
@@ -1802,7 +1798,6 @@ select:focus-visible,
 
 /* Headers breathe */
 .s1-ws-header { margin-bottom: var(--sp-2); }
-.s1-ws-header__id h1 { font-size: var(--text-lg); letter-spacing: -0.02em; }
 
 /* Workspace table: taller, calmer rows */
 .s1-table th { padding: var(--sp-3); }
@@ -2268,7 +2263,7 @@ html { font-size: 82%; }
    Output (screen 7) — the assurance deliverable, as a document.
    ========================================================================== */
 .s1-out-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-.s1-out-actions .s1-button { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.s1-out-actions .s1-button { display: inline-flex; align-items: center; gap: var(--sp-2); text-decoration: none; }
 .s1-out-actions .s1-button svg { width: 1rem; height: 1rem; flex: none; }
 .s1-out-status { align-self: center; }
 
@@ -3142,7 +3137,7 @@ html, body { margin: 0; padding: 0; }
    Dashboard: progress only. Timeline, two meters, what needs attention.
    ========================================================================== */
 /* Spacing here uses the --dash-* tokens (exact design px) where the general --sp-4 to --sp-7 render larger. */
-.s1-dash { display: flex; flex-direction: column; gap: var(--dash-stack-gap); padding: 0; container-type: inline-size; }
+.s1-dash { display: flex; flex-direction: column; gap: var(--dash-stack-gap); container-type: inline-size; }
 .s1-dash__head { display: flex; flex-direction: column; gap: var(--sp-2-5); padding: var(--sp-2) var(--sp-1) 0; }
 .s1-dash .s1-dash__title { margin: 0; font-size: var(--text-display); line-height: 1.15; font-weight: var(--weight-bold); letter-spacing: var(--tracking-title); }
 .s1-dash__status-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-2-5); }
@@ -3708,7 +3703,6 @@ html, body { margin: 0; padding: 0; }
 .s1-ws { position: relative; }
 .s1-ws-top { align-items: center; }
 .s1-ws-top .s1-ws-header__id { align-items: baseline; }
-.s1-ws-top .s1-ws-header__id h1 { font-size: var(--text-display); font-weight: var(--weight-bold); letter-spacing: -0.02em; }
 .s1-ws-top__total { color: var(--ink-3); font-size: var(--text-lg); font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; }
 .s1-ws-top__right { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
 .s1-ws-top .s1-ws-header__counts { gap: var(--sp-2); }
@@ -3977,8 +3971,6 @@ html, body { margin: 0; padding: 0; }
   .s1-setup-row--head { display: none; }
 }
 
-/* Page header: display-size title for the Setup screen */
-.s1-setup .s1-ws-header__id h1 { font-size: var(--text-display); font-weight: var(--weight-bold); }
 
 /* Two-column card shells: left = section title + tip, right = fields */
 .s1-setup-card {
@@ -3992,7 +3984,7 @@ html, body { margin: 0; padding: 0; }
   gap: var(--sp-4-5) var(--setup-grid-gap-x);
 }
 /* Page frame: cards line up with the top row; the tab track hugs its tabs. */
-.s1-setup { padding: 0; gap: var(--setup-stack-gap); }
+.s1-setup { gap: var(--setup-stack-gap); }
 .s1-setup .s1-ws-header { margin: 0; padding: var(--sp-2) var(--sp-1) var(--sp-1); }
 .s1-setup > .s1-ws-factabs--page { align-self: flex-start; }
 .s1-setup-card--wide { flex-direction: column; gap: var(--sp-3); }
@@ -4013,7 +4005,7 @@ html, body { margin: 0; padding: 0; }
 /* Header row: title with its tip on the left, the review card on the right (wraps under on narrow screens). */
 .s1-cr-head.s1-ws-header { align-items: flex-end; gap: var(--sp-3); margin-bottom: 0; padding: var(--sp-2) var(--sp-1) var(--sp-1); }
 .s1-cr-head .s1-ws-header__id { align-items: center; gap: var(--sp-2); }
-.s1-cr-head .s1-ws-header__id h1 { font-size: var(--text-display); font-weight: var(--weight-bold); letter-spacing: var(--tracking-title); line-height: var(--leading-tight); }
+.s1-cr-head .s1-ws-header__id h1 { line-height: var(--leading-tight); }
 /* Review card: one button; icon, count and the "Review now" chip are all part of it. */
 .s1-cr-review {
   display: flex; align-items: center; gap: var(--sp-3);
@@ -4459,7 +4451,7 @@ button.s1-ai__ref:active { transform: scale(0.97); }
    Folding groups, one "Adjusted by verifier" line under each change.
    ========================================================================== */
 .s1-mr { --mr-purple: color-mix(in srgb, var(--brand-ink) 82%, var(--sf-card)); --mr-row-line: color-mix(in srgb, var(--line) 65%, var(--sf-card)); --mr-tint: color-mix(in srgb, var(--sf-sunken) 70%, var(--sf-card)); gap: var(--sp-5); }
-.s1-mr-card { display: flex; flex-direction: column; background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); overflow: hidden; }
+.s1-mr-card { display: flex; flex-direction: column; background: var(--sf-card); border-radius: var(--r-lg); box-shadow: var(--shadow-card-soft); overflow: hidden; }
 .s1-mr-card__head { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5); border-bottom: var(--border-hairline); }
 .s1-mr-card__icon { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 2rem; height: 2rem; border-radius: 0.5rem; border: var(--border-hairline); }
 .s1-mr-card__icon svg { width: 1rem; height: 1rem; }
@@ -4591,7 +4583,8 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 
 /* Methodology review on real data */
 .s1-mb { display: flex; flex-direction: column; gap: var(--sp-4); }
-.s1-mb-top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4); justify-content: space-between; }
+.s1-mb-top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4); justify-content: space-between; padding: var(--sp-2) var(--sp-1) 0; }
+.s1-mb-top .s1-mr-card__title { font-size: var(--text-display); font-weight: var(--weight-bold); letter-spacing: var(--tracking-title); }
 .s1-mb-ai { font-size: var(--text-sm); color: var(--state-open-fg); }
 .s1-mb-confirm, .s1-mb-result, .s1-mb-notice { margin: 0; padding: var(--sp-3) var(--sp-4); border: var(--border-hairline); border-radius: var(--radius-card); background: var(--sf-card); font-size: var(--text-md); color: var(--ink); }
 .s1-mb-notice { color: var(--state-blocking-fg); }
@@ -5031,7 +5024,7 @@ button.s1-sch-bar:focus-visible { outline: var(--focus-ring); outline-offset: va
 /* Evidence page frame: cards line up with the top row. The view tabs hug their labels and share
    one row with the tree's toolbar (facility, expand / collapse), as designed; the tree's blocks
    then sit straight on the page grid. */
-.s1-ws { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--ws-stack-gap); padding: 0; }
+.s1-ws { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--ws-stack-gap); }
 .s1-ws > * { grid-column: 1 / -1; min-width: 0; }
 .s1-ws > .s1-ws-top { margin: 0; padding: var(--sp-2) var(--sp-1) 0; }
 .s1-ws > .s1-ws-factabs--page { grid-column: 1; justify-self: start; }
