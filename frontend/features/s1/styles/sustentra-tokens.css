@@ -393,6 +393,22 @@
   --et-legend-dot:     10px;
   --et-toggle-size:    28px;
   --et-toggle-icon:    16px;
+
+  /* --- Evidence workspace: by-type groups and document table --- */
+  --ws-gr-head-h:     54px;
+  --ws-gr-toggle:     28px;
+  --ws-gr-col-n:     100px;
+  --ws-gr-col-bar:   150px;
+  --ws-gr-col-pct:    46px;
+  --ws-gr-bar-h:       8px;
+  --ws-gr-chip-h:     22px;
+  --ws-gr-chip-dot:    7px;
+  --ws-doc-row-h:     58px;
+  --ws-doc-tag-w:     38px;
+  --ws-doc-menu-col:  40px;
+  --ws-doc-menu-btn:  32px;
+  --ws-gr-warn-bg:    #FFF8EE;
+  --ws-gr-warn-line:  #F5DDB5;
 }
 
 

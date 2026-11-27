@@ -146,11 +146,11 @@ describe("an engagement with only one date set", () => {
         onOpenUpload={vi.fn()}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: /^Electricity bill/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Expand Electricity bill/ }));
     const row = (filename: string) => screen.getByRole("button", { name: filename }).closest("tr") as HTMLElement;
     expect(within(row("kent_electric_mar_2025.pdf")).queryByText("Period outside reporting year")).toBeNull();
     // The start date still bounds the period: a bill from before it is flagged.
-    expect(within(row("kent_electric_dec_2024.pdf")).getByText("Period outside reporting year")).toBeInTheDocument();
+    expect(within(row("kent_electric_dec_2024.pdf")).getByText("Outside period")).toBeInTheDocument();
   });
 
   it("writes the request without a year while the start date is not set", () => {

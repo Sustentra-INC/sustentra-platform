@@ -100,7 +100,7 @@ describe("evidence: bird's-eye first", () => {
     const heads = screen.getAllByRole("button", { expanded: false });
     expect(heads.length).toBeGreaterThan(3);
 
-    fireEvent.click(heads.find((b) => b.textContent?.startsWith("Electricity bill"))!);
+    fireEvent.click(heads.find((b) => b.getAttribute("aria-label")?.startsWith("Expand Electricity bill"))!);
     const table = screen.getByRole("table");
     expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
       "Document",
@@ -496,7 +496,7 @@ describe("evidence row menu", () => {
         onOpenExtraction={vi.fn()}
       />
     );
-    fireEvent.click(screen.getAllByRole("button", { expanded: false }).find((b) => b.textContent?.startsWith("Electricity bill"))!);
+    fireEvent.click(screen.getAllByRole("button", { expanded: false }).find((b) => b.getAttribute("aria-label")?.startsWith("Expand Electricity bill"))!);
     fireEvent.click(screen.getAllByRole("button", { name: /^Actions for / })[0]);
     const menu = screen.getByRole("menu");
     expect(menu).toHaveClass("s1-menu__panel--float");

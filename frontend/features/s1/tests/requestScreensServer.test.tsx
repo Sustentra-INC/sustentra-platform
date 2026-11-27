@@ -691,7 +691,7 @@ describe("Evidence waits for the server", () => {
         {...props}
       />
     );
-    fireEvent.click(screen.getAllByRole("button", { expanded: false }).find((b) => b.textContent?.startsWith("Electricity bill"))!);
+    fireEvent.click(screen.getAllByRole("button", { expanded: false }).find((b) => b.getAttribute("aria-label")?.startsWith("Expand Electricity bill"))!);
   }
 
   const otherBill = manufacturerEvidence.find((e) => e.detectedType === "Electricity bill" && e.disposition === "active" && e !== bill)!;
