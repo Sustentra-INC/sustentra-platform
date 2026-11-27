@@ -13,7 +13,7 @@ Mirrors ``ai_usage`` (0017):
 Deploy order is migrate, then swap containers: the previous app version never touches the table.
 
 Revision ID: 0029_textract_usage
-Revises: 0027_s1_parsed_texts
+Revises: 0028_workpaper_calc_line_kind
 Create Date: 2026-11-26
 """
 
@@ -26,8 +26,6 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0029_textract_usage"
-# NOTE: this points at 0027 only because 0028 (0028_workpaper_calc_line_kind) is not on staging yet.
-# Set it to "0028_workpaper_calc_line_kind" when that PR has landed.
 down_revision: str | None = "0028_workpaper_calc_line_kind"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
