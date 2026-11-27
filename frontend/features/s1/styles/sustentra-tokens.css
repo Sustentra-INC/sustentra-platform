@@ -511,7 +511,8 @@
 
   --et-col-docs:      110px;
   --et-col-bar:       170px;
-  --et-col-pct:        90px;
+  --et-col-pct:       124px;   /* fits "97.1% accepted" on one line */
+  --ws-stack-gap:      16px;   /* Evidence: between header, toolbar and cards (exact px) */
   --et-col-act:        40px;
   --et-col-doc-mid:   280px;
   --et-indent-step:    22px;
@@ -534,7 +535,7 @@
   --ws-gr-chip-dot:    7px;
   --ws-doc-row-h:     58px;
   --ws-doc-tag-w:     38px;
-  --ws-doc-menu-col:  40px;
+  --ws-doc-menu-col:  56px;
   --ws-doc-menu-btn:  32px;
   --ws-gr-warn-bg:    #FFF8EE;
   --ws-gr-warn-line:  #F5DDB5;

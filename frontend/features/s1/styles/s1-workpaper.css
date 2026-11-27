@@ -1361,7 +1361,6 @@ select:focus-visible,
    Evidence Workspace — revised spec (09/16). Structural only; all values
    resolve to existing tokens (no new palette).
    ========================================================================== */
-.s1-ws { display: flex; flex-direction: column; gap: var(--sp-4); }
 
 .s1-ws-header {
   display: flex; align-items: flex-start; justify-content: space-between;
@@ -5029,6 +5028,17 @@ button.s1-sch-bar:focus-visible { outline: var(--focus-ring); outline-offset: va
 .s1-icon-tile:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .s1-et-bar { align-items: center; justify-content: space-between; }
 .s1-et-bar__fold { display: inline-flex; gap: var(--sp-1); }
+/* Evidence page frame: cards line up with the top row. The view tabs hug their labels and share
+   one row with the tree's toolbar (facility, expand / collapse), as designed; the tree's blocks
+   then sit straight on the page grid. */
+.s1-ws { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--ws-stack-gap); padding: 0; }
+.s1-ws > * { grid-column: 1 / -1; min-width: 0; }
+.s1-ws > .s1-ws-top { margin: 0; padding: var(--sp-2) var(--sp-1) 0; }
+.s1-ws > .s1-ws-factabs--page { grid-column: 1; justify-self: start; }
+.s1-ws > .s1-et { display: contents; }
+.s1-ws > .s1-et > * { grid-column: 1 / -1; min-width: 0; }
+.s1-ws > .s1-et > .s1-et-bar { grid-column: 2; }
+.s1-et-supp__title { flex: 1; }
 .s1-et-facility { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--ink-3); font-size: var(--text-sm); }
 .s1-et-facility--pill { height: var(--input-h); padding: 0 var(--sp-2-5); gap: var(--sp-2); background: var(--sf-card); box-shadow: var(--shadow-card); border-radius: var(--r-card-sm); color: var(--ink-2); }
 .s1-et-facility--pill .s1-dd__trigger { height: 100%; width: auto; border: 0; box-shadow: none; padding: 0 var(--sp-2) 0 0; background: none; border-radius: 0; color: inherit; }
