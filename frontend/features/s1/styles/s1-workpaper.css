@@ -5252,7 +5252,7 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-xr-card__top .s1-xr-what { font-size: var(--text-base); }
 
 /* Value (big figure) and unit */
-.s1-xr-card .s1-xr-val { font-size: var(--text-lg); font-weight: var(--weight-bold); }
+.s1-xr-card .s1-xr-val { font-size: var(--text-lg); font-weight: var(--weight-bold); letter-spacing: var(--tracking-tight); }
 .s1-xr-card .s1-xr-unit { font-size: var(--text-base); color: var(--ink-2); }
 
 /* Scope chips: --state-chip-min-height, no border */

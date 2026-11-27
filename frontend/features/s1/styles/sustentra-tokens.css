@@ -205,6 +205,9 @@
   --leading-tight: 1.35;   /* table rows, chips */
   --leading-body:  1.6;    /* prose, explanations, statute text */
 
+  --tracking-tight: -0.01em;   /* tight tracking for large value figures */
+  --tracking-title: -0.02em;   /* tight tracking for page-level titles */
+
   /* Field_IDs, rule IDs, Node_IDs and timestamps are identifiers, not content:
      --text-sm in --ink-3, with tabular figures (.s1-num), in the one interface font. */
 
@@ -277,6 +280,7 @@
   --dlg-icon-box:    22px;   /* small dialog leading icon box */
   --rail-min-w:      72px;   /* collapsed icon rail (document view) */
   --xr-nav-w:       240px;   /* document navigator width */
+  --xr-addform-page-col: 70px;   /* page-number field width in the add-value form */
   --xr-nav-min:     200px;   /* navigator minimum (flex clamp lower bound) */
   --xr-panel-w:     380px;   /* review panel width */
   --xr-panel-min:   320px;   /* review panel minimum (flex clamp lower bound) */
