@@ -18,7 +18,14 @@ from backend.app.adapters.parsers.base import (
     build_warning,
 )
 from backend.app.adapters.parsers.textract_parser import TextractParser
-from backend.app.services.textract_calls import record_textract_call
+from backend.app.services import textract_usage
+from backend.app.services.pdf_scan_pages import (
+    SCAN_CAP_REACHED,
+    SCAN_LIMIT_SENTENCE,
+    SCAN_UNCHECKED,
+    SCAN_UNCHECKED_SENTENCE,
+)
+from backend.app.services.textract_calls import SCAN_LIMIT_UNCHECKED, authorize_textract_call, record_textract_call
 
 PARSER_NAME = "aws_textract"
 
@@ -67,6 +74,7 @@ class AwsTextractParser:
         self._region_name = region_name
         self._feature_types = feature_types
         self._normalizer = normalizer or TextractParser()
+        textract_usage.ensure_installed()  # every call is checked against the monthly limit and recorded
 
     def parse(self, file_path: str | Path, document_id: str, processing_run_id: str) -> dict:
         try:
@@ -85,6 +93,16 @@ class AwsTextractParser:
         """One synchronous AnalyzeDocument call: an image, or a single-page PDF."""
 
         features = self._resolved_feature_types()
+        refused = authorize_textract_call(pages=1, feature_types=features)
+        if refused:  # the monthly limit: no call is made, and the page is "not read" rather than failed
+            code, message = ((SCAN_UNCHECKED, SCAN_UNCHECKED_SENTENCE) if refused == SCAN_LIMIT_UNCHECKED
+                             else (SCAN_CAP_REACHED, SCAN_LIMIT_SENTENCE))
+            return build_failed_parser_output(
+                document_id=document_id,
+                processing_run_id=processing_run_id,
+                parser_name=self.parser_name,
+                warnings=[build_warning(code, message, severity="error")],
+            )
         try:
             response = self._client().analyze_document(
                 Document={"Bytes": document_bytes},

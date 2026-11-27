@@ -160,7 +160,11 @@ export interface AiStatus {
   reason: string | null;
   provider?: string | null;
   model?: string | null;
+  /** What Sustentra's AI cost this month. */
   month_spend_usd?: number | null;
+  /** What Textract scans cost this month, and how many pages. Both count toward the one limit. */
+  scan_spend_usd?: number | null;
+  scan_pages?: number | null;
   cap_usd?: number | null;
 }
 

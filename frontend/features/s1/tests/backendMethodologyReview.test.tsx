@@ -20,7 +20,7 @@ import type { EngagementConfig } from "../types";
 import type { Ask } from "../types/requests";
 import type { AskDraft } from "../requests/requestsStore";
 import { menuItems, rowAction } from "./methodologyMenu";
-import { BackendMethodologyReview, aiStatusWords, dropReasonWords, statusWord } from "../components/BackendMethodologyReview";
+import { BackendMethodologyReview, aiStatusWords, dropReasonWords, spendWords, statusWord } from "../components/BackendMethodologyReview";
 
 const BASE = "/engagements/e1/methodology-review";
 const by = { name: "M. Osei", login: "mosei" };
@@ -427,6 +427,18 @@ describe("Methodology review on real data", () => {
     await open(vi.fn(), fixture({ enabled: false, reason_code: code, reason }));
     expect(screen.getByText(reason)).toBeTruthy();
     expect((screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("shows the AI and scan spend against the one limit", async () => {
+    await open(vi.fn(), fixture({ month_spend_usd: 3.18, scan_spend_usd: 1.3, scan_pages: 20, cap_usd: 25 }));
+    expect(screen.getByText("Sustentra's AI $3.18 · Scans $1.30 (20 pages) · Limit $25.00")).toBeTruthy();
+  });
+
+  it("words the spend from whatever numbers the server sent", () => {
+    expect(spendWords({ enabled: true, reason_code: null, reason: null })).toBeNull();
+    expect(spendWords({ enabled: true, reason_code: null, reason: null, month_spend_usd: 0, cap_usd: 25 })).toBe("Sustentra's AI $0.00 · Limit $25.00");
+    expect(spendWords({ enabled: true, reason_code: null, reason: null, month_spend_usd: 1, scan_spend_usd: 0.07, scan_pages: 1 })).toBe("Sustentra's AI $1.00 · Scans $0.07 (1 page)");
+    expect(spendWords({ enabled: true, reason_code: null, reason: null, month_spend_usd: Number.NaN, scan_spend_usd: 1 })).toBeNull();
   });
 
   it("enables the button when the AI is on", async () => {

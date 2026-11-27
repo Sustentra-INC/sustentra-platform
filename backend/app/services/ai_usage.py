@@ -16,10 +16,32 @@ from backend.app.adapters.llm.base import StructuredReply
 
 MICRO = 1_000_000
 
+# The month's spend against the cap is the AI's plus the scans' (``textract_usage``, 0029): one limit for both.
 _MONTH_SPEND = text(
     """
-    SELECT COALESCE(SUM(cost_microusd), 0)::bigint AS spent FROM ai_usage
-     WHERE org_id = :org_id AND created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+    SELECT (
+      COALESCE((SELECT SUM(cost_microusd) FROM ai_usage
+                 WHERE org_id = :org_id
+                   AND created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'), 0)
+    + COALESCE((SELECT SUM(cost_microusd) FROM textract_usage
+                 WHERE org_id = :org_id
+                   AND created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'), 0)
+    )::bigint AS spent
+    """
+)
+# One statement, so the AI's and the scans' numbers come from the same snapshot.
+_MONTH_BREAKDOWN = text(
+    """
+    SELECT
+      COALESCE((SELECT SUM(cost_microusd) FROM ai_usage
+                 WHERE org_id = :org_id
+                   AND created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'), 0)::bigint AS ai,
+      COALESCE((SELECT SUM(cost_microusd) FROM textract_usage
+                 WHERE org_id = :org_id
+                   AND created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'), 0)::bigint AS scans,
+      COALESCE((SELECT SUM(pages) FROM textract_usage
+                 WHERE org_id = :org_id
+                   AND created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'), 0)::bigint AS pages
     """
 )
 _INSERT = text(
@@ -33,9 +55,17 @@ _INSERT = text(
 
 
 async def month_spend_microusd(db: AsyncSession, org_id: uuid.UUID) -> int:
-    """What the organization's Claude calls cost this month, in micro-USD."""
+    """What the organization's Claude calls and Textract scans cost this month together, in micro-USD:
+    the number the monthly cap is checked against."""
 
     return int((await db.execute(_MONTH_SPEND, {"org_id": org_id})).scalar_one())
+
+
+async def month_breakdown(db: AsyncSession, org_id: uuid.UUID) -> tuple[int, int, int]:
+    """(AI micro-USD, scan micro-USD, scan pages) this month, read in one statement; none is ever negative."""
+
+    row = (await db.execute(_MONTH_BREAKDOWN, {"org_id": org_id})).one()
+    return max(0, int(row.ai)), max(0, int(row.scans)), max(0, int(row.pages))
 
 
 async def month_spend(db: AsyncSession, org_id: uuid.UUID) -> float:

@@ -3,6 +3,8 @@ export const HALT_REASONS = {
   unreadable: "File could not be read.",
   ocrFailed: "Text could not be extracted. Request a better scan, or enter values manually.",
   ocrRequired: "Photo or scan: its text is read once OCR is switched on. Ask for a text PDF meanwhile.",
+  scanLimitReached: "Not read: this month's AI and scan limit is reached. It can be read later.",
+  scanLimitUnchecked: "Not read: the scan limit could not be checked. It will be retried.",
   passwordProtected: "Password-protected: ask the client for a copy without a password.",
   noTemplate: "No extraction template exists for this document type.",
   typeUnknown: "We couldn't tell what kind of document this is. Choose its type in Evidence.",

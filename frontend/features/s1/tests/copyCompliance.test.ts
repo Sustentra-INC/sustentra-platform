@@ -101,6 +101,8 @@ describe("copy compliance", () => {
     expect(item.haltReason).toBe(sentence);
     expect(item.haltReason).not.toBe(HALT_REASONS.noTemplate);
     expect(haltReasonFromCode("document_too_long")).toBe(HALT_REASONS.documentTooLong);
+    expect(haltReasonFromCode("scan_limit_reached")).toBe("Not read: this month's AI and scan limit is reached. It can be read later.");
+    expect(haltReasonFromCode("scan_limit_unchecked")).toBe("Not read: the scan limit could not be checked. It will be retried.");
   });
 
   it("shows the page ranges a chunked read could not read, as the server wrote them", () => {

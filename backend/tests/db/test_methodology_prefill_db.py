@@ -200,7 +200,8 @@ def test_off_and_unconfigured_refuse_without_a_call(claude: FakeClaude, monkeypa
     assert refused.status_code == 409 and "switched off" in refused.json()["detail"]
     assert review(eid).json()["ai"] | {"reason": None} == {
         "enabled": False, "reason_code": "off", "reason": None, "provider": "anthropic",
-        "model": "claude-sonnet-5-5", "month_spend_usd": 0.0, "cap_usd": 25.0}
+        "model": "claude-sonnet-5-5", "month_spend_usd": 0.0, "scan_spend_usd": 0.0, "scan_pages": 0,
+        "cap_usd": 25.0}
     monkeypatch.setattr(api, "get_settings", lambda: ON)
     monkeypatch.setattr(api, "new_client", lambda settings: None)
     refused = prefill(eid)
