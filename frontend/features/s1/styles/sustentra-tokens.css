@@ -307,6 +307,7 @@
   /* Coverage & requests: header review card */
   --cr-review-icon-box: 22px; /* leading icon box */
   --chip-action-h:      34px; /* action chip inside a card link */
+  --cr-rule-icon-col:   22px; /* checks list: icon column */
   --xr-panel-min:   320px;   /* review panel minimum (flex clamp lower bound) */
   --cv-sheet-max-w: 760px;   /* spreadsheet card max width */
   --cv-doc-max-w:   620px;   /* PDF / drawn document card max width */

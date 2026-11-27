@@ -106,52 +106,20 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
         </span>
         <div
           aria-label="Show checks"
-          class="s1-cr-filters"
+          class="s1-ws-factabs s1-ws-factabs--seg s1-cr-checkfilter"
           role="group"
         >
           <button
             aria-pressed="true"
-            class="s1-cr-filter s1-cr-filter--open is-on"
+            class="s1-ws-factab is-on"
             type="button"
           >
             <span
               aria-hidden="true"
-              class="s1-cr-filter__icon"
-            >
-              <svg
-                aria-hidden="true"
-                class="lucide lucide-circle-alert"
-                fill="none"
-                height="24"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                viewBox="0 0 24 24"
-                width="24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="10"
-                />
-                <line
-                  x1="12"
-                  x2="12"
-                  y1="8"
-                  y2="12"
-                />
-                <line
-                  x1="12"
-                  x2="12.01"
-                  y1="16"
-                  y2="16"
-                />
-              </svg>
-            </span>
+              class="s1-cr-checkfilter__dot s1-cr-checkfilter__dot--warning"
+            />
             <span
-              class="s1-cr-filter__n"
+              class="s1-cr-checkfilter__n"
             >
               3
             </span>
@@ -159,38 +127,15 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           </button>
           <button
             aria-pressed="false"
-            class="s1-cr-filter s1-cr-filter--resolved"
+            class="s1-ws-factab"
             type="button"
           >
             <span
               aria-hidden="true"
-              class="s1-cr-filter__icon"
-            >
-              <svg
-                aria-hidden="true"
-                class="lucide lucide-circle-check"
-                fill="none"
-                height="24"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                viewBox="0 0 24 24"
-                width="24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="10"
-                />
-                <path
-                  d="m9 12 2 2 4-4"
-                />
-              </svg>
-            </span>
+              class="s1-cr-checkfilter__dot s1-cr-checkfilter__dot--success"
+            />
             <span
-              class="s1-cr-filter__n"
+              class="s1-cr-checkfilter__n"
             >
               3
             </span>
@@ -198,38 +143,11 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           </button>
           <button
             aria-pressed="false"
-            class="s1-cr-filter s1-cr-filter--na"
+            class="s1-ws-factab"
             type="button"
           >
             <span
-              aria-hidden="true"
-              class="s1-cr-filter__icon"
-            >
-              <svg
-                aria-hidden="true"
-                class="lucide lucide-circle-minus"
-                fill="none"
-                height="24"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                viewBox="0 0 24 24"
-                width="24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="10"
-                />
-                <path
-                  d="M8 12h8"
-                />
-              </svg>
-            </span>
-            <span
-              class="s1-cr-filter__n"
+              class="s1-cr-checkfilter__n"
             >
               1
             </span>
@@ -237,38 +155,11 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           </button>
           <button
             aria-pressed="false"
-            class="s1-cr-filter s1-cr-filter--unverifiable"
+            class="s1-ws-factab"
             type="button"
           >
             <span
-              aria-hidden="true"
-              class="s1-cr-filter__icon"
-            >
-              <svg
-                aria-hidden="true"
-                class="lucide lucide-ban"
-                fill="none"
-                height="24"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                viewBox="0 0 24 24"
-                width="24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="10"
-                />
-                <path
-                  d="M4.929 4.929 19.07 19.071"
-                />
-              </svg>
-            </span>
-            <span
-              class="s1-cr-filter__n"
+              class="s1-cr-checkfilter__n"
             >
               1
             </span>
@@ -284,89 +175,120 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           style="transition-delay: 0ms;"
         >
           <span
-            aria-hidden="true"
+            aria-label="Inputs missing"
             class="s1-cr-rule__icon"
+            role="img"
             title="Inputs missing"
           >
             <svg
               aria-hidden="true"
-              class="lucide lucide-circle-alert"
               fill="none"
-              height="24"
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
+              height="18"
               viewBox="0 0 24 24"
-              width="24"
-              xmlns="http://www.w3.org/2000/svg"
+              width="18"
             >
-              <circle
-                cx="12"
-                cy="12"
-                r="10"
-              />
-              <line
-                x1="12"
-                x2="12"
-                y1="8"
-                y2="12"
-              />
-              <line
-                x1="12"
-                x2="12.01"
-                y1="16"
-                y2="16"
-              />
+              <defs>
+                <mask
+                  height="24"
+                  id="m_r_2_"
+                  maskUnits="userSpaceOnUse"
+                  width="24"
+                  x="0"
+                  y="0"
+                >
+                  <rect
+                    fill="#fff"
+                    height="24"
+                    width="24"
+                  />
+                  <path
+                    d="M12 9.5v4"
+                    fill="none"
+                    stroke="#000"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2.3"
+                  />
+                  <path
+                    d="M12 17.1v.01"
+                    fill="none"
+                    stroke="#000"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2.3"
+                  />
+                </mask>
+              </defs>
+              <g
+                mask="url(#m_r_2_)"
+              >
+                <path
+                  d="M10.2 3.9a2.1 2.1 0 0 1 3.6 0l8 13.8a2.1 2.1 0 0 1-1.8 3.2H4a2.1 2.1 0 0 1-1.8-3.2z"
+                  fill="currentColor"
+                />
+              </g>
             </svg>
           </span>
           <div
             class="s1-cr-rule__main"
           >
             <div
+              class="s1-cr-rule__why"
+            >
+              September service-period end date not found for Kent Cannery.
+            </div>
+            <div
               class="s1-cr-rule__what"
             >
               Natural gas consumption is present for every reporting month
             </div>
-            <div
-              class="s1-cr-rule__points"
-            >
-              <span>
-                Natural gas consumed
-              </span>
-            </div>
-          </div>
-          <div
-            class="s1-cr-rule__why"
-          >
-            September service-period end date not found for Kent Cannery.
           </div>
           <div
             class="s1-cr-rule__act"
           >
             <button
-              class="s1-button s1-button--compact s1-cr-request"
+              class="s1-button s1-button--soft s1-cr-request"
               type="button"
             >
               <svg
                 aria-hidden="true"
-                class="lucide lucide-send"
                 fill="none"
-                height="24"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
+                height="14"
                 viewBox="0 0 24 24"
-                width="24"
-                xmlns="http://www.w3.org/2000/svg"
+                width="14"
               >
-                <path
-                  d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"
-                />
-                <path
-                  d="m21.854 2.147-10.94 10.939"
-                />
+                <defs>
+                  <mask
+                    height="24"
+                    id="m_r_3_"
+                    maskUnits="userSpaceOnUse"
+                    width="24"
+                    x="0"
+                    y="0"
+                  >
+                    <rect
+                      fill="#fff"
+                      height="24"
+                      width="24"
+                    />
+                    <path
+                      d="M10.6 13.4L16 8"
+                      fill="none"
+                      stroke="#000"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2.3"
+                    />
+                  </mask>
+                </defs>
+                <g
+                  mask="url(#m_r_3_)"
+                >
+                  <path
+                    d="M20.6 2.4c.9-.3 1.4.4 1.1 1.2l-6.4 17.2c-.4 1-1.7 1-2.1.1l-2.6-6-6-2.6c-.9-.4-.9-1.7.1-2.1z"
+                    fill="currentColor"
+                  />
+                </g>
               </svg>
                Request
             </button>
@@ -377,92 +299,120 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           style="transition-delay: 24ms;"
         >
           <span
-            aria-hidden="true"
+            aria-label="Inputs missing"
             class="s1-cr-rule__icon"
+            role="img"
             title="Inputs missing"
           >
             <svg
               aria-hidden="true"
-              class="lucide lucide-circle-alert"
               fill="none"
-              height="24"
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
+              height="18"
               viewBox="0 0 24 24"
-              width="24"
-              xmlns="http://www.w3.org/2000/svg"
+              width="18"
             >
-              <circle
-                cx="12"
-                cy="12"
-                r="10"
-              />
-              <line
-                x1="12"
-                x2="12"
-                y1="8"
-                y2="12"
-              />
-              <line
-                x1="12"
-                x2="12.01"
-                y1="16"
-                y2="16"
-              />
+              <defs>
+                <mask
+                  height="24"
+                  id="m_r_4_"
+                  maskUnits="userSpaceOnUse"
+                  width="24"
+                  x="0"
+                  y="0"
+                >
+                  <rect
+                    fill="#fff"
+                    height="24"
+                    width="24"
+                  />
+                  <path
+                    d="M12 9.5v4"
+                    fill="none"
+                    stroke="#000"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2.3"
+                  />
+                  <path
+                    d="M12 17.1v.01"
+                    fill="none"
+                    stroke="#000"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2.3"
+                  />
+                </mask>
+              </defs>
+              <g
+                mask="url(#m_r_4_)"
+              >
+                <path
+                  d="M10.2 3.9a2.1 2.1 0 0 1 3.6 0l8 13.8a2.1 2.1 0 0 1-1.8 3.2H4a2.1 2.1 0 0 1-1.8-3.2z"
+                  fill="currentColor"
+                />
+              </g>
             </svg>
           </span>
           <div
             class="s1-cr-rule__main"
           >
             <div
+              class="s1-cr-rule__why"
+            >
+              Market-based factor documentation missing for Modesto Bottling.
+            </div>
+            <div
               class="s1-cr-rule__what"
             >
               Scope 2 electricity is present on both a location and a market basis
             </div>
-            <div
-              class="s1-cr-rule__points"
-            >
-              <span>
-                Electricity consumed (location-based)
-              </span>
-              <span>
-                Electricity consumed (market-based)
-              </span>
-            </div>
-          </div>
-          <div
-            class="s1-cr-rule__why"
-          >
-            Market-based factor documentation missing for Modesto Bottling.
           </div>
           <div
             class="s1-cr-rule__act"
           >
             <button
-              class="s1-button s1-button--compact s1-cr-request"
+              class="s1-button s1-button--soft s1-cr-request"
               type="button"
             >
               <svg
                 aria-hidden="true"
-                class="lucide lucide-send"
                 fill="none"
-                height="24"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
+                height="14"
                 viewBox="0 0 24 24"
-                width="24"
-                xmlns="http://www.w3.org/2000/svg"
+                width="14"
               >
-                <path
-                  d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"
-                />
-                <path
-                  d="m21.854 2.147-10.94 10.939"
-                />
+                <defs>
+                  <mask
+                    height="24"
+                    id="m_r_5_"
+                    maskUnits="userSpaceOnUse"
+                    width="24"
+                    x="0"
+                    y="0"
+                  >
+                    <rect
+                      fill="#fff"
+                      height="24"
+                      width="24"
+                    />
+                    <path
+                      d="M10.6 13.4L16 8"
+                      fill="none"
+                      stroke="#000"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2.3"
+                    />
+                  </mask>
+                </defs>
+                <g
+                  mask="url(#m_r_5_)"
+                >
+                  <path
+                    d="M20.6 2.4c.9-.3 1.4.4 1.1 1.2l-6.4 17.2c-.4 1-1.7 1-2.1.1l-2.6-6-6-2.6c-.9-.4-.9-1.7.1-2.1z"
+                    fill="currentColor"
+                  />
+                </g>
               </svg>
                Request
             </button>
@@ -473,89 +423,120 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           style="transition-delay: 48ms;"
         >
           <span
-            aria-hidden="true"
+            aria-label="Inputs missing"
             class="s1-cr-rule__icon"
+            role="img"
             title="Inputs missing"
           >
             <svg
               aria-hidden="true"
-              class="lucide lucide-circle-alert"
               fill="none"
-              height="24"
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
+              height="18"
               viewBox="0 0 24 24"
-              width="24"
-              xmlns="http://www.w3.org/2000/svg"
+              width="18"
             >
-              <circle
-                cx="12"
-                cy="12"
-                r="10"
-              />
-              <line
-                x1="12"
-                x2="12"
-                y1="8"
-                y2="12"
-              />
-              <line
-                x1="12"
-                x2="12.01"
-                y1="16"
-                y2="16"
-              />
+              <defs>
+                <mask
+                  height="24"
+                  id="m_r_6_"
+                  maskUnits="userSpaceOnUse"
+                  width="24"
+                  x="0"
+                  y="0"
+                >
+                  <rect
+                    fill="#fff"
+                    height="24"
+                    width="24"
+                  />
+                  <path
+                    d="M12 9.5v4"
+                    fill="none"
+                    stroke="#000"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2.3"
+                  />
+                  <path
+                    d="M12 17.1v.01"
+                    fill="none"
+                    stroke="#000"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2.3"
+                  />
+                </mask>
+              </defs>
+              <g
+                mask="url(#m_r_6_)"
+              >
+                <path
+                  d="M10.2 3.9a2.1 2.1 0 0 1 3.6 0l8 13.8a2.1 2.1 0 0 1-1.8 3.2H4a2.1 2.1 0 0 1-1.8-3.2z"
+                  fill="currentColor"
+                />
+              </g>
             </svg>
           </span>
           <div
             class="s1-cr-rule__main"
           >
             <div
+              class="s1-cr-rule__why"
+            >
+              No mobile-combustion fuel records have been accepted.
+            </div>
+            <div
               class="s1-cr-rule__what"
             >
               Mobile combustion fuel is present for the fleet
             </div>
-            <div
-              class="s1-cr-rule__points"
-            >
-              <span>
-                Gasoline purchased · mobile combustion
-              </span>
-            </div>
-          </div>
-          <div
-            class="s1-cr-rule__why"
-          >
-            No mobile-combustion fuel records have been accepted.
           </div>
           <div
             class="s1-cr-rule__act"
           >
             <button
-              class="s1-button s1-button--compact s1-cr-request"
+              class="s1-button s1-button--soft s1-cr-request"
               type="button"
             >
               <svg
                 aria-hidden="true"
-                class="lucide lucide-send"
                 fill="none"
-                height="24"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
+                height="14"
                 viewBox="0 0 24 24"
-                width="24"
-                xmlns="http://www.w3.org/2000/svg"
+                width="14"
               >
-                <path
-                  d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"
-                />
-                <path
-                  d="m21.854 2.147-10.94 10.939"
-                />
+                <defs>
+                  <mask
+                    height="24"
+                    id="m_r_7_"
+                    maskUnits="userSpaceOnUse"
+                    width="24"
+                    x="0"
+                    y="0"
+                  >
+                    <rect
+                      fill="#fff"
+                      height="24"
+                      width="24"
+                    />
+                    <path
+                      d="M10.6 13.4L16 8"
+                      fill="none"
+                      stroke="#000"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2.3"
+                    />
+                  </mask>
+                </defs>
+                <g
+                  mask="url(#m_r_7_)"
+                >
+                  <path
+                    d="M20.6 2.4c.9-.3 1.4.4 1.1 1.2l-6.4 17.2c-.4 1-1.7 1-2.1.1l-2.6-6-6-2.6c-.9-.4-.9-1.7.1-2.1z"
+                    fill="currentColor"
+                  />
+                </g>
               </svg>
                Request
             </button>
@@ -967,7 +948,7 @@ exports[`request screens: fixture parity > draws the Add to requests window for 
               class="s1-dd"
             >
               <button
-                aria-controls="_r_2_-panel"
+                aria-controls="_r_8_-panel"
                 aria-expanded="false"
                 aria-haspopup="listbox"
                 aria-labelledby="atr-type-label"
@@ -1014,7 +995,7 @@ exports[`request screens: fixture parity > draws the Add to requests window for 
               class="s1-dd"
             >
               <button
-                aria-controls="_r_3_-panel"
+                aria-controls="_r_9_-panel"
                 aria-expanded="false"
                 aria-haspopup="listbox"
                 aria-labelledby="atr-raisedby-label"
