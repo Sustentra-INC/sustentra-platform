@@ -175,8 +175,7 @@ describe("the Evidence tree", () => {
   it("shows the three blocks, the scopes, document counts and % accepted", async () => {
     render(<Harness />);
     expect(await screen.findByText("Summary documents and workbook")).toBeInTheDocument();
-    expect(screen.getByText("Unassigned documents")).toBeInTheDocument();
-    expect(screen.getByText("System could not identify these")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /unassigned document/ })).toBeInTheDocument();
     expect(screen.getByText("Supporting evidence")).toBeInTheDocument();
     expect(screen.getByText("Scope 1")).toBeInTheDocument();
     expect(screen.getByText("Scope 2")).toBeInTheDocument();

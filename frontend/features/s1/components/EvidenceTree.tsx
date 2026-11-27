@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight, PanelsTopLeft, Plus } from "lucide-react";
-import { IconBuilding, IconExpandAll, IconCollapseAll } from "./icons";
+import { IconBuilding, IconDocument, IconExpandAll, IconCollapseAll, IconTag } from "./icons";
 
 import { Dropdown } from "./Dropdown";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -334,31 +334,79 @@ export function EvidenceTree(props: EvidenceTreeProps) {
       ) : null}
 
       {!filtered || summary.length ? (
-        <Fold
-          id="b:summary"
-          depth={0}
-          open={isOpen("b:summary")}
-          onToggle={toggle}
-          title="Summary documents and workbook"
-          tag="Company-prepared, not source evidence"
-          counts={tree.blocks.summary_counts}
+        <section
+          className={`s1-et-sumrow${isOpen("b:summary") ? " s1-et-sumrow--open" : ""}`}
+          aria-label="Summary documents and workbook"
         >
-          {summary.length ? docList(summary, BLOCK_SUMMARY) : <p className="s1-et-none">No summary documents yet.</p>}
-        </Fold>
+          <div className="s1-et-sumrow__head">
+            <button
+              className="s1-et-sumrow__toggle"
+              type="button"
+              aria-expanded={isOpen("b:summary")}
+              aria-label={isOpen("b:summary") ? "Collapse summary documents" : "Expand summary documents"}
+              onClick={() => toggle("b:summary")}
+            >
+              <ChevronRight className="s1-et-caret" aria-hidden />
+            </button>
+            <span className="s1-et-sumrow__icon" aria-hidden><IconDocument size={20} /></span>
+            <span className="s1-et-sumrow__label">
+              <span className="s1-et-sumrow__title">Summary documents and workbook</span>
+              <span className="s1-et-sumrow__tag">Company-prepared, not source evidence</span>
+            </span>
+            <span className="s1-et-sumrow__count">
+              {tree.blocks.summary_counts?.documents ?? summary.length}{" "}
+              {(tree.blocks.summary_counts?.documents ?? summary.length) === 1 ? "document" : "documents"}
+            </span>
+            <span className="s1-et-sumrow__pct">
+              {tree.blocks.summary_counts?.pct_accepted ?? 0}% accepted
+            </span>
+          </div>
+          {isOpen("b:summary") ? (
+            <div className="s1-et-sumrow__body">
+              {summary.length ? docList(summary, BLOCK_SUMMARY) : <p className="s1-et-none">No summary documents yet.</p>}
+            </div>
+          ) : null}
+        </section>
       ) : null}
 
-      {!filtered || unassigned.length ? (
-        <Fold
-          id="b:unassigned"
-          depth={0}
-          open={isOpen("b:unassigned")}
-          onToggle={toggle}
-          title="Unassigned documents"
-          subtitle="System could not identify these"
-          counts={tree.blocks.unassigned_counts}
-        >
-          {unassigned.length ? docList(unassigned, BLOCK_UNASSIGNED) : <p className="s1-et-none">Nothing here.</p>}
-        </Fold>
+      {(!filtered || unassigned.length) && unassigned.length ? (
+        <section className="s1-et-uncard" aria-labelledby="et-uncard-title">
+          <div className="s1-et-uncard__head">
+            <span className="s1-et-uncard__tile" aria-hidden><IconTag size={17} /></span>
+            <h2 id="et-uncard-title" className="s1-et-uncard__title">
+              {unassigned.length} unassigned {unassigned.length === 1 ? "document" : "documents"}
+            </h2>
+          </div>
+          {unassigned.map((doc) => {
+            const id = `${BLOCK_UNASSIGNED}|${doc.document_id}`;
+            const ext = fileExt(doc.file_name);
+            return (
+              <div key={id} className="s1-et-uncard__row">
+                <span aria-hidden className={`s1-et-uncard__tag s1-batch__tag--${ext}`}>{ext.toUpperCase()}</span>
+                <button
+                  className="s1-doc-link s1-et-uncard__name"
+                  type="button"
+                  onClick={() => props.onOpenExtraction(doc.document_id)}
+                >
+                  {doc.file_name}
+                </button>
+                <span className="s1-et-uncard__pill">
+                  <span aria-hidden className="s1-et-uncard__dot" />
+                  No type
+                </span>
+                <ActionMenu
+                  label={`Actions for ${doc.file_name}`}
+                  isOpen={menuId === id}
+                  onOpenChange={(o) => setMenuId(o ? id : null)}
+                  entries={[
+                    { label: "Open document", action: () => props.onOpenExtraction(doc.document_id) },
+                    { label: "Move to…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "move", doc, from: doc.placement_from ?? BLOCK_UNASSIGNED, section: BLOCK_UNASSIGNED }) },
+                  ]}
+                />
+              </div>
+            );
+          })}
+        </section>
       ) : null}
 
       {!filtered || visibleScopes.length || supporting.unassigned.length ? (

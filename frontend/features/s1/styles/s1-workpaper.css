@@ -4593,6 +4593,80 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-et-doc__period { font-size: var(--text-sm); color: var(--ink-3); white-space: nowrap; }
 .s1-et-doc__status { font-size: var(--text-sm); color: var(--ink-2); }
 
+/* Summary documents row */
+.s1-et-sumrow { border-radius: var(--r-pop); background: var(--sf-card); box-shadow: var(--shadow-card-soft); }
+.s1-et-sumrow__head {
+  display: flex; align-items: center; gap: var(--et-sumrow-row-gap); padding: var(--et-sumrow-pad-y) var(--et-sumrow-pad-x);
+}
+.s1-et-sumrow__toggle {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: var(--et-sumrow-toggle); height: var(--et-sumrow-toggle); border: 0; border-radius: var(--r-sm);
+  background: var(--sf-inset); color: var(--ink-2); cursor: pointer; font: inherit;
+}
+.s1-et-sumrow__toggle:hover { background: var(--accent-softer); color: var(--ink); }
+.s1-et-sumrow__toggle:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-et-sumrow--open .s1-et-sumrow__toggle .s1-et-caret { transform: rotate(90deg); }
+.s1-et-sumrow__icon {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: var(--et-sumrow-icon-box); color: var(--ink-2);
+}
+.s1-et-sumrow__label {
+  flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
+}
+.s1-et-sumrow__title { font-size: var(--text-title); font-weight: var(--weight-strong); }
+.s1-et-sumrow__tag {
+  height: var(--et-sumrow-tag-h); padding: 0 var(--sp-2); border-radius: var(--r-pill);
+  background: var(--sf-inset); color: var(--ink-2);
+  font-size: var(--text-sm); font-weight: var(--weight-medium);
+  display: inline-flex; align-items: center;
+}
+.s1-et-sumrow__count { font-size: var(--text-base); color: var(--ink-3); white-space: nowrap; }
+.s1-et-sumrow__pct {
+  width: var(--et-sumrow-pct-w); flex: none;
+  font-size: var(--text-base); font-weight: var(--weight-strong);
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.s1-et-sumrow__body { padding: 0 var(--sp-3) var(--sp-3); }
+
+/* Unassigned documents card */
+.s1-et-uncard {
+  display: flex; flex-direction: column; gap: var(--sp-2-5); padding: var(--sp-4) var(--sp-4-5);
+  border-radius: var(--r-pop); background: var(--ws-gr-warn-bg);
+  box-shadow: inset 0 0 0 var(--hairline-width) var(--ws-gr-warn-line);
+}
+.s1-et-uncard__head { display: flex; align-items: center; gap: var(--et-sumrow-row-gap); }
+.s1-et-uncard__tile {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: var(--et-uncard-tile); height: var(--et-uncard-tile);
+  border-radius: var(--r-md); background: var(--et-uncard-tile-bg); color: var(--state-open-fg);
+}
+.s1-et-uncard__title { margin: 0; font-size: var(--text-title); font-weight: var(--weight-strong); }
+.s1-et-uncard__row {
+  display: flex; align-items: center; gap: var(--et-uncard-row-gap); padding: var(--et-uncard-row-pad) var(--sp-3);
+  border-radius: var(--r-card-sm); background: var(--sf-card);
+}
+.s1-et-uncard__tag {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: var(--et-uncard-tag-w); height: var(--et-uncard-tag-h);
+  border-radius: var(--r-xs); font-size: var(--text-xs); font-weight: var(--weight-bold);
+}
+.s1-et-uncard__name { flex: 1; min-width: 0; font-size: var(--text-md); font-weight: var(--weight-strong); }
+.s1-et-uncard__pill {
+  display: inline-flex; align-items: center; gap: var(--sp-1-5);
+  height: var(--et-uncard-pill-h); padding: 0 var(--sp-2-5) 0 var(--sp-2);
+  border-radius: var(--r-pill); background: var(--state-open-bg); color: var(--state-open-fg);
+  font-size: var(--text-sm); font-weight: var(--weight-strong); white-space: nowrap;
+}
+.s1-et-uncard__dot {
+  flex: none; width: var(--et-uncard-dot); height: var(--et-uncard-dot); border-radius: var(--r-pill);
+  background: var(--state-open-line);
+}
+.s1-et-uncard .s1-button--icon {
+  width: var(--et-uncard-btn); height: var(--et-uncard-btn);
+  border-radius: var(--r-md);
+  box-shadow: inset 0 0 0 var(--hairline-width) var(--et-uncard-btn-line);
+}
+
 @media (max-width: 64rem) {
   .s1-et-head { grid-template-columns: 1fr auto; }
   .s1-et-n, .s1-et-bar-track, .s1-et-fill { display: none; }

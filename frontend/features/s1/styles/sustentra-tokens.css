@@ -409,6 +409,25 @@
   --ws-doc-menu-btn:  32px;
   --ws-gr-warn-bg:    #FFF8EE;
   --ws-gr-warn-line:  #F5DDB5;
+
+  /* --- Evidence tree: summary row and unassigned card --- */
+  --et-sumrow-icon-box:   22px;
+  --et-sumrow-toggle:     28px;
+  --et-sumrow-tag-h:      22px;
+  --et-sumrow-pct-w:     110px;
+  --et-sumrow-row-gap:    14px;
+  --et-sumrow-pad-y:      14px;
+  --et-sumrow-pad-x:      18px;
+  --et-uncard-tile:       34px;
+  --et-uncard-tile-bg:  #FFE9C7;    /* amber tile, stronger than state-open-bg */
+  --et-uncard-tag-w:      40px;
+  --et-uncard-tag-h:      20px;
+  --et-uncard-pill-h:     24px;
+  --et-uncard-dot:         6px;
+  --et-uncard-row-gap:    12px;
+  --et-uncard-row-pad:    10px;
+  --et-uncard-btn:        32px;
+  --et-uncard-btn-line: #E8D3B3;    /* inset amber ring on the action button */
 }
 
 
