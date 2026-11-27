@@ -665,8 +665,9 @@ def _screening(units: list[ScreenUnit], kind: EquipmentType | None, inputs: dict
                        "the largest is used. Check it, or enter the capacity.")
         step1.append(TraceBlock(f"unit.{u.uid}", f"{u.name} · equipment in use", [
             Column("C", "Capacity · C", unit), Column("T", "Time in use · T", None, display={"dp": 2}),
-            Column("CT", "C × T", unit, True, {"sig": 6})], recomputed=op,
-            assumption=None if t_id in decided else T_DEFAULT_TAG, warning=warning))
+            Column("CT", "C × T", unit, True, {"sig": 6})], recomputed=op, warning=warning))
+        # the default time in use is an assumption of its input, shown on the block until a reviewer decides it
+        inputs[t_id].assumption = None if t_id in decided else T_DEFAULT_TAG
         if c_value is None:
             blocking.append(Blocking(c_id, f"equipment capacity. Enter the refrigerant capacity (C) of {u.name}, "
                                            "from the equipment register or its nameplate."))
@@ -700,8 +701,9 @@ def _screening(units: list[ScreenUnit], kind: EquipmentType | None, inputs: dict
         tag = None
         if f not in decided and pct is not None and kind is not None:
             tag = default_tag(kind, f, pct)
+        inputs[f].assumption = tag  # EPA's default factor, until a reviewer decides it
         step1.append(TraceBlock(f"factor.{f}", f"{name} · {f}", [Column(f, name, "%", True)], recomputed=mine,
-                                company=theirs, assumption=tag))
+                                company=theirs))
     missing = [f for f in needed if fraction[f] is None]
     if missing:
         if kind is None:

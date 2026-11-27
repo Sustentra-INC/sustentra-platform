@@ -62,6 +62,9 @@ const FIXED_PANELS: PanelDef[] = [
   { id: "fugitive", title: "Scope 1 › Fugitive › Refrigerants", comparisonKey: "fugitive_total", category: "fugitive", anchor: "Facility", firstColumn: "Refrigerant" },
 ];
 
+/** Purchased steam has its own calculation (backend calc_trace/steam.py): after the other Scope 2 energy panels. */
+const STEAM_PANEL: PanelDef = { id: "steam", title: "Scope 2 › Purchased steam", comparisonKey: "purchased_steam_total", category: "steam", anchor: "Facility", firstColumn: "Energy" };
+
 /** One Scope 2 panel per energy type present, named from the line's level 2. */
 function energyPanel(level2: string): PanelDef {
   const word = level2.trim().toLowerCase();
@@ -112,6 +115,8 @@ const FLAG_TEXT: Record<string, string> = {
   negative_refrigerant_emissions: "Negative balance: check the service records. The negative value is kept.",
   refrigerant_gwp_needed: "This refrigerant has no GWP yet, so the line counts nothing until one is entered.",
   mixed_refrigerants: "This line mixes refrigerants: move each refrigerant's records to its own line. The category still counts each one.",
+  steam_enthalpy_needed: "Steam is billed by weight and its net enthalpy is not known yet, so that steam counts nothing until it is entered.",
+  chp_allocation_as_stated_by_supplier: "CHP allocation method: as stated by the supplier.",
 };
 
 /** Why a record sits on no calculation line, in plain words. */
@@ -960,7 +965,7 @@ function LineDetail({
 export function panelIds(lines: CalculationLine[], unplaced: CalcUnplaced[] = []): string[] {
   const all = [...lines, ...unplaced];
   const energy = [...new Set(all.filter((l) => l.counts_toward === "purchased_energy").map((l) => l.level2))];
-  return [...FIXED_PANELS, ...energy.map(energyPanel)].filter((p) => all.some((l) => belongs(l, p))).map((p) => p.id);
+  return [...FIXED_PANELS, ...energy.map(energyPanel), STEAM_PANEL].filter((p) => all.some((l) => belongs(l, p))).map((p) => p.id);
 }
 
 export function CalculationPanels({
@@ -1017,7 +1022,7 @@ export function CalculationPanels({
   onOpenEvidence?: (lineKey: string) => void;
 }) {
   const energyTypes = [...new Set([...lines, ...unplaced].filter((l) => l.counts_toward === "purchased_energy").map((l) => l.level2))];
-  const panels = [...FIXED_PANELS, ...energyTypes.map(energyPanel)].filter((p) => [...lines, ...unplaced].some((l) => belongs(l, p)));
+  const panels = [...FIXED_PANELS, ...energyTypes.map(energyPanel), STEAM_PANEL].filter((p) => [...lines, ...unplaced].some((l) => belongs(l, p)));
   const [unplacedOpen, setUnplacedOpen] = useState<string | null>(null);
   const focused = lines.find((l) => l.key === focusLineKey);
   const panelOf = (line: CalculationLine | undefined) => panels.find((p) => line && belongs(line, p))?.id ?? null;

@@ -214,6 +214,24 @@ const slug = (name: string) => name.split(" ")[0].toLowerCase();
   );
 });
 
+// --- Purchased steam statements (Scope 2): Kent Cannery's direct line from a neighbouring CHP plant. ---
+MONTHS.forEach((m, i) => {
+  docs.push(
+    base({
+      documentId: `DOC-STEAM-KENT-${String(i + 1).padStart(2, "0")}`,
+      filename: `kent_chp_steam_${m.toLowerCase()}_2025.pdf`,
+      detectedType: "Purchased steam statement",
+      ...facilityFields(FAC.kent),
+      periodState: "resolved",
+      periodStart: `2025-${String(i + 1).padStart(2, "0")}-01`,
+      periodEnd: `2025-${String(i + 1).padStart(2, "0")}-${MONTH_DAYS[i]}`,
+      fieldsExpected: 1,
+      fieldsExpectedDisplay: 1,
+      fieldsExtracted: 1,
+    })
+  );
+});
+
 // --- Energy management system exports. ---
 ([FAC.tualatin, FAC.kent]).forEach((fac) => {
   docs.push(

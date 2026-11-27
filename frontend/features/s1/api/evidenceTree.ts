@@ -35,7 +35,7 @@ export interface CalculationLine {
   read_as?: string | null;
 }
 
-export type CalculationFamily = "stationary" | "mobile" | "electricity" | "fugitive";
+export type CalculationFamily = "stationary" | "mobile" | "electricity" | "fugitive" | "steam";
 
 export interface TreeCounts {
   documents: number;

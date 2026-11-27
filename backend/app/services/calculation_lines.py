@@ -160,13 +160,13 @@ class CalculationLine:
 
     @property
     def family(self) -> str | None:
-        """The calculation this line feeds: "stationary", "mobile", "electricity" or "fugitive"; None for a line
-        no calculation reads (process, steam and the like). Same rule as the recalculation."""
+        """The calculation this line feeds: "stationary", "mobile", "electricity", "fugitive" or "steam"; None for a
+        line no calculation reads (process, heating and the like). Same rule as the recalculation."""
 
         if self.category == "fugitive":
             return "fugitive"
         if self.category == "purchased_energy":
-            return "electricity" if self.level2 == "electricity" else None
+            return {"electricity": "electricity", "steam": "steam"}.get(self.level2)
         if self.category == "mobile" or self.anchor_kind == "vehicle_group":
             return "mobile"
         if self.category in ("stationary", "biogenic") and self.anchor_kind == "facility":

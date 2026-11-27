@@ -316,7 +316,7 @@ export function buildRecalculation(engagementId: string): Recalculation {
     categories: {
       stationary_combustion: fill("stationary_combustion"), mobile_combustion: fill("mobile_combustion"), fugitive_refrigerants: fill("fugitive_refrigerants"),
       purchased_electricity_location_based: fill("purchased_electricity_location_based"), purchased_electricity_market_based: fill("purchased_electricity_market_based"),
-      purchased_steam_location_based: null, purchased_steam_market_based: null, purchased_heating_location_based: null, purchased_heating_market_based: null,
+      purchased_steam_location_based: fill("purchased_steam_location_based"), purchased_steam_market_based: fill("purchased_steam_market_based"), purchased_heating_location_based: null, purchased_heating_market_based: null,
     },
     scope_totals: { scope1: total("scope1_total"), scope2_location: total("scope2_location_total"), scope2_market: total("scope2_market_total") },
     comparisons, needs_input: [], awaiting_review: c.awaiting, excluded: c.excluded,

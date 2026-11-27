@@ -20,6 +20,8 @@ for a line. The GWP, the consolidated share, the unit conversion and the grid re
 (Methodology, Recalculation inputs, the conversion table): a decision on one of them is reported, not applied.
 A fugitive line (``calc_trace/fugitive``) takes its own decisions: a simplified material balance term or one record of
 it, and the GWP of a blend component the reference data lacks (``component_gwp.<name>``); it is worked by ``_fugitive``.
+A steam line (``calc_trace/steam``) takes its bills, net enthalpy, steam conditions, the factors of its emission factor
+options and the option itself (``ef_option``); it is worked by ``_thermal``.
 
 A value is checked again here before it reaches the arithmetic (stored rows may predate a rule): a finite number above
 0 and within ``MAX_NUMBER``, in the input's own unit. A decision that fails is reported (``not_applied``), never used.
@@ -35,14 +37,15 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from backend.app.reference.emission_factor_loader import default_emission_factor_reference
-from backend.app.services.calc_trace import electricity, fugitive, mobile, ops, stationary
+from backend.app.services.calc_trace import _thermal_ef, electricity, fugitive, mobile, ops, stationary, steam
 from backend.app.services.calc_trace._line import _annotate, normalise_unit, reference_source
 from backend.app.services.calc_trace.model import (
     Choice, LineTrace, Operand, Operation, Side, SourceRef, Term, TraceBlock, TraceResult,
 )
 
 MAX_NUMBER = 1e15
-DECIDABLE = ("activity.total", "distance", "fuel_economy", *stationary.SITE_INPUTS, *fugitive.DECIDABLE_IDS)
+DECIDABLE = ("activity.total", "distance", "fuel_economy", *stationary.SITE_INPUTS, *fugitive.DECIDABLE_IDS,
+             *steam.INPUTS)
 # and every "ef.<gas>", and a fugitive line's "component_gwp.<component>" (a blend component the reference data lacks)
 SET_ELSEWHERE = {
     "unit_conversion": "the unit conversion comes from the conversion table",
@@ -152,7 +155,8 @@ def mark_decidable(trace: LineTrace) -> None:
         # A fugitive line blocked on a GWP still has its working: its terms and missing component GWPs can be decided.
         if why is None and trace.panel == "fugitive" and fugitive.MIXED_FLAG in trace.flags:
             why = MIXED_REFRIGERANTS
-        if why is None and (mixed or (trace.state == "blocked" and (trace.panel != "fugitive" or not trace.steps))):
+        if why is None and (mixed or (trace.state == "blocked" and (trace.panel not in ("fugitive", "steam")
+                                                                    or not trace.steps))):
             why = MIXED_RUNS if mixed else "this line has no working to calculate from"
         item.decidable, item.why_not = why is None, why
 
@@ -221,6 +225,8 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
         number = _number(decision.get("value"))
         if number is None and panel == "fugitive" and fugitive.zero_allowed(target_id) and _is_zero(decision.get("value")):
             number = 0.0  # a balance term may be 0 (no new equipment, nothing recovered); never below
+        if number is None and panel == "steam" and steam.zero_allowed(target_id) and _is_zero(decision.get("value")):
+            number = 0.0  # steam at 0 psig (atmospheric pressure, 212 °F); never below
         if number is None:
             outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="invalid_value",
                                               message="Not applied: the value is not a number above 0."))
@@ -249,6 +255,8 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
                                       decided_by=_by(decision), decided_at=str(decision.get("at") or ""),
                                       reason_given=str(decision.get("reason") or "")))
 
+    if panel == "steam":  # its own working: the enthalpy and the four emission factor options (``calc_trace/steam``)
+        return _thermal(out, values, chosen, rejected, outcome, context)
     site = {k: values[k][0] for k in stationary.SITE_INPUTS if k in values}
     for target_id, decision in chosen:
         picked = _choice(out, target_id, decision, outcome, panel, site)
@@ -390,6 +398,103 @@ def _fugitive(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any]
         total_co2e_t=worked["total"], biogenic_co2_t=0.0, activity=worked["emitted_t"],
         activity_total=worked["emitted"],
         rows={gas: {"gwp": worked["gwp"], "emitted": worked["emitted"], "route": worked["route"]}})
+
+
+def _thermal(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any], Mapping[str, Any]]],
+             chosen: list[tuple[str, Mapping[str, Any]]], rejected: list[str], outcome: Outcome,
+             context: dict[str, Any] | None) -> tuple[LineTrace, Outcome, Figures | None]:
+    """A steam line worked again with its decided values and the emission factor option a reviewer chose
+    (``steam.rework``). A total decided outright wins over its bills; a value the steam tables or the option cannot
+    take is reported, never used. While an input is still awaited the decided values are shown, held, and the line
+    counts as calculated."""
+
+    line = (context or {}).get("line")
+    pick: tuple[str, Mapping[str, Any]] | None = None
+    basis: tuple[str, Mapping[str, Any]] | None = None
+    for choice_id, decision in chosen:
+        choice = next((c for c in trace.choices if c.id == choice_id), None)
+        status = str(decision.get("status"))
+        if choice is None:
+            outcome.not_applied.append(_entry("choice", choice_id, None, status=status, reason="not_on_this_line",
+                                              message="This choice is no longer part of the line's working."))
+        elif status == "rejected":
+            trace.flags = sorted({*trace.flags, REJECTED_FLAG})
+            outcome.applied.append(_entry("choice", choice_id, None, status=status, uses="automatic value"))
+        elif status not in DECIDED:
+            continue
+        elif decision.get("value") not in {o.id for o in choice.options}:
+            outcome.not_applied.append(_entry("choice", choice_id, None, status=status, reason="option_not_available",
+                                              message="Not applied: that option is not available for this line."))
+        elif choice_id == _thermal_ef.CHOICE_ID:
+            pick = (str(decision["value"]), decision)
+        elif choice_id == _thermal_ef.BASIS_CHOICE:
+            basis = (str(decision["value"]), decision)
+        else:  # the method: one option, the line's own
+            choice.chosen_by = "reviewer"
+            outcome.applied.append(_entry("choice", choice_id, None, status=status, value=decision.get("value")))
+    for kind in (steam.MASS, steam.ENERGY):  # a total decided outright wins over its bills
+        if kind in values:
+            for input_id in [i for i in values if i.startswith(f"{kind}/")]:
+                values.pop(input_id)
+                _move_to_not_applied(outcome, input_id, "total_decided", "Not applied: this total is decided.")
+    for input_id in sorted(values, key=lambda i: i != steam.PRESSURE):  # the pressure first: the condensate needs it
+        pressure = values[steam.PRESSURE][0] if steam.PRESSURE in values else None
+        why = steam.check(input_id, values[input_id][0], pressure)
+        if why is not None:
+            values.pop(input_id)
+            _move_to_not_applied(outcome, input_id, "invalid_value", why)
+    for input_id, why in steam.held({k: v[0] for k, v in values.items()}).items():
+        for item in outcome.applied:
+            if item["id"] == input_id:
+                item["uses"] = why
+    worked: dict[str, Any] | None = None
+    if (values or pick is not None or basis is not None) and line is not None and trace.steps:
+        decided: dict[str, tuple[float, Side]] = {}
+        for input_id, (number, decision, record) in values.items():
+            found = _find(trace, input_id)
+            decided[input_id] = (number, _decided_side(found.recomputed if found is not None else None, number,
+                                                       decision, record))
+        worked = steam.rework(trace, (line, context or {}), decided, pick[0] if pick is not None else None,
+                              basis[0] if basis is not None else None)
+        mark_decidable(trace)
+    elif values or pick is not None or basis is not None:
+        for input_id in list(values):
+            _move_to_not_applied(outcome, input_id, "could_not_apply", "Not applied: the decision could not be worked in.")
+        if pick is not None:
+            outcome.not_applied.append(_entry("choice", _thermal_ef.CHOICE_ID, None, status=str(pick[1].get("status")),
+                                              reason="could_not_apply",
+                                              message="Not applied: the decision could not be worked in."))
+            pick = None
+        basis = None
+    for choice_id, picked in ((_thermal_ef.CHOICE_ID, pick), (_thermal_ef.BASIS_CHOICE, basis)):
+        if picked is None:
+            continue
+        option, decision = picked
+        outcome.applied.append(_entry("choice", choice_id, None, status=str(decision.get("status")),
+                                      value=option, moves_totals=True, decided_by=_by(decision),
+                                      decided_at=str(decision.get("at") or ""),
+                                      reason_given=str(decision.get("reason") or "")))
+    for input_id in rejected:
+        found = _find(trace, input_id)
+        if found is not None and found.recomputed is not None:
+            found.recomputed.status = "rejected"  # the automatic value stands: the suggestion was rejected
+    if rejected:
+        trace.flags = sorted({*trace.flags, REJECTED_FLAG})
+    if worked is None:
+        waiting = "; ".join(b.message.split(".")[0] for b in trace.blocking) or "an input"
+        for item in outcome.applied:
+            if (item["id"] in values or item["id"] in (_thermal_ef.CHOICE_ID, _thermal_ef.BASIS_CHOICE)) \
+                    and item.get("status") in DECIDED \
+                    and "uses" not in item:
+                item["uses"] = f"held: the line awaits {waiting}, so it counts as calculated"
+        return trace, outcome, None
+    trace.flags = sorted({*trace.flags, APPLIED_FLAG})
+    rows: dict[str, dict[str, Any]] = {**worked["rows"], "steam": {**worked["summary"],
+                                                                     "market": worked["market"]}}
+    return trace, outcome, Figures(
+        mass_t=dict(worked["mass_t"]), gas_co2e_t=dict(worked["gas_co2e_t"]), sum_co2e_t=float(worked["sum"]),
+        total_co2e_t=float(worked["total"]), biogenic_co2_t=0.0, activity=float(worked["mmbtu"]),
+        activity_total=float(worked["activity_total"]), rows=rows)
 
 
 def _move_to_not_applied(outcome: Outcome, input_id: str, reason: str, message: str) -> None:

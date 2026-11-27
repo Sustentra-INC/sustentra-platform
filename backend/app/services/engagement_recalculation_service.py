@@ -46,6 +46,7 @@ from backend.app.services import emissions_rollup as rollup
 from backend.app.services import evidence_cache, line_totals, recalculation_lines
 from backend.app.services.document_reads import DocumentReads, gc_paused
 from backend.app.services import reported_totals
+from backend.app.services.calc_trace import steam as steam_trace
 from backend.app.services.methodology_gwp import GwpChoice, default_choice
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
 from backend.app.services.data_quality_checks import EvidenceRecord, run_checks
@@ -783,6 +784,19 @@ class EngagementRecalculationService:
                 for ln in built.lines:
                     if ln.get("counts_toward") == "fugitive":
                         ln["inputs_incomplete"] = open_items.get("fugitive_refrigerants", 0) > 0
+            # A facility whose steam by weight is now counted from its line's decided enthalpy no longer asks for a heat
+            # content, once no line or record of it still waits for one (calc_trace/steam).
+            waiting_steam = {str(ln["steam"]["facility"]) for ln in [*built.lines, *built.unplaced]
+                             if "steam" in ln and steam_trace.ENTHALPY_FLAG in ln["flags"]}
+            answered_steam = {item.sub[0] for item in built.decided if item.family == "steam"
+                              and "reviewer_decisions_applied" in item.line["flags"]} - waiting_steam
+            if any(n.get("kind") == "steam_heat_content" and n.get("key") in answered_steam for n in needs_input):
+                needs_input[:] = [n for n in needs_input
+                                  if not (n.get("kind") == "steam_heat_content" and n.get("key") in answered_steam)]
+                open_items = Counter(str(item.get("category")) for item in needs_input + awaiting)
+                for ln in built.lines:
+                    if ln.get("counts_toward") == "steam":
+                        ln["inputs_incomplete"] = open_items.get("purchased_steam", 0) > 0
         totals = self._scope_totals(categories)
         incomplete = bool(needs_input or awaiting)
         not_in_scope = out_of_scope(engagement.get("settings"))
@@ -1461,6 +1475,9 @@ class EngagementRecalculationService:
                                     "message": f"{record.label}: the thermal quantity must be a number with its unit."})
                 continue
             quantity, unit = amount
+            # a steam bill's part on its calculation line (``calc_trace/steam``), with the MMBtu counted of it
+            part = Contribution("steam", record, (facility,), _number(record.reviewed("activity_quantity")) or 0.0,
+                                quantity, unit, prorate[0], start, end, [prorate[1]] if prorate[1] else [], terms={})
             if fuel_units.dimension_of(unit) == fuel_units.MASS:
                 btu_per_lb = inputs.steam_heat_content.get(facility)
                 if btu_per_lb is None:
@@ -1470,6 +1487,8 @@ class EngagementRecalculationService:
                             "message": f"{facility}: steam is billed by weight ({unit}). Enter its heat content "
                             "in Btu per lb from the supplier (often 1,000 to 1,200).",
                         })
+                    if kind == "steam":  # on its line, counted nowhere until the steam's enthalpy is known
+                        self._ledger.contributions.append(part)
                     continue
                 pounds = fuel_units.convert_exact(quantity, unit, "lb")
                 mmbtu = pounds * btu_per_lb / 1_000_000
@@ -1484,6 +1503,9 @@ class EngagementRecalculationService:
             entry["mmbtu"] += mmbtu
             entry["documents"].append({"document_id": record.document_id, "record": record.label,
                                        "quantity": quantity, "unit": unit, "share_in_period": prorate[0]})
+            if kind == "steam":
+                part.terms = {"mmbtu": mmbtu}
+                self._ledger.contributions.append(part)
         out: dict[str, list[calc.FacilityThermal]] = {}
         for (source, facility), entry in totals.items():
             bills[f"{source}:{facility}"] = entry["documents"]

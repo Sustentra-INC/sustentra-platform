@@ -452,7 +452,7 @@ const WORKING: Record<string, WorkingSpec> = {
       { label: "Electricity — all sites, year", value: "44,304,900 kWh", source: "12 electricity bills · 3 facilities" },
     ],
     factor: { value: "0.223 kgCO₂e/kWh", source: "eGRID 2024 · WECC/NWPP subregion · location-based" },
-    result: "Reported 9,880 tCO₂e. Auto-reconciliation for Scope 2 not run yet — extracted data and factor shown so the figure can be cross-checked to source.",
+    result: "Reported figure as above. Auto-reconciliation for Scope 2 not run yet — extracted data and factor shown so the figure can be cross-checked to source.",
     references: ["GHG Protocol Scope 2 Guidance — location-based", "eGRID 2024 subregion factors", "CA SB 253"],
   },
   "DP-ELEC-MKT": {

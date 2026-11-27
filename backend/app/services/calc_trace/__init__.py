@@ -79,6 +79,9 @@ def decided_trace(panel: str, line: dict[str, Any], context: dict[str, Any] | No
         log.warning("calculation decisions failed: %s", type(exc).__name__)
         return Decided(default(line) if serialise else None, not_applied=_unread(
             records, "could_not_apply", "Not applied: the decision could not be worked in."))
+    for item in decided.inputs.values():  # a default a reviewer has decided is no longer an assumption
+        if item.recomputed is not None and item.recomputed.status in decisions.DECIDED:
+            item.assumption = None
     return Decided(decided.to_dict() if serialise else None, outcome.applied, outcome.not_applied, figures, default)
 
 

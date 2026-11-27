@@ -267,6 +267,14 @@
               "$ref": "#/$defs/SourceRef"
             }
           ]
+        },
+        "basis": {
+          "enum": [
+            null,
+            "physical",
+            "contractual"
+          ],
+          "description": "Steam and heat emission factor options: physical counts in location- and market-based; contractual (a certificate, a green tariff) in market-based only."
         }
       }
     },
@@ -318,6 +326,13 @@
             "null"
           ],
           "description": "Why the recomputed value cannot be decided for this line, when decidable is false."
+        },
+        "assumption": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "A default the line uses where nothing is stated yet, shown until a reviewer decides the input: \"Default: <value> (<source>) · not confirmed\"."
         },
         "company": {
           "oneOf": [

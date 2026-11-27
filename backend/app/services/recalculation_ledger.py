@@ -27,9 +27,9 @@ BASE_UNIT = {
 class Contribution:
     """One reviewed record's part in a recalculated number, as the category counted it."""
 
-    family: str  # "stationary" | "mobile" | "electricity" | "fugitive"
+    family: str  # "stationary" | "mobile" | "electricity" | "fugitive" | "steam"
     record: ReviewedRecord
-    sub: tuple[str, ...]  # (fuel, base unit) for fuels; (facility,) for electricity; (refrigerant,) for fugitive
+    sub: tuple[str, ...]  # (fuel, base unit) for fuels; (facility,) for electricity and steam; (refrigerant,) for fugitive
     quantity: float  # reviewed quantity, before the reporting-period share
     counted: float  # quantity x share, in ``unit``
     unit: str
@@ -37,7 +37,8 @@ class Contribution:
     start: Any
     end: Any
     flags: list[str]
-    # fugitive only: the record's simplified material balance terms (P_N, C_N, P_S, C_D, R_D), in ``unit``
+    # fugitive: the record's simplified material balance terms (P_N, C_N, P_S, C_D, R_D), in ``unit``; steam: the
+    # MMBtu the category counted of it ({"mmbtu": ...}), {} for steam by weight it could not count (no heat content)
     terms: dict[str, float] | None = None
 
 

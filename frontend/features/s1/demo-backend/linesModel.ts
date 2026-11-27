@@ -81,7 +81,7 @@ export function engagementNow(): EngagementConfig {
 
 /* ------------------------------------ records ------------------------------------ */
 
-export type RecordKind = "gas" | "electricity" | "fleet" | "propane" | "refrigerant" | "other";
+export type RecordKind = "gas" | "electricity" | "fleet" | "propane" | "refrigerant" | "steam" | "other";
 
 export interface ModelRecord {
   documentId: string;
@@ -209,6 +209,7 @@ export function buildRecords(facilities: FacilityOption[]): Built {
     else if (type === "Electricity bill" && facilityId) { kind = "electricity"; unit = "kWh"; target = lineKey("s2", "purchased_energy", "electricity", "facility", facilityId); }
     else if (type === "Fleet fuel statement") { kind = "fleet"; unit = "gal"; target = lineKey("s1", "mobile", "diesel-fuel", "vehicle_group", "vg-diesel-trucks"); }
     else if (type === "Other fuel invoice" && facilityId) { kind = "propane"; unit = "gal"; target = lineKey("s1", "stationary", "propane", "facility", facilityId); }
+    else if (type === "Purchased steam statement" && facilityId) { kind = "steam"; unit = "Mlb"; target = lineKey("s2", "purchased_energy", "steam", "facility", facilityId); }
     else if (type?.startsWith("Refrigerant") && facilityId) { kind = "refrigerant"; unit = "kg"; target = lineKey("s1", "fugitive", "r-404a", "facility", facilityId); }
     else if (type === "Renewable energy certificate or retirement statement" || type === "Power purchase agreement or supplier contract") target = lineKey("s2", "contractual", "renewable-energy-certificates", "company", "company");
     else if (type === "Supplier-specific factor documentation") target = lineKey("s2", "contractual", "supplier-specific-factors", "company", "company");
@@ -374,7 +375,7 @@ export function buildModel(): Model {
   // The system lines: one per facility for each level 2 that has a record, one per vehicle group for a mobile fuel.
   const system = new Map<string, ModelLine>();
   const levels = new Map<string, { category: string; level2: string; label: string; kind: ModelLine["anchor_kind"] }>();
-  const LABEL: Record<string, string> = { "natural-gas": "Natural gas", electricity: "Electricity", propane: "Propane", "r-404a": "R-404A", "diesel-fuel": "Diesel Fuel" };
+  const LABEL: Record<string, string> = { "natural-gas": "Natural gas", electricity: "Electricity", propane: "Propane", "r-404a": "R-404A", "diesel-fuel": "Diesel Fuel", steam: "Steam" };
   for (const r of records) {
     const parts = r.defaultTarget.split(":");
     if (parts.length !== 4 || parts[3] === "company") continue;

@@ -147,8 +147,8 @@ describe("the demo inventory", () => {
       "18,298",
       "+709",
     ]);
-    expect([formatTonnes(location.totals.reported), formatTonnes(location.totals.recomputed)]).toEqual(["6,175", "6,182"]);
-    expect(formatSignedTonnes(market.totals.difference)).toBe("+295"); // electricity +288, heating +7
+    expect([formatTonnes(location.totals.reported), formatTonnes(location.totals.recomputed)]).toEqual(["7,014", "7,071"]); // steam: Kent Cannery's CHP line, 1,049 reported, 1,099 recomputed
+    expect(formatSignedTonnes(market.totals.difference)).toBe("+346"); // electricity +288, heating +7, steam +50
     expect(formatSignedTonnes(market.rows[0].difference ?? 0)).toBe("+288");
     expect(formatTonnes(biogenic.totals.reported)).toBe("140");
     const gas = verificationLines.find((l) => l.id === "s1-stationary-natural-gas")!;
@@ -198,7 +198,7 @@ describe("the Verification results page", () => {
       screen.getAllByRole("button", { name }).find((b) => b.hasAttribute("aria-expanded")) as HTMLElement;
     const location = boxHead(/Scope 2, location-based/);
     expect(location.getAttribute("aria-expanded")).toBe("false");
-    expect(location.textContent).toContain("+0.1% material");
+    expect(location.textContent).toContain("+0.8% material");
     expect(screen.queryByRole("button", { name: "Steam" })).toBeNull();
     fireEvent.click(location);
     expect(location.getAttribute("aria-expanded")).toBe("true");

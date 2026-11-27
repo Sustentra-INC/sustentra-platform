@@ -325,7 +325,7 @@ export interface CalcLineCompany {
   results: CalcLineResults;
 }
 
-export type CalcCountsToward = "stationary" | "mobile" | "purchased_energy" | "fugitive";
+export type CalcCountsToward = "stationary" | "mobile" | "purchased_energy" | "fugitive" | "steam";
 
 /** One calculation line: a facility's (or vehicle group's) fuel, substance or energy. */
 export interface CalculationLine {
@@ -362,6 +362,21 @@ export interface CalculationLine {
    * keyed by the refrigerant ("R-404A"), not by CO₂, CH₄ and N₂O; `gwp` is null when nothing counts yet.
    */
   smb?: CalcLineSmb;
+  /** A steam line only (backend calc_trace/steam.py): its MMBtu, net enthalpy and emission factor option. */
+  steam?: CalcLineSteam;
+}
+
+export interface CalcLineSteam {
+  facility: string;
+  mass_mlb: number;
+  energy_mmbtu: number;
+  mmbtu: number;
+  /** Btu/lb; null while steam billed by weight awaits its enthalpy. */
+  enthalpy: { value: number; source: string | null } | null;
+  option: "supplier_specific" | "chp_allocated" | "fuel_and_efficiency" | "epa_table7";
+  factors: Record<"CO2" | "CH4" | "N2O", number>;
+  gwp_set: string;
+  awaiting?: string;
 }
 
 export interface CalcLineSmb {

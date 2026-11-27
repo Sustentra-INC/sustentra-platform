@@ -107,6 +107,9 @@ class TraceInput:
     rows: list[InputRow] | None = None
     decidable: bool = True  # a reviewer can accept or edit the recomputed value for this line
     why_not: str | None = None  # why not, when it cannot
+    # A default the line uses where nothing is stated yet, shown as such until a reviewer decides the input:
+    # "Default: <value> (<source>) · not confirmed"
+    assumption: str | None = None
 
 
 @dataclass
@@ -119,6 +122,9 @@ class ChoiceOption:
     detection: str | None = None  # Tag
     required_inputs: list[str] = field(default_factory=list)
     citation: SourceRef | None = None
+    # steam and heat emission factor options: "physical" (counts in location- and market-based) or "contractual" (a
+    # certificate or green tariff: market-based only)
+    basis: str | None = None
 
 
 @dataclass
@@ -176,7 +182,7 @@ class TraceBlock:
     recomputed: Operation | None = None
     tag: str | None = None  # Tag
     choice_id: str | None = None
-    # a default the working uses that no reviewer has confirmed: "Default: 10% (EPA Table 1, …) · not confirmed"
+    # a default the working uses that has no input of its own (a default an input holds is TraceInput.assumption)
     assumption: str | None = None
     # something a reviewer should check about this block's input: "Capacities differ between records (…)"
     warning: str | None = None

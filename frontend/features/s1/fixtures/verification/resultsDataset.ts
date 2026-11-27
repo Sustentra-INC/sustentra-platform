@@ -23,6 +23,7 @@ import {
   type Gwps,
 } from "../../utils/calculationChains";
 import { examinationKey, formatTonnes } from "../../utils/verificationTable";
+import { STEAM_MLB_BY_MONTH } from "../extraction/demoQuantities";
 
 /**
  * Demo: Cascade Provisions' 2025 inventory against its evidence. Every figure on the
@@ -626,13 +627,43 @@ function thermal(
   return result(fac, chain, cause);
 }
 
-const STEAM_DOC = { issuer: "Kent District Energy", account: "KDE-2210", filePrefix: "kent_steam" };
+/** Kent Cannery's steam by weight on a direct line from the neighbouring CHP plant (boards 06 to 08): the same twelve
+ * statements the Evidence page lists (kent_chp_steam_*). The client counts 1,000 Btu/lb; the recalculation the 1,048
+ * Btu/lb entered for the facility (150 psig saturated, condensate returned at 180 °F). */
+const CHP_STEAM_DOC = { issuer: "Neighbouring CHP plant", account: "CHP-KENT-01", filePrefix: "kent_chp_steam" };
+const CHP_STEAM_ENTHALPY = { reported: 1_000, recomputed: 1_048 };
+
+function chpSteam(sheetCategory: string, fac: Fac): FacilityResult {
+  const mlb = STEAM_MLB_BY_MONTH.reduce((a, b) => a + b, 0);
+  const docs = monthlyDocs({ ...CHP_STEAM_DOC, fac, label: "Steam delivered", unit: "Mlb" }, STEAM_MLB_BY_MONTH);
+  const enthalpy = (btu: number) => `${(btu / 1000).toFixed(3)} MMBtu per Mlb (${btu.toLocaleString("en-US")} Btu/lb)`;
+  const chain = withWorkbookRow(SCOPE2_SHEET, fac, sheetCategory, "Steam", { value: mlb, unit: "Mlb" },
+    `${CHP_STEAM_ENTHALPY.reported.toLocaleString("en-US")} Btu/lb`, (cell) =>
+    fuelByEnergy({
+      consumption: {
+        reported: { value: mlb, unit: "Mlb", source: cell.quantity },
+        recomputed: { value: mlb, unit: "Mlb", source: records(`${fac.name} · CHP steam statements, 2025`, "Mlb", docs) },
+      },
+      how: "Sum of monthly steam statements",
+      heatContent: {
+        reported: { value: CHP_STEAM_ENTHALPY.reported / 1000, unit: enthalpy(CHP_STEAM_ENTHALPY.reported), source: cell.second },
+        recomputed: {
+          value: CHP_STEAM_ENTHALPY.recomputed / 1000, unit: enthalpy(CHP_STEAM_ENTHALPY.recomputed),
+          source: { kind: "basis", title: "Net steam enthalpy", text: "Heat content entered for Kent Cannery under Recalculation inputs: 1,048 Btu/lb (150 psig saturated, condensate returned at 180 °F)." },
+        },
+      },
+      ...STEAM_HEAT,
+      gwp: GWP,
+    })
+  );
+  return result(fac, chain, `Steam delivered matches (${formatQuantity(mlb)} Mlb). The client counts ${CHP_STEAM_ENTHALPY.reported.toLocaleString("en-US")} Btu/lb; the net enthalpy entered for the facility is ${CHP_STEAM_ENTHALPY.recomputed.toLocaleString("en-US")} Btu/lb. Factors match (EPA Table 7).`);
+}
 const HEAT_DOC = { issuer: "Tualatin District Heat", account: "TDH-0912", filePrefix: "tualatin_district_heat" };
 const HEATING_CLIENT_CO2 = 61.2;
 
 const scope2: ResultLine[] = [
   { id: "s2l-electricity", box: "scope2_location", activity: "Electricity", facilities: [electricityLocation(FAC.tualatin), electricityLocation(FAC.kent), electricityLocation(FAC.modesto)] },
-  { id: "s2l-steam", box: "scope2_location", activity: "Steam", facilities: [thermal("Scope 2 location-based", "Steam", FAC.kent, 3_163, STEAM_DOC)] },
+  { id: "s2l-steam", box: "scope2_location", activity: "Steam", facilities: [chpSteam("Scope 2 location-based", FAC.kent)] },
   { id: "s2l-heating", box: "scope2_location", activity: "Heating", facilities: [thermal("Scope 2 location-based", "Heating", FAC.tualatin, 1_385, HEAT_DOC, HEATING_CLIENT_CO2)] },
   {
     id: "s2m-electricity",
@@ -648,7 +679,7 @@ const scope2: ResultLine[] = [
       electricityMarket(FAC.modesto, { reported: 0, recomputed: 0 }, AGREE),
     ],
   },
-  { id: "s2m-steam", box: "scope2_market", activity: "Steam", facilities: [thermal("Scope 2 market-based", "Steam", FAC.kent, 3_163, STEAM_DOC)] },
+  { id: "s2m-steam", box: "scope2_market", activity: "Steam", facilities: [chpSteam("Scope 2 market-based", FAC.kent)] },
   { id: "s2m-heating", box: "scope2_market", activity: "Heating", facilities: [thermal("Scope 2 market-based", "Heating", FAC.tualatin, 1_385, HEAT_DOC, HEATING_CLIENT_CO2)] },
 ];
 
@@ -684,6 +715,23 @@ const biogenic: ResultLine[] = [
 
 /** The demo's inventory lines, every box; Process emissions and Cooling are not reported. */
 export const verificationLines: ResultLine[] = [...stationary, ...mobile, ...fugitive, ...scope2, ...biogenic];
+
+/** The client's reported total of a box (and one activity of it), as its workbook rows sum: the one figure every demo
+ *  screen shows for it (the workbook document, its extracted values, the recalculation's reported side). */
+export function reportedTotal(box: ResultLine["box"], activity?: string): number {
+  return verificationLines
+    .filter((l) => l.box === box && (activity === undefined || l.activity === activity))
+    .reduce((sum, l) => sum + (l.facilities ?? []).reduce((a, f) => a + (f.reported ?? 0), 0), 0);
+}
+
+/** The workbook's Scope 2 location-based rows: [facility, category, activity, quantity, unit, second input, tCO₂e]. */
+export function scope2LocationWorkbookRows(): string[][] {
+  return SCOPE2_SHEET.rows.filter((r) => r[1] === "Scope 2 location-based");
+}
+
+/** The workbook document's rows (the demo's Inventory sheet): Scope 2 starts at row 16, its rows follow, then the two
+ *  totals. The extracted values cite these cells. */
+export const WORKBOOK_SCOPE2_TOTAL_ROW = 17 + scope2LocationWorkbookRows().length;
 
 /** One examination already recorded, so the Examined column starts with something in it. */
 export const seedExaminations: Record<string, Examination> = {

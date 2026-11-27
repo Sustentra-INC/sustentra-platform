@@ -1,4 +1,5 @@
 import type { VerificationRow } from "../../types/verification";
+import { reportedTotal } from "./resultsDataset";
 
 /**
  * Verification results rows (fixture). Only the Scope 1 stationary-combustion
@@ -83,7 +84,7 @@ export const verificationRows: VerificationRow[] = [
     label: "Purchased electricity",
     layer: "scope2",
     scopeBasis: "location",
-    reportedValue: "9,880",
+    reportedValue: Math.round(reportedTotal("scope2_location", "Electricity")).toLocaleString("en-US"),
     unit: "tCO₂e",
     recomputed: null,
     recomputeReason: "recompute path not implemented for Scope 2",
@@ -97,7 +98,7 @@ export const verificationRows: VerificationRow[] = [
     label: "Purchased electricity",
     layer: "scope2",
     scopeBasis: "market",
-    reportedValue: "7,410",
+    reportedValue: Math.round(reportedTotal("scope2_market", "Electricity")).toLocaleString("en-US"),
     unit: "tCO₂e",
     recomputed: null,
     recomputeReason: "recompute path not implemented for Scope 2",

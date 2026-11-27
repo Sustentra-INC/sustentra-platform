@@ -273,12 +273,12 @@ def test_lines_and_rows_carry_the_calculation_family() -> None:
 def test_a_line_no_calculation_reads_has_no_family() -> None:
     from backend.app.services import calculation_lines as cl
 
-    steam = cl.make_line("purchased_energy", "steam", "Steam", "facility", "fac-kc01", "Kansas City Plant",
-                         created_by_user=True)
+    heating = cl.make_line("purchased_energy", "heating", "Heating", "facility", "fac-kc01", "Kansas City Plant",
+                           created_by_user=True)
     process = cl.make_line("process", "cement", "Cement", "facility", "fac-kc01", "Kansas City Plant",
                            created_by_user=True)
-    assert steam.family is None and process.family is None
-    assert steam.to_dict()["family"] is None
+    assert heating.family is None and process.family is None
+    assert heating.to_dict()["family"] is None
 
 
 def test_a_fugitive_line_and_a_refrigerant_record_feed_the_fugitive_calculation() -> None:

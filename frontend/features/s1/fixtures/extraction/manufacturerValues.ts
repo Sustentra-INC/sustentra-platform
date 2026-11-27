@@ -2,8 +2,8 @@ import type { ReviewValue, ScopePlacement, SourceKind, ValueRecordEntry } from "
 import type { SourceRef } from "../../types/verificationResults";
 import { claudeReadings } from "../ai/claudeReadings";
 import { manufacturerEvidence } from "../evidence/manufacturerEvidence";
-import { verificationLines } from "../verification/resultsDataset";
-import { PROPANE_BY_DOC, fleetQuarter } from "./demoQuantities";
+import { WORKBOOK_SCOPE2_TOTAL_ROW, reportedTotal, verificationLines } from "../verification/resultsDataset";
+import { PROPANE_BY_DOC, STEAM_MLB_BY_MONTH, fleetQuarter } from "./demoQuantities";
 import { applyReviewDecisions } from "./reviewDecisions";
 
 /**
@@ -284,8 +284,8 @@ values.push(
   rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "general", period: "FY2025", whatItIs: "Organizational boundary approach", scope: "general", value: "Operational control", unit: "", ...wbSpread("B3") }),
   rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "scope1", period: "FY2025", whatItIs: "Total Scope 1 (client calc)", scope: "scope1", value: "18,240", unit: "tCO₂e", ...wbSpread("D12") }),
   rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "scope1", period: "FY2025", whatItIs: "Stationary combustion subtotal", scope: "scope1", value: "12,110", unit: "tCO₂e", ...wbSpread("D14") }),
-  rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "scope2", period: "FY2025", whatItIs: "Total Scope 2, location-based (client calc)", scope: "scope2_location", value: "9,880", unit: "tCO₂e", ...wbSpread("D20") }),
-  rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "scope2", period: "FY2025", whatItIs: "Total Scope 2, market-based (client calc)", scope: "scope2_market", value: "7,410", unit: "tCO₂e", ...wbSpread("D21") })
+  rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "scope2", period: "FY2025", whatItIs: "Total Scope 2, location-based (client calc)", scope: "scope2_location", value: Math.round(reportedTotal("scope2_location")).toLocaleString("en-US"), unit: "tCO₂e", ...wbSpread(`D${WORKBOOK_SCOPE2_TOTAL_ROW}`) }),
+  rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "scope2", period: "FY2025", whatItIs: "Total Scope 2, market-based (client calc)", scope: "scope2_market", value: Math.round(reportedTotal("scope2_market")).toLocaleString("en-US"), unit: "tCO₂e", ...wbSpread(`D${WORKBOOK_SCOPE2_TOTAL_ROW + 1}`) })
 );
 
 // entity-level: boundary statement (text) and factor list.
@@ -379,6 +379,11 @@ for (const doc of manufacturerEvidence) {
     values.push(rv({ ...common, period, whatItIs: "Fuel delivered", scope: "scope1", value: gal, unit: "gal", snippet: `Propane delivered ${gal} gal` }));
     // The August invoice does not print the fuel type: the reviewer still has to fill it in.
     if (doc.filename === "modesto_propane_aug.pdf") values.push(rv({ ...common, period, whatItIs: "Fuel type", scope: "not_placed", value: "not found", unit: "", missing: true, requestPreselect: "missing_data", snippet: "Fuel type (not printed)" }));
+  }
+  if (doc.detectedType === "Purchased steam statement" && code) {
+    const month = Number((doc.periodStart ?? "2025-01").slice(5, 7));
+    const mlb = STEAM_MLB_BY_MONTH[month - 1].toLocaleString();
+    values.push(rv({ ...common, period: `${MONTH_LABEL[month - 1]} 2025`, whatItIs: "Steam consumed", scope: "scope2_location", value: mlb, unit: "Mlb", snippet: `Steam delivered ${mlb} Mlb` }));
   }
   // A December 2024 bill that is in the folder by mistake: the quantity it reads is still a reading.
   if (doc.documentId === "DOC-WRONGYEAR" && !own.length) {

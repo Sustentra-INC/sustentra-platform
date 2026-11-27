@@ -140,6 +140,9 @@ export interface TraceInput {
   decidable?: boolean;
   /** Why not, when `decidable` is false (e.g. "the GWP is chosen for the whole engagement on the Methodology page"). */
   why_not?: string | null;
+  /** A default the line uses where nothing is stated yet, until a reviewer decides the input:
+   *  "Default: <value> (<source>) · not confirmed". */
+  assumption?: string | null;
 }
 
 export interface TraceChoiceOption {
@@ -151,6 +154,9 @@ export interface TraceChoiceOption {
   detection?: TraceTag;
   required_inputs: string[];
   citation?: TraceSourceRef;
+  /** Steam and heat emission factor options: physical counts in location- and market-based; contractual (a
+   *  certificate, a green tariff) in market-based only. */
+  basis?: "physical" | "contractual" | null;
 }
 
 export interface TraceChoice {
@@ -205,7 +211,8 @@ export interface TraceBlock {
   tag?: TraceTag;
   /** The choice whose pills are shown above the block. */
   choice_id?: string;
-  /** A default the working uses that no reviewer has confirmed, shown as a muted tag: "Default: 10% (EPA Table 1, …) · not confirmed". */
+  /** A default the working uses that has no input of its own, shown as a muted tag. A default an input holds is the
+   *  input's `assumption` (the single source): the panel draws it on the blocks that read the input. */
   assumption?: string;
   /** Something a reviewer should check about this block's input, shown as a warning: "Capacities differ between records (…)". */
   warning?: string;

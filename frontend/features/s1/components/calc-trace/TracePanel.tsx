@@ -285,6 +285,16 @@ function RowsTable({ block, input, name, onOpenDocument }: { block: TraceBlock; 
   );
 }
 
+/** The inputs a block's recomputed working reads. */
+function readIds(block: TraceBlock): string[] {
+  return [...(block.recomputed?.terms ?? []).map((t) => t.operand), block.recomputed?.result].flatMap((o) => (o?.input_id ? [o.input_id] : []));
+}
+
+/** The first block, in step order, that reads an input. */
+function firstReader(trace: LineTrace, inputId: string): string | undefined {
+  return (trace.steps ?? []).flatMap((s) => s.blocks ?? []).find((b) => readIds(b).includes(inputId))?.id;
+}
+
 function BlockView({ block, step, trace, onOpenDocument }: { block: TraceBlock; step: TraceStep; trace: LineTrace; onOpenDocument?: OpenDocument }) {
   const name = `${step.title} · ${block.label}`;
   const inputs = trace.inputs ?? {};
@@ -294,13 +304,24 @@ function BlockView({ block, step, trace, onOpenDocument }: { block: TraceBlock; 
   const summed = sumId ? inputs[sumId] : undefined;
   const choice = block.choice_id ? (trace.choices ?? []).find((c) => c.id === block.choice_id) : undefined;
   const unused = block.tag === "not_used_for_this_line";
+  // Defaults no reviewer has confirmed: those of the inputs the block's working reads first in the trace (the input
+  // is the single source; its tag shows once, where the input enters), then one the block declares for a default that
+  // has no input.
+  const assumed = [...new Set([
+    ...readIds(block).filter((id) => firstReader(trace, id) === block.id).map((id) => inputs[id]?.assumption),
+    block.assumption,
+  ].filter((a): a is string => Boolean(a)))];
   return (
     <div className={`s1-cp-block${unused ? " is-unused" : ""}`}>
-      {step.blocks.length > 1 || block.tag || block.assumption || choice ? (
+      {step.blocks.length > 1 || block.tag || assumed.length || choice ? (
         <div className="s1-cp-block__head">
           <h6>{block.label}</h6>
           {block.tag && TAG_TEXT[block.tag] ? <span className="s1-cp-tag">{TAG_TEXT[block.tag]}</span> : null}
-          {block.assumption ? <span className="s1-cp-tag s1-cp-tag--assumed">{block.assumption}</span> : null}
+          {assumed.map((a) => (
+            <span key={a} className="s1-cp-tag s1-cp-tag--assumed">
+              {a}
+            </span>
+          ))}
           {block.warning ? (
             <span className="s1-cp-tag s1-cp-tag--warn" role="status">
               Check: {block.warning}

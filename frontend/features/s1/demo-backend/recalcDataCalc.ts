@@ -13,6 +13,7 @@ import type { RecalculationSettings } from "../types/engagement";
 import { demoGwpChoice } from "./methodology";
 import { companyRegionCode, demoCompanyRegion } from "./calcTrace/companyRegion";
 import { fugitiveLine } from "./calcTrace/fugitive";
+import { steamLine } from "./calcTrace/steam";
 import { DEFAULT_VEHICLE_GROUP, buildModel, engagementNow, recordsOn, shareInPeriod, type Model, type ModelLine, type ModelRecord } from "./linesModel";
 
 const HUB = "EPA GHG Emission Factors Hub 2025";
@@ -203,7 +204,7 @@ export interface Calculated {
 export type CalcLineBuild = LineBuild;
 
 const SOURCE_OF: Record<string, RollupSourceKey> = { stationary: "stationary_combustion", mobile: "mobile_combustion", fugitive: "fugitive_refrigerants", purchased_energy: "purchased_electricity" };
-export const CALCULABLE = ["gas", "electricity", "fleet", "propane", "refrigerant"];
+export const CALCULABLE = ["gas", "electricity", "fleet", "propane", "refrigerant", "steam"];
 
 export function regionOf(facilityName: string, address: string | undefined, inputs: Inputs): { region: string | null; source: string | null } {
   const chosen = inputs.gridRegions[facilityName];
@@ -241,6 +242,19 @@ export function calculate(): Calculated {
         gwp: gwpOf(inputs.gwp_set).r404a, set: inputs.gwp_set, share: (inputs.shares[ml.facility_id ?? ""] ?? 100) / 100,
         company: activity[ml.key] ?? null, tolerance: inputs.tolerance_pct, reported: inputs.settings.reported_lines?.[ml.key] ?? null,
         incomplete: awaiting.some((a) => a.category === "fugitive_refrigerants"),
+      });
+      lines.push({ line, model: ml, records: used.map((r) => ({ r, share: 1 })), facilityName: model.facilities.find((f) => f.facilityId === ml.facility_id)?.name ?? null });
+      continue;
+    }
+    if (ml.category === "purchased_energy" && ml.level2 === "steam") {
+      // Purchased steam: by weight × the facility's heat content, × EPA Table 7 (calcTrace/steam.ts).
+      const used = recordsOn(model, ml.key).filter((r) => r.kind === "steam" && r.accepted && r.quantity !== null);
+      if (!used.length) continue;
+      const g = gwpOf(inputs.gwp_set);
+      const line = steamLine(ml, used, {
+        gwp: { CO2: g.CO2, CH4: g.CH4, N2O: g.N2O }, gwpSource: (gas) => gwpSource(gas, inputs.gwp_set), set: inputs.gwp_set,
+        share: (inputs.shares[ml.facility_id ?? ""] ?? 100) / 100, reported: inputs.settings.reported_lines?.[ml.key] ?? null, tolerance: inputs.tolerance_pct,
+        incomplete: awaiting.some((a) => a.category === "purchased_steam"),
       });
       lines.push({ line, model: ml, records: used.map((r) => ({ r, share: 1 })), facilityName: model.facilities.find((f) => f.facilityId === ml.facility_id)?.name ?? null });
       continue;
@@ -302,7 +316,7 @@ export function calculate(): Calculated {
 }
 
 export function typeId(r: ModelRecord): string {
-  return { gas: "CT-S1-FUELQTY", propane: "CT-S1-FUELQTY", fleet: "CT-S1-MOBFUEL", electricity: "CT-S2-ELECBILL", refrigerant: "CT-S1-REFRIG", other: "CT-OTHER" }[r.kind];
+  return { gas: "CT-S1-FUELQTY", propane: "CT-S1-FUELQTY", fleet: "CT-S1-MOBFUEL", electricity: "CT-S2-ELECBILL", refrigerant: "CT-S1-REFRIG", steam: "CT-S2-THERMAL", other: "CT-OTHER" }[r.kind];
 }
 
 /* ------------------------------------ categories ------------------------------------ */
@@ -467,6 +481,25 @@ export function buildCategories(c: Calculated): Partial<Record<CategoryKey, Reca
     out.purchased_electricity_location_based = build(false, 0);
     out.purchased_electricity_market_based = build(true, c.inputs.certificates.length ? coverage : 0);
     if (!c.inputs.certificates.length) out.purchased_electricity_market_based.flags = ["no_certificates_market_equals_location"];
+  }
+  // Purchased steam: one category line per facility, the sum of its steam lines (location- and market-based alike).
+  const steam = by("steam");
+  if (steam.length) {
+    const facilities = [...new Set(steam.map((l) => l.facilityName ?? l.line.label))];
+    const recLines: RecalcLine[] = facilities.map((name) => {
+      const group = steam.filter((l) => (l.facilityName ?? l.line.label) === name);
+      const mmbtu = group.reduce((s, l) => s + l.line.step2.result.quantity, 0);
+      const mass_t = Object.fromEntries(GASES.map((gas) => [gas, group.reduce((s, l) => s + l.line.results.mass_t[gas], 0)])) as Record<CalcGas, number>;
+      return {
+        key: name, equations: { CO2: "Emissions = MMBtu x EF", CH4: "Emissions = MMBtu x EF", N2O: "Emissions = MMBtu x EF" }, mass_t, flags: [], biogenic_co2_t: 0,
+        steps: GASES.map((gas) => { const row = group[0].line.step3.gases.find((r) => r.gas === gas)!; return { label: `${gas} from ${name}`, formula: "MMBtu x EF", inputs: { "thermal energy": num(mmbtu, "MMBtu"), EF: num(row.ef.value, row.ef.unit, row.ef.source) }, result: mass_t[gas], result_unit: "t" }; }),
+      };
+    });
+    const details = { inputs: facilities.map((name) => { const group = steam.filter((l) => (l.facilityName ?? l.line.label) === name); return { fuel: name, unit: "MMBtu", quantity: group.reduce((s, l) => s + l.line.step2.result.quantity, 0), documents: group.flatMap((l) => docInputs(l.records, (n) => n, "klb")) }; }) };
+    for (const market of [false, true]) {
+      const category = market ? "purchased_steam_market_based" : "purchased_steam_location_based";
+      out[category] = { category, lines: recLines, ...totalsFor(recLines, set, "purchased steam", gwp), gwp, biogenic_co2_t: 0, flags: market ? ["no_supplier_factor_market_equals_location"] : [], details, gwp_set: set };
+    }
   }
   return out;
 }

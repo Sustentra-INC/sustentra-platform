@@ -40,7 +40,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.services import review_field
-from backend.app.services.calc_trace import fugitive
+from backend.app.services.calc_trace import fugitive, steam
 from backend.app.services.calc_trace._line import normalise_unit
 from backend.app.services.calc_trace.decisions import not_decidable
 from backend.app.services.request_service import Actor
@@ -386,7 +386,8 @@ def decide_input(record: Mapping[str, Any], item: Mapping[str, Any], row: Mappin
     operand = side == "recomputed"  # this side's value is worked into the line's numbers
 
     # a refrigerant balance term (P_N ... R_D, or one record of it) may be 0; every other operand is above 0
-    zero_ok = fugitive.zero_allowed(str(item.get("id") or ""))
+    # and steam at 0 psig (atmospheric pressure)
+    zero_ok = fugitive.zero_allowed(str(item.get("id") or "")) or steam.zero_allowed(str(item.get("id") or ""))
 
     def validate(given: Any) -> Any:
         value = _input_value(label, given, numeric)
