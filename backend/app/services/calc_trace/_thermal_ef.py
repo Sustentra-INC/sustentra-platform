@@ -47,6 +47,14 @@ TO_T = {"kg/MMBtu": 0.001, "g/MMBtu": 0.000001}  # the factor's mass to metric t
 INPUTS = (*(f"{PREFIX[o]}{gas}" for o in (SUPPLIER, CHP, FUEL) for gas in GASES), EFFICIENCY)
 DEFAULT_FUEL = "Natural Gas"
 CHP_FLAG = "chp_allocation_as_stated_by_supplier"
+# What the supplier-specific factor rests on (rulings for C9 review): a physical supply (a direct line or a district
+# system) counts in location- and market-based alike; a contractual instrument (a certificate, a green tariff) moves
+# market-based only, and location-based then uses the next option the evidence gives. CHP allocated, fuel and efficiency
+# and EPA Table 7 are physical.
+BASIS_CHOICE = "supplier_basis"
+PHYSICAL, CONTRACTUAL = "physical", "contractual"
+BASES = (PHYSICAL, CONTRACTUAL)
+MARKET_ONLY_FLAG = "supplier_factor_contractual_market_only"
 TABLE7_NOTE = ("EPA Table 7 is natural gas at 80% efficiency, rounded: 53.06 ÷ 0.80 = 66.325 kg CO₂ per MMBtu, "
                "printed as 66.33.")
 EFFICIENCY_RANGE = (0.0, 100.0)  # % (above 0, at most 100)
@@ -76,6 +84,26 @@ def detected(values: Mapping[str, float]) -> list[str]:
 
 def default_option(values: Mapping[str, float]) -> str:
     return detected(values)[0]
+
+
+def location_option(values: Mapping[str, float], chosen: str, basis: str) -> str:
+    """The option location-based uses: the chosen one, unless it is a supplier factor resting on a contractual
+    instrument (market-based only); then the next option the evidence gives (EPA Table 7 at the latest)."""
+
+    if chosen == SUPPLIER and basis == CONTRACTUAL:
+        return next(o for o in detected(values) if o != SUPPLIER)
+    return chosen
+
+
+def basis_of(option: str, basis: str) -> str | None:
+    return basis if option == SUPPLIER else (PHYSICAL if option in (CHP, FUEL) else None)
+
+
+def basis_choice(basis: str, chosen_by: str) -> Choice:
+    return Choice(BASIS_CHOICE, "Supplier factor rests on", [
+        ChoiceOption(PHYSICAL, "A physical supply (direct line or district system)", basis=PHYSICAL),
+        ChoiceOption(CONTRACTUAL, "A contractual instrument (certificate, green tariff): market-based only",
+                     basis=CONTRACTUAL)], chosen=basis, chosen_by=chosen_by)
 
 
 def fuel_factors(ref: EmissionFactorReference) -> dict[str, tuple[float, SourceRef | None]]:
@@ -160,7 +188,8 @@ def inputs(chosen: str, values: Mapping[str, float], sides: Mapping[str, Side], 
     return out
 
 
-def choice(chosen: str, chosen_by: str, values: Mapping[str, float], company_option: str | None) -> Choice:
+def choice(chosen: str, chosen_by: str, values: Mapping[str, float], company_option: str | None,
+           basis: str = PHYSICAL) -> Choice:
     """Every option can be chosen (each has a route); ``detection`` says which the evidence gives."""
 
     found = set(detected(values))
@@ -170,6 +199,7 @@ def choice(chosen: str, chosen_by: str, values: Mapping[str, float], company_opt
             [EFFICIENCY] if option == FUEL else [])
         options.append(ChoiceOption(
             option, LABEL[option], equation="Emissions = MMBtu × EF", required_inputs=needs,
+            basis=basis_of(option, basis),
             detection=None if option == TABLE7 else (
                 "detected_from_evidence" if option in found else "not_used_for_this_line")))
     return Choice(CHOICE_ID, "Emission factor", options, chosen=chosen, chosen_by=chosen_by, company=company_option)
@@ -187,7 +217,7 @@ def _g(value: float) -> str:
 
 
 def blocks(chosen: str, values: Mapping[str, float], sides: Mapping[str, Side], ref: EmissionFactorReference,
-           company: Mapping[str, float], their_option: str | None) -> list[TraceBlock]:
+           company: Mapping[str, float], their_option: str | None, used: str | None = None) -> list[TraceBlock]:
     """Step 3: each option's factors per gas. The option used is tagged "Detected from the evidence" (EPA Table 7,
     which needs nothing from the evidence, carries no tag when used); every other "Not used for this line"."""
 
@@ -196,7 +226,8 @@ def blocks(chosen: str, values: Mapping[str, float], sides: Mapping[str, Side], 
     for option in OPTIONS:
         mine = factors(option, values, sides, ref)
         theirs = factors(option, company, {}, ref) if their_option == option else None
-        tag = ("not_used_for_this_line" if option != chosen else
+        # the chosen option, and the one location-based uses when the chosen one is market-based only
+        tag = ("not_used_for_this_line" if option not in (chosen, used or chosen) else
                None if option == TABLE7 else "detected_from_evidence")
         for gas in GASES:
             unit = UNIT[gas]

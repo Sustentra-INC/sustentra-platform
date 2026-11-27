@@ -225,6 +225,8 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
         number = _number(decision.get("value"))
         if number is None and panel == "fugitive" and fugitive.zero_allowed(target_id) and _is_zero(decision.get("value")):
             number = 0.0  # a balance term may be 0 (no new equipment, nothing recovered); never below
+        if number is None and panel == "steam" and steam.zero_allowed(target_id) and _is_zero(decision.get("value")):
+            number = 0.0  # steam at 0 psig (atmospheric pressure, 212 °F); never below
         if number is None:
             outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="invalid_value",
                                               message="Not applied: the value is not a number above 0."))
@@ -408,6 +410,7 @@ def _thermal(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any],
 
     line = (context or {}).get("line")
     pick: tuple[str, Mapping[str, Any]] | None = None
+    basis: tuple[str, Mapping[str, Any]] | None = None
     for choice_id, decision in chosen:
         choice = next((c for c in trace.choices if c.id == choice_id), None)
         status = str(decision.get("status"))
@@ -424,6 +427,8 @@ def _thermal(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any],
                                               message="Not applied: that option is not available for this line."))
         elif choice_id == _thermal_ef.CHOICE_ID:
             pick = (str(decision["value"]), decision)
+        elif choice_id == _thermal_ef.BASIS_CHOICE:
+            basis = (str(decision["value"]), decision)
         else:  # the method: one option, the line's own
             choice.chosen_by = "reviewer"
             outcome.applied.append(_entry("choice", choice_id, None, status=status, value=decision.get("value")))
@@ -443,15 +448,16 @@ def _thermal(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any],
             if item["id"] == input_id:
                 item["uses"] = why
     worked: dict[str, Any] | None = None
-    if (values or pick is not None) and line is not None and trace.steps:
+    if (values or pick is not None or basis is not None) and line is not None and trace.steps:
         decided: dict[str, tuple[float, Side]] = {}
         for input_id, (number, decision, record) in values.items():
             found = _find(trace, input_id)
             decided[input_id] = (number, _decided_side(found.recomputed if found is not None else None, number,
                                                        decision, record))
-        worked = steam.rework(trace, (line, context or {}), decided, pick[0] if pick is not None else None)
+        worked = steam.rework(trace, (line, context or {}), decided, pick[0] if pick is not None else None,
+                              basis[0] if basis is not None else None)
         mark_decidable(trace)
-    elif values or pick is not None:
+    elif values or pick is not None or basis is not None:
         for input_id in list(values):
             _move_to_not_applied(outcome, input_id, "could_not_apply", "Not applied: the decision could not be worked in.")
         if pick is not None:
@@ -459,9 +465,12 @@ def _thermal(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any],
                                               reason="could_not_apply",
                                               message="Not applied: the decision could not be worked in."))
             pick = None
-    if pick is not None:
-        option, decision = pick
-        outcome.applied.append(_entry("choice", _thermal_ef.CHOICE_ID, None, status=str(decision.get("status")),
+        basis = None
+    for choice_id, picked in ((_thermal_ef.CHOICE_ID, pick), (_thermal_ef.BASIS_CHOICE, basis)):
+        if picked is None:
+            continue
+        option, decision = picked
+        outcome.applied.append(_entry("choice", choice_id, None, status=str(decision.get("status")),
                                       value=option, moves_totals=True, decided_by=_by(decision),
                                       decided_at=str(decision.get("at") or ""),
                                       reason_given=str(decision.get("reason") or "")))
@@ -474,12 +483,14 @@ def _thermal(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any],
     if worked is None:
         waiting = "; ".join(b.message.split(".")[0] for b in trace.blocking) or "an input"
         for item in outcome.applied:
-            if (item["id"] in values or item["id"] == _thermal_ef.CHOICE_ID) and item.get("status") in DECIDED \
+            if (item["id"] in values or item["id"] in (_thermal_ef.CHOICE_ID, _thermal_ef.BASIS_CHOICE)) \
+                    and item.get("status") in DECIDED \
                     and "uses" not in item:
                 item["uses"] = f"held: the line awaits {waiting}, so it counts as calculated"
         return trace, outcome, None
     trace.flags = sorted({*trace.flags, APPLIED_FLAG})
-    rows: dict[str, dict[str, Any]] = {**worked["rows"], "steam": worked["summary"]}
+    rows: dict[str, dict[str, Any]] = {**worked["rows"], "steam": {**worked["summary"],
+                                                                     "market": worked["market"]}}
     return trace, outcome, Figures(
         mass_t=dict(worked["mass_t"]), gas_co2e_t=dict(worked["gas_co2e_t"]), sum_co2e_t=float(worked["sum"]),
         total_co2e_t=float(worked["total"]), biogenic_co2_t=0.0, activity=float(worked["mmbtu"]),

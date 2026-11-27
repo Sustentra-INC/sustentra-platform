@@ -154,6 +154,9 @@ export interface TraceChoiceOption {
   detection?: TraceTag;
   required_inputs: string[];
   citation?: TraceSourceRef;
+  /** Steam and heat emission factor options: physical counts in location- and market-based; contractual (a
+   *  certificate, a green tariff) in market-based only. */
+  basis?: "physical" | "contractual" | null;
 }
 
 export interface TraceChoice {

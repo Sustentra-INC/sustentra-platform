@@ -427,12 +427,29 @@ def _apply_fugitive(categories: dict[str, calc.CategoryResult | None], mine: lis
 # --- purchased steam (C9) ---------------------------------------------------------------------------------------------
 STEAM_LOCATION, STEAM_MARKET = "purchased_steam_location_based", "purchased_steam_market_based"
 STEAM_MARKET_FLAG = "no_supplier_factor_market_equals_location"
+STEAM_SUPPLIER_FLAG = "supplier_factor_decided_on_lines"
+SUPPLIER_OPTIONS = ("supplier_specific", "chp_allocated")
+
+
+def _facility_line(lines: list[calc.LineResult], facility: str) -> calc.LineResult | None:
+    """The category line of ``facility`` (added at 0 when the category did not count it); None when it has two."""
+
+    found = [line for line in lines if line.key == facility]
+    if len(found) > 1:
+        return None
+    if not found:  # steam by weight the category could not count: from the line's decided enthalpy
+        found = [calc.LineResult(facility, {gas: "Emissions = MMBtu x EF" for gas in calc.GASES},
+                                 dict.fromkeys(calc.GASES, 0.0), steps=[])]
+        lines.append(found[0])
+    return found[0]
 
 
 def _apply_steam(categories: dict[str, calc.CategoryResult | None], mine: list[DecidedLine],
                  every: list[dict[str, Any]], ref: EmissionFactorReference, tolerance: float) -> list[DecidedLine]:
-    """Location- and market-based purchased steam moved by their lines' decisions: each facility's category line takes
-    its decided lines' change of mass, gas by gas; a facility the category did not count is added from its lines."""
+    """Location- and market-based purchased steam moved by their lines' decisions, facility by facility and gas by gas;
+    a facility the category did not count is added from its lines. A physical supplier or CHP factor moves both; a
+    supplier factor resting on a contractual instrument moves market-based only (location-based takes the line's
+    location working). Once a line counts a supplier or CHP factor, market-based no longer says it has none."""
 
     location = categories.get(STEAM_LOCATION)
     if not adds_up(line_sums(every, "steam"), location):
@@ -441,29 +458,35 @@ def _apply_steam(categories: dict[str, calc.CategoryResult | None], mine: list[D
                     "total, so a change on one line cannot be counted. Check the lines marked as not calculated.")
         return []
     gwp_set = location.gwp_set if location is not None else str(mine[0].line["steam"]["gwp_set"])
-    empty = calc.purchased_thermal(STEAM_LOCATION, [], ref, gwp_set=gwp_set)
-    base = location if location is not None else empty
+    base = location if location is not None else calc.purchased_thermal(STEAM_LOCATION, [], ref, gwp_set=gwp_set)
+    market = categories.get(STEAM_MARKET)
+    market_base = market if market is not None else calc.purchased_thermal(
+        STEAM_MARKET, [], ref, gwp_set=gwp_set, flags=[STEAM_MARKET_FLAG])
     new_lines = [copy.deepcopy(line) for line in base.lines]
+    market_lines = [copy.deepcopy(line) for line in market_base.lines]
     usable: list[DecidedLine] = []
+    supplier = False
     for item in mine:
-        found = [line for line in new_lines if line.key == item.sub[0]]
-        if len(found) > 1:
+        here, there = _facility_line(new_lines, item.sub[0]), _facility_line(market_lines, item.sub[0])
+        if here is None or there is None:
             _refuse(item, "no_category_line", "Not applied: the category has no single entry for this line's facility.")
             continue
-        if not found:  # steam by weight the category could not count: from the line's decided enthalpy
-            found = [calc.LineResult(item.sub[0], {gas: "Emissions = MMBtu x EF" for gas in calc.GASES},
-                                     dict.fromkeys(calc.GASES, 0.0), steps=[])]
-            new_lines.append(found[0])
-        _shift(found[0], item)
+        summary = item.figures.rows.get("steam") or {}
+        _shift(here, item)
+        contractual = summary.get("market")
+        if contractual:  # market-based only: the supplier's contractual factor
+            _shift(there, replace(item, figures=replace(item.figures, mass_t=dict(contractual["mass_t"]))))
+        else:
+            _shift(there, item)
+        supplier = supplier or summary.get("option") in SUPPLIER_OPTIONS
         usable.append(item)
     if not usable:
         return []
     categories[STEAM_LOCATION] = _retotal_steam(base, new_lines, ref, location is None)
-    market = categories.get(STEAM_MARKET)
-    market_base = market if market is not None else calc.purchased_thermal(
-        STEAM_MARKET, [], ref, gwp_set=gwp_set, flags=[STEAM_MARKET_FLAG])
-    categories[STEAM_MARKET] = _retotal_steam(market_base, [copy.deepcopy(line) for line in new_lines], ref,
-                                              market is None)
+    moved = _retotal_steam(market_base, market_lines, ref, market is None)
+    if supplier:  # a flag never contradicts the figure
+        moved.flags = sorted((set(moved.flags) - {STEAM_MARKET_FLAG}) | {STEAM_SUPPLIER_FLAG})
+    categories[STEAM_MARKET] = moved
     for item in usable:
         item.write(tolerance)
     return usable

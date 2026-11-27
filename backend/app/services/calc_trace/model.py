@@ -122,6 +122,9 @@ class ChoiceOption:
     detection: str | None = None  # Tag
     required_inputs: list[str] = field(default_factory=list)
     citation: SourceRef | None = None
+    # steam and heat emission factor options: "physical" (counts in location- and market-based) or "contractual" (a
+    # certificate or green tariff: market-based only)
+    basis: str | None = None
 
 
 @dataclass

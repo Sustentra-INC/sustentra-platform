@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+from datetime import datetime
 from typing import Any
 
 import jsonschema
@@ -22,6 +23,7 @@ from backend.app.services.calc_trace import decisions, steam
 from backend.app.services.calculation_lines import make_line
 from backend.app.services.engagement_recalculation_service import EngagementRecalculationService
 from backend.app.services.request_service import Actor
+from backend.app.services.review_field import ReviewInvalid
 from backend.tests.services.calc_trace.fixture_replay import FIXTURES
 from backend.tests.services.calc_trace.test_calc_trace_decisions import block, event, line_of
 from backend.tests.services.calc_trace.test_calc_trace_fugitive import SCHEMA
@@ -98,8 +100,9 @@ def test_mass_times_net_enthalpy_is_the_plans_16558_4_mmbtu_against_the_companys
     assert mass["recomputed"]["result"]["difference"] == pytest.approx(758.4, rel=1e-9)
     assert mass["recomputed"]["terms"][1]["operand"]["difference"] == pytest.approx(48)
     assert mass["tag"] == "detected_from_evidence"
-    assert block(trace, "energy")["tag"] == block(trace, "cost_only")["tag"] == "not_used_for_this_line"
-    assert block(trace, "cost_only")["recomputed"]["result"]["value"] == "Request quantities"
+    assert block(trace, "energy")["tag"] == "not_used_for_this_line"
+    # no extractor reads a steam bill's cost yet: no cost-only block is drawn as if it could be acted on
+    assert not any(b["id"] == "cost_only" for s in trace["steps"] for b in s["blocks"])
     assert trace["inputs"]["net_enthalpy"]["recomputed"]["value"] == 1048
     assert trace["inputs"]["net_enthalpy"]["company"]["value"] == 1000
     jsonschema.validate(trace, SCHEMA)
@@ -417,3 +420,72 @@ def test_the_decision_rules_know_the_steam_inputs() -> None:
         assert decisions.not_decidable(input_id) is None, input_id
     assert decisions.not_decidable("steam_table.h_g") is not None
     assert math.isclose(calc.KG_PER_METRIC_TON, 1000)
+
+
+# --- review: the supplier factor's basis, the market-based flag, 0 psig -----------------------------------------------
+SUPPLIER = {"CO2": 60.0, "CH4": 1.0, "N2O": 0.1}
+
+
+def supplier_events() -> list[dict]:
+    return [edited(f"supplier_ef.{gas}", value, ef.UNIT[gas]) for gas, value in SUPPLIER.items()]
+
+
+def co2e_per_mmbtu(factors: dict[str, float]) -> float:
+    return factors["CO2"] / 1000 + factors["CH4"] / 1e6 * 28 + factors["N2O"] / 1e6 * 265
+
+
+def test_a_physical_supplier_factor_counts_in_location_and_market_based_and_clears_the_no_supplier_flag() -> None:
+    plain = run(kent_store(), **HEAT)
+    assert "no_supplier_factor_market_equals_location" in category(plain, "market")["flags"]
+    response = run(kent_store(), [enthalpy_1048(), *supplier_events()], **HEAT)
+    trace = line_of(response, KEY)["trace"]
+    option = next(o for c in trace["choices"] if c["id"] == ef.CHOICE_ID for o in c["options"] if o["id"] == ef.SUPPLIER)
+    assert option["basis"] == ef.PHYSICAL
+    expected = 16558.4 * co2e_per_mmbtu(SUPPLIER)
+    assert category(response)["total_co2e"] == pytest.approx(expected, rel=1e-12)
+    assert category(response, "market")["total_co2e"] == pytest.approx(expected, rel=1e-12)
+    market_flags = category(response, "market")["flags"]
+    assert "no_supplier_factor_market_equals_location" not in market_flags
+    assert "supplier_factor_decided_on_lines" in market_flags
+    jsonschema.validate(trace, SCHEMA)
+
+
+def test_a_contractual_supplier_factor_moves_market_based_only() -> None:
+    contractual = event(KEY, f"choice|{ef.BASIS_CHOICE}|", "edited", ef.CONTRACTUAL)
+    response = run(kent_store(), [enthalpy_1048(), *supplier_events(), contractual], **HEAT)
+    line = line_of(response, KEY)
+    trace = line["trace"]
+    table7 = 16558.4 * co2e_per_mmbtu({"CO2": 66.33, "CH4": 1.25, "N2O": 0.125})
+    supplier = 16558.4 * co2e_per_mmbtu(SUPPLIER)
+    # location-based: the next option the evidence gives (EPA Table 7); market-based: the supplier's factor
+    assert block(trace, "emissions.CO2")["recomputed"]["terms"][1]["operand"]["value"] == 66.33
+    assert trace["result"]["recomputed"] == pytest.approx(table7, rel=1e-12)
+    assert block(trace, "results.market")["recomputed"]["result"]["value"] == pytest.approx(supplier, rel=1e-12)
+    assert category(response)["total_co2e"] == pytest.approx(table7, rel=1e-12)
+    assert category(response, "market")["total_co2e"] == pytest.approx(supplier, rel=1e-12)
+    assert ef.MARKET_ONLY_FLAG in trace["flags"]
+    assert "market-based only" in next(s for s in trace["steps"] if s["n"] == 3)["note"]
+    tags = {b["id"]: b.get("tag") for s in trace["steps"] for b in s["blocks"] if b["id"].endswith(".CO2")
+            and b["id"].startswith("ef.")}
+    assert tags["ef.supplier_specific.CO2"] == "detected_from_evidence" and tags["ef.epa_table7.CO2"] is None
+    assert "supplier_factor_decided_on_lines" in category(response, "market")["flags"]
+    assert line["steam"]["market_total_co2e_t"] == pytest.approx(supplier, rel=1e-12)
+    jsonschema.validate(trace, SCHEMA)
+
+
+def test_steam_at_0_psig_can_be_decided_and_a_negative_or_nan_pressure_cannot() -> None:
+    line = line_of(run(kent_store(), [edited(steam.PRESSURE, 0, "psig")], **HEAT), KEY)
+    assert line["trace"]["inputs"]["net_enthalpy"]["recomputed"]["value"] == pytest.approx(1150.27, abs=1e-9)
+    assert not line["decisions"]["not_applied"]
+    for bad in (-5, float("nan")):
+        line = line_of(run(kent_store(), [edited(steam.PRESSURE, bad, "psig")], **HEAT), KEY)
+        assert any(e["id"] == steam.PRESSURE for e in line["decisions"]["not_applied"])
+    trace = line_of(run(kent_store(), **HEAT), KEY)["trace"]
+    actor = Actor(user_id="u1", name="Rev", login="r@example.com")
+    now = datetime(2026, 11, 27)
+    made = decide_input({}, trace["inputs"][steam.PRESSURE], None, "recomputed", "edit", value=0, unit="psig",
+                        reason="Supplier statement", actor=actor, now=now)
+    assert made["decision"]["value"] == 0
+    with pytest.raises(ReviewInvalid):
+        decide_input({}, trace["inputs"][steam.NET_ENTHALPY], None, "recomputed", "edit", value=0, unit="Btu/lb",
+                     reason="r", actor=actor, now=now)

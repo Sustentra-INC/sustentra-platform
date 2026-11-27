@@ -45,7 +45,7 @@ describe("purchased steam: mass × net enthalpy and four emission factor options
     expect(t.result.recomputed).toBeCloseTo(1099.446713, 6);
     expect(t.result.recomputed).toBeCloseTo(line.results.total_co2e_t, 9);
     expect(block(t, "ef.chp_allocated.CO2").tag).toBe("not_used_for_this_line");
-    expect(block(t, "cost_only").recomputed!.result.value).toBe("Request quantities");
+    expect(t.steps.flatMap((s) => s.blocks).some((b) => b.id === "cost_only")).toBe(false);
     expect(t.steps.find((s) => s.n === 3)!.note).toContain("53.06 ÷ 0.80 = 66.325");
   });
 

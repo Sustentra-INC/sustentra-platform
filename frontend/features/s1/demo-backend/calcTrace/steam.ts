@@ -60,7 +60,6 @@ function withDifference(mine: TraceOperation, theirs: TraceOperation | undefined
   return { terms, result: { ...mine.result, difference: mine.result.value - theirs.result.value } };
 }
 const unused = (columns: TraceColumn[]): TraceOperation => ({ terms: columns.slice(0, -1).map((c, i) => ({ op: i ? "×" : null, operand: operand(c.key, "—") })), result: operand(columns[columns.length - 1].key, "—") });
-const costOnly = (): TraceOperation => ({ terms: [{ op: null, operand: operand("billed", "—") }], result: operand("mmbtu", "Request quantities") });
 
 /** One demo steam line: its monthly statements by weight × the facility's heat content, × EPA Table 7. */
 export function steamLine(ml: ModelLine, used: ModelRecord[], opts: { gwp: Record<CalcGas, number>; gwpSource: (gas: CalcGas) => string; set: string; share: number; reported: number | null; tolerance: number; incomplete: boolean }): CalculationLine {
@@ -151,7 +150,6 @@ export function steamTrace(line: CalculationLine): LineTrace | null {
   const step2: TraceBlock[] = [
     { id: "energy", label: "Energy", columns: eCols, recomputed: unused(eCols), tag: "not_used_for_this_line" },
     { id: "mass", label: "Mass", columns: mCols, recomputed: withDifference(mine, theirs), ...(theirs ? { company: theirs } : {}), tag: "detected_from_evidence" },
-    { id: "cost_only", label: "Cost only · not usable", columns: [col("billed", "Amount billed", "$"), col("mmbtu", "Steam energy", "MMBtu", true)], recomputed: costOnly(), company: costOnly(), tag: "not_used_for_this_line" },
     { id: "mmbtu", label: "Steam energy", columns: [col("mmbtu", "Steam energy", "MMBtu", true, { dp: 1 })], recomputed: withDifference(sumOp, theirSum), ...(theirSum ? { company: theirSum } : {}) },
   ];
 
@@ -224,8 +222,12 @@ export function steamTrace(line: CalculationLine): LineTrace | null {
       { id: "ef_option", label: "Emission factor", chosen: "epa_table7", chosen_by: "default", company: "epa_table7", options: OPTIONS.map((o) => ({
         id: o.id, label: o.label, equation: "Emissions = MMBtu × EF", available: true,
         required_inputs: o.id === "fuel_and_efficiency" ? ["efficiency"] : o.id === "epa_table7" ? [] : GASES.map((g) => `${o.prefix}${g}`),
-        ...(o.id === "epa_table7" ? {} : { detection: "not_used_for_this_line" as const }),
+        ...(o.id === "epa_table7" ? {} : { detection: "not_used_for_this_line" as const, basis: "physical" as const }),
       })) },
+      { id: "supplier_basis", label: "Supplier factor rests on", chosen: "physical", chosen_by: "default", options: [
+        { id: "physical", label: "A physical supply (direct line or district system)", available: true, required_inputs: [], basis: "physical" },
+        { id: "contractual", label: "A contractual instrument (certificate, green tariff): market-based only", available: true, required_inputs: [], basis: "contractual" },
+      ] },
     ],
     inputs, steps, method_mismatch: false, flags: [...line.flags],
     result: { unit: "t CO2e", company: theirValue, recomputed, difference: theirValue === null ? null : recomputed - theirValue },

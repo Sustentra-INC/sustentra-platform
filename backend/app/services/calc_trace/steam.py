@@ -6,7 +6,8 @@
     t CO2e   = t × GWP, summed, × the consolidated share
 
 Step 1 lists the reviewed bills (by weight, by energy), the net enthalpy and the steam conditions it comes from; Step 2
-converts to MMBtu (an "Energy" block, a "Mass" block and a "Cost only" block, each tagged whether the line uses it);
+converts to MMBtu (an "Energy" block and a "Mass" block, each tagged whether the line uses it; the boards' "Cost only"
+block waits for an extractor that reads a steam bill's cost: none does yet, so no line has a cost-only bill to show);
 Step 3 holds the four emission factor options; Step 4 the emissions by gas; then the results.
 
 The net enthalpy (rulings for C9), first found of:
@@ -59,6 +60,12 @@ ROUTE = "Location-based: steam energy (MMBtu) × emission factor, per gas, × GW
 HEAT_CONTENT_SOURCE = "Steam heat content entered under Recalculation inputs"
 DECIDED = ("accepted", "edited")
 KG_PER_T, G_PER_T = 1000.0, 1_000_000.0
+
+
+def zero_allowed(input_id: str) -> bool:
+    """The steam pressure may be decided as 0 psig (atmospheric); every other steam value is above 0."""
+
+    return input_id == PRESSURE
 
 
 def _per_t(unit: str) -> float:
@@ -331,18 +338,18 @@ def build(line: dict[str, Any], context: dict[str, Any] | None = None) -> LineTr
     if not line.get("key") or not isinstance(line.get("steam"), Mapping):
         return None
     try:
-        return _build(line, context or {}, {}, None)
+        return _build(line, context or {}, {}, None, None)
     except (ops.TraceError, KeyError, TypeError, ValueError, LookupError):
         return None
 
 
 def rework(trace: LineTrace, line_context: tuple[dict[str, Any], dict[str, Any]], decided: Decided,
-           pick: str | None) -> dict[str, Any] | None:
+           pick: str | None, basis: str | None = None) -> dict[str, Any] | None:
     """The trace built again with the decided values and the reviewer's option (``trace`` is changed in place), and the
     line's decided figures, or None when the line still cannot be worked (an input is awaited)."""
 
     line, context = line_context
-    again = _build(line, context, decided, pick)
+    again = _build(line, context, decided, pick, basis)
     for name in ("state", "blocking", "choices", "inputs", "steps", "result", "flags"):
         setattr(trace, name, getattr(again, name))
     if again.state == "blocked":
@@ -375,9 +382,16 @@ def rework(trace: LineTrace, line_context: tuple[dict[str, Any], dict[str, Any]]
     mass_block, energy_block = blocks.get(f"input.{MASS}"), blocks.get(f"input.{ENERGY}")
     out["activity_total"] = (_num(mass_block.recomputed) if unit == "Mlb" and mass_block is not None else
                              mmbtu if unit == "MMBtu" or energy_block is None else _num(energy_block.recomputed))
+    market = [b for b in blocks if b.startswith("market.emissions.")]
+    out["market"] = {
+        "mass_t": {gas: _num(blocks[f"market.emissions.{gas}"].recomputed) for gas in GASES},
+        "gas_co2e_t": {gas: _num(blocks[f"market.gwp.{gas}"].recomputed) for gas in GASES},
+        "total": _num(blocks["results.market"].recomputed)} if market else None
     out["summary"] = {
         "mmbtu": mmbtu, "mass_mlb": _num(blocks[f"input.{MASS}"].recomputed) if f"input.{MASS}" in blocks else 0.0,
         "option": chosen, "factors": {g: out["rows"][g]["ef"] for g in GASES},
+        "basis": next(c.chosen for c in again.choices if c.id == ef.BASIS_CHOICE),
+        "market_total_co2e_t": out["market"]["total"] if out["market"] else None,
         "enthalpy": {"value": enthalpy.value, "source": _cite(enthalpy)} if enthalpy is not None
         and isinstance(enthalpy.value, (int, float)) else None}
     return out
@@ -415,7 +429,8 @@ def _rows(line: dict[str, Any], kind: str, unit: str, decided: Decided, input_id
     return rows, values
 
 
-def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided, pick: str | None) -> LineTrace:
+def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided, pick: str | None,
+           basis: str | None) -> LineTrace:
     steam = line["steam"]
     ref: EmissionFactorReference = context["ref"]
     company_given: Mapping[str, float] = context.get("company") or {}
@@ -595,9 +610,6 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided, pick
             _annotate(mass_mine, mass_theirs)
     step2.append(TraceBlock("mass", "Mass", m_cols, recomputed=mass_mine, company=mass_theirs,
                             tag="detected_from_evidence" if has_mass else "not_used_for_this_line"))
-    step2.append(TraceBlock("cost_only", "Cost only · not usable", [
-        Column("billed", "Amount billed", "$"), Column("mmbtu", "Steam energy", "MMBtu", True)],
-        recomputed=_cost_only(), company=_cost_only(), tag="not_used_for_this_line"))
     worked: list[tuple[str, Operation]] = [(b, op) for b, op, used in (("energy", energy_mine, has_energy),
                                                                         ("mass", mass_mine, has_mass)) if used]
     if not worked:
@@ -629,11 +641,18 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided, pick
         their_option = None
     for k, item in ef.inputs(chosen, values, sides, ref, company_given).items():
         inputs[k] = item
-    step3 = ef.blocks(chosen, values, sides, ref, company_given, their_option if company is not None else None)
-    used = ef.factors(chosen, values, sides, ref)
+    on = basis if basis in ef.BASES else ef.PHYSICAL
+    used_option = ef.location_option(values, chosen, on)
+    step3 = ef.blocks(chosen, values, sides, ref, company_given, their_option if company is not None else None,
+                      used_option)
+    used = ef.factors(used_option, values, sides, ref)
+    market = ef.factors(chosen, values, sides, ref) if used_option != chosen else None
     note3 = ef.TABLE7_NOTE
     if chosen == ef.CHP:
         note3 = "CHP allocation method: as stated by the supplier. " + note3
+    if market is not None:
+        note3 = (f"The supplier's factor rests on a contractual instrument: it counts in market-based only. "
+                 f"Location-based uses {ef.LABEL[used_option]}. " + note3)
 
     # --- Step 4: emissions by gas ------------------------------------------------------------------------------------
     gwps = {r["gas"]: float(r["gwp"]["value"]) for r in line["step3"]["gases"]}
@@ -697,6 +716,30 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided, pick
                                                                        True, {"dp": 2})],
             recomputed=co2e_op, company=their_co2e))
 
+    # --- market-based, when the supplier's factor is contractual -----------------------------------------------------
+    market_terms: list[Term] = []
+    for gas in GASES if market is not None else ():
+        assert market is not None
+        factor = market[gas]
+        to_t = ef.TO_T[factor.unit]
+        terms = [Term(None, Operand("mmbtu", mmbtu, "MMBtu", step_ref="mmbtu")),
+                 Term("×", Operand("ef", factor.value, factor.unit, input_id=factor.input_id)),
+                 Term("×", Operand("to_t", to_t, f"t/{factor.unit.split('/')[0]}", input_id=f"to_t.{gas}"))]
+        emitted = ops.make_operation(terms, "mass", "t") if mmbtu is not None and factor.value is not None \
+            else _open(terms, "mass", "t")
+        gwp_terms = [Term(None, Operand("mass", _num(emitted), "t", step_ref=f"market.emissions.{gas}")),
+                     Term("×", Operand("gwp", gwps[gas], "t CO2e/t", input_id=f"gwp.{gas}"))]
+        co2e_op = ops.make_operation(gwp_terms, "co2e", "t CO2e") if _num(emitted) is not None \
+            else _open(gwp_terms, "co2e", "t CO2e")
+        market_terms.append(Term("+" if market_terms else None, Operand("co2e", _num(co2e_op), "t CO2e",
+                                                                        step_ref=f"market.gwp.{gas}")))
+        step4.append(TraceBlock(f"market.emissions.{gas}", f"{GAS_LABEL[gas]} · market-based", [
+            Column("mmbtu", "Steam energy", "MMBtu"), Column("ef", "Supplier factor", factor.unit),
+            Column("to_t", "Unit conversion"), Column("mass", "Mass", "t", True, {"sig": 6})], recomputed=emitted))
+        step4.append(TraceBlock(f"market.gwp.{gas}", f"{GAS_LABEL[gas]} in CO₂e · market-based", [
+            Column("mass", "Mass", "t"), Column("gwp", "GWP"), Column("co2e", "CO₂e", "t CO2e", True, {"dp": 2})],
+            recomputed=co2e_op))
+
     # --- Results --------------------------------------------------------------------------------------------------
     open_sum = any(t.operand.value is None for t in sum_terms)
     summed = _open(sum_terms, "sum", "t CO2e") if open_sum else ops.make_operation(sum_terms, "sum", "t CO2e")
@@ -728,6 +771,20 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided, pick
                                                    Column("share", "Consolidated share"),
                                                    Column("total", "Total", "t CO2e", True, {"dp": 2})],
                    recomputed=total_op, company=their_total)])
+    if market_terms:
+        open_market = any(t.operand.value is None for t in market_terms)
+        market_sum = _open(market_terms, "sum", "t CO2e") if open_market else ops.make_operation(
+            market_terms, "sum", "t CO2e")
+        market_total_terms = [Term(None, Operand("sum", _num(market_sum), "t CO2e", step_ref="results.market_sum")),
+                              Term("×", Operand("share", share / 100.0, None, input_id="share"))]
+        results.blocks.append(TraceBlock("results.market_sum", "Gases added · market-based", [
+            Column("co2e", "CO₂e", "t CO2e"), Column("sum", "Emissions", "t CO2e", True, {"dp": 2})],
+            recomputed=market_sum))
+        results.blocks.append(TraceBlock("results.market", "Line total · market-based", [
+            Column("sum", "Emissions", "t CO2e"), Column("share", "Consolidated share"),
+            Column("total", "Total", "t CO2e", True, {"dp": 2})],
+            recomputed=_open(market_total_terms, "total", "t CO2e") if open_market else ops.make_operation(
+                market_total_terms, "total", "t CO2e")))
 
     steps = [
         TraceStep("inputs", 1, "Step 1 · Inputs", step1, note="The reviewed steam bills, the enthalpy and the steam "
@@ -747,7 +804,7 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided, pick
         flags.add(ENTHALPY_FLAG)
     else:
         flags.discard(ENTHALPY_FLAG)
-    missing = [gas for gas in GASES if used[gas].value is None]
+    missing = [gas for gas in GASES if used[gas].value is None or (market is not None and market[gas].value is None)]
     if missing:
         what = {ef.SUPPLIER: "the supplier's emission factors", ef.CHP: "the CHP allocated emission factors",
                 ef.FUEL: "the boiler's thermal efficiency"}.get(chosen, "the emission factors")
@@ -758,13 +815,18 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided, pick
         flags.add(ef.CHP_FLAG)
     else:
         flags.discard(ef.CHP_FLAG)
+    if market is not None:
+        flags.add(ef.MARKET_ONLY_FLAG)
+    else:
+        flags.discard(ef.MARKET_ONLY_FLAG)
     recomputed_total = _num(total_op)
     their = _num(their_total)
     trace = LineTrace(
         line_key=str(line["key"]), panel="steam", state="blocked" if blocking else "complete", blocking=blocking,
         choices=[Choice("method", "Calculation method", [ChoiceOption(METHOD, "Location-based", equation=EQUATION)],
                         chosen=METHOD),
-                 ef.choice(chosen, "reviewer" if pick in ef.OPTIONS else "default", values, their_option)],
+                 ef.choice(chosen, "reviewer" if pick in ef.OPTIONS else "default", values, their_option, on),
+                 ef.basis_choice(on, "reviewer" if basis in ef.BASES else "default")],
         inputs=inputs, steps=steps, flags=sorted(flags),
         result=TraceResult("t CO2e", their, recomputed_total,
                            ops.difference(recomputed_total, their, "t CO2e", "t CO2e")))
@@ -792,8 +854,6 @@ def _unused(columns: list[Column]) -> Operation:
                      Operand(result.key, "—", None))
 
 
-def _cost_only() -> Operation:
-    return Operation([Term(None, Operand("billed", "—", None))], Operand("mmbtu", "Request quantities", None))
 
 
 def _g(value: float) -> str:

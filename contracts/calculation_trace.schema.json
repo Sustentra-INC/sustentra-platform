@@ -267,6 +267,14 @@
               "$ref": "#/$defs/SourceRef"
             }
           ]
+        },
+        "basis": {
+          "enum": [
+            null,
+            "physical",
+            "contractual"
+          ],
+          "description": "Steam and heat emission factor options: physical counts in location- and market-based; contractual (a certificate, a green tariff) in market-based only."
         }
       }
     },
