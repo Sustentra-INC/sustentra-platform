@@ -65,12 +65,14 @@ export function InputActions({
   const numeric = isNumeric(sides);
 
   const mark = decision ? (
-    <span className="s1-cp-mark s1-cp-mark--word" tabIndex={0} title={decision.reason ? `Reason: ${decision.reason}` : undefined}>
+    <span className="s1-cp-mark s1-cp-mark--word" tabIndex={0}>
       <ProvenanceLabel
+        compact
         source="human"
         action={status === "edited" ? "edited" : status === "rejected" ? "rejected" : "accepted"}
         by={decision.by}
         at={decision.at}
+        detail={decision.reason || undefined}
       />
     </span>
   ) : null;

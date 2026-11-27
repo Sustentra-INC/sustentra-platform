@@ -4,6 +4,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ActivityDrawer } from "../components/ActivityDrawer";
+import { engagementActivity, type ActivityEntry } from "../utils/engagementActivity";
+import type { Ask } from "../types/requests";
 import { CoveragePanel } from "../components/CoveragePanel";
 import { cardProvenance } from "../components/ExtractionReview";
 import { ProvenanceLabel, provenanceText } from "../components/ProvenanceLabel";
@@ -65,16 +67,26 @@ const value = (over: Partial<ReviewValue>): ReviewValue =>
 const human = (action: string) => ({ kind: "human" as const, actor: "M. Osei", at: AT, action });
 
 describe("Extraction review value cards", () => {
-  it("an unreviewed AI value reads Read by AI and never Accepted", () => {
-    render(<div>{cardProvenance(value({}), null)}</div>);
+  it("a value the AI read reads Read by AI and never Accepted", () => {
+    render(<div>{cardProvenance(value({ ai: { suggested: true } }), null)}</div>);
     expect(screen.getByText("Read by AI")).toBeInTheDocument();
     expect(screen.queryByText(/Accepted/)).toBeNull();
+  });
+
+  it("a value the rules read reads Read by system rules, never Read by AI", () => {
+    render(<div>{cardProvenance(value({}), null)}</div>);
+    expect(screen.getByText("Read by system rules")).toBeInTheDocument();
+    expect(screen.queryByText("Read by AI")).toBeNull();
   });
 
   it("a value still to review never reads Accepted, whatever its record holds", () => {
     render(<div>{cardProvenance(value({ record: [human("accepted")] }), null)}</div>);
     expect(screen.queryByText(/Accepted/)).toBeNull();
-    expect(screen.getByText("Read by AI")).toBeInTheDocument();
+  });
+
+  it("a value not found on the document carries no reading label", () => {
+    const { container } = render(<div>{cardProvenance(value({ missing: true }), null)}</div>);
+    expect(container.querySelector("[data-provenance]")).toBeNull();
   });
 
   it("accepted, corrected and keyed values say who", () => {
@@ -84,6 +96,17 @@ describe("Extraction review value cards", () => {
     expect(screen.getByText(/^Corrected by M\. Osei .*was 42\.31/)).toBeInTheDocument();
     rerender(<div>{cardProvenance(value({ reviewState: "corrected", originalValue: null, record: [human("added")] }), null)}</div>);
     expect(screen.getByText(/^Keyed by M\. Osei .*highlighted on page 3/)).toBeInTheDocument();
+  });
+
+  it("an accepted value with no human record reads Accepted by a reviewer, never Read by AI", () => {
+    render(<div>{cardProvenance(value({ reviewState: "accepted", ai: { suggested: true } }), null)}</div>);
+    expect(screen.getByText("Accepted by a reviewer")).toBeInTheDocument();
+    expect(screen.queryByText("Read by AI")).toBeNull();
+  });
+
+  it("the fallback actor Reviewer reads a reviewer", () => {
+    render(<div>{cardProvenance(value({ reviewState: "accepted", record: [{ kind: "human", actor: "Reviewer", at: AT, action: "accepted as read" }] }), null)}</div>);
+    expect(screen.getByText(/^Accepted by a reviewer/)).toBeInTheDocument();
   });
 });
 
@@ -105,20 +128,100 @@ describe("Coverage & requests", () => {
   });
 });
 
+const ask = (events: { kind: "raised" | "edited" | "sent" | "resolved" | "withdrawn" }[]) =>
+  ({
+    id: "A1",
+    state: "requested",
+    source: { origin: "data_point", itemLabel: "Gas bill", documentId: null },
+    history: events.map((e) => ({ ...e, actorName: "M. Osei", actorLogin: "mosei", at: AT })),
+  }) as unknown as Ask;
+
+describe("Activity entries: every producer carries who and what, and nothing is inferred", () => {
+  it("value decisions carry their code; an entry without one carries no label", () => {
+    const log = engagementActivity({
+      evidence: [],
+      findings: [],
+      asks: [],
+      values: [value({ record: [{ ...human("some new verb"), code: "corrected" }, human("accepted")] })],
+    });
+    expect(log.map((e) => [e.source, e.action])).toEqual(expect.arrayContaining([["human", "corrected"], [undefined, undefined]]));
+  });
+
+  it("request events: sent reads Requested, a draft reads Added to requests, withdrawn and resolved say so, an edit has none", () => {
+    const log = engagementActivity({
+      evidence: [],
+      findings: [],
+      values: [],
+      asks: [ask([{ kind: "raised" }, { kind: "edited" }, { kind: "sent" }, { kind: "resolved" }, { kind: "withdrawn" }])],
+    });
+    const byWhat = (kind: string) => log.find((e) => e.what.startsWith(kind))!;
+    expect(byWhat("raised").action).toBe("queued");
+    expect(byWhat("edited").source).toBeUndefined();
+    expect(byWhat("sent").action).toBe("requested");
+    expect(byWhat("resolved").action).toBe("resolved");
+    expect(byWhat("withdrawn").action).toBe("withdrawn");
+  });
+
+  it("uploads, findings and document edits carry no label", () => {
+    const log = engagementActivity({
+      evidence: [{ documentId: "D1", filename: "a.pdf", uploadedAt: AT, uploadedBy: { name: "A. Lee" } } as never],
+      values: [],
+      asks: [],
+      findings: [{ registeredAt: AT, registeredBy: "A. Lee", dataPointLabel: "x" } as never],
+    });
+    expect(log.length).toBe(2);
+    expect(log.every((e) => e.source === undefined)).toBe(true);
+  });
+
+  it("methodology entries pass their source and action through", () => {
+    const log = engagementActivity({ evidence: [], values: [], asks: [], findings: [], methodology: [{ at: AT, who: "M. Osei", what: "edited x", source: "human", action: "adjusted" }] });
+    expect([log[0].source, log[0].action]).toEqual(["human", "adjusted"]);
+  });
+});
+
 describe("Activity drawer", () => {
-  it("labels a person's decision with the same words", () => {
+  const row = (over: Partial<ActivityEntry>): ActivityEntry => ({ at: AT, who: "M. Osei", what: "did something", kind: "review", ...over });
+
+  it("labels a person's decision with the same words, with the time once, in its column", () => {
     render(
       <ActivityDrawer
         onClose={vi.fn()}
         entries={[
-          { at: AT, who: "M. Osei", what: "accepted: Electricity (bill.pdf)", kind: "review" },
-          { at: AT, who: "M. Osei", what: "Request 3 sent", kind: "request" },
-          { at: AT, who: "A. Lee", what: "uploaded bill.pdf", kind: "upload" },
+          row({ what: "accepted: Electricity (bill.pdf)", source: "human", action: "accepted" }),
+          row({ what: "sent a request: Gas bill", kind: "request", source: "human", action: "requested" }),
+          row({ who: "A. Lee", what: "uploaded bill.pdf", kind: "upload" }),
         ]}
       />,
     );
-    expect(screen.getByText(/^Accepted by M\. Osei/)).toBeInTheDocument();
-    expect(screen.getByText(/^Requested by M\. Osei/)).toBeInTheDocument();
+    expect(screen.getByText(/^Accepted by M\. Osei$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Requested by M\. Osei$/)).toBeInTheDocument();
     expect(document.querySelectorAll("[data-provenance]")).toHaveLength(2);
+    expect(screen.getByText("A. Lee").tagName).toBe("STRONG");
+  });
+
+  it("an unknown verb or an unknown source draws no label, and a suggestion is never Accepted", () => {
+    render(
+      <ActivityDrawer
+        onClose={vi.fn()}
+        entries={[
+          row({ what: "Suggested by Sustentra's AI on methodology: X", who: "Sustentra's AI", kind: "methodology" }),
+          row({ what: "frobnicated the thing", source: "human" }),
+          row({ what: "reverted the thing", kind: "methodology" }),
+        ]}
+      />,
+    );
+    expect(document.querySelectorAll("[data-provenance]")).toHaveLength(0);
+    expect(screen.queryByText(/Accepted/)).toBeNull();
+  });
+
+  it("a suggestion by the AI reads Read by AI and one by the rules reads Read by system rules", () => {
+    render(
+      <ActivityDrawer
+        onClose={vi.fn()}
+        entries={[row({ what: "Suggested by Sustentra's AI on methodology: X", source: "ai", kind: "methodology" }), row({ what: "Suggested by Sustentra's rules on methodology: Y", source: "system", kind: "methodology" })]}
+      />,
+    );
+    expect(screen.getByText("Read by AI")).toBeInTheDocument();
+    expect(screen.getByText("Read by system rules")).toBeInTheDocument();
   });
 });

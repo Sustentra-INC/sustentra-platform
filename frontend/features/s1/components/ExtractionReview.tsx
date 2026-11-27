@@ -340,6 +340,7 @@ export function ExtractionReview({
                 ...x.record,
                 {
                   kind: "human",
+                  code: "accepted",
                   actor: reviewerName,
                   at: now,
                   action: "accepted as read",
@@ -377,7 +378,7 @@ export function ExtractionReview({
     onValuesChange((cur) =>
       cur.map((x) =>
         ids.has(x.id)
-          ? { ...x, reviewState: "rejected", record: [...x.record, { kind: "human", actor: reviewerName, at: now, action: REJECTED_ACTION, reason: text }] }
+          ? { ...x, reviewState: "rejected", record: [...x.record, { kind: "human", code: "rejected", actor: reviewerName, at: now, action: REJECTED_ACTION, reason: text }] }
           : x
       )
     );
@@ -419,6 +420,7 @@ export function ExtractionReview({
                 ...x.record,
                 {
                   kind: "human",
+                  code: v.value ? "corrected" : "keyed",
                   actor: reviewerName,
                   at: now,
                   action: v.value ? `corrected from ${was}` : "entered a value the extractor did not find",
@@ -459,7 +461,7 @@ export function ExtractionReview({
           ? {
               ...x,
               reviewState: "accepted",
-              record: [...x.record, { kind: "human", actor: reviewerName, at: now, action: "accepted as read (accept all)" }],
+              record: [...x.record, { kind: "human", code: "accepted", actor: reviewerName, at: now, action: "accepted as read (accept all)" }],
             }
           : x
       )
@@ -560,7 +562,7 @@ export function ExtractionReview({
         asPrinted: undefined,
         reviewState: "corrected",
         originalValue: "not found",
-        record: [...gap.record, { kind: "human", actor: reviewerName, at: now, action: "filled in a value the reading missed", reason: where }],
+        record: [...gap.record, { kind: "human", code: "keyed", actor: reviewerName, at: now, action: "filled in a value the reading missed", reason: where }],
       };
       onValuesChange((cur) => cur.map((x) => (x.id === gap.id ? result : x)));
     } else {
@@ -583,7 +585,7 @@ export function ExtractionReview({
         asPrinted: undefined,
         reviewState: "corrected",
         originalValue: null,
-        record: [{ kind: "human", actor: reviewerName, at: now, action: "added a value the reading missed", reason: where }],
+        record: [{ kind: "human", code: "keyed", actor: reviewerName, at: now, action: "added a value the reading missed", reason: where }],
       };
       onValuesChange((cur) => {
         const at = cur.findIndex((x) => x.id === base.id);
@@ -611,7 +613,7 @@ export function ExtractionReview({
         // the ask so the card can say "requested from client" once the request goes out. When the
         // server saved the ask, the record names the person and the time it recorded.
         const recorded = serverRecordsActor && ask ? { actor: ask.raisedByName, at: ask.raisedAt } : { actor: reviewerName, at: now };
-        const entry: ValueRecordEntry = { kind: "human", ...recorded, action: "added to requests", ...(ask ? { askId: ask.id } : {}) };
+        const entry: ValueRecordEntry = { kind: "human", code: "queued", ...recorded, action: "added to requests", ...(ask ? { askId: ask.id } : {}) };
         onValuesChange((cur) =>
           cur.map((x) =>
             ids.has(x.id)
@@ -1798,24 +1800,30 @@ function wasSent(ask: Ask): boolean {
   return ask.requestNumber != null || ask.history.some((e) => e.kind === "sent");
 }
 
-/** A card's state chip. A value added to requests says where its request stands: the
- *  client is only "Requested" once the request was sent. */
-/** The one provenance label of a value card: read by AI until a person decides, then who and when. */
+/** The one provenance label of a value card: who read it until a person decides, then who and when. */
 export function cardProvenance(v: ReviewValue, ask: Ask | null) {
   const human = [...v.record].reverse().find((r) => r.kind === "human");
-  if (v.reviewState === "to_review" || !human) return <ProvenanceLabel source="ai" />;
+  if (v.reviewState === "to_review") {
+    if (v.missing) return null;
+    // Only a value the AI really read says so; a rule's reading says that.
+    return v.ai?.suggested ? <ProvenanceLabel source="ai" /> : <ProvenanceLabel source="system" read />;
+  }
+  const by = human?.actor;
+  const at = human?.at;
   if (v.reviewState === "corrected") {
     return v.originalValue ? (
-      <ProvenanceLabel source="human" action="corrected" by={human.actor} at={human.at} detail={`was ${v.originalValue}`} />
+      <ProvenanceLabel source="human" action="corrected" by={by} at={at} detail={`was ${v.originalValue}`} />
     ) : (
-      <ProvenanceLabel source="human" action="keyed" by={human.actor} at={human.at} detail={`highlighted on page ${v.page}`} />
+      <ProvenanceLabel source="human" action="keyed" by={by} at={at} detail={`highlighted on page ${v.page}`} />
     );
   }
-  if (v.reviewState === "rejected") return <ProvenanceLabel source="human" action="rejected" by={human.actor} at={human.at} />;
-  if (v.reviewState === "requested") return <ProvenanceLabel source="human" action={ask && !wasSent(ask) ? "queued" : "requested"} by={ask?.raisedByName ?? human.actor} at={ask?.raisedAt ?? human.at} />;
-  return <ProvenanceLabel source="human" action="accepted" by={human.actor} at={human.at} />;
+  if (v.reviewState === "rejected") return <ProvenanceLabel source="human" action="rejected" by={by} at={at} />;
+  if (v.reviewState === "requested") return <ProvenanceLabel source="human" action={ask && !wasSent(ask) ? "queued" : "requested"} by={ask?.raisedByName ?? by} at={ask?.raisedAt ?? at} />;
+  return <ProvenanceLabel source="human" action="accepted" by={by} at={at} />;
 }
 
+/** A card's state chip. A value added to requests says where its request stands: the
+ *  client is only "Requested" once the request was sent. */
 function valueStateLabel(state: ValueReviewState, ask: Ask | null): string {
   if (state !== "requested" || !ask) return reviewStateLabel(state);
   if (ask.state === "not_yet_sent") return "Request not sent";

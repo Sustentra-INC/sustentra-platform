@@ -212,7 +212,7 @@ gas(FAC.tualatin, "AprCorr", APRIL_GAS, {
   originalValue: APRIL_MISREAD,
   record: [
     { kind: "machine", actor: "System", at: "2025-09-10T08:00:00Z", action: "read", reason: `${APRIL_MISREAD} therms · from page` },
-    { kind: "human", actor: "M. Osei", at: "2025-09-15T10:24:00Z", action: "corrected value", reason: `OCR dropped a digit · ${APRIL_GAS.toLocaleString()} on the page` },
+    { kind: "human", code: "corrected", actor: "M. Osei", at: "2025-09-15T10:24:00Z", action: "corrected value", reason: `OCR dropped a digit · ${APRIL_GAS.toLocaleString()} on the page` },
   ],
 });
 
@@ -231,7 +231,7 @@ values.push(
     reviewState: "accepted",
     record: [
       { kind: "machine", actor: "System", at: "2025-09-10T08:00:00Z", action: "read", reason: "1,240 kW · from page" },
-      { kind: "human", actor: "M. Osei", at: "2025-09-15T10:05:00Z", action: "accepted as read" },
+      { kind: "human", code: "accepted", actor: "M. Osei", at: "2025-09-15T10:05:00Z", action: "accepted as read" },
     ],
     span: { page: 1, x: 0.6, y: 0.62, w: 0.2, h: 0.04 },
   })
@@ -253,7 +253,7 @@ values.push(
     requestPreselect: "clarify",
     record: [
       { kind: "machine", actor: "System", at: "2025-09-10T08:00:00Z", action: "read", reason: "no value · illegible" },
-      { kind: "human", actor: "M. Osei", at: "2025-09-15T09:58:00Z", action: "requested from client", reason: "service log illegible · asked for the invoice" },
+      { kind: "human", code: "requested", actor: "M. Osei", at: "2025-09-15T09:58:00Z", action: "requested from client", reason: "service log illegible · asked for the invoice" },
     ],
     span: null,
     snippet: "Recovered to cylinder: (illegible)",

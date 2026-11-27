@@ -77,7 +77,7 @@ describe("asks laid over the backend's values", () => {
   it("puts a value added to requests back in the requested state, with the line that added it", () => {
     const [quantity, account] = withRequestsFromAsks(loaded(), [ask("ASK-1", "candidate:activity_quantity")]);
     expect(quantity.reviewState).toBe("requested");
-    expect(quantity.record.at(-1)).toEqual({
+    expect(quantity.record.at(-1)).toMatchObject({
       kind: "human", actor: "Thanishque", at: "2026-10-22T08:00:00.000Z", action: "added to requests", askId: "ASK-1",
     });
     expect(account.reviewState).toBe("to_review");

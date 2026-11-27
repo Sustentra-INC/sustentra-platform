@@ -1,6 +1,6 @@
 "use client";
 
-import { ProvenanceLabel, type ProvenanceAction } from "./ProvenanceLabel";
+import { ProvenanceLabel } from "./ProvenanceLabel";
 import { ClipboardList, FileUp, History, ListChecks, Scale, Search, Send, PenLine, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -26,17 +26,10 @@ const ICON: Record<ActivityEntry["kind"], ReactNode> = {
   methodology: <ClipboardList />,
 };
 
-/** The provenance word for a logged person's decision; uploads and edits to a document carry none. */
-export function activityAction(entry: ActivityEntry): ProvenanceAction | null {
-  if (entry.kind === "request") return "requested";
-  if (entry.kind !== "review" && entry.kind !== "methodology") return null;
-  const what = entry.what.toLowerCase();
-  if (what.includes("reject")) return "rejected";
-  if (what.includes("correct")) return "corrected";
-  if (what.includes("adjust") || what.includes("edit") || what.includes("changed")) return "adjusted";
-  if (what.includes("added a value") || what.includes("filled in")) return "keyed";
-  if (what.includes("request") || what.includes("added to requests")) return "requested";
-  return "accepted";
+/** A label is drawn only when the producer said who did it; a person's entry also needs what they did. Nothing is inferred from the words. */
+export function hasLabel(entry: ActivityEntry): boolean {
+  if (entry.source === "ai" || entry.source === "system") return true;
+  return entry.source === "human" && Boolean(entry.action);
 }
 
 /** The engagement's activity log: who did what, and when, newest first. */
@@ -136,13 +129,17 @@ export function ActivityDrawer({
                         {ICON[entry.kind]}
                       </span>
                       <span className="s1-actlog__what">
-                        <strong>{entry.who}</strong> {entry.what}
-                        {activityAction(entry) ? (
+                        {hasLabel(entry) ? (
+                          // The label names who; the time stays in the column on the right.
                           <>
-                            {" "}
-                            <ProvenanceLabel source="human" action={activityAction(entry)!} by={entry.who} at={entry.at} />
+                            <ProvenanceLabel source={entry.source!} action={entry.action} by={entry.who} read={entry.source === "system"} />{" "}
                           </>
-                        ) : null}
+                        ) : (
+                          <>
+                            <strong>{entry.who}</strong>{" "}
+                          </>
+                        )}
+                        {entry.what}
                       </span>
                       <time className="s1-actlog__when" dateTime={entry.at}>
                         {timeLabel(entry.at)}

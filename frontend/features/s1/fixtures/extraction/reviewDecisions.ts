@@ -27,7 +27,7 @@ const isDone = (v: ReviewValue) => v.reviewState === "accepted" || v.reviewState
 
 function accept(v: ReviewValue, actor: string, at: string): void {
   v.reviewState = "accepted";
-  v.record = [...v.record, { kind: "human", actor, at, action: "accepted as read" }];
+  v.record = [...v.record, { kind: "human", code: "accepted", actor, at, action: "accepted as read" }];
 }
 
 /** Lays the review decisions over the values (in place). */

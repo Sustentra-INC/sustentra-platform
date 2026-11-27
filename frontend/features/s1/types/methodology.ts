@@ -1,3 +1,4 @@
+import type { MethodologyLogEntry } from "../utils/engagementActivity";
 /**
  * Methodology review: what the client's GHG report states about its inventory boundary
  * and methods, and the verifier's review of it. The stated values are fixed; the
@@ -101,5 +102,5 @@ export interface MethodologyState {
   factors: Record<FactorScope, FactorRow[]> | null;
   gwp: VerifierEdit<{ set: string; horizon: string }> | null;
   /** Each change, for the activity log. */
-  log: { at: string; who: string; what: string }[];
+  log: MethodologyLogEntry[];
 }
