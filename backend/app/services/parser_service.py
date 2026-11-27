@@ -19,13 +19,20 @@ external network, AWS, or OpenAI calls.
 
 from __future__ import annotations
 
+import hashlib
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Any
 
 from backend.app.adapters.parsers.aws_textract_parser import AwsTextractParser
-from backend.app.adapters.parsers.base import build_failed_parser_output, build_warning
+from backend.app.adapters.parsers.base import (
+    PARSER_RUNTIME_VERSION,
+    build_failed_parser_output,
+    build_warning,
+    make_parser_output_id,
+)
 from backend.app.adapters.parsers.csv_parser import CsvParser
 from backend.app.adapters.parsers.excel_parser import ExcelParser
 from backend.app.adapters.parsers.image_parser import ImageParser
@@ -43,6 +50,13 @@ from backend.app.services.pdf_scan_pages import (
     is_scan_with_text,
     unread_scan_message,
 )
+
+from backend.app.services.textract_calls import textract_context
+
+logger = logging.getLogger("sustentra.parser_service")
+
+# Warnings that mean a page was left unread because a call failed: such an output is read again next time.
+_NOT_KEPT_WARNINGS = {"ocr_page_failed", "textract_call_failed"}
 
 TEXT_EXTENSIONS = {".txt", ".md", ".markdown"}
 CSV_EXTENSIONS = {".csv"}
@@ -73,6 +87,52 @@ OCR_MAX_PAGES = 50  # per document: Textract is billed per page
 OCR_ZOOM = 2.0  # ~150 dpi for a letter page, well under the 10 MB synchronous limit
 
 
+def _sha256_of(path: Path) -> str | None:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+    except OSError:
+        return None
+    return digest.hexdigest()
+
+
+def _worth_keeping(output: Any) -> bool:
+    """A finished read: not failed, and no page left unread because a call failed (that is tried again)."""
+
+    if not isinstance(output, dict) or output.get("status") not in ("parsed", "partial", "empty"):
+        return False
+    return not any(isinstance(w, dict) and w.get("code") in _NOT_KEPT_WARNINGS
+                   for w in output.get("warnings") or [])
+
+
+def _replace_strings(value: Any, swaps: dict[str, str]) -> Any:
+    if isinstance(value, str):
+        return swaps.get(value, value)
+    if isinstance(value, list):
+        return [_replace_strings(item, swaps) for item in value]
+    if isinstance(value, dict):
+        return {key: _replace_strings(item, swaps) for key, item in value.items()}
+    return value
+
+
+def _for_run(kept: dict, document_id: str, processing_run_id: str) -> dict:
+    """Kept output as this read's own: the ids of the document and run it carries are this read's."""
+
+    swaps: dict[str, str] = {}
+    for key, new in (("document_id", document_id), ("processing_run_id", processing_run_id)):
+        old = kept.get(key)
+        if isinstance(old, str) and old and old != new:
+            swaps[old] = new
+    output = _replace_strings(kept, swaps) if swaps else dict(kept)
+    output["document_id"] = document_id
+    output["processing_run_id"] = processing_run_id
+    output["parser_output_id"] = make_parser_output_id(
+        document_id, processing_run_id, str(output.get("parser_name") or "parser"))
+    return output
+
+
 def _squash(text: str) -> str:
     """Lower-case letters and digits only: lines compare the same whatever the spacing or punctuation."""
 
@@ -91,7 +151,12 @@ def _not_read_by_ocr(line: str, ocr_all: str, ocr_lines: set[str]) -> bool:
 class ParserService:
     """Detects the correct parser adapter and produces ``parser_output`` dicts."""
 
-    def __init__(self, live_textract_parser: AwsTextractParser | None = None) -> None:
+    READER_VERSION = PARSER_RUNTIME_VERSION  # bump when a reader's output changes: kept text is then read again
+
+    def __init__(self, live_textract_parser: AwsTextractParser | None = None,
+                 parsed_texts: Any | None = None) -> None:
+        # The store of kept parser outputs; None: the app's own (``s1_stores.parsed_texts``), opened on first use.
+        self._parsed_texts = parsed_texts
         self._text_parser = TextParser()
         self._csv_parser = CsvParser()
         self._excel_parser = ExcelParser()
@@ -103,6 +168,17 @@ class ParserService:
         self._textract_parser = TextractParser()
         self._live_textract_parser = live_textract_parser or AwsTextractParser()
 
+    def reader_version(self) -> str:
+        """Names everything that changes what a read produces: the reader build, whether OCR is on, and
+        the OCR settings. Kept text is reused only under the same version, so switching OCR on re-reads
+        the scans a read without OCR left unread."""
+
+        if not self._textract_enabled():
+            return f"{self.READER_VERSION}|ocr=off"
+        features = os.environ.get("TEXTRACT_FEATURE_TYPES", "FORMS,TABLES").upper().replace(" ", "")
+        return (f"{self.READER_VERSION}|ocr=on|{features}|zoom={OCR_ZOOM}|max={OCR_MAX_PAGES}"
+                f"|min={OCR_MIN_PAGE_CHARACTERS}")
+
     def parse_document(
         self,
         file_path: str | Path,
@@ -110,11 +186,16 @@ class ParserService:
         processing_run_id: str,
         mime_type: str | None = None,
         pages: tuple[int, int] | None = None,
+        org_id: str | None = None,
     ) -> dict:
         """Parse a local file into a normalized ``parser_output`` dictionary.
 
         ``pages`` (PDF only; 1-based, inclusive): read only those pages, which keep the
         document's own page numbers. The OCR page cap then applies to that range.
+
+        ``org_id``: when given, the output is kept under (organization, SHA-256 of the file, reader
+        version, pages) and reused by every later read of the same bytes in that organization, so a scan
+        is sent to Textract once. Another organization's rows are never read. Without it nothing is kept.
 
         Raises ``FileNotFoundError`` when the input path itself is invalid. All
         other parser-level problems are reported as ``failed``/``partial``
@@ -125,6 +206,41 @@ class ParserService:
         if not path.exists() or not path.is_file():
             raise FileNotFoundError(f"Parser input file not found: {file_path}")
 
+        digest = _sha256_of(path) if org_id else None
+        with textract_context(org_id=org_id, document_id=document_id, sha256=digest):
+            store = self._store() if digest else None
+            if store is None or digest is None or org_id is None:
+                return self._read_document(path, document_id, processing_run_id, mime_type, pages)
+            version = self.reader_version()
+            page_from, page_to = pages if pages else (0, 0)
+            try:
+                kept = store.get(org_id, digest, version, page_from, page_to)
+            except Exception as exc:  # noqa: BLE001 - a store fault means "not kept": read the file
+                logger.warning("kept text unreadable (%s); reading the file", type(exc).__name__)
+                kept = None
+            if kept is not None:
+                return _for_run(kept, document_id, processing_run_id)
+            output = self._read_document(path, document_id, processing_run_id, mime_type, pages)
+            if _worth_keeping(output):
+                try:
+                    store.put(org_id, digest, version, page_from, page_to, output)
+                except Exception as exc:  # noqa: BLE001 - the read succeeded; keeping it is best effort
+                    logger.warning("parsed text not kept (%s)", type(exc).__name__)
+            return output
+
+    def _store(self) -> Any | None:
+        if self._parsed_texts is None:
+            try:
+                from backend.app.repositories.s1_stores import parsed_texts
+
+                self._parsed_texts = parsed_texts()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("parsed-text store unavailable (%s)", type(exc).__name__)
+                return None
+        return self._parsed_texts
+
+    def _read_document(self, path: Path, document_id: str, processing_run_id: str, mime_type: str | None,
+                       pages: tuple[int, int] | None) -> dict:
         parser_kind = self._detect_parser_kind(path, mime_type)
 
         if parser_kind == "text":

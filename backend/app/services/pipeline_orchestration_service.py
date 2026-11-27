@@ -263,6 +263,7 @@ class PipelineOrchestrationService:
                     document_id=resolved_document_id,
                     processing_run_id=resolved_processing_run_id,
                     mime_type=mime_type,
+                    org_id=org_id,
                 )
             parser_status = str(parser_output.get("status") or "") or None
             stage_statuses.parse = self._parser_stage_status(parser_status)

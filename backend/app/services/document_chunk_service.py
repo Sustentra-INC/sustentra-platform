@@ -229,7 +229,8 @@ class DocumentChunkService:
         try:
             output = self._parser.parse_document(
                 file_path=str(path), document_id=chunk.document_id, processing_run_id=chunk.run_id,
-                mime_type=document.get("mime_type"), pages=(chunk.page_from, chunk.page_to))
+                mime_type=document.get("mime_type"), pages=(chunk.page_from, chunk.page_to),
+                org_id=chunk.org_id)
         except Exception as exc:  # the type only: a message can carry file names
             logger.error("chunk_read_failed", extra={
                 "run_id": chunk.run_id, "chunk_index": chunk.chunk_index, "error_type": type(exc).__name__})

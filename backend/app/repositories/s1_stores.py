@@ -112,6 +112,17 @@ def approved_evidence() -> Any:
     return _pick(JsonlApprovedEvidenceRepository, PostgresApprovedEvidenceRepository)
 
 
+def parsed_texts() -> Any:
+    """The kept parser outputs (migration 0027). Not mirrored: it is a cache, rebuilt by reading again."""
+
+    from backend.app.repositories.parsed_text_repository import (
+        JsonlParsedTextRepository,
+        PostgresParsedTextRepository,
+    )
+
+    return JsonlParsedTextRepository() if get_settings().s1_store == "jsonl" else PostgresParsedTextRepository()
+
+
 def files() -> Any:
     store = get_settings().s1_store
     if store == "jsonl":
