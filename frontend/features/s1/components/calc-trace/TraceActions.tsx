@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
-import type { DecisionRefusal, TraceSuggestion } from "../../api/calcTrace";
+import type { TraceSuggestion } from "../../api/calcTrace";
 import type { AiExplanation } from "../../api/aiExplanation";
 import { ApiError } from "../../../../lib/api";
 import { userFacingApiError } from "../../api/s1Backend";
@@ -18,18 +18,11 @@ export const CHANGED_TEXT = "This value changed since you opened it.";
 export const READ_ONLY_TEXT = "You can view this calculation but not change it.";
 
 export const STALE_TEXT = "The automatic value changed since you opened this, so your change was not saved.";
-const REFUSAL_TEXT: Record<Exclude<DecisionRefusal, "stale">, string> = {
-  mixed_line: "This line mixes fuels or units, so a value can't be changed on it yet. Move the other records to their own line first.",
-  not_decidable: "This value is set elsewhere, so it can't be changed for one line.",
-  no_working: "This line has no working to change yet.",
-  not_counted: "This value is not counted in the line's total, so it can't be changed.",
-};
-const CODES = new Set(["mixed_line", "stale", "not_decidable", "no_working", "not_counted"]);
 
-/** The `code` of a coded 409, or null for a plain one. */
-function refusalCode(error: unknown): DecisionRefusal | null {
+/** The `code` of a coded 409, or null for a plain one. Any code is taken: the backend's own sentence is shown. */
+function refusalCode(error: unknown): string | null {
   const body = error instanceof ApiError ? (error.body as { code?: unknown } | null) : null;
-  return typeof body?.code === "string" && CODES.has(body.code) ? (body.code as DecisionRefusal) : null;
+  return typeof body?.code === "string" && body.code ? body.code : null;
 }
 
 export interface TraceActions {
@@ -98,7 +91,8 @@ export function useTraceDecisions(engagementId: string, lineKey: string, onSaved
         const typed = options?.entered ? ` You entered ${options.entered}.` : "";
         if (code && code !== "stale") {
           // The working cannot take this decision: nothing changed on the server, so nothing to refetch.
-          setNotice({ kind: "conflict", text: `${REFUSAL_TEXT[code]}${typed}` });
+          const detail = error instanceof ApiError ? error.detail : "";
+          setNotice({ kind: "conflict", text: `${detail || CHANGED_TEXT}${typed}` });
           return null;
         }
         // A real change of state (or the automatic value moved): the trace and totals are fetched again.

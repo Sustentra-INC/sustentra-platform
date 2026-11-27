@@ -474,17 +474,15 @@ describe("coded refusals", () => {
     return { text, refetched: async () => server.gets > gets };
   };
 
-  it.each([
-    ["mixed_line", /mixes fuels or units/],
-    ["not_decidable", /set elsewhere/],
-    ["no_working", /no working/],
-    ["not_counted", /not counted/],
-  ] as const)("%s says a plain sentence, not that the value changed", async (code, expected) => {
-    const { text } = await refuse(code);
-    expect(text).toMatch(expected);
-    expect(text).not.toContain("changed since you opened");
-    expect(onDecided).not.toHaveBeenCalled();
-  });
+  it.each(["mixed_line", "not_decidable", "no_working", "not_counted", "unit_mismatch", "invalid_value", "no_route", "a_future_code"])(
+    "%s shows the backend's own sentence, not that the value changed",
+    async (code) => {
+      const { text } = await refuse(code);
+      expect(text).toContain("server sentence");
+      expect(text).not.toContain("changed since you opened");
+      expect(onDecided).not.toHaveBeenCalled();
+    },
+  );
 
   it("stale says the automatic value moved and refetches", async () => {
     const { text } = await refuse("stale");
