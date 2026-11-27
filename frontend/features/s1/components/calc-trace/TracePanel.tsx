@@ -296,10 +296,11 @@ function BlockView({ block, step, trace, onOpenDocument }: { block: TraceBlock; 
   const unused = block.tag === "not_used_for_this_line";
   return (
     <div className={`s1-cp-block${unused ? " is-unused" : ""}`}>
-      {step.blocks.length > 1 || block.tag || choice ? (
+      {step.blocks.length > 1 || block.tag || block.assumption || choice ? (
         <div className="s1-cp-block__head">
           <h6>{block.label}</h6>
           {block.tag && TAG_TEXT[block.tag] ? <span className="s1-cp-tag">{TAG_TEXT[block.tag]}</span> : null}
+          {block.assumption ? <span className="s1-cp-tag">{block.assumption}</span> : null}
           {choice ? <ChoicePills choice={choice} compact onOpenDocument={onOpenDocument} /> : null}
         </div>
       ) : null}
@@ -336,8 +337,11 @@ export function TracePanel({ trace, decisions, onOpenDocument }: { trace: LineTr
   const placed = new Set((trace.steps ?? []).flatMap((s) => (s.blocks ?? []).map((b) => b.choice_id)));
   const method = choices.find((c) => c.id === "method");
   const route = method?.options.find((o) => o.id === method.chosen);
+  // A choice only a method not in use needs (the screening's equipment type) is shown once that method is.
+  const inUse = new Set(route?.required_inputs ?? []);
+  const idle = new Set((method?.options ?? []).filter((o) => o.id !== method?.chosen).flatMap((o) => o.required_inputs ?? []).filter((id) => !inUse.has(id)));
   // A choice with one option has nothing to pick: the route line already says it.
-  const loose = choices.filter((c) => !placed.has(c.id) && c.options.length > 1);
+  const loose = choices.filter((c) => !placed.has(c.id) && c.options.length > 1 && !idle.has(c.id));
   // A not-applied decision is said on its input or choice; one whose target is gone is said on the line.
   const notApplied = decisions?.not_applied ?? [];
   const here = (e: DecisionEntry) => (e.target === "choice" ? choices.some((c) => c.id === e.id) : Boolean(trace.inputs?.[e.id.split("/")[0]]));

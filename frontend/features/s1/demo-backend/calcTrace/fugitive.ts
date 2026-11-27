@@ -7,6 +7,7 @@
 import type { CalcLineSmb, CalcLineStep1Row, CalcQuantity, CalculationLine } from "../../api/recalculation";
 import type { LineTrace, TraceBlock, TraceColumn, TraceInput, TraceOpSymbol, TraceOperand, TraceOperation, TraceSide, TraceStep } from "../../api/calcTrace";
 import type { ModelLine, ModelRecord } from "../linesModel";
+import { type DemoDecided, screeningChoices, screeningInputs, screeningSteps, screeningUnits } from "./fugitiveScreening";
 
 const HUB = "EPA GHG Emission Factors Hub 2025";
 export const TERMS = ["P_N", "C_N", "P_S", "C_D", "R_D"] as const;
@@ -40,7 +41,9 @@ function evaluate(terms: Term[]): number {
   });
   return total;
 }
-const operation = (terms: Term[], column: string, unit: string | undefined): TraceOperation => ({ terms, result: operand(column, evaluate(terms), unit) });
+/** An operand still awaited (the screening's) leaves the result awaited: null, never a number. */
+const operation = (terms: Term[], column: string, unit: string | undefined): TraceOperation => ({ terms, result: operand(column, terms.some((t) => t.operand.value === null) ? null : evaluate(terms), unit) });
+const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
 const single = (column: string, value: number, unit: string, inputId: string): TraceOperation => ({ terms: [{ op: null, operand: operand(column, value, unit, { input_id: inputId }) }], result: operand(column, value, unit, { input_id: inputId }) });
 const col = (key: string, label: string, unit: string | undefined, isResult = false, display: TraceColumn["display"] = {}): TraceColumn => ({ key, label, ...(unit ? { unit } : {}), is_result: isResult, display });
 const side = (value: number | null, unit: string | undefined, status: TraceSide["status"], citation?: string): TraceSide => ({ value, ...(unit ? { unit } : {}), status, ...(citation ? { source: { kind: "reference", citation } } : {}) });
@@ -89,7 +92,7 @@ export function fugitiveLine(ml: ModelLine, used: ModelRecord[], opts: { gwp: nu
 }
 
 /** The trace of a demo fugitive line, from the line's own numbers. */
-export function fugitiveTrace(line: CalculationLine): LineTrace | null {
+export function fugitiveTrace(line: CalculationLine, decided: DemoDecided = { choices: {}, inputs: {} }): LineTrace | null {
   const smb = line.smb;
   if (!smb || !smb.gwp) return null;
   const { unit, gas, factor } = smb;
@@ -103,9 +106,14 @@ export function fugitiveTrace(line: CalculationLine): LineTrace | null {
     inputs[term] = { id: term, label: TERM_LABEL[term], symbol: term, kind: "evidence_sum", required_for: ["smb"], recomputed: side(Number(op.result.value), unit, rows.length ? "accepted" : "derived"), rows, decidable: true };
     return { id: `term.${term}`, label: `${TERM_LABEL[term]} · ${term}`, columns: [col("amount", "Total", unit, true, { sig: 6 })], recomputed: op };
   });
-  const emitted = operation(TERMS.map((t) => ({ op: TERM_OP[t], operand: operand(t, smb.terms[t], unit, { step_ref: `term.${t}` }) })), "emitted", unit);
+  const balance = operation(TERMS.map((t) => ({ op: TERM_OP[t], operand: operand(t, smb.terms[t], unit, { step_ref: `term.${t}` }) })), "emitted", unit);
+  // The screening method (C5): its inputs are on every trace; its working once a reviewer picks it.
+  const units = screeningUnits(line.step1.rows);
+  if (units.length) Object.assign(inputs, screeningInputs(units, unit, decided));
+  const screen = units.length && decided.choices.method === "screening" ? screeningSteps(units, unit, { P_N: smb.terms.P_N, C_D: smb.terms.C_D }, inputs, decided) : null;
+  const emittedValue = screen ? screen.emitted : num(balance.result.value);
   inputs.unit_conversion = { id: "unit_conversion", label: "Unit conversion", kind: "constant", required_for: [], recomputed: side(factor, `t/${unit}`, "reference", "fuel_units conversion table: 1 lb = 0.45359237 kg exactly; 1 t = 1,000 kg"), decidable: false, why_not: "the unit conversion comes from the conversion table" };
-  const toT = operation([{ op: null, operand: operand("emitted", Number(emitted.result.value), unit, { step_ref: "emitted" }) }, { op: "×", operand: operand("factor", factor, `t/${unit}`, { input_id: "unit_conversion" }) }], "emitted_t", "t");
+  const toT = operation([{ op: null, operand: operand("emitted", emittedValue, unit, { step_ref: "emitted" }) }, { op: "×", operand: operand("factor", factor, `t/${unit}`, { input_id: "unit_conversion" }) }], "emitted_t", "t");
   const companyT = line.company ? line.company.step2.result.quantity : null;
   const companyToT = line.company ? operation([{ op: null, operand: operand("emitted", line.company.activity.quantity, line.company.activity.unit, { step_ref: "emitted" }) }, { op: "×", operand: operand("factor", line.company.step2.factor, `t/${line.company.activity.unit}`, { input_id: "unit_conversion" }) }], "emitted_t", "t") : undefined;
   const gwpId = `gwp.${gas}`;
@@ -113,7 +121,7 @@ export function fugitiveTrace(line: CalculationLine): LineTrace | null {
   inputs[gwpId] = { id: gwpId, label: `${gas} GWP (blend)`, symbol: "GWP", kind: "reference", required_for: ["smb"], recomputed: side(smb.gwp.value, GWP_UNIT, "reference", smb.gwp.source ?? undefined), decidable: false, why_not: why };
   const gwpTerms = (t: number | null): Term[] => [{ op: null, operand: operand("emitted_t", t, "t", { step_ref: "emitted_t" }) }, { op: "×", operand: operand("gwp", smb.gwp?.value ?? null, GWP_UNIT, { input_id: gwpId }) }];
   const gwpCols = [col("emitted_t", "Emitted", "t"), col("gwp", "GWP", GWP_UNIT), col("co2e", "CO₂e", "t CO2e", true, { dp: 2 })];
-  const co2e = operation(gwpTerms(Number(toT.result.value)), "co2e", "t CO2e");
+  const co2e = operation(gwpTerms(num(toT.result.value)), "co2e", "t CO2e");
   const companyCo2e = companyT !== null ? operation(gwpTerms(companyT), "co2e", "t CO2e") : undefined;
   const step3: TraceBlock[] = [{ id: "co2e", label: `${gas} · blend GWP (counts)`, columns: gwpCols, recomputed: withDifference(co2e, companyCo2e), ...(companyCo2e ? { company: companyCo2e } : {}) }];
   const ar5 = smb.gwp_set === "AR5" && gas === "R-404A";
@@ -124,9 +132,9 @@ export function fugitiveTrace(line: CalculationLine): LineTrace | null {
       inputs[`share.${c.name}`] = { id: `share.${c.name}`, label: `${c.name} share of ${gas}`, symbol: "share", kind: "reference", required_for: [], recomputed: side(c.share, undefined, "reference", `${HUB}, Table 12, row ${R404A.row}: ${R404A.composition}`), decidable: false, why_not: "a blend's composition comes from the reference data" };
       inputs[`gwp.${c.name}`] = { id: `gwp.${c.name}`, label: `${c.name} GWP`, symbol: "GWP", kind: "reference", required_for: [], recomputed: side(c.gwp, GWP_UNIT, "reference", `${HUB}, Table 11, row ${c.row} (IPCC AR5)`), decidable: false, why_not: why };
       const terms = (t: number | null): Term[] => [{ op: null, operand: operand("emitted_t", t, "t", { step_ref: "emitted_t" }) }, { op: "×", operand: operand("share", c.share, undefined, { input_id: `share.${c.name}` }) }, { op: "×", operand: operand("gwp", c.gwp, GWP_UNIT, { input_id: `gwp.${c.name}` }) }];
-      const mine = operation(terms(Number(toT.result.value)), "co2e", "t CO2e");
+      const mine = operation(terms(num(toT.result.value)), "co2e", "t CO2e");
       const theirs = companyT !== null ? operation(terms(companyT), "co2e", "t CO2e") : undefined;
-      sum.push({ op: sum.length ? "+" : null, operand: operand("co2e", Number(mine.result.value), "t CO2e", { step_ref: `component.${c.name}` }) });
+      sum.push({ op: sum.length ? "+" : null, operand: operand("co2e", num(mine.result.value), "t CO2e", { step_ref: `component.${c.name}` }) });
       step3.push({ id: `component.${c.name}`, label: `${c.name} · ${c.share * 100}% of the blend`, columns: [col("emitted_t", "Emitted", "t"), col("share", "Share of blend", undefined), col("gwp", "GWP", GWP_UNIT), col("co2e", "CO₂e", "t CO2e", true, { dp: 2 })], recomputed: withDifference(mine, theirs), ...(theirs ? { company: theirs } : {}) });
     }
     step3.push({ id: "components.sum", label: "Components added", columns: [col("co2e", "CO₂e", "t CO2e"), col("sum", "Sum", "t CO2e", true, { dp: 2 })], recomputed: operation(sum, "sum", "t CO2e") });
@@ -135,28 +143,29 @@ export function fugitiveTrace(line: CalculationLine): LineTrace | null {
   }
   const share = line.consolidated_share_pct;
   inputs.share = { id: "share", label: "Consolidated share", symbol: "share", kind: "methodology", required_for: [], recomputed: { ...side(share, "%", share !== 100 ? "accepted" : "derived"), source: { kind: "methodology", field: "consolidated_share", label: "Consolidated share" } }, decidable: false, why_not: "the consolidated share is set under Recalculation inputs" };
-  const totalTerms = (v: number): Term[] => [{ op: null, operand: operand("co2e", v, "t CO2e", { step_ref: "co2e" }) }, { op: "×", operand: operand("share", share / 100, undefined, { input_id: "share" }) }];
-  const total = operation(totalTerms(Number(co2e.result.value)), "total", "t CO2e");
+  const totalTerms = (v: number | null): Term[] => [{ op: null, operand: operand("co2e", v, "t CO2e", { step_ref: "co2e" }) }, { op: "×", operand: operand("share", share / 100, undefined, { input_id: "share" }) }];
+  const total = operation(totalTerms(num(co2e.result.value)), "total", "t CO2e");
   const companyTotal = companyCo2e ? operation(totalTerms(Number(companyCo2e.result.value)), "total", "t CO2e") : undefined;
   const steps: TraceStep[] = [
-    { id: "inputs", n: 1, title: "Step 1 · Inputs", note: "The reviewed service records, added up per term", blocks: step1 },
-    { id: "emitted", n: 2, title: "Step 2 · Refrigerant emitted", note: `${EQUATION}, then to metric tons`, blocks: [
-      { id: "emitted", label: "Refrigerant emitted", columns: [...TERMS.map((t) => col(t, t, unit)), col("emitted", "Emitted", unit, true, { sig: 6 })], recomputed: emitted },
+    { id: "inputs", n: 1, title: "Step 1 · Inputs", note: screen ? screen.note : "The reviewed service records, added up per term", blocks: screen ? screen.step1 : step1 },
+    { id: "emitted", n: 2, title: "Step 2 · Refrigerant emitted", note: `${screen ? screen.equation : EQUATION}, then to metric tons`, blocks: [
+      ...(screen ? screen.step2 : [{ id: "emitted", label: "Refrigerant emitted", columns: [...TERMS.map((t) => col(t, t, unit)), col("emitted", "Emitted", unit, true, { sig: 6 })], recomputed: balance }]),
       { id: "emitted_t", label: "Unit conversion", columns: [col("emitted", line.company ? "Emitted (as reported)" : "Emitted", unit), col("factor", "Unit conversion", undefined), col("emitted_t", "Emitted", "t", true, { sig: 6 })], recomputed: withDifference(toT, companyToT), ...(companyToT ? { company: companyToT } : {}) },
     ] },
     { id: "gwp", n: 3, title: "Step 3 · Emissions by gas", note, blocks: step3 },
     { id: "results", n: null, title: "Results", blocks: [{ id: "results.total", label: "Line total", columns: [col("co2e", "CO₂e", "t CO2e"), col("share", "Consolidated share", undefined), col("total", "Total", "t CO2e", true, { dp: 2 })], recomputed: withDifference(total, companyTotal), ...(companyTotal ? { company: companyTotal } : {}) }] },
   ];
-  const recomputed = Number(total.result.value);
+  const recomputed = num(total.result.value);
   const company = companyTotal ? Number(companyTotal.result.value) : null;
+  const choices = screeningChoices(units.length > 0);
+  for (const c of choices) {
+    const picked = decided.choices[c.id];
+    if (picked && c.options.some((o) => o.id === picked && o.available)) Object.assign(c, { chosen: picked, chosen_by: "reviewer" });
+  }
+  const blocking = screen?.blocking ?? [];
   return {
-    trace_version: 1, line_key: line.key, panel: "fugitive", state: "complete", blocking: [],
-    choices: [{ id: "method", label: "Calculation method", chosen: "smb", chosen_by: "default", options: [
-      { id: "screening", label: "Screening", available: false, why_unavailable: "Sustentra cannot calculate this method yet.", required_inputs: [] },
-      { id: "smb", label: "Simplified material balance", equation: EQUATION, available: true, required_inputs: [...TERMS] },
-      { id: "material_balance", label: "Material balance", available: false, why_unavailable: "Sustentra cannot calculate this method yet.", required_inputs: [] },
-    ] }],
-    inputs, steps, method_mismatch: false, flags: [...line.flags],
-    result: { unit: "t CO2e", company, recomputed, difference: company === null ? null : recomputed - company },
+    trace_version: 1, line_key: line.key, panel: "fugitive", state: blocking.length ? "blocked" : "complete", blocking,
+    choices, inputs, steps, method_mismatch: false, flags: [...line.flags],
+    result: { unit: "t CO2e", company, recomputed, difference: company === null || recomputed === null ? null : recomputed - company },
   };
 }

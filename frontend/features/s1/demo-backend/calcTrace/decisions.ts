@@ -57,6 +57,19 @@ function revert(rec: Record_, label: string): void {
   rec.decision = previous ?? null;
 }
 
+/** A line's decided options and numbers (accepted or edited, on the recomputed side): what a demo fugitive line is worked with. */
+export function demoDecided(engagementId: string, lineKey: string): { choices: Record<string, string>; inputs: Record<string, number> } {
+  const out = { choices: {} as Record<string, string>, inputs: {} as Record<string, number> };
+  const prefix = keyOf(engagementId, lineKey, "");
+  for (const [key, rec] of records) {
+    const d = rec.decision;
+    if (!key.startsWith(prefix) || !d || (d.status !== "accepted" && d.status !== "edited")) continue;
+    const [target, id, side] = key.slice(prefix.length).split("|");
+    if (target === "choice" && typeof d.value === "string") out.choices[id] = d.value;
+    else if (target === "input" && side === "recomputed" && typeof d.value === "number" && Number.isFinite(d.value)) out.inputs[id] = d.value;
+  }
+  return out;
+}
 
 export function applyDecisions(engagementId: string, trace: LineTrace): LineTrace {
   const out = structuredClone(trace);

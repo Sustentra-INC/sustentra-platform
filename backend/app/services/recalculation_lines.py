@@ -127,6 +127,8 @@ class DecidedLine:
         out["step1"]["total"]["quantity"] = figures.activity_total
         out["step2"]["result"]["quantity"] = figures.activity
         out["smb"] = {**out["smb"], "emitted": figures.activity_total, "emitted_t": figures.activity}
+        if worked.get("route") and worked["route"] != out["method"]["route"]:  # the screening method (C5)
+            out["method"] = {**out["method"], "route": worked["route"]}
         if out["smb"].get("gwp") is None and "gwp" in worked:
             out["smb"]["decided_gwp"] = {"value": worked["gwp"], "source": "component GWPs decided for this line"}
         company = out.get("company")

@@ -45,7 +45,8 @@ export function operandText(operand: Pick<TraceOperand, "value" | "unit" | "colu
   if (value === null || value === undefined) return null;
   if (typeof value === "string") return value;
   if (!isNumber(value)) return "—";
-  if (column?.key === "share" && !operand.unit) return `${formatNumber(value * 100, { sig: 6 })}%`;
+  // A fraction shown as a percentage: the consolidated share, and any column declared in "%" (a screening factor).
+  if ((column?.key === "share" || column?.unit === "%") && !operand.unit) return `${formatNumber(value * 100, { sig: 6 })}%`;
   const unit = prettyUnit(operand.unit);
   return `${formatNumber(value, column?.display)}${unit ? ` ${unit}` : ""}`;
 }

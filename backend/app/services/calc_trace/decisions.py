@@ -42,7 +42,7 @@ from backend.app.services.calc_trace.model import (
 )
 
 MAX_NUMBER = 1e15
-DECIDABLE = ("activity.total", "distance", "fuel_economy", *stationary.SITE_INPUTS, *fugitive.TERMS)
+DECIDABLE = ("activity.total", "distance", "fuel_economy", *stationary.SITE_INPUTS, *fugitive.DECIDABLE_IDS)
 # and every "ef.<gas>", and a fugitive line's "component_gwp.<component>" (a blend component the reference data lacks)
 SET_ELSEWHERE = {
     "unit_conversion": "the unit conversion comes from the conversion table",
@@ -130,7 +130,7 @@ def not_decidable(input_id: str) -> str | None:
         return "the GWP is chosen for the whole engagement on the Methodology page"
     if base.startswith("share."):
         return "a blend's composition comes from the reference data"
-    if base in DECIDABLE or base.startswith(("ef.", fugitive.COMPONENT_GWP)):
+    if base in DECIDABLE or base.startswith(("ef.", fugitive.COMPONENT_GWP, *fugitive.DECIDABLE_PREFIXES)):
         return None
     return "this input cannot be decided for a line"
 
@@ -238,6 +238,8 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
             implausible = stationary.check_site(target_id, number, out, context, bool(decision.get("reason")))
         elif panel == "mobile" and target_id == mobile.FUEL_ECONOMY:
             implausible = mobile.check_economy(number, out)
+        elif panel == "fugitive":
+            implausible = fugitive.check_value(target_id, number)
         if implausible is not None:
             outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="invalid_value",
                                               message=implausible))
@@ -319,15 +321,34 @@ def _fugitive(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any]
         for input_id in list(values):
             _move_to_not_applied(outcome, input_id, "line_mixes_runs", f"Not applied: {message}")
         values.clear()
-    worked: dict[str, float] | None = None
-    if values and line is not None:
+    worked: dict[str, Any] | None = None
+    picks = {k: chosen for k, (_, chosen) in outcome.routes.items()}
+    screening = picks.get("method") == fugitive.SCREENING
+    unused = [i for i in values if fugitive.used_by(i, screening) is False]
+    if not screening and fugitive.EQUIPMENT_CHOICE in picks:
+        for item in outcome.applied:
+            if item["target"] == "choice" and item["id"] == fugitive.EQUIPMENT_CHOICE:
+                item["uses"] = "held: the line is worked by the simplified material balance, which has no equipment type"
+    if (screening or any(i not in unused for i in values)) and line is not None:
         decided: dict[str, tuple[float, Side]] = {}
         for input_id, (number, decision, record) in values.items():
             found = _find(trace, input_id)
             decided[input_id] = (number, _decided_side(found.recomputed if found is not None else None, number,
                                                        decision, record))
-        worked = fugitive.rework(trace, (line, context or {}), decided)
+        worked = fugitive.rework(trace, (line, context or {}), decided, picks)
         mark_decidable(trace)
+        for item in outcome.applied:
+            if item["id"] in unused and item.get("status") in DECIDED:
+                item["uses"] = ("held: the screening method does not use it" if screening else
+                                "held: only the screening method uses it")
+    elif values and len(unused) == len(values):  # only the other method reads them: shown as decided, held
+        for input_id, (number, decision, record) in values.items():
+            found = _find(trace, input_id)
+            if found is not None:
+                found.recomputed = _decided_side(found.recomputed, number, decision, record)
+        for item in outcome.applied:
+            if item["id"] in unused and item.get("status") in DECIDED:
+                item["uses"] = "held: only the screening method uses it"
     elif values:
         for input_id in list(values):
             _move_to_not_applied(outcome, input_id, "could_not_apply",
@@ -339,16 +360,21 @@ def _fugitive(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any]
     if rejected:
         trace.flags = sorted({*trace.flags, REJECTED_FLAG})
     if worked is None or line is None:
+        waiting = trace.blocking[0].message.split(".")[0] if trace.blocking else "a GWP"
         for item in outcome.applied:
-            if item["id"] in values and item.get("status") in DECIDED:
-                item["uses"] = "held: the line awaits a GWP, so it is not counted yet"
+            if (item["id"] in values or (item["target"] == "choice" and screening)) and \
+                    item.get("status") in DECIDED and "uses" not in item:
+                item["uses"] = (f"held: the line awaits {waiting}, so it is not counted yet" if not screening else
+                                f"held: the screening method awaits {waiting}; the line counts its simplified "
+                                "material balance until then")
         return trace, outcome, None
     trace.flags = sorted({*trace.flags, APPLIED_FLAG})
     gas = str(line["smb"]["gas"])
     return trace, outcome, Figures(
         mass_t={gas: worked["emitted_t"]}, gas_co2e_t={gas: worked["co2e"]}, sum_co2e_t=worked["co2e"],
         total_co2e_t=worked["total"], biogenic_co2_t=0.0, activity=worked["emitted_t"],
-        activity_total=worked["emitted"], rows={gas: {"gwp": worked["gwp"], "emitted": worked["emitted"]}})
+        activity_total=worked["emitted"],
+        rows={gas: {"gwp": worked["gwp"], "emitted": worked["emitted"], "route": worked["route"]}})
 
 
 def _move_to_not_applied(outcome: Outcome, input_id: str, reason: str, message: str) -> None:
@@ -448,7 +474,10 @@ def _choice(trace: LineTrace, choice_id: str, decision: Mapping[str, Any], outco
         outcome.not_applied.append(_entry("choice", choice_id, None, status=status, reason="option_not_available",
                                           message="Not applied: that option is not available for this line."))
         return None
-    if option.id != choice.chosen and choice_id == electricity.REGION_CHOICE and panel == "electricity":
+    if panel == "fugitive" and choice_id in ("method", fugitive.EQUIPMENT_CHOICE) and option.id != choice.chosen:
+        outcome.routes[choice_id] = (choice.chosen, option.id)  # worked by ``fugitive.rework`` (``_fugitive``)
+        choice.chosen = option.id
+    elif option.id != choice.chosen and choice_id == electricity.REGION_CHOICE and panel == "electricity":
         return option.id  # another subregion of the facility's ZIP code: worked as its factors (``_region_values``)
         return None
     if option.id != choice.chosen:  # a route is worked only where one is built: never a number from one that is not

@@ -1,0 +1,46 @@
+{
+  "dataset": "EPA GHG Inventory Guidance: Direct Fugitive Emissions from Refrigeration, Air Conditioning, Fire Suppression, and Industrial Gases",
+  "publisher": "U.S. EPA Center for Corporate Climate Leadership",
+  "edition": "December 2023",
+  "source_url": "https://www.epa.gov/sites/default/files/2020-12/documents/fugitiveemissions.pdf",
+  "source_sha256": "fb3dd5c9677096094c2acef769c7fe2fb90def6feac403cf9c817f5810928d88",
+  "retrieved": "2026-11-27",
+  "edition_note": "The URL's path says 2020-12, but the PDF it serves is the December 2023 edition. In that edition the refrigeration and A/C screening factors are Table 1 (page 11); the board's \"EPA Table 3\" is the earlier edition's numbering. The values are the 2006 IPCC Tier 2 defaults as refined in 2019 (the table's own source line).",
+  "transcription_note": "Transcribed by hand from the PDF's text; backend/tests/services/calc_trace/test_calc_trace_fugitive_screening.py checks every number against this file. EPA prints one value per factor, the upper end of the IPCC range (page 10: 'it is recommended that the upper end of the ranges be used'). The IPCC ranges themselves are not printed in this guidance, so none is recorded here; the capacity range is printed, for reference only (EPA: use the equipment's actual capacity).",
+  "equations": {
+    "page": 4,
+    "installation": "Emissions from Installation = C_N × (k/100)",
+    "operation": "Emissions from Operation = C × (x/100) × T",
+    "disposal": "Emissions from Disposal = C_D × (y/100) × (1 − z/100)",
+    "T": "time in years used during the reporting period (e.g., 0.5 if used only during half of the reporting period and then disposed)"
+  },
+  "refrigeration": {
+    "table": "Table 1: Default Emission Factors for Refrigeration/Air Conditioning Equipment",
+    "page": 11,
+    "source_line": "2019 Refinement to the 2006 IPCC Guidelines for National Greenhouse Gas Inventories, Chapter 7, Table 7.9",
+    "units": {"capacity_kg": "kg", "k": "% of capacity", "x": "% of capacity/yr", "y": "% of capacity", "z": "% of remaining"},
+    "rows": [
+      {"id": "domestic_refrigeration", "label": "Domestic refrigeration", "capacity_kg": "0.05–0.5", "k": 1, "x": 0.5, "y": 80, "z": 70},
+      {"id": "stand_alone_commercial", "label": "Stand-alone commercial applications", "capacity_kg": "0.2–6", "k": 3, "x": 15, "y": 80, "z": 70},
+      {"id": "medium_large_commercial", "label": "Medium & large commercial refrigeration", "capacity_kg": "50–2,000", "k": 3, "x": 35, "y": 100, "z": 70},
+      {"id": "transport_refrigeration", "label": "Transport refrigeration", "capacity_kg": "3–8", "k": 1, "x": 50, "y": 50, "z": 70},
+      {"id": "industrial_refrigeration", "label": "Industrial refrigeration including food processing and cold storage", "capacity_kg": "10–10,000", "k": 3, "x": 25, "y": 100, "z": 90},
+      {"id": "chillers", "label": "Chillers", "capacity_kg": "10–2,000", "k": 1, "x": 15, "y": 100, "z": 95},
+      {"id": "residential_commercial_ac", "label": "Residential and commercial A/C including heat pumps", "capacity_kg": "0.5-100", "k": 1, "x": 10, "y": 80, "z": 80},
+      {"id": "mobile_ac_maritime", "label": "Mobile air conditioning - maritime", "capacity_kg": "5-6,500", "k": 0.5, "x": 40, "y": 50, "z": 50},
+      {"id": "mobile_ac_railway", "label": "Mobile air conditioning - railway", "capacity_kg": "10-30", "k": 0.5, "x": 20, "y": 50, "z": 50},
+      {"id": "mobile_ac_buses", "label": "Mobile air conditioning - buses", "capacity_kg": "4-18", "k": 0.5, "x": 20, "y": 50, "z": 50},
+      {"id": "mobile_ac_other", "label": "Mobile air conditioning - other", "capacity_kg": "0.5-2", "k": 0.5, "x": 20, "y": 50, "z": 50}
+    ]
+  },
+  "fire_suppression": {
+    "section": "2.1.2 Fire Suppression Equipment Screening",
+    "page": 5,
+    "source_line": "As provided in the Inventory of U.S. Greenhouse Gas Emissions and Sinks",
+    "note": "Capacity × the rate, per gas: 'Emissions from fixed systems are assumed to be 2.5 percent (0.025) of the total capacity of the units for each gas. Emissions from portable equipment are assumed to be 3.5 percent (0.035)'. No installation or disposal factor is given for fire suppression.",
+    "rows": [
+      {"id": "fire_fixed", "label": "Fire suppression, fixed systems", "x": 2.5},
+      {"id": "fire_portable", "label": "Fire suppression, portable equipment", "x": 3.5}
+    ]
+  }
+}

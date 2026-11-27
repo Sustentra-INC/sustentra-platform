@@ -205,6 +205,8 @@ export interface TraceBlock {
   tag?: TraceTag;
   /** The choice whose pills are shown above the block. */
   choice_id?: string;
+  /** A default the working uses that no reviewer has confirmed, shown as a muted tag: "Default: 10% (EPA Table 1, …) · not confirmed". */
+  assumption?: string;
   columns: TraceColumn[];
   /** Absent: the company did not report this block ("not reported" row). */
   company?: TraceOperation;

@@ -116,12 +116,12 @@ def test_r404a_simplified_material_balance_is_the_plans_example_exactly() -> Non
     jsonschema.validate(trace, SCHEMA)
 
 
-def test_the_method_offers_only_the_simplified_material_balance_for_now() -> None:
+def test_the_method_is_the_simplified_material_balance_with_screening_offered() -> None:
     trace = line_of(run(r404a_store()), R404A_KC)["trace"]
     method = trace["choices"][0]
     assert method["id"] == "method" and method["chosen"] == "smb"
     assert [(o["id"], o["available"]) for o in method["options"]] == [
-        ("screening", False), ("smb", True), ("material_balance", False)]
+        ("screening", True), ("smb", True), ("material_balance", False)]
     assert method["options"][1]["equation"] == fugitive.EQUATION
 
 

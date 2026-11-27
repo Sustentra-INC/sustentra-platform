@@ -819,6 +819,12 @@
             "null"
           ]
         },
+        "assumption": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "columns": {
           "type": "array",
           "items": {
