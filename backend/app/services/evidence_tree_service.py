@@ -234,7 +234,8 @@ class EvidenceTreeService:
             for target in targets:
                 for _, doc, slot in rows.get(target, []):
                     ids.add(doc.document_id)
-                    seen |= {(doc.document_id, i) for i in slot.records}
+                    if target != cl.BLOCK_SUMMARY:  # Block 1 is reference only: its documents carry no values
+                        seen |= {(doc.document_id, i) for i in slot.records}
             total = {"values": 0, "accepted": 0, "to_review": 0, "issues": 0}
             for document_id, index in seen:
                 for name, number in cl.tally([by_id[document_id].records[index]]).items():
@@ -331,7 +332,8 @@ class EvidenceTreeService:
             name = records[0].best("facility_name")
             facility_name = " ".join(str(name).split()) if name else None
         facility_note = next((doc.facility_notes[i] for i in sorted(slot.records) if doc.facility_notes[i]), None)
-        counts = cl.tally(records)
+        counts = (cl.tally([]) if slot.target == cl.BLOCK_SUMMARY  # reference only: no values to accept
+                  else cl.tally(records))
         families = {cl.record_family(r.canonical_type_id) for r in records}
         return {
             "document_id": doc.document_id, "file_name": doc.document.get("file_name"),

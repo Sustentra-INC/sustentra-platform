@@ -769,7 +769,8 @@ def _counts_store() -> FakeStore:
 def test_counts_at_every_level_never_double_count_a_document_in_two_places() -> None:
     tree = _tree(_counts_store(), COUNTS_DECISIONS)
     blocks = tree["blocks"]
-    assert blocks["summary_counts"] == {"documents": 1, "values": 1, "accepted": 0, "to_review": 1, "issues": 0,
+    # Block 1 is reference only: the workbook's one value is not counted anywhere
+    assert blocks["summary_counts"] == {"documents": 1, "values": 0, "accepted": 0, "to_review": 0, "issues": 0,
                                         "pct_accepted": 0.0}
     assert blocks["unassigned_counts"]["documents"] == 1 and blocks["unassigned_counts"]["values"] == 0
     assert blocks["supporting"]["unassigned_counts"]["documents"] == 0
@@ -780,6 +781,23 @@ def test_counts_at_every_level_never_double_count_a_document_in_two_places() -> 
     assert scopes["s1"]["counts"] == {"documents": 2, "values": 12, "accepted": 6, "to_review": 0, "issues": 6,
                                       "pct_accepted": 50.0}
     assert scopes["biogenic"]["counts"]["documents"] == 0
+
+
+def test_a_bill_moved_into_block_1_carries_no_values_and_counts_for_nothing() -> None:
+    store = _counts_store()
+    base = _tree(store, COUNTS_DECISIONS)
+    decisions = {**COUNTS_DECISIONS, "G1": {"placements": [{"from": GAS_KC, "to": cl.BLOCK_SUMMARY}]}}
+    tree = _tree(store, decisions)
+    blocks = tree["blocks"]
+    row = next(d for d in blocks["summary"] if d["document_id"] == "G1")
+    assert row["values"] == 0 and row["accepted"] == 0  # nothing to accept on a reference document
+    assert blocks["summary_counts"]["documents"] == 2 and blocks["summary_counts"]["values"] == 0
+    assert cl.in_summary_block([cl.Slot(cl.BLOCK_SUMMARY, {0})]) is True
+    assert cl.in_summary_block([cl.Slot(GAS_KC, {0})]) is False
+    # its values leave Supporting evidence too: no count anywhere picks them up
+    before = {s["scope"]: s["counts"] for s in base["blocks"]["supporting"]["scopes"]}["s1"]
+    after = {s["scope"]: s["counts"] for s in blocks["supporting"]["scopes"]}["s1"]
+    assert after["documents"] == before["documents"] - 1 and after["values"] == before["values"] - 6
 
 
 def test_the_facility_filter_shows_one_facility_and_recomputes_counts() -> None:

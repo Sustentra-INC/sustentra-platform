@@ -3634,6 +3634,8 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 
 /* Evidence tree (backend mode): Scope > Category > fuel > calculation line, folds that stay where you left them. */
 .s1-et { display: flex; flex-direction: column; gap: var(--sp-2); }
+.s1-et-tabs { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.s1-et-tabs .s1-xr-tab:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .s1-et-bar { display: flex; gap: var(--sp-4); justify-content: flex-end; font-size: var(--text-sm); }
 .s1-et-node { background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); }
 .s1-et-node .s1-et-node { border-radius: 0; border-width: var(--hairline-width) 0 0 0; }

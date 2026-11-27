@@ -125,6 +125,9 @@ import {
   deleteEvidenceFolder,
   deleteEvidenceLine,
   getEvidenceActivity,
+  getEvidenceTree,
+  placementOfDocuments,
+  type EvidenceTab,
   moveEvidenceDocument,
   setDocumentFacility,
   setRereadState,
@@ -217,6 +220,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const [evidenceTreeOpen, setEvidenceTreeOpen] = useState<string[] | null>(null);
   const [evidenceGrouping, setEvidenceGrouping] = useState<"lines" | "types">("lines");
   const [evidenceFacility, setEvidenceFacility] = useState<string | null>(null);
+  // Which tab of the Evidence page is selected: kept here, like the open rows, so a visit to a document comes back to it.
+  const [evidenceTab, setEvidenceTab] = useState<EvidenceTab>("supporting");
+  // Where each document sits (Block 1, 2 or 3), from the Evidence tree; null until it has loaded.
+  const [placements, setPlacements] = useState<ReturnType<typeof placementOfDocuments> | null>(null);
   const [auditIntents, setAuditIntents] = useState<SessionAuditEntry[]>([]);
   const [demoState, setDemoState] = useState<ContainerState>(dataMode === "backend" ? "loading" : "populated");
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>(
@@ -628,6 +635,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setEvidenceEvents([]);
     setEvidenceOlder(null);
     setEvidenceFacility(null);
+    setEvidenceTab("supporting");
+    setPlacements(null);
     setEvidenceTreeOpen(null);
     rememberEngagement(row.id);
     setSetupSave({ state: "idle", savedAt: null, problems: {}, message: null });
@@ -923,7 +932,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   /** A company summary document, or one opened from a methodology source, that has no extracted values: it opens with its methodology facts. */
   function isSummaryView(documentId: string, field?: string): boolean {
     if (reviewValuesView.some((v) => v.documentId === documentId)) return false;
-    return Boolean(field) || isSummaryDocument(evidenceView.find((e) => e.documentId === documentId));
+    return Boolean(field) || inSummaryBlock(documentId);
   }
 
   function openExtraction(documentId: string, valueId?: string, at?: SourceAt) {
@@ -1426,9 +1435,44 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       live = false;
     };
   }, [dataMode, activeView.name, engagement.engagementId, evidenceSignature]);
+  // Where each document sits, read from the Evidence tree (never filtered), again when the documents, a
+  // placement or a read changes. A failed read leaves what was known: the screens then fall back to the type.
+  useEffect(() => {
+    if (!engagement.engagementId) return;
+    let live = true;
+    getEvidenceTree(engagement.engagementId)
+      .then((tree) => live && setPlacements(placementOfDocuments(tree)))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [engagement.engagementId, evidenceSignature, documentDecisions, workspaceFields]);
+
+  /** Block 1 is decided by where a document sits, not by its type: reference documents carry no values to accept.
+   *  Until the placement is known (or for a document the tree does not list), the type decides, as before. */
+  function inSummaryBlock(documentId: string): boolean {
+    const where = placements?.get(documentId);
+    if (where) return where === "summary";
+    return isSummaryDocument(evidenceView.find((e) => e.documentId === documentId));
+  }
+
+  // A document opened from a link, a dashboard or after a reload lands on the tab that holds it.
+  const tabSyncedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeView.name !== "extraction") {
+      tabSyncedFor.current = null;
+      return;
+    }
+    const where = placements?.get(activeView.documentId);
+    if (!where || tabSyncedFor.current === activeView.documentId) return;
+    tabSyncedFor.current = activeView.documentId;
+    if (where === "summary" || where === "supporting") setEvidenceTab(where); // Block 2 shows on both tabs: stay
+  }, [activeView, placements]);
+
   const reviewValuesView = useMemo(() => {
     // A card's latest request decides whether it is requested, in the session and after a reload.
-    const settled = withRequestsFromAsks(reviewValues, requests.asks);
+    // Block 1 documents are reference only: none of their values is offered for review or counted.
+    const settled = withRequestsFromAsks(reviewValues, requests.asks).filter((v) => placements?.get(v.documentId) !== "summary");
     if (dataMode !== "backend") return settled;
     const byId = new Map(evidenceView.map((item) => [item.documentId, item]));
     return settled.map((value) => {
@@ -1443,7 +1487,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         withdrawnReason: item.disposition === "withdrawn" ? "Document withdrawn; it is left out of the results." : undefined,
       };
     });
-  }, [dataMode, reviewValues, evidenceView, requests.asks]);
+  }, [dataMode, reviewValues, evidenceView, requests.asks, placements]);
   const backendCoverage = useBackendCoverage(
     engagement.engagementId,
     dataMode === "backend" && (activeView.name === "requests" || activeView.name === "coverage"),
@@ -1717,6 +1761,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                     onViewChange: setEvidenceGrouping,
                     facilityId: evidenceFacility,
                     onFacilityChange: setEvidenceFacility,
+                    tab: evidenceTab,
+                    onTabChange: setEvidenceTab,
                     onOpenIdsChange: setEvidenceTreeOpen,
                     onOpenSchedule: (lineKey) => setActiveView({ name: "schedule", lineKey }),
                     onMovePlacement: moveDocumentPlacement,
@@ -1813,6 +1859,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             initialDocumentId={activeView.documentId}
             initialDocumentName={evidenceView.find((e) => e.documentId === activeView.documentId)?.filename}
             typeItem={evidenceView.find((e) => e.documentId === activeView.documentId)}
+            inSummaryBlock={inSummaryBlock(activeView.documentId)}
             onPlaceOnFacility={placeDocumentOnFacility}
             onOpenMethodology={() => setActiveView({ name: "methodology" })}
             initialValueId={activeView.valueId}
@@ -1929,7 +1976,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           />
             );
             // A company summary document that also has reported values: its Methodology facts are a second tab.
-            return STAGING_SCREENS && dataMode === "backend" && (activeView.field || isSummaryDocument(evidenceView.find((e) => e.documentId === activeView.documentId))) ? (
+            return STAGING_SCREENS && dataMode === "backend" && (activeView.field || inSummaryBlock(activeView.documentId)) ? (
               <WithMethodologyFacts
                 key={`${activeView.documentId}:${activeView.field ?? ""}:${activeView.entry ?? ""}:${activeView.page ?? ""}`}
                 engagementId={engagement.engagementId}

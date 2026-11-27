@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight, PanelsTopLeft, Plus } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import {
   BLOCK_SUMMARY,
@@ -12,6 +12,7 @@ import {
   type CalculationFamily,
   type CalculationLine,
   type EvidenceLineSetting,
+  type EvidenceTab,
   type EvidenceTree as EvidenceTreeData,
   type Placement,
   type RereadChoice,
@@ -56,6 +57,10 @@ export interface EvidenceTreeProps {
   /** The facility the tree is filtered to, or null for all. Kept by the app. */
   facilityId: string | null;
   onFacilityChange: (facilityId: string | null) => void;
+  /** The selected tab, kept by the app like the open rows so it survives a visit to a document or a schedule.
+   *  The facility filter belongs to the Supporting evidence tab only. Without it the tree keeps its own. */
+  tab?: EvidenceTab;
+  onTabChange?: (tab: EvidenceTab) => void;
   /** Ids of the open rows, or null to start from the default (scopes open). */
   openIds: string[] | null;
   onOpenIdsChange: (ids: string[]) => void;
@@ -109,8 +114,13 @@ const isLineKey = (key: string) => !key.startsWith("block:") && !key.startsWith(
 const UNKNOWN_LINE_LABEL = "Unassigned supporting evidence (its line was deleted)";
 
 export function EvidenceTree(props: EvidenceTreeProps) {
-  const { engagement, reloadKey, facilityId, openIds, onOpenIdsChange, onError } = props;
+  const { engagement, reloadKey, openIds, onOpenIdsChange, onError } = props;
   const engagementId = engagement.engagementId;
+  const [ownTab, setOwnTab] = useState<EvidenceTab>("supporting");
+  const tab = props.tab ?? ownTab;
+  const setTab = props.onTabChange ?? setOwnTab;
+  // The facility filter applies to Supporting evidence only: Block 1 is never filtered.
+  const facilityId = tab === "supporting" ? props.facilityId : null;
   const assign = useAssignTask();
   const [tree, setTree] = useState<EvidenceTreeData | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -197,8 +207,25 @@ export function EvidenceTree(props: EvidenceTreeProps) {
 
   const { summary, unassigned, supporting } = tree.blocks;
   const visibleScopes = supporting.scopes.filter((s) => !noneFor(s.counts));
-  const nothingShown =
-    filtered && summary.length + unassigned.length + supporting.unassigned.length + visibleScopes.length === 0;
+  const nothingShown = filtered && unassigned.length + supporting.unassigned.length + visibleScopes.length === 0;
+  const TABS: { id: EvidenceTab; label: string }[] = [
+    { id: "summary", label: "Summary documents and workbook" },
+    { id: "supporting", label: "Supporting evidence" },
+  ];
+  /** Arrow keys move between the tabs (and select, as the tab follows focus); Home and End jump to the ends. */
+  function onTabKey(e: ReactKeyboardEvent<HTMLDivElement>) {
+    const at = TABS.findIndex((t) => t.id === tab);
+    const to =
+      e.key === "ArrowRight" || e.key === "ArrowDown" ? (at + 1) % TABS.length
+      : e.key === "ArrowLeft" || e.key === "ArrowUp" ? (at - 1 + TABS.length) % TABS.length
+      : e.key === "Home" ? 0
+      : e.key === "End" ? TABS.length - 1
+      : -1;
+    if (to < 0) return;
+    e.preventDefault();
+    setTab(TABS[to].id);
+    window.requestAnimationFrame(() => document.getElementById(`s1-et-tab-${TABS[to].id}`)?.focus());
+  }
 
   function changeFacility(next: string | null) {
     openAllOnLoad.current = next !== null;
@@ -534,18 +561,37 @@ export function EvidenceTree(props: EvidenceTreeProps) {
 
   return (
     <div className="s1-et">
+      <div className="s1-et-tabs" role="tablist" aria-label="Evidence" onKeyDown={onTabKey}>
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={`s1-et-tab-${t.id}`}
+            aria-selected={tab === t.id}
+            aria-controls={`s1-et-panel-${t.id}`}
+            tabIndex={tab === t.id ? 0 : -1}
+            className={`s1-xr-tab${tab === t.id ? " is-on" : ""}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
       <div className="s1-et-bar">
-        <label className="s1-et-facility">
-          <span>Facility</span>
-          <select value={facilityId ?? ""} onChange={(e) => changeFacility(e.target.value || null)} aria-label="Facility">
-            <option value="">All facilities</option>
-            {tree.facilities.map((f) => (
-              <option key={f.facility_id} value={f.facility_id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {tab === "supporting" ? (
+          <label className="s1-et-facility">
+            <span>Facility</span>
+            <select value={facilityId ?? ""} onChange={(e) => changeFacility(e.target.value || null)} aria-label="Facility">
+              <option value="">All facilities</option>
+              {tree.facilities.map((f) => (
+                <option key={f.facility_id} value={f.facility_id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <span className="s1-et-bar__fold">
           <button className="s1-linklike" type="button" onClick={() => setOpen(collectIds(tree))}>
             Expand all
@@ -556,6 +602,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         </span>
       </div>
 
+      <div className="s1-et" role="tabpanel" id={`s1-et-panel-${tab}`} aria-labelledby={`s1-et-tab-${tab}`}>
       {nothingShown ? (
         <div className="s1-ws-empty" role="status">
           <p>No documents belong to this facility.</p>
@@ -565,7 +612,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         </div>
       ) : null}
 
-      {!filtered || summary.length ? (
+      {tab === "summary" ? (
         <Fold
           id="b:summary"
           depth={0}
@@ -600,7 +647,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         </Fold>
       ) : null}
 
-      {!filtered || visibleScopes.length || supporting.unassigned.length ? (
+      {tab === "supporting" && (!filtered || visibleScopes.length || supporting.unassigned.length) ? (
         <Fold id="b:supporting" depth={0} open={isOpen("b:supporting")} onToggle={toggle} title="Supporting evidence">
           {tree.facilities.length === 0 ? (
             <p className="s1-et-none s1-et-nofac">
@@ -635,6 +682,8 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           ) : null}
         </Fold>
       ) : null}
+
+      </div>
 
       {!filtered && tree.set_aside.length ? (
         <Fold id="b:set-aside" depth={0} open={isOpen("b:set-aside")} onToggle={toggle} title="Set aside" subtitle="Withdrawn, duplicate or replaced: not used in any line">
@@ -799,7 +848,7 @@ function wholePercent(pct: number): number {
 }
 
 function defaultOpen(tree: EvidenceTreeData): string[] {
-  const ids = ["b:supporting", ...tree.blocks.supporting.scopes.map((s) => `scope:${s.scope}`)];
+  const ids = ["b:summary", "b:supporting", ...tree.blocks.supporting.scopes.map((s) => `scope:${s.scope}`)];
   if (tree.blocks.unassigned.length) ids.push("b:unassigned");
   // As in Claire's design, the first category with documents opens down to its calculation
   // lines, so the reviewer sees the lines and their supporting-schedule buttons on arrival.

@@ -119,7 +119,7 @@ interface EvidenceWorkspaceProps {
   /** Backend mode: shows the calculation-line tree instead of the grouping by document type. */
   tree?: Pick<
     EvidenceTreeProps,
-    "openIds" | "onOpenIdsChange" | "onOpenSchedule" | "onMovePlacement" | "onPlaceOnFacility" | "onCreateLine" | "onRenameLine" | "onDeleteLine" | "onCreateFolder" | "onRenameFolder" | "onDeleteFolder" | "onSetDocumentFolder" | "rereads" | "onRetryReread" | "onError" | "facilityId" | "onFacilityChange"
+    "openIds" | "onOpenIdsChange" | "onOpenSchedule" | "onMovePlacement" | "onPlaceOnFacility" | "onCreateLine" | "onRenameLine" | "onDeleteLine" | "onCreateFolder" | "onRenameFolder" | "onDeleteFolder" | "onSetDocumentFolder" | "rereads" | "onRetryReread" | "onError" | "facilityId" | "onFacilityChange" | "tab" | "onTabChange"
   > & {
     /** Which grouping shows, and a change to it; kept by the app with the tree's open rows. */
     view: "lines" | "types";
@@ -472,6 +472,8 @@ export function EvidenceWorkspace({
               onError={tree.onError}
               facilityId={tree.facilityId}
               onFacilityChange={tree.onFacilityChange}
+              tab={tree.tab}
+              onTabChange={tree.onTabChange}
               engagement={engagement}
               reloadKey={treeReloadKey}
               onOpenExtraction={onOpenExtraction}

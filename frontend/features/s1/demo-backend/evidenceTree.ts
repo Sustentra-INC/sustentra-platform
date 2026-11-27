@@ -68,7 +68,8 @@ export function buildTree(facilityId: string | null): EvidenceTree {
         facility_note: fid ? null : record.facilityNote,
         processing_status: record.processingStatus, detected_type: record.detectedType,
         also_in: slots.filter((s) => s.target !== slot.target && byKey.has(s.target)).map((s) => s.target),
-        values: record.values, accepted: record.acceptedValues, flags: [...slot.flags], placement_from: slot.target,
+        // Block 1 is reference only: its documents carry no values to accept, whatever their type
+        values: slot.target === BLOCK_SUMMARY ? 0 : record.values, accepted: slot.target === BLOCK_SUMMARY ? 0 : record.acceptedValues, flags: [...slot.flags], placement_from: slot.target,
         value_family: FAMILY_OF_KIND[record.kind] ?? null,
       };
       if (facilityId && row.facility_id !== facilityId) continue;
@@ -77,7 +78,11 @@ export function buildTree(facilityId: string | null): EvidenceTree {
   }
   const documents = (target: string) =>
     (rows.get(target) ?? []).map((e) => e.row).sort((a, b) => (a.period_start ?? "9999").localeCompare(b.period_start ?? "9999") || a.file_name.localeCompare(b.file_name));
-  const countsOf = (targets: string[]) => counts(targets.flatMap((t) => (rows.get(t) ?? []).map((e) => e.record)));
+  const countsOf = (targets: string[]) =>
+    targets.includes(BLOCK_SUMMARY)
+      ? // Block 1 is reference only: documents are counted, values are not
+        { ...counts([]), documents: new Set((rows.get(BLOCK_SUMMARY) ?? []).map((e) => e.record.documentId)).size }
+      : counts(targets.flatMap((t) => (rows.get(t) ?? []).map((e) => e.record)));
 
   const scopes = SCOPES.map(([scope, label]) => {
     const categories = CATEGORIES.filter(([, , owner]) => owner === scope).map(([category, clabel]) => {

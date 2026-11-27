@@ -41,6 +41,9 @@ interface ExtractionReviewProps {
   initialDocumentName?: string;
   /** The opened document's evidence row: its header says when Claude suggested the type. */
   typeItem?: EvidenceItem;
+  /** The document sits in Block 1 (Summary documents and workbook): reference only, so no values to review.
+   *  Decided by placement; without it the detected type decides, as it did before. */
+  inSummaryBlock?: boolean;
   /** The reviewer takes Claude's facility suggestion for this document (their own decision, audited). */
   onPlaceOnFacility?: (documentId: string, facilityId: string) => Promise<void>;
   /** Open with this value selected (a link from the assistant). */
@@ -132,6 +135,7 @@ export function ExtractionReview({
   initialDocumentId,
   initialDocumentName,
   typeItem,
+  inSummaryBlock,
   onPlaceOnFacility,
   initialValueId,
   initialNodeKey,
@@ -155,7 +159,11 @@ export function ExtractionReview({
   // Review data lives in app state (via onValuesChange); selection below is
   // local, ephemeral UI. So accepts/corrections/requests survive navigation.
   // A card's latest request decides whether it is requested (resolved or withdrawn: back to review).
-  const items = useMemo(() => withRequestsFromAsks(values, asks), [values, asks]);
+  // A document in Block 1 is reference only: whatever values it holds are not offered for review.
+  const items = useMemo(
+    () => withRequestsFromAsks(inSummaryBlock && initialDocumentId ? values.filter((v) => v.documentId !== initialDocumentId) : values, asks),
+    [values, asks, inSummaryBlock, initialDocumentId]
+  );
 
   const initial = useMemo(
     () => resolveInitial(items, initialDocumentId, initialNodeKey, initialValueId),
@@ -690,7 +698,7 @@ export function ExtractionReview({
       typeItem !== undefined &&
       (typeItem.reading !== undefined || ["not_ingested", "ingested"].includes(typeItem.processingState));
     const viewer = stillReading || !renderPage ? null : renderPage(initialDocumentId, null, undefined, [], undefined);
-    const summary = isSummaryDocument(typeItem);
+    const summary = inSummaryBlock ?? isSummaryDocument(typeItem);
     if (stillReading || viewer || summary || items.length === 0) {
       return (
         <section className="s1-content s1-xr s1-xr--doconly">

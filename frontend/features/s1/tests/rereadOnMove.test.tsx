@@ -109,6 +109,7 @@ async function moveWorkbookOntoKent() {
   await settle();
   fireEvent.click(document.querySelector(`.s1-side__item[title="Evidence"]`) as HTMLElement);
   await settle();
+  fireEvent.click(screen.getByRole("tab", { name: "Summary documents and workbook" })); // Block 1 has its own tab
   fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
   fireEvent.click(screen.getByRole("button", { name: "Actions for GHG workbook 工作簿.xlsx" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Move to…" }));
@@ -120,6 +121,8 @@ async function moveWorkbookOntoKent() {
   fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
   fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
   await settle();
+  fireEvent.click(screen.getByRole("tab", { name: "Supporting evidence" })); // the workbook now sits on the Kent line
+  fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
 }
 
 describe("a move onto a line of another type asks for a read as that type", () => {

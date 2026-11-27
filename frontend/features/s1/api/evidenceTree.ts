@@ -288,6 +288,22 @@ export const BLOCK_SUMMARY = "block:summary";
 export const BLOCK_UNASSIGNED = "block:unassigned";
 export const SUPPORTING_UNASSIGNED = "supporting:unassigned";
 
+/** The Evidence page's two tabs: Block 1 for reference, and Block 3. Block 2 (unassigned) shows on both. */
+export type EvidenceTab = "summary" | "supporting";
+
+/** Where each document sits in the tree: Block 1 ("summary"), Block 2 ("unassigned") or Block 3 ("supporting").
+ *  One helper for "is this document in Block 1": placement decides it, never the document's type. */
+export function placementOfDocuments(tree: EvidenceTree): Map<string, "summary" | "unassigned" | "supporting"> {
+  const where = new Map<string, "summary" | "unassigned" | "supporting">();
+  for (const d of tree.blocks.supporting.unassigned) where.set(d.document_id, "supporting");
+  for (const s of tree.blocks.supporting.scopes)
+    for (const c of s.categories)
+      for (const l2 of c.level2s) for (const n of l2.lines) for (const d of n.documents) where.set(d.document_id, "supporting");
+  for (const d of tree.blocks.unassigned) where.set(d.document_id, "unassigned");
+  for (const d of tree.blocks.summary) where.set(d.document_id, "summary"); // Block 1 wins when a document is in several places
+  return where;
+}
+
 /** The tree; with a facility, only what belongs to it, recounted by the server. */
 export function getEvidenceTree(engagementId: string, facilityId?: string | null): Promise<EvidenceTree> {
   const query = facilityId ? `?facility_id=${encodeURIComponent(facilityId)}` : "";
