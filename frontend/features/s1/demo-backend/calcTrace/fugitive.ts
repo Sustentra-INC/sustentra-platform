@@ -8,6 +8,7 @@ import type { CalcLineSmb, CalcLineStep1Row, CalcQuantity, CalculationLine } fro
 import type { LineTrace, TraceBlock, TraceColumn, TraceInput, TraceOpSymbol, TraceOperand, TraceOperation, TraceSide, TraceStep } from "../../api/calcTrace";
 import type { ModelLine, ModelRecord } from "../linesModel";
 import { type DemoDecided, screeningChoices, screeningInputs, screeningSteps, screeningUnits } from "./fugitiveScreening";
+import { materialInputs, materialSteps } from "./fugitiveMaterialBalance";
 
 const HUB = "EPA GHG Emission Factors Hub 2025";
 export const TERMS = ["P_N", "C_N", "P_S", "C_D", "R_D"] as const;
@@ -110,7 +111,9 @@ export function fugitiveTrace(line: CalculationLine, decided: DemoDecided = { ch
   // The screening method (C5): its inputs are on every trace; its working once a reviewer picks it.
   const units = screeningUnits(line.step1.rows);
   if (units.length) Object.assign(inputs, screeningInputs(units, unit, decided, gas));
-  const screen = units.length && decided.choices.method === "screening" ? screeningSteps(units, unit, { P_N: smb.terms.P_N, C_D: smb.terms.C_D }, inputs, decided, gas) : null;
+  // The material balance (C6): its six terms are on every trace too; its working once a reviewer picks it.
+  Object.assign(inputs, materialInputs(unit, decided));
+  const screen = units.length && decided.choices.method === "screening" ? screeningSteps(units, unit, { P_N: smb.terms.P_N, C_D: smb.terms.C_D }, inputs, decided, gas) : decided.choices.method === "material_balance" ? materialSteps(unit, decided) : null;
   const emittedValue = screen ? screen.emitted : num(balance.result.value);
   inputs.unit_conversion = { id: "unit_conversion", label: "Unit conversion", kind: "constant", required_for: [], recomputed: side(factor, `t/${unit}`, "reference", "fuel_units conversion table: 1 lb = 0.45359237 kg exactly; 1 t = 1,000 kg"), decidable: false, why_not: "the unit conversion comes from the conversion table" };
   const toT = operation([{ op: null, operand: operand("emitted", emittedValue, unit, { step_ref: "emitted" }) }, { op: "×", operand: operand("factor", factor, `t/${unit}`, { input_id: "unit_conversion" }) }], "emitted_t", "t");
@@ -165,7 +168,8 @@ export function fugitiveTrace(line: CalculationLine, decided: DemoDecided = { ch
   const blocking = screen?.blocking ?? [];
   return {
     trace_version: 1, line_key: line.key, panel: "fugitive", state: blocking.length ? "blocked" : "complete", blocking,
-    choices, inputs, steps, method_mismatch: false, flags: [...line.flags],
+    choices, inputs, steps, method_mismatch: false,
+    flags: screen ? [...line.flags.filter((f) => f !== "negative_refrigerant_emissions"), ...(emittedValue !== null && emittedValue < 0 ? ["negative_refrigerant_emissions"] : [])] : [...line.flags],
     result: { unit: "t CO2e", company, recomputed, difference: company === null || recomputed === null ? null : recomputed - company },
   };
 }

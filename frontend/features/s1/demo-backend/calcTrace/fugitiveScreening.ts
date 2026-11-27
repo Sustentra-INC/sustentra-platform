@@ -89,7 +89,7 @@ export function screeningChoices(available: boolean, gas = ""): TraceChoice[] {
   const method: TraceChoice = { id: "method", label: "Calculation method", chosen: "smb", chosen_by: "default", options: [
     { id: "screening", label: "Screening", equation: SCREENING_EQUATION, available, ...(available ? {} : { why_unavailable: "No reviewed records of equipment on this line." }), required_inputs: ["equipment_type", ...FACTORS] },
     { id: "smb", label: "Simplified material balance", equation: "Emitted = (P_N − C_N) + P_S + (C_D − R_D)", available: true, required_inputs: ["P_N", "C_N", "P_S", "C_D", "R_D"] },
-    { id: "material_balance", label: "Material balance", available: false, why_unavailable: "Sustentra cannot calculate this method yet.", required_inputs: [] },
+    { id: "material_balance", label: "Material balance", equation: "Emitted = (I_B − I_E) + (P − S) + (C_B − C_E)", available: true, required_inputs: ["I_B", "I_E", "P", "S", "C_B", "C_E"] },
   ] };
   if (!available) return [method];
   return [method, { id: "equipment_type", label: "Equipment type", chosen: "", chosen_by: "default", options: SCREENING_TYPES.map((t) => {

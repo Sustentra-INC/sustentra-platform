@@ -315,8 +315,7 @@ def test_zero_is_allowed_where_it_means_nothing_happened() -> None:
 
 
 def test_an_unknown_equipment_type_or_method_is_refused() -> None:
-    for bad in (choose(R410A_KC, fugitive.EQUIPMENT_CHOICE, "toaster"), choose(R410A_KC, "method", "material_balance"),
-                choose(R410A_KC, "method", "<script>")):
+    for bad in (choose(R410A_KC, fugitive.EQUIPMENT_CHOICE, "toaster"), choose(R410A_KC, "method", "<script>")):
         line = line_of(run(office_store(), line_decisions=[bad]), R410A_KC)
         assert line["decisions"]["not_applied"][0]["reason"] == "option_not_available"
         assert line["method"]["route"] == fugitive.ROUTE
