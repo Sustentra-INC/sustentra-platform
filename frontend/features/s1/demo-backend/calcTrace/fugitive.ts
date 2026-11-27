@@ -109,8 +109,8 @@ export function fugitiveTrace(line: CalculationLine, decided: DemoDecided = { ch
   const balance = operation(TERMS.map((t) => ({ op: TERM_OP[t], operand: operand(t, smb.terms[t], unit, { step_ref: `term.${t}` }) })), "emitted", unit);
   // The screening method (C5): its inputs are on every trace; its working once a reviewer picks it.
   const units = screeningUnits(line.step1.rows);
-  if (units.length) Object.assign(inputs, screeningInputs(units, unit, decided));
-  const screen = units.length && decided.choices.method === "screening" ? screeningSteps(units, unit, { P_N: smb.terms.P_N, C_D: smb.terms.C_D }, inputs, decided) : null;
+  if (units.length) Object.assign(inputs, screeningInputs(units, unit, decided, gas));
+  const screen = units.length && decided.choices.method === "screening" ? screeningSteps(units, unit, { P_N: smb.terms.P_N, C_D: smb.terms.C_D }, inputs, decided, gas) : null;
   const emittedValue = screen ? screen.emitted : num(balance.result.value);
   inputs.unit_conversion = { id: "unit_conversion", label: "Unit conversion", kind: "constant", required_for: [], recomputed: side(factor, `t/${unit}`, "reference", "fuel_units conversion table: 1 lb = 0.45359237 kg exactly; 1 t = 1,000 kg"), decidable: false, why_not: "the unit conversion comes from the conversion table" };
   const toT = operation([{ op: null, operand: operand("emitted", emittedValue, unit, { step_ref: "emitted" }) }, { op: "×", operand: operand("factor", factor, `t/${unit}`, { input_id: "unit_conversion" }) }], "emitted_t", "t");
@@ -157,7 +157,7 @@ export function fugitiveTrace(line: CalculationLine, decided: DemoDecided = { ch
   ];
   const recomputed = num(total.result.value);
   const company = companyTotal ? Number(companyTotal.result.value) : null;
-  const choices = screeningChoices(units.length > 0);
+  const choices = screeningChoices(units.length > 0, gas);
   for (const c of choices) {
     const picked = decided.choices[c.id];
     if (picked && c.options.some((o) => o.id === picked && o.available)) Object.assign(c, { chosen: picked, chosen_by: "reviewer" });

@@ -337,10 +337,25 @@ def _fugitive(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any]
                                                        decision, record))
         worked = fugitive.rework(trace, (line, context or {}), decided, picks)
         mark_decidable(trace)
-        for item in outcome.applied:
-            if item["id"] in unused and item.get("status") in DECIDED:
-                item["uses"] = ("held: the screening method does not use it" if screening else
-                                "held: only the screening method uses it")
+        if screening and worked is None:
+            # Screening chosen but blocked: the line counts its simplified material balance, with the reviewer's
+            # decisions on the balance in, until the screening can be worked. The trace shows the screening.
+            worked = fugitive.balance_figures((line, context or {}), decided)
+            reason = trace.blocking[0].message.split(".")[0] if trace.blocking else "an input"
+            total = worked["total"] if worked is not None else float(line["results"]["total_co2e_t"])
+            for item in outcome.applied:
+                if item.get("status") not in DECIDED:
+                    continue
+                if item["target"] == "choice" and item["id"] == "method":
+                    item["uses"] = (f"Screening is chosen but blocked (awaiting {reason}). Counting the simplified "
+                                    f"material balance ({total:,.2f} t) until then.")
+                elif item["target"] == "choice" or fugitive.used_by(item["id"], False) is False:
+                    item["uses"] = f"held: the screening method awaits {reason}"
+        else:
+            for item in outcome.applied:
+                if item["id"] in unused and item.get("status") in DECIDED:
+                    item["uses"] = ("held: the screening method does not use it" if screening else
+                                    "held: only the screening method uses it")
     elif values and len(unused) == len(values):  # only the other method reads them: shown as decided, held
         for input_id, (number, decision, record) in values.items():
             found = _find(trace, input_id)

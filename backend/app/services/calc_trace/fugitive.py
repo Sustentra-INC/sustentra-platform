@@ -190,6 +190,9 @@ class EquipmentType:
     short: str  # "EPA Table 1"
     citation: str  # the guidance, its edition, table and page, and the row
     page: int
+    # IPCC 2019 Table 7.9's range per factor, [lower, upper] in percent (EPA's value is the upper end); None where the
+    # table prints none (fire suppression; the buses' operating loss)
+    ranges: Mapping[str, tuple[float, float] | None]
 
 
 @lru_cache(maxsize=1)
@@ -202,10 +205,12 @@ def screening_factors() -> dict[str, EquipmentType]:
         short = "EPA Table 1" if not fire else "EPA fugitive guidance §2.1.2"
         for row in section["rows"]:
             factors = {f: (float(row[f]) if row.get(f) is not None else None) for f in FACTORS}
+            given = row.get("ipcc_range") or {}
+            ranges = {f: (float(given[f][0]), float(given[f][1])) if given.get(f) else None for f in FACTORS}
             out[row["id"]] = EquipmentType(
                 row["id"], row["label"], fire, factors, short,
                 f"{data['dataset']} ({data['edition']}), {where}, page {section['page']}: {row['label']}",
-                int(section["page"]))
+                int(section["page"]), ranges)
     return out
 
 
@@ -425,10 +430,38 @@ def _open(terms: list[Term], column: str, unit: str | None) -> Operation:
 
 
 _GUIDANCE = "EPA GHG Inventory Guidance: Direct Fugitive Emissions (December 2023)"
-T_DEFAULT_TAG = "Default: 1.00 (in use the whole reporting period) · not confirmed. Enter months in use ÷ 12"
+T_DEFAULT_TAG = "Default 1.00 (in use the whole reporting period) · not confirmed. Enter months in use ÷ 12"
 
 
-def _choices(units: list[ScreenUnit], why_not: str | None = None) -> list[Choice]:
+# Fire-suppression agents: the screening's fire-suppression rows only. Gases used both ways take either kind; every
+# other refrigerant (the blends, HFC-134a, HFC-32 ...) is refrigeration and A/C only.
+FIRE_AGENTS = ("HFC-227ea", "HFC-236fa", "FK-5-1-12")
+EITHER_USE = ("HFC-125", "HFC-23", "CO2")
+
+
+def gas_use(gas: str) -> str:
+    """``"fire"``, ``"refrigerant"`` or ``"either"``: which equipment types the gas can be screened under."""
+
+    key = _norm(gas)
+    if any(key.startswith(_norm(a)) for a in FIRE_AGENTS):
+        return "fire"
+    if key in {_norm(a) for a in EITHER_USE}:
+        return "either"
+    return "refrigerant"
+
+
+def type_refusal(gas: str, kind: EquipmentType) -> str | None:
+    """Why the equipment type cannot be used for this gas, or None."""
+
+    use = gas_use(gas)
+    if kind.fire and use == "refrigerant":
+        return f"{gas} is a refrigerant, not a fire-suppression agent: pick a refrigeration or A/C type."
+    if not kind.fire and use == "fire":
+        return f"{gas} is a fire-suppression agent: pick fire suppression, fixed or portable."
+    return None
+
+
+def _choices(units: list[ScreenUnit], why_not: str | None = None, gas: str = "") -> list[Choice]:
     """The method (simplified material balance by default; screening once a reviewer picks it, where the line has
     equipment to screen) and, with screening, the equipment type whose EPA factors it uses (none until picked)."""
 
@@ -443,14 +476,25 @@ def _choices(units: list[ScreenUnit], why_not: str | None = None) -> list[Choice
     if why is not None:
         return [method]
     types = Choice(EQUIPMENT_CHOICE, "Equipment type", [
-        ChoiceOption(t.id, t.label, equation=FIRE_EQUATION if t.fire else SCREENING_EQUATION, citation=SourceRef(
-            "reference", dataset=_GUIDANCE, table=t.short, edition="December 2023", citation=t.citation))
+        ChoiceOption(t.id, t.label, available=type_refusal(gas, t) is None, why_unavailable=type_refusal(gas, t),
+                     equation=FIRE_EQUATION if t.fire else SCREENING_EQUATION, citation=SourceRef(
+                         "reference", dataset=_GUIDANCE, table=t.short, edition="December 2023", citation=t.citation))
         for t in screening_factors().values()], chosen="")
     return [method, types]
 
 
 def _g(value: float) -> str:
     return format(value, ",.6g")
+
+
+def default_tag(kind: EquipmentType, factor: str, pct: float) -> str:
+    """"Default 10% (EPA Table 1; IPCC range 1–10%) · not confirmed": the value, where it is from, and IPCC's range."""
+
+    where = kind.short
+    if not kind.fire:
+        found = kind.ranges.get(factor)
+        where += f"; IPCC range {_g(found[0])}–{_g(found[1])}%" if found else "; no IPCC range printed"
+    return f"Default {_g(pct)}% ({where}) · not confirmed"
 
 
 @dataclass(frozen=True)
@@ -462,6 +506,7 @@ class ScreenUnit:
     capacity: float | None
     source: SourceRef | None
     conflict: bool
+    capacities: tuple[float, ...] = ()  # every capacity the records give, when they differ
 
 
 def screening_units(line: Mapping[str, Any]) -> list[ScreenUnit]:
@@ -490,7 +535,8 @@ def screening_units(line: Mapping[str, Any]) -> list[ScreenUnit]:
                            file_name=best[1].get("file_name")) if best else None
         out.append(ScreenUnit("u" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:10], group["name"],
                               best[0] if best else None, source,
-                              len({round(c[0], 9) for c in caps}) > 1))
+                              len({round(c[0], 9) for c in caps}) > 1,
+                              tuple(sorted({round(c[0], 9) for c in caps}))))
     return sorted(out, key=lambda u: (_norm(u.name), u.uid))
 
 
@@ -520,6 +566,24 @@ def rework(trace: LineTrace, line_context: tuple[dict[str, Any], dict[str, Any]]
         setattr(trace, name, getattr(again, name))
     if again.state == "blocked":
         return None
+    return _figures(again, line, picks)
+
+
+def balance_figures(line_context: tuple[dict[str, Any], dict[str, Any]], decided: Decided
+                    ) -> dict[str, Any] | None:
+    """The simplified material balance with the decided values it reads (the terms, their records, a component GWP),
+    for a line whose screening is chosen but blocked: what the line counts until the screening can be worked. None
+    when no decided value moves the balance (the line's own numbers stand) or the balance is blocked too."""
+
+    line, context = line_context
+    mine = {k: v for k, v in decided.items() if used_by(k, False) is not False}
+    if not mine:
+        return None
+    again = _build(line, context, mine, {})
+    return None if again.state == "blocked" else _figures(again, line, {})
+
+
+def _figures(again: LineTrace, line: Mapping[str, Any], picks: Mapping[str, str] | None) -> dict[str, Any]:
     blocks = {b.id: b for s in again.steps for b in s.blocks}
 
     def result(block_id: str) -> float:
@@ -527,7 +591,7 @@ def rework(trace: LineTrace, line_context: tuple[dict[str, Any], dict[str, Any]]
         assert op is not None and isinstance(op.result.value, (int, float))
         return float(op.result.value)
 
-    gwp = trace.inputs[f"gwp.{line['smb']['gas']}"].recomputed
+    gwp = again.inputs[f"gwp.{line['smb']['gas']}"].recomputed
     assert gwp is not None and isinstance(gwp.value, (int, float))
     route = ROUTE
     if (picks or {}).get("method") == SCREENING:
@@ -595,12 +659,14 @@ def _screening(units: list[ScreenUnit], kind: EquipmentType | None, inputs: dict
                  Term("×", Operand("T", t_value, None, input_id=t_id))]
         op = ops.make_operation(terms, "CT", unit) if c_value is not None and t_value is not None \
             else _open(terms, "CT", unit)
-        label = f"{u.name} · equipment in use" + (" (its records give different capacities: the largest is used)"
-                                                   if u.conflict and c_id not in decided else "")
-        step1.append(TraceBlock(f"unit.{u.uid}", label, [
+        warning = None
+        if u.conflict and c_id not in decided:
+            warning = (f"Capacities differ between records ({', '.join(f'{_g(v)} {unit}' for v in u.capacities)}): "
+                       "the largest is used. Check it, or enter the capacity.")
+        step1.append(TraceBlock(f"unit.{u.uid}", f"{u.name} · equipment in use", [
             Column("C", "Capacity · C", unit), Column("T", "Time in use · T", None, display={"dp": 2}),
             Column("CT", "C × T", unit, True, {"sig": 6})], recomputed=op,
-            assumption=None if t_id in decided else T_DEFAULT_TAG))
+            assumption=None if t_id in decided else T_DEFAULT_TAG, warning=warning))
         if c_value is None:
             blocking.append(Blocking(c_id, f"equipment capacity. Enter the refrigerant capacity (C) of {u.name}, "
                                            "from the equipment register or its nameplate."))
@@ -633,7 +699,7 @@ def _screening(units: list[ScreenUnit], kind: EquipmentType | None, inputs: dict
         theirs = _single(f, given / 100.0, None, input_id=f) if given is not None else None
         tag = None
         if f not in decided and pct is not None and kind is not None:
-            tag = f"Default: {_g(pct)}% ({kind.short}, {kind.label}) · not confirmed"
+            tag = default_tag(kind, f, pct)
         step1.append(TraceBlock(f"factor.{f}", f"{name} · {f}", [Column(f, name, "%", True)], recomputed=mine,
                                 company=theirs, assumption=tag))
     missing = [f for f in needed if fraction[f] is None]
@@ -705,6 +771,8 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided,
     units = screening_units(line)
     screening = picks.get("method") == SCREENING and bool(units)
     kind = screening_factors().get(picks.get(EQUIPMENT_CHOICE) or "")
+    if kind is not None and type_refusal(gas, kind) is not None:
+        kind = None  # never the factors of a type the gas cannot be screened under (``decisions`` refuses it first)
     check = not decided and not screening  # the default working must reproduce the line's numbers
     inputs: dict[str, TraceInput] = {}
 
@@ -990,7 +1058,7 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided,
     their_total = float(company_total.result.value) if company_total is not None else None  # type: ignore[arg-type]
     return LineTrace(
         line_key=str(line["key"]), panel="fugitive", state="blocked" if blocking else "complete", blocking=blocking,
-        choices=_choices(units), inputs=inputs, steps=steps, flags=sorted(flags),
+        choices=_choices(units, gas=gas), inputs=inputs, steps=steps, flags=sorted(flags),
         result=TraceResult("t CO2e", their_total, recomputed_total,
                            ops.difference(recomputed_total, their_total, "t CO2e", "t CO2e")))
 

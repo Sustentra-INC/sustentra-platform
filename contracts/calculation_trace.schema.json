@@ -825,6 +825,12 @@
             "null"
           ]
         },
+        "warning": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "columns": {
           "type": "array",
           "items": {

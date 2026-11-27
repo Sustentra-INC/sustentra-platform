@@ -7,20 +7,22 @@ import type { CalcLineStep1Row } from "../../api/recalculation";
 import type { TraceBlock, TraceBlocking, TraceChoice, TraceColumn, TraceInput, TraceOpSymbol, TraceOperand, TraceOperation, TraceSide } from "../../api/calcTrace";
 
 /** EPA's screening factors, in percent: reference-data/emission-factors/epa_fugitive_screening_factors.json (a test keeps the two equal). */
-export const SCREENING_TYPES: { id: string; label: string; fire: boolean; k: number | null; x: number; y: number | null; z: number | null }[] = [
-  { id: "domestic_refrigeration", label: "Domestic refrigeration", fire: false, k: 1, x: 0.5, y: 80, z: 70 },
-  { id: "stand_alone_commercial", label: "Stand-alone commercial applications", fire: false, k: 3, x: 15, y: 80, z: 70 },
-  { id: "medium_large_commercial", label: "Medium & large commercial refrigeration", fire: false, k: 3, x: 35, y: 100, z: 70 },
-  { id: "transport_refrigeration", label: "Transport refrigeration", fire: false, k: 1, x: 50, y: 50, z: 70 },
-  { id: "industrial_refrigeration", label: "Industrial refrigeration including food processing and cold storage", fire: false, k: 3, x: 25, y: 100, z: 90 },
-  { id: "chillers", label: "Chillers", fire: false, k: 1, x: 15, y: 100, z: 95 },
-  { id: "residential_commercial_ac", label: "Residential and commercial A/C including heat pumps", fire: false, k: 1, x: 10, y: 80, z: 80 },
-  { id: "mobile_ac_maritime", label: "Mobile air conditioning - maritime", fire: false, k: 0.5, x: 40, y: 50, z: 50 },
-  { id: "mobile_ac_railway", label: "Mobile air conditioning - railway", fire: false, k: 0.5, x: 20, y: 50, z: 50 },
-  { id: "mobile_ac_buses", label: "Mobile air conditioning - buses", fire: false, k: 0.5, x: 20, y: 50, z: 50 },
-  { id: "mobile_ac_other", label: "Mobile air conditioning - other", fire: false, k: 0.5, x: 20, y: 50, z: 50 },
-  { id: "fire_fixed", label: "Fire suppression, fixed systems", fire: true, k: null, x: 2.5, y: null, z: null },
-  { id: "fire_portable", label: "Fire suppression, portable equipment", fire: true, k: null, x: 3.5, y: null, z: null },
+type Range = [number, number] | null;
+/** EPA's value per factor (in %) and IPCC 2019 Table 7.9's range for it (page 7.32; EPA's value is its upper end). */
+export const SCREENING_TYPES: { id: string; label: string; fire: boolean; k: number | null; x: number; y: number | null; z: number | null; ipcc: Record<"k" | "x" | "y" | "z", Range> | null }[] = [
+  { id: "domestic_refrigeration", label: "Domestic refrigeration", fire: false, k: 1, x: 0.5, y: 80, z: 70, ipcc: { k: [0.2, 1], x: [0.1, 0.5], y: [0, 80], z: [0, 70] } },
+  { id: "stand_alone_commercial", label: "Stand-alone commercial applications", fire: false, k: 3, x: 15, y: 80, z: 70, ipcc: { k: [0.5, 3], x: [1, 15], y: [0, 80], z: [0, 70] } },
+  { id: "medium_large_commercial", label: "Medium & large commercial refrigeration", fire: false, k: 3, x: 35, y: 100, z: 70, ipcc: { k: [0.5, 3], x: [10, 35], y: [50, 100], z: [0, 70] } },
+  { id: "transport_refrigeration", label: "Transport refrigeration", fire: false, k: 1, x: 50, y: 50, z: 70, ipcc: { k: [0.2, 1], x: [15, 50], y: [0, 50], z: [0, 70] } },
+  { id: "industrial_refrigeration", label: "Industrial refrigeration including food processing and cold storage", fire: false, k: 3, x: 25, y: 100, z: 90, ipcc: { k: [0.5, 3], x: [7, 25], y: [50, 100], z: [0, 90] } },
+  { id: "chillers", label: "Chillers", fire: false, k: 1, x: 15, y: 100, z: 95, ipcc: { k: [0.2, 1], x: [2, 15], y: [80, 100], z: [0, 95] } },
+  { id: "residential_commercial_ac", label: "Residential and commercial A/C including heat pumps", fire: false, k: 1, x: 10, y: 80, z: 80, ipcc: { k: [0.2, 1], x: [1, 10], y: [0, 80], z: [0, 80] } },
+  { id: "mobile_ac_maritime", label: "Mobile air conditioning - maritime", fire: false, k: 0.5, x: 40, y: 50, z: 50, ipcc: { k: [0.2, 0.5], x: [20, 40], y: [0, 50], z: [0, 50] } },
+  { id: "mobile_ac_railway", label: "Mobile air conditioning - railway", fire: false, k: 0.5, x: 20, y: 50, z: 50, ipcc: { k: [0.2, 0.5], x: [5, 20], y: [0, 50], z: [0, 50] } },
+  { id: "mobile_ac_buses", label: "Mobile air conditioning - buses", fire: false, k: 0.5, x: 20, y: 50, z: 50, ipcc: { k: [0.2, 0.5], x: null, y: [0, 50], z: [0, 50] } },
+  { id: "mobile_ac_other", label: "Mobile air conditioning - other", fire: false, k: 0.5, x: 20, y: 50, z: 50, ipcc: { k: [0.2, 0.5], x: [10, 20], y: [0, 50], z: [0, 50] } },
+  { id: "fire_fixed", label: "Fire suppression, fixed systems", fire: true, k: null, x: 2.5, y: null, z: null, ipcc: null },
+  { id: "fire_portable", label: "Fire suppression, portable equipment", fire: true, k: null, x: 3.5, y: null, z: null, ipcc: null },
 ];
 
 export const SCREENING_EQUATION = "Emitted = C_N × k + Σ (C × T) × x + C_D × y × (1 − z)";
@@ -29,7 +31,21 @@ const GUIDANCE = "EPA GHG Inventory Guidance: Direct Fugitive Emissions (Decembe
 const FACTORS = ["k", "x", "y", "z"] as const;
 type Factor = (typeof FACTORS)[number];
 const FACTOR_LABEL: Record<Factor, string> = { k: "Installation loss", x: "Annual leak rate", y: "Left at disposal", z: "Recovery" };
-const T_TAG = "Default: 1.00 (in use the whole reporting period) · not confirmed. Enter months in use ÷ 12";
+const T_TAG = "Default 1.00 (in use the whole reporting period) · not confirmed. Enter months in use ÷ 12";
+const FIRE_AGENTS = ["hfc-227ea", "hfc-236fa", "fk-5-1-12"];
+const EITHER_USE = ["hfc-125", "hfc-23", "co2"];
+/** Which equipment types a gas can be screened under (backend `fugitive.gas_use`). */
+export function gasUse(gas: string): "fire" | "refrigerant" | "either" {
+  const key = gas.trim().toLowerCase();
+  if (FIRE_AGENTS.some((a) => key.startsWith(a))) return "fire";
+  return EITHER_USE.includes(key) ? "either" : "refrigerant";
+}
+function typeRefusal(gas: string, fire: boolean): string | null {
+  const use = gasUse(gas);
+  if (fire && use === "refrigerant") return `${gas} is a refrigerant, not a fire-suppression agent: pick a refrigeration or A/C type.`;
+  if (!fire && use === "fire") return `${gas} is a fire-suppression agent: pick fire suppression, fixed or portable.`;
+  return null;
+}
 
 /** The decisions a demo line is worked with: picked options, and decided numbers by input id. */
 export interface DemoDecided {
@@ -69,19 +85,35 @@ export function screeningUnits(rows: CalcLineStep1Row[]): Unit[] {
   return rows.map((r, i) => ({ uid: hash(`${r.document_id}/${r.candidate_id ?? i}#${i}`), name: [r.file_name ?? r.document_id, r.period_start].filter(Boolean).join(" · "), capacity: null }));
 }
 
-export function screeningChoices(available: boolean): TraceChoice[] {
+export function screeningChoices(available: boolean, gas = ""): TraceChoice[] {
   const method: TraceChoice = { id: "method", label: "Calculation method", chosen: "smb", chosen_by: "default", options: [
     { id: "screening", label: "Screening", equation: SCREENING_EQUATION, available, ...(available ? {} : { why_unavailable: "No reviewed records of equipment on this line." }), required_inputs: ["equipment_type", ...FACTORS] },
     { id: "smb", label: "Simplified material balance", equation: "Emitted = (P_N − C_N) + P_S + (C_D − R_D)", available: true, required_inputs: ["P_N", "C_N", "P_S", "C_D", "R_D"] },
     { id: "material_balance", label: "Material balance", available: false, why_unavailable: "Sustentra cannot calculate this method yet.", required_inputs: [] },
   ] };
   if (!available) return [method];
-  return [method, { id: "equipment_type", label: "Equipment type", chosen: "", chosen_by: "default", options: SCREENING_TYPES.map((t) => ({ id: t.id, label: t.label, equation: t.fire ? FIRE_EQUATION : SCREENING_EQUATION, available: true, required_inputs: [] })) }];
+  return [method, { id: "equipment_type", label: "Equipment type", chosen: "", chosen_by: "default", options: SCREENING_TYPES.map((t) => {
+    const why = typeRefusal(gas, t.fire);
+    return { id: t.id, label: t.label, equation: t.fire ? FIRE_EQUATION : SCREENING_EQUATION, available: why === null, ...(why ? { why_unavailable: why } : {}), required_inputs: [] };
+  }) }];
 }
 
 /** Every input the screening reads, on every trace of the line (a decision is checked against the line's own working). */
-export function screeningInputs(units: Unit[], unit: string, decided: DemoDecided): Record<string, TraceInput> {
+/** The picked equipment type, unless the gas cannot be screened under it. */
+function pickedType(decided: DemoDecided, gas: string) {
   const kind = SCREENING_TYPES.find((t) => t.id === decided.choices.equipment_type);
+  return kind && typeRefusal(gas, kind.fire) === null ? kind : undefined;
+}
+
+/** "Default 10% (EPA Table 1; IPCC range 1–10%) · not confirmed". */
+function defaultTag(kind: (typeof SCREENING_TYPES)[number], f: Factor, pct: number): string {
+  if (kind.fire) return `Default ${fmt(pct)}% (EPA fugitive guidance §2.1.2) · not confirmed`;
+  const range = kind.ipcc?.[f];
+  return `Default ${fmt(pct)}% (EPA Table 1; ${range ? `IPCC range ${fmt(range[0])}–${fmt(range[1])}%` : "no IPCC range printed"}) · not confirmed`;
+}
+
+export function screeningInputs(units: Unit[], unit: string, decided: DemoDecided, gasOf = ""): Record<string, TraceInput> {
+  const kind = pickedType(decided, gasOf);
   const entered = (id: string, value: number, u: string | undefined): TraceSide => ({ value, ...(u ? { unit: u } : {}), status: "edited" });
   const out: Record<string, TraceInput> = {};
   for (const u of units) {
@@ -103,8 +135,8 @@ export function screeningInputs(units: Unit[], unit: string, decided: DemoDecide
 const valueOf = (input: TraceInput | undefined): number | null => (typeof input?.recomputed?.value === "number" ? input.recomputed.value : null);
 
 /** Steps 1 and 2 of the screening, to the refrigerant emitted in the line's unit. */
-export function screeningSteps(units: Unit[], unit: string, terms: { P_N: number; C_D: number }, inputs: Record<string, TraceInput>, decided: DemoDecided) {
-  const kind = SCREENING_TYPES.find((t) => t.id === decided.choices.equipment_type);
+export function screeningSteps(units: Unit[], unit: string, terms: { P_N: number; C_D: number }, inputs: Record<string, TraceInput>, decided: DemoDecided, gas = "") {
+  const kind = pickedType(decided, gas);
   const fire = Boolean(kind?.fire);
   const blocking: TraceBlocking[] = [];
   const step1: TraceBlock[] = [];
@@ -129,7 +161,7 @@ export function screeningSteps(units: Unit[], unit: string, terms: { P_N: number
     const pct = valueOf(inputs[f]);
     fraction[f] = pct === null ? null : pct / 100;
     const name = fire && f === "x" ? "Annual emission rate" : FACTOR_LABEL[f];
-    const tag = !(f in decided.inputs) && pct !== null && kind ? `Default: ${fmt(pct)}% (${kind.fire ? "EPA fugitive guidance §2.1.2" : "EPA Table 1"}, ${kind.label}) · not confirmed` : null;
+    const tag = !(f in decided.inputs) && pct !== null && kind ? defaultTag(kind, f, pct) : null;
     step1.push({ id: `factor.${f}`, label: `${name} · ${f}`, columns: [col(f, name, "%", true)], recomputed: one(f, fraction[f] ?? null, undefined, f), ...(tag ? { assumption: tag } : {}) });
   }
   const missing = needed.filter((f) => fraction[f] === null);

@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { LineTrace } from "../api/calcTrace";
+import type { LineDecisions, LineTrace } from "../api/calcTrace";
 import { TracePanel } from "../components/calc-trace/TracePanel";
 import { fugitiveLine, fugitiveTrace } from "../demo-backend/calcTrace/fugitive";
-import { SCREENING_TYPES, type DemoDecided } from "../demo-backend/calcTrace/fugitiveScreening";
+import { SCREENING_TYPES, gasUse, type DemoDecided } from "../demo-backend/calcTrace/fugitiveScreening";
 import type { ModelLine, ModelRecord } from "../demo-backend/linesModel";
 
 afterEach(cleanup);
@@ -36,8 +36,8 @@ const value = (trace: LineTrace, id: string) => trace.steps.flatMap((s) => s.blo
 describe("demo fugitive screening (C5)", () => {
   it("keeps the same EPA factors as the reference data", () => {
     const data = JSON.parse(readFileSync(join(process.cwd(), "..", "reference-data", "emission-factors", "epa_fugitive_screening_factors.json"), "utf8"));
-    const rows = [...data.refrigeration.rows.map((r: Record<string, unknown>) => ({ ...r, fire: false })), ...data.fire_suppression.rows.map((r: Record<string, unknown>) => ({ ...r, fire: true, k: null, y: null, z: null }))];
-    expect(SCREENING_TYPES).toEqual(rows.map((r) => ({ id: r.id, label: r.label, fire: r.fire, k: r.k, x: r.x, y: r.y, z: r.z })));
+    const rows = [...data.refrigeration.rows.map((r: Record<string, unknown>) => ({ ...r, fire: false })), ...data.fire_suppression.rows.map((r: Record<string, unknown>) => ({ ...r, fire: true, k: null, y: null, z: null, ipcc_range: null }))];
+    expect(SCREENING_TYPES).toEqual(rows.map((r) => ({ id: r.id, label: r.label, fire: r.fire, k: r.k, x: r.x, y: r.y, z: r.z, ipcc: r.ipcc_range })));
   });
 
   it("works the board's example: 152.0 lb × 10% + 8 lb × 80% × 20% = 16.48 lb → 14.38 t CO₂e", () => {
@@ -62,8 +62,9 @@ describe("demo fugitive screening (C5)", () => {
 
   it("draws the factors as percentages with their default tags, and the equipment type only for screening", () => {
     render(<TracePanel trace={office(board)} />);
-    expect(screen.getByText("Default: 10% (EPA Table 1, Residential and commercial A/C including heat pumps) · not confirmed")).toBeTruthy();
-    expect(screen.getAllByText(/^Default: 1\.00 \(in use the whole reporting period\)/)).toHaveLength(2);
+    const tag = screen.getByText("Default 10% (EPA Table 1; IPCC range 1–10%) · not confirmed");
+    expect(tag.className).toBe("s1-cp-tag s1-cp-tag--assumed");
+    expect(screen.getAllByText(/^Default 1\.00 \(in use the whole reporting period\)/)).toHaveLength(2);
     const operation = screen.getByRole("table", { name: "Step 2 · Refrigerant emitted · Operation" });
     expect(operation.textContent).toContain("152 lb");
     expect(operation.textContent).toContain("10%");
@@ -73,5 +74,38 @@ describe("demo fugitive screening (C5)", () => {
     render(<TracePanel trace={office()} />);
     expect(screen.queryByRole("group", { name: "Equipment type" })).toBeNull();
     expect(screen.queryByText(/not confirmed/)).toBeNull();
+  });
+
+  it("leads with what counts while screening is blocked, and lists every held decision", () => {
+    const decisions: LineDecisions = {
+      applied: [
+        { target: "choice", id: "method", side: null, status: "edited", uses: "Screening is chosen but blocked (awaiting the equipment type). Counting the simplified material balance (54.11 t) until then." },
+        { target: "input", id: "x", side: "recomputed", status: "edited", uses: "held: the screening method awaits the equipment type" },
+        { target: "input", id: "P_S", side: "recomputed", status: "edited" },
+      ],
+      not_applied: [],
+    };
+    render(<TracePanel trace={office(() => ({ choices: { method: "screening" }, inputs: {} }))} decisions={decisions} />);
+    const notes = screen.getAllByRole("status").map((n) => n.textContent);
+    expect(notes[0]).toBe("Screening is chosen but blocked (awaiting the equipment type). Counting the simplified material balance (54.11 t) until then.");
+    expect(notes).toContain("Annual leak rate: held: the screening method awaits the equipment type");
+    expect(notes.some((n) => n?.startsWith("Added during service"))).toBe(false);
+  });
+
+  it("shows a capacity warning on its unit", () => {
+    const trace = office(board);
+    const unit = trace.steps[0].blocks[0];
+    unit.warning = "Capacities differ between records (130 lb, 132 lb): the largest is used. Check it, or enter the capacity.";
+    render(<TracePanel trace={trace} />);
+    const warning = screen.getByText(/^Check: Capacities differ between records/);
+    expect(warning.className).toBe("s1-cp-tag s1-cp-tag--warn");
+    expect(warning.closest(".s1-cp-block")?.querySelector("h6")?.textContent).toBe(unit.label);
+  });
+
+  it("refuses an equipment type that does not fit the gas", () => {
+    const types = office().choices.find((c) => c.id === "equipment_type")!;
+    expect(types.options.find((o) => o.id === "fire_fixed")).toMatchObject({ available: false, why_unavailable: "R-410A is a refrigerant, not a fire-suppression agent: pick a refrigeration or A/C type." });
+    expect(types.options.find((o) => o.id === "chillers")?.available).toBe(true);
+    expect([gasUse("HFC-227ea"), gasUse("CO2"), gasUse("R-404A")]).toEqual(["fire", "either", "refrigerant"]);
   });
 });

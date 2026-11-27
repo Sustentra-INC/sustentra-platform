@@ -300,7 +300,12 @@ function BlockView({ block, step, trace, onOpenDocument }: { block: TraceBlock; 
         <div className="s1-cp-block__head">
           <h6>{block.label}</h6>
           {block.tag && TAG_TEXT[block.tag] ? <span className="s1-cp-tag">{TAG_TEXT[block.tag]}</span> : null}
-          {block.assumption ? <span className="s1-cp-tag">{block.assumption}</span> : null}
+          {block.assumption ? <span className="s1-cp-tag s1-cp-tag--assumed">{block.assumption}</span> : null}
+          {block.warning ? (
+            <span className="s1-cp-tag s1-cp-tag--warn" role="status">
+              Check: {block.warning}
+            </span>
+          ) : null}
           {choice ? <ChoicePills choice={choice} compact onOpenDocument={onOpenDocument} /> : null}
         </div>
       ) : null}
@@ -346,9 +351,19 @@ export function TracePanel({ trace, decisions, onOpenDocument }: { trace: LineTr
   const notApplied = decisions?.not_applied ?? [];
   const here = (e: DecisionEntry) => (e.target === "choice" ? choices.some((c) => c.id === e.id) : Boolean(trace.inputs?.[e.id.split("/")[0]]));
   const onLine = notApplied.filter((e) => !here(e) || e.side === "company");
+  // What counts when a decision is not worked as it stands: the method's (a blocked screening) leads the line; the
+  // rest ("held: …") are listed with what they are on.
+  const withUses = (decisions?.applied ?? []).filter((e) => e.uses);
+  const methodUse = withUses.find((e) => e.target === "choice" && e.id === "method" && !e.uses!.startsWith("held"));
+  const nameOf = (e: DecisionEntry) => (e.target === "choice" ? choices.find((c) => c.id === e.id)?.label : trace.inputs?.[e.id.split("/")[0]]?.label) ?? e.id;
   return (
     <NotAppliedProvider entries={notApplied}>
     <div className="s1-cp-trace" data-trace-state={trace.state}>
+      {methodUse ? (
+        <p className="s1-cp-note" role="status">
+          {methodUse.uses}
+        </p>
+      ) : null}
       <NotAppliedNote entries={onLine} />
       {route ? (
         <p className="s1-cp-route">
@@ -368,6 +383,13 @@ export function TracePanel({ trace, decisions, onOpenDocument }: { trace: LineTr
           Awaiting review: {b.message}
         </p>
       ))}
+      {withUses
+        .filter((e) => e !== methodUse)
+        .map((e) => (
+          <p key={`${e.target}|${e.id}`} className="s1-cp-note" role="status">
+            {nameOf(e)}: {e.uses}
+          </p>
+        ))}
       {trace.state === "partial" ? (
         <p className="s1-cp-note" role="status">
           Part of this line could not be calculated; what could be is shown.

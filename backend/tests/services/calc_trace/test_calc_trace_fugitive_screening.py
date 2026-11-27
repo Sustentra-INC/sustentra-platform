@@ -124,10 +124,10 @@ def test_r410a_screening_is_the_plans_example_exactly() -> None:
 def test_every_default_is_shown_as_an_assumption_until_a_reviewer_confirms_it() -> None:
     trace = line_of(run(office_store(), line_decisions=screening()), R410A_KC)["trace"]
     tags = {b["id"]: b.get("assumption") for s in trace["steps"] for b in s["blocks"]}
-    assert tags["factor.x"] == ("Default: 10% (EPA Table 1, Residential and commercial A/C including heat pumps) · "
-                                "not confirmed")
-    assert tags["factor.y"].startswith("Default: 80% (EPA Table 1") and tags["factor.z"].startswith("Default: 80%")
-    assert all(t.startswith("Default: 1.00 (in use the whole reporting period) · not confirmed")
+    assert tags["factor.x"] == "Default 10% (EPA Table 1; IPCC range 1–10%) · not confirmed"
+    assert tags["factor.y"] == "Default 80% (EPA Table 1; IPCC range 0–80%) · not confirmed"
+    assert tags["factor.z"] == "Default 80% (EPA Table 1; IPCC range 0–80%) · not confirmed"
+    assert all(t.startswith("Default 1.00 (in use the whole reporting period) · not confirmed")
                for k, t in tags.items() if k.startswith("unit."))
     x = trace["inputs"]["x"]["recomputed"]
     assert x["value"] == 10 and x["unit"] == "%" and x["status"] == "reference"
@@ -186,7 +186,8 @@ def test_screening_without_an_equipment_type_is_blocked_and_the_line_keeps_its_b
     assert response["categories"] == plain["categories"]
     assert line["results"] == line_of(plain, R410A_KC)["results"]
     held = next(a for a in line["decisions"]["applied"] if a["id"] == "method")
-    assert held["uses"].startswith("held: the screening method awaits the equipment type")
+    assert held["uses"] == ("Screening is chosen but blocked (awaiting the equipment type). Counting the simplified "
+                            "material balance (6.98 t) until then.")
 
 
 def test_factors_entered_without_an_equipment_type_are_used() -> None:
@@ -263,8 +264,14 @@ def test_one_unit_seen_on_several_records_counts_once_at_its_largest_capacity_fl
     units = [b for s in trace["steps"] for b in s["blocks"] if b["id"].startswith("unit.")]
     assert len(units) == 3
     assert units[0]["recomputed"]["terms"][0]["operand"]["value"] == 132
-    assert "different capacities" in units[0]["label"]
+    assert units[0]["label"] == "RTU-1 · equipment in use"
+    assert units[0]["warning"] == ("Capacities differ between records (130 lb, 132 lb): the largest is used. Check it, "
+                                   "or enter the capacity.")
+    assert "warning" not in units[1]
     assert fugitive.CAPACITY_CONFLICT_FLAG in trace["flags"]
+    entered = event(R410A_KC, f"input|{capacity_id(trace, 'RTU-1')}|recomputed", "edited", 130, "lb")
+    trace = line_of(run(store, line_decisions=[*screening(), half_year(), entered]), R410A_KC)["trace"]
+    assert "warning" not in block(trace, units[0]["id"]) and fugitive.CAPACITY_CONFLICT_FLAG not in trace["flags"]
 
 
 def test_records_without_an_equipment_id_are_each_a_unit() -> None:
@@ -342,11 +349,26 @@ EPA_TABLE_1 = {
     "transport_refrigeration": ("3–8", 1, 50, 50, 70),
     "industrial_refrigeration": ("10–10,000", 3, 25, 100, 90),
     "chillers": ("10–2,000", 1, 15, 100, 95),
-    "residential_commercial_ac": ("0.5-100", 1, 10, 80, 80),
-    "mobile_ac_maritime": ("5-6,500", 0.5, 40, 50, 50),
-    "mobile_ac_railway": ("10-30", 0.5, 20, 50, 50),
-    "mobile_ac_buses": ("4-18", 0.5, 20, 50, 50),
-    "mobile_ac_other": ("0.5-2", 0.5, 20, 50, 50),
+    "residential_commercial_ac": ("0.5–100", 1, 10, 80, 80),
+    "mobile_ac_maritime": ("5–6,500", 0.5, 40, 50, 50),
+    "mobile_ac_railway": ("10–30", 0.5, 20, 50, 50),
+    "mobile_ac_buses": ("4–18", 0.5, 20, 50, 50),
+    "mobile_ac_other": ("0.5–2", 0.5, 20, 50, 50),
+}
+# IPCC 2019 Refinement, Volume 3, Chapter 7, Table 7.9 (page 7.32): k, x, then p (EPA's y) and ηrec,d (EPA's z), in %.
+# Table 7.9 prints no operating-loss range for buses.
+IPCC_TABLE_7_9 = {
+    "domestic_refrigeration": ((0.2, 1), (0.1, 0.5), (0, 80), (0, 70)),
+    "stand_alone_commercial": ((0.5, 3), (1, 15), (0, 80), (0, 70)),
+    "medium_large_commercial": ((0.5, 3), (10, 35), (50, 100), (0, 70)),
+    "transport_refrigeration": ((0.2, 1), (15, 50), (0, 50), (0, 70)),
+    "industrial_refrigeration": ((0.5, 3), (7, 25), (50, 100), (0, 90)),
+    "chillers": ((0.2, 1), (2, 15), (80, 100), (0, 95)),
+    "residential_commercial_ac": ((0.2, 1), (1, 10), (0, 80), (0, 80)),
+    "mobile_ac_maritime": ((0.2, 0.5), (20, 40), (0, 50), (0, 50)),
+    "mobile_ac_railway": ((0.2, 0.5), (5, 20), (0, 50), (0, 50)),
+    "mobile_ac_buses": ((0.2, 0.5), None, (0, 50), (0, 50)),
+    "mobile_ac_other": ((0.2, 0.5), (10, 20), (0, 50), (0, 50)),
 }
 
 
@@ -365,3 +387,93 @@ def test_the_screening_factors_match_epas_table_1_and_fire_rates() -> None:
     assert loaded["residential_commercial_ac"].factors == {"k": 1.0, "x": 10.0, "y": 80.0, "z": 80.0}
     for row in loaded.values():
         assert all(v is None or 0 <= v <= 100 for v in row.factors.values())
+    # the IPCC ranges, and EPA's value is the upper end of each
+    assert data["ipcc_ranges"]["page"] == "7.32" and "Table 7.9" in data["ipcc_ranges"]["table"]
+    assert data["ipcc_ranges"]["source_url"].startswith("https://www.ipcc-nggip.iges.or.jp/")
+    for key, ranges in IPCC_TABLE_7_9.items():
+        assert tuple(loaded[key].ranges[f] for f in ("k", "x", "y", "z")) == ranges, key
+        for f, found in zip(("k", "x", "y", "z"), ranges, strict=True):
+            if found is not None:
+                assert loaded[key].factors[f] == found[1], (key, f)
+    assert all(v is None for v in loaded["fire_fixed"].ranges.values())
+
+
+# --- review of PR #381 ------------------------------------------------------------------------------------------------
+def test_a_blocked_screening_keeps_the_reviewers_balance_decisions_until_it_can_be_worked() -> None:
+    p_s = event(R410A_KC, "input|P_S|recomputed", "edited", 60, "lb")
+    balance = (60 + 8 - 6) * T_PER_LB * 1924  # 54.11 t
+    # 1. P_S edited to 60: the balance moves to 54.11 t
+    first = run(office_store(), line_decisions=[p_s])
+    assert line_of(first, R410A_KC)["results"]["total_co2e_t"] == pytest.approx(balance, rel=1e-12)
+    assert round(balance, 2) == 54.11
+    # 2. Screening picked, no equipment type yet: still 54.11 t, P_S counted (not held), and the line says why
+    second = run(office_store(), line_decisions=[p_s, *screening(kind=None)])
+    line = line_of(second, R410A_KC)
+    assert line["results"]["total_co2e_t"] == pytest.approx(balance, rel=1e-12)
+    assert category(second)["total_co2e"] == pytest.approx(balance, rel=1e-12)
+    assert line["trace"]["state"] == "blocked" and line["trace"]["choices"][0]["chosen"] == "screening"
+    applied = {a["id"]: a for a in line["decisions"]["applied"]}
+    assert "uses" not in applied["P_S"]
+    assert applied["method"]["uses"] == ("Screening is chosen but blocked (awaiting the equipment type). Counting the "
+                                         "simplified material balance (54.11 t) until then.")
+    assert line["method"]["route"] == fugitive.ROUTE
+    # a screening-only value entered meanwhile waits, labelled
+    x = event(R410A_KC, "input|x|recomputed", "edited", 10, "%")
+    waiting = line_of(run(office_store(), line_decisions=[p_s, *screening(kind=None), x]), R410A_KC)
+    assert waiting["results"]["total_co2e_t"] == pytest.approx(balance, rel=1e-12)
+    assert next(a for a in waiting["decisions"]["applied"] if a["id"] == "x")["uses"] == \
+        "held: the screening method awaits the equipment type"
+    # 3. The equipment type: the screening is worked, and P_S (balance only) is held
+    third = run(office_store(), line_decisions=[p_s, *screening(), half_year()])
+    line = line_of(third, R410A_KC)
+    assert round(line["results"]["total_co2e_t"], 4) == 14.3823
+    assert next(a for a in line["decisions"]["applied"] if a["id"] == "P_S")["uses"] == \
+        "held: the screening method does not use it"
+
+
+def test_a_blocked_screening_with_no_balance_decision_leaves_the_line_as_calculated() -> None:
+    plain = run(office_store())
+    after = run(office_store(), line_decisions=screening(kind=None))
+    assert after["categories"] == plain["categories"]
+    assert line_of(after, R410A_KC)["results"] == line_of(plain, R410A_KC)["results"]
+
+
+@pytest.mark.parametrize(("gas_store", "key", "refused", "allowed"), [
+    (office_store, R410A_KC, "fire_fixed", "residential_commercial_ac"),
+    (fm200_store, FM200_KC, "chillers", "fire_portable"),
+])
+def test_an_equipment_type_must_fit_the_gas(gas_store: Any, key: str, refused: str, allowed: str) -> None:
+    trace = line_of(run(gas_store()), key)["trace"]
+    options = {o["id"]: o for o in trace["choices"][1]["options"]}
+    assert options[refused]["available"] is False and options[allowed]["available"] is True
+    assert options[refused]["why_unavailable"] in (
+        "R-410A is a refrigerant, not a fire-suppression agent: pick a refrigeration or A/C type.",
+        "HFC-227ea is a fire-suppression agent: pick fire suppression, fixed or portable.")
+    line = line_of(run(gas_store(), line_decisions=screening(key, refused)), key)
+    assert [n["reason"] for n in line["decisions"]["not_applied"]] == ["option_not_available"]
+    assert line["trace"]["state"] == "blocked"  # the screening is picked, the type refused: it waits for one
+
+
+def test_gases_used_both_ways_take_either_kind() -> None:
+    assert fugitive.gas_use("CO2") == fugitive.gas_use("HFC-125") == "either"
+    assert fugitive.gas_use("FK-5-1-12 (Novec 1230)") == fugitive.gas_use("HFC-227ea") == "fire"
+    assert fugitive.gas_use("R-404A") == fugitive.gas_use("HFC-134a") == "refrigerant"
+
+
+STAGING = json.loads((Path(__file__).parent / "fixtures" / "fugitive_no_decision_staging.json").read_text())
+
+
+@pytest.mark.parametrize("name", sorted(STAGING["stores"]))
+def test_with_no_decision_every_total_is_what_staging_recorded(name: str) -> None:
+    """``fixtures/fugitive_no_decision_staging.json`` was recorded by running these stores on origin/staging's code
+    (before C5): with no decision, every category and every fugitive line's results are the same, bit for bit."""
+
+    from backend.tests.services.calc_trace.test_calc_trace_fugitive import r404a_store, r448a_store
+
+    make = {"office": office_store, "fm200": fm200_store, "r404a": r404a_store, "r448a": r448a_store}[name]
+    response = run(make())
+    got = json.loads(json.dumps({
+        "categories": response["categories"],
+        "lines": {ln["key"]: ln["results"] for ln in response["calculation_lines"] if ln["counts_toward"] == "fugitive"},
+    }, default=str))
+    assert got == STAGING["stores"][name]
