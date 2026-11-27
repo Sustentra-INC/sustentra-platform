@@ -30,6 +30,7 @@ import type { RecalculationSettings } from "../types";
 import type { TeamMember } from "../types/engagement";
 import { differs, examinationKey, formatGasTonnes, formatInputQuantity, formatPercent, formatSignedGasTonnes } from "../utils/verificationTable";
 import type { VerificationStore } from "../verification/verificationStore";
+import { TraceSection } from "./calc-trace/TraceSection";
 import { InfoTip } from "./InfoTip";
 import { AddNote, RecordExamination, formatWhen } from "./VerificationWorkspace";
 
@@ -161,24 +162,28 @@ function DiffChip({
   pct?: number | null;
   incomplete?: boolean;
 }) {
-  const open = incomplete ? " · inputs incomplete" : "";
+  const open = incomplete ? "inputs incomplete" : "";
   if (value === null) {
     return (
       <span className="s1-muted">
         {status ? STATUS_WORD[status] : "Not compared"}
-        {open}
+        {open ? ` · ${open}` : ""}
       </span>
     );
   }
   const Arrow = value > 0 ? ArrowUpRight : ArrowDownRight;
-  const word = `${status ? ` · ${STATUS_WORD[status]}` : ""}${open}`;
+  // The tolerance word and the open-inputs note go under the number, small and muted.
+  const note = [status ? STATUS_WORD[status] : "", open].filter(Boolean).join(" · ");
   const quiet = !differs(value);
   return (
-    <span className={`s1-vw-delta${quiet ? " s1-vw-delta--zero" : status === "above" ? "" : " s1-vw-delta--below"}`}>
-      {quiet ? null : <Arrow className="s1-vw-ico" aria-hidden />}
-      {quiet ? "0" : formatSignedGasTonnes(value)}
-      {pct !== null && pct !== undefined && !quiet ? ` (${percentText(pct)})` : ""}
-      {word}
+    <span className="s1-cp-diffcell">
+      <span className={`s1-vw-delta${quiet ? " s1-vw-delta--zero" : status === "above" ? "" : " s1-vw-delta--below"}`}>
+        {quiet ? null : <Arrow className="s1-vw-ico" aria-hidden />}
+        {quiet ? "0" : formatSignedGasTonnes(value)}
+        {pct !== null && pct !== undefined && !quiet ? ` (${percentText(pct)})` : ""}
+      </span>
+      {note ? <span className="s1-cp-sr"> · </span> : null}
+      {note ? <span className="s1-muted s1-cp-diffnote">{note}</span> : null}
     </span>
   );
 }
@@ -750,7 +755,9 @@ function LineDetail({
   onOpenDocument,
   onOpenEvidence,
   inputs,
+  engagementId,
 }: {
+  engagementId?: string;
   line: CalculationLine;
   inputs?: CalcLineInputs;
   settings: RecalculationSettings;
@@ -774,11 +781,21 @@ function LineDetail({
     <div className="s1-cp-detail">
       <h4 className="s1-cp-line-title">{title}</h4>
       {flags.length ? <p className="s1-muted s1-cp-flags">{flags.join(" ")}</p> : null}
-      <MethodBlock line={line} />
-      <Step1Block line={line} onOpenDocument={onOpenDocument} />
-      <Step2Block line={line} />
-      <Step3Block line={line} gwpLabel={gwpSet} />
-      <ResultsBlock line={line} />
+      <TraceSection
+        engagementId={engagementId}
+        lineKey={line.key}
+        version={`${line.results.total_co2e_t}|${line.reported_total_co2e_t}|${line.step1.total.quantity}|${gwpSet}`}
+        onOpenDocument={onOpenDocument}
+        fallback={
+          <>
+            <MethodBlock line={line} />
+            <Step1Block line={line} onOpenDocument={onOpenDocument} />
+            <Step2Block line={line} />
+            <Step3Block line={line} gwpLabel={gwpSet} />
+            <ResultsBlock line={line} />
+          </>
+        }
+      />
       <div className="s1-vw-actions">
         {examined ? (
           <>
@@ -870,6 +887,13 @@ function LineDetail({
   );
 }
 
+/** The panel ids the lines (and unplaced records) fill, in display order. */
+export function panelIds(lines: CalculationLine[], unplaced: CalcUnplaced[] = []): string[] {
+  const all = [...lines, ...unplaced];
+  const energy = [...new Set(all.filter((l) => l.counts_toward === "purchased_energy").map((l) => l.level2))];
+  return [...FIXED_PANELS, ...energy.map(energyPanel)].filter((p) => all.some((l) => belongs(l, p))).map((p) => p.id);
+}
+
 export function CalculationPanels({
   lines,
   comparisons,
@@ -884,7 +908,19 @@ export function CalculationPanels({
   onOpenEvidence,
   unplaced = [],
   inputs,
+  engagementId,
+  only,
+  totals,
 }: {
+  /** Fetches each opened line's step-by-step trace; without it the summary panel is shown. */
+  engagementId?: string;
+  /**
+   * Draws just this panel's lines table, open and without its heading (the drawer a Results row opens).
+   * A panel id: "stationary", "mobile" or "purchased_energy:electricity".
+   */
+  only?: string;
+  /** With `only`: the Total row's figures, so the drawer's Total is the row's own (the scope table's). */
+  totals?: { reported: number | null; recomputed: number | null; difference: number | null };
   lines: CalculationLine[];
   /** Records on no line, per panel as "Not on a calculation line". */
   unplaced?: CalcUnplaced[];
@@ -911,7 +947,13 @@ export function CalculationPanels({
   const focused = lines.find((l) => l.key === focusLineKey);
   const panelOf = (line: CalculationLine | undefined) => panels.find((p) => line && belongs(line, p))?.id ?? null;
   const [openPanel, setOpenPanel] = useState<string | null>(panelOf(focused) ?? panels[0]?.id ?? null);
-  const [openLine, setOpenLine] = useState<string | null>(focused?.key ?? null);
+  // The drawer opens its first line that differs (or the first), as the reviewer's next click anyway.
+  const [openLine, setOpenLine] = useState<string | null>(() => {
+    if (focused) return focused.key;
+    if (!only) return null;
+    const own = lines.filter((l) => panels.some((p) => p.id === only && belongs(l, p)) && l.category !== "biogenic");
+    return (own.find((l) => l.status === "above") ?? own[0])?.key ?? null;
+  });
   const focusRef = useRef<HTMLTableRowElement | null>(null);
 
   // A new focus key (Evidence's link) opens its panel and line: adjusted while rendering, not in an effect.
@@ -928,23 +970,26 @@ export function CalculationPanels({
   }, [openLine, focusLineKey]);
 
   if (!panels.length) return null;
+  const shown = only ? panels.filter((p) => p.id === only) : panels;
+  if (!shown.length) return null;
+  const bare = Boolean(only);
 
   return (
-    <section className="s1-cp" aria-label="Calculation by line">
-      {panels.map((panel) => {
+    <section className={`s1-cp${bare ? " s1-cp--bare" : ""}`} aria-label={bare ? `${shown[0].title} by line` : "Calculation by line"}>
+      {shown.map((panel) => {
         // Biogenic lines sit in the panel they count toward, after the others, under their own heading.
         const own = lines.filter((l) => belongs(l, panel));
         const panelLines = [...own.filter((l) => l.category !== "biogenic"), ...own.filter((l) => l.category === "biogenic")];
         const panelUnplaced = unplaced.filter((u) => belongs(u, panel));
         const head = comparisons.find((c) => c.key === panel.comparisonKey);
         const status = comparisonStatus(head);
-        const reported = head?.reported ?? null;
-        const recomputed = head?.recalculated ?? null;
-        const difference = head?.difference ?? null;
-        const open = openPanel === panel.id;
+        const reported = bare && totals ? totals.reported : (head?.reported ?? null);
+        const recomputed = bare && totals ? totals.recomputed : (head?.recalculated ?? null);
+        const difference = bare && totals ? totals.difference : (head?.difference ?? null);
+        const open = bare || openPanel === panel.id;
         return (
-          <div key={panel.id} className={`s1-vw-box s1-cp-cat${open ? " is-open" : ""}`}>
-            <button
+          <div key={panel.id} className={`${bare ? "" : "s1-vw-box "}s1-cp-cat${open ? " is-open" : ""}`}>
+            {bare ? null : <button
               className="s1-cp-head"
               type="button"
               aria-expanded={open}
@@ -977,10 +1022,10 @@ export function CalculationPanels({
                   <DiffChip value={difference} status={status} incomplete={head?.inputs_incomplete} />
                 </span>
               </span>
-            </button>
+            </button>}
             {open ? (
-              <div className="s1-vw-box__body" id={`s1-cp-cat-${panel.id}`}>
-                <div className="s1-vw-scroll s1-cp-scroll">
+              <div className={bare ? undefined : "s1-vw-box__body"} id={`s1-cp-cat-${panel.id}`}>
+                <div className={`s1-vw-scroll s1-cp-scroll${panelLines.some((l) => l.key === openLine) ? " is-expanded" : ""}`}>
                   <table className="s1-vw-table s1-cp-lines">
                     <thead>
                       <tr>
@@ -1045,6 +1090,7 @@ export function CalculationPanels({
                                     onOpenDocument={onOpenDocument}
                                     onOpenEvidence={onOpenEvidence}
                                     inputs={inputs}
+                                    engagementId={engagementId}
                                   />
                                 </td>
                               </tr>

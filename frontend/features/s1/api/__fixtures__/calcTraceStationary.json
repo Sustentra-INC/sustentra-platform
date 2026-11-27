@@ -1136,8 +1136,8 @@
          "value": 3448.9,
          "unit": "t CO2e",
          "step_ref": "gwp.CO2",
-         "difference": 3447.1775000000002,
-         "differs": true
+         "difference": 0.0,
+         "differs": false
         }
        },
        {
@@ -1147,8 +1147,8 @@
          "value": 1.82,
          "unit": "t CO2e",
          "step_ref": "gwp.CH4",
-         "difference": 0.09750000000000014,
-         "differs": true
+         "difference": 0.0,
+         "differs": false
         }
        },
        {

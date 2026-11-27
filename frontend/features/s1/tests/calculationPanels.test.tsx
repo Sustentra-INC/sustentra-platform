@@ -418,6 +418,41 @@ describe("calculation panels in Verification results", () => {
     expect(screen.getByRole("region", { name: "Calculation by line" })).toBeTruthy();
   });
 
+  it("opens the per-line panel in the drawer, with the row's own figures as its Total", async () => {
+    renderScreen();
+    const boxes = await screen.findByRole("region", { name: "Reported vs recomputed" });
+    fireEvent.click(within(boxes).getByRole("button", { name: "Natural Gas" }));
+    const card = screen.getByRole("complementary", { name: "Scope 1 · Natural Gas" });
+    // Per-facility lines, no "All facilities" aggregate, and the old facility table is gone.
+    expect(within(card).queryByText("All facilities")).toBeNull();
+    expect(within(card).getByRole("button", { name: "Kent Cannery · MMBtu" })).toBeTruthy();
+    expect(card.querySelector(".s1-vw-facilities")).toBeNull();
+    const summary = card.querySelector(".s1-vw-summary")!.textContent!;
+    const cells = card.querySelectorAll(".s1-cp-lines .s1-vw-total td.s1-vw-num");
+    const num = (text: string | null | undefined) => Number((text ?? "").replace(/,/g, ""));
+    const heading = num(/Recomputed\s*([\d,.]+)/.exec(summary)![1]);
+    const reportedHeading = num(/Reported\s*([\d,.]+)/.exec(summary)![1]);
+    // The Total row is the drawer heading's (the scope table's) figure, to the heading's rounding.
+    expect(Math.round(num(cells[1].textContent))).toBe(heading);
+    expect(Math.round(num(cells[0].textContent))).toBe(reportedHeading);
+    fireEvent.click(within(card).getByRole("button", { name: "Close calculation" }));
+    expect(screen.queryByRole("complementary", { name: "Scope 1 · Natural Gas" })).toBeNull();
+  });
+
+  it("keeps the facility table in a drawer whose panel has no lines", async () => {
+    const mobileOnly = LINES.filter((l) => l.key.startsWith("s1:mobile"));
+    responses.byPath["/engagements/ENG-1/recalculation"] = { ...RESULT, calculation_lines: mobileOnly, calculation_unplaced: [] };
+    responses.byPath["/reference/recalculation"] = REFERENCE;
+    const store = renderHook(() => useVerificationStore()).result;
+    render(<BackendVerificationResults engagement={ENGAGEMENT} store={store.current} onSaveInputs={async () => {}} onError={() => false} />);
+    const boxes = await screen.findByRole("region", { name: "Reported vs recomputed" });
+    fireEvent.click(within(boxes).getByRole("button", { name: "Natural Gas" }));
+    const card = screen.getByRole("complementary", { name: "Scope 1 · Natural Gas" });
+    // Never an empty drawer: the stationary panel has no lines, so the facility table stays.
+    expect(card.querySelector(".s1-vw-facilities")).toBeTruthy();
+    expect(card.querySelector(".s1-cp-lines")).toBeNull();
+  });
+
   it("says Not convertible for a record whose unit can't be converted, and copes with no candidate id", async () => {
     const lines = LINES.map((l) =>
       l.key === STATIONARY

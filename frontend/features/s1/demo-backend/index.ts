@@ -11,11 +11,12 @@ import { ApiError, type ApiOptions } from "../../../lib/api";
 import { evidenceActionRoutes } from "./evidenceActions";
 import { evidenceTreeRoutes } from "./evidenceTree";
 import { methodologyRoutes } from "./methodology";
+import { calcTraceRoutes } from "./calcTrace";
 import { recalculationRoutes } from "./recalculation";
 import { batchRoutes } from "./batches";
 import type { DemoRoute } from "./types";
 
-const ROUTES: DemoRoute[] = [...evidenceTreeRoutes, ...evidenceActionRoutes, ...methodologyRoutes, ...recalculationRoutes, ...batchRoutes];
+const ROUTES: DemoRoute[] = [...evidenceTreeRoutes, ...evidenceActionRoutes, ...methodologyRoutes, ...recalculationRoutes, ...calcTraceRoutes, ...batchRoutes];
 
 /** A short pause so loading states show briefly, as they do on staging. */
 const LATENCY_MS = 180;

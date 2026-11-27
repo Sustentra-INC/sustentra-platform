@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { lineRecomputed, lineReported } from "../utils/verificationTable";
 import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAdapter";
 import {
   documentsBasis,
@@ -20,10 +21,17 @@ import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig, RecalculationSettings } from "../types";
 import type { TeamMember } from "../types/engagement";
 import type { VerificationStore } from "../verification/verificationStore";
-import { CalculationPanels } from "./CalculationPanels";
+import { CalculationPanels, panelIds } from "./CalculationPanels";
 import { QualityChecksPanel } from "./QualityChecksPanel";
 import { RecalculationInputs } from "./RecalculationInputs";
 import { VerificationResults } from "./VerificationResults";
+
+/** The Results rows whose drawer shows the per-line calculation panel (row id to panel id). */
+const DRAWER_PANELS: Record<string, string> = {
+  "s1-stationary": "stationary",
+  "s1-mobile": "mobile",
+  "s2l-electricity": "purchased_energy:electricity",
+};
 
 /**
  * Verification results in backend mode: the demo's boxes and calculation panel, filled from
@@ -161,6 +169,22 @@ export function BackendVerificationResults({
     );
   }
 
+  const calculationProps = {
+    engagementId: result.engagement_id,
+    lines: result.calculation_lines ?? [],
+    unplaced: result.calculation_unplaced,
+    inputs: result.calculation_line_inputs,
+    comparisons: result.comparisons,
+    gwpSet: gwpLabel(result),
+    settings: engagement.recalculation ?? {},
+    onSave: (next: RecalculationSettings) => save(next, { quiet: true }),
+    store,
+    team: examinerOptions(engagement),
+    signedInLogin: engagement.signedInLogin,
+    onOpenDocument,
+    onOpenEvidence,
+  };
+
   return (
     <>
       <p className="s1-muted s1-vr-gwp" data-testid="results-gwp-set">
@@ -188,23 +212,23 @@ export function BackendVerificationResults({
       onOpenDocument={onOpenDocument}
       registerFindings
       liveMateriality={result.tolerance_pct / 100}
+      lineDetail={(line) => {
+        const only = DRAWER_PANELS[line.id];
+        // No line (and no unplaced record) in this panel: the drawer keeps its facility table.
+        if (!only || !panelIds(result.calculation_lines ?? [], result.calculation_unplaced).includes(only)) return null;
+        const reported = lineReported(line);
+        const recomputed = lineRecomputed(line);
+        return (
+          <CalculationPanels
+            only={only}
+            totals={{ reported, recomputed, difference: reported === null || recomputed === null ? null : recomputed - reported }}
+            {...calculationProps}
+          />
+        );
+      }}
       panels={
         result.calculation_lines?.length ? (
-          <CalculationPanels
-            lines={result.calculation_lines}
-            unplaced={result.calculation_unplaced}
-            inputs={result.calculation_line_inputs}
-            comparisons={result.comparisons}
-            gwpSet={gwpLabel(result)}
-            settings={engagement.recalculation ?? {}}
-            onSave={(next) => save(next, { quiet: true })}
-            store={store}
-            team={examinerOptions(engagement)}
-            signedInLogin={engagement.signedInLogin}
-            onOpenDocument={onOpenDocument}
-            focusLineKey={focusLineKey}
-            onOpenEvidence={onOpenEvidence}
-          />
+          <CalculationPanels {...calculationProps} focusLineKey={focusLineKey} />
         ) : null
       }
       inputs={

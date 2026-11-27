@@ -25,7 +25,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { TeamMember } from "../types/engagement";
 import type { Examination } from "../types/verification";
@@ -100,7 +100,10 @@ export function VerificationWorkspace({
   onOpenDocument,
   onRegisterFinding,
   materiality,
+  detail,
 }: {
+  /** Live results: what a line's drawer shows in place of its facility table; null keeps the table. */
+  detail?: (line: ResultLine) => ReactNode | null;
   lines: ResultLine[];
   store: VerificationStore;
   /** "Examined by" options: the engagement team from Setup. */
@@ -211,6 +214,7 @@ export function VerificationWorkspace({
                 onClose={close}
                 onRegisterFinding={onRegisterFinding}
                 material={selectedMaterial}
+                detail={detail}
               />
             </section>
             <section ref={sourcePane} className="s1-vw-pane s1-vw-pane--source" aria-label="Source">
@@ -773,7 +777,9 @@ function CalculationPane({
   onClose,
   onRegisterFinding,
   material,
+  detail,
 }: {
+  detail?: (line: ResultLine) => ReactNode | null;
   line: ResultLine;
   store: VerificationStore;
   team: TeamMember[];
@@ -787,6 +793,7 @@ function CalculationPane({
   material?: boolean;
 }) {
   const facilities = line.facilities ?? [];
+  const custom = detail?.(line) ?? null;
   // The facility that explains the difference opens first; with none, the first one.
   const [openId, setOpenId] = useState<string | null>(
     () => (facilities.find((f) => differs(facilityDifference(line, f))) ?? facilities[0])?.facilityId ?? null
@@ -849,6 +856,19 @@ function CalculationPane({
           <X className="s1-vw-ico" aria-hidden />
         </button>
       </header>
+      {custom ? (
+        <>
+          {custom}
+          {registerFinding ? (
+            <div className="s1-vw-actions">
+              <button className="s1-button s1-vw-action" type="button" onClick={registerFinding}>
+                <Flag className="s1-vw-ico" aria-hidden />
+                Register finding
+              </button>
+            </div>
+          ) : null}
+        </>
+      ) : (
       <div className="s1-vw-scroll">
         <table className="s1-vw-table s1-vw-facilities">
           <thead>
@@ -939,6 +959,7 @@ function CalculationPane({
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

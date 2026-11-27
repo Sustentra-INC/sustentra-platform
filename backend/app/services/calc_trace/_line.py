@@ -150,6 +150,8 @@ def _build(family: str, line: dict[str, Any], rows: list[dict[str, Any]], flags:
     step1_block = TraceBlock("activity", "Activity data", [Column("activity", "Activity", total_unit, True, {"dp": 2})],
                              recomputed=_sum_operation(parts, total_unit, total) if parts else None,
                              company=_entered(given) if given else None)
+    if step1_block.recomputed and step1_block.company:  # the total's difference, as on every other result cell
+        _annotate(step1_block.recomputed, step1_block.company)
 
     # --- Step 2: conversion to the factor's unit -----------------------------------------------------
     to_unit = normalise_unit(step2["to_unit"])
@@ -294,12 +296,25 @@ def _entered(given: dict[str, Any]) -> Operation:
 
 def _annotate(mine: Operation, theirs: Operation) -> None:
     """Put ``recomputed − company`` and ``differs`` on each recomputed operand that has a company twin of
-    the same unit and column. A pair in different units is left without a difference."""
+    the same unit and column. A pair in different units is left without a difference.
 
-    others = {t.operand.column: t.operand for t in theirs.terms}
-    others[theirs.result.column] = theirs.result
-    for operand in [t.operand for t in mine.terms] + [mine.result]:
-        twin = others.get(operand.column)
+    Twins are found by position when the two operations have the same shape (a sum of three CO2e terms
+    has the same column three times, so the column alone cannot say which is which); otherwise by column,
+    and a column that repeats on either side is left without a difference rather than paired wrongly."""
+
+    pairs: list[tuple[Operand, Operand | None]] = []
+    same_shape = len(mine.terms) == len(theirs.terms) and all(
+        a.operand.column == b.operand.column for a, b in zip(mine.terms, theirs.terms))
+    if same_shape:
+        pairs = [(a.operand, b.operand) for a, b in zip(mine.terms, theirs.terms)]
+    else:
+        def unique(op: Operation, column: str) -> Operand | None:
+            found = [t.operand for t in op.terms if t.operand.column == column]
+            return found[0] if len(found) == 1 else None
+        pairs = [(t.operand, unique(theirs, t.operand.column)) for t in mine.terms
+                 if unique(mine, t.operand.column) is not None]
+    pairs.append((mine.result, theirs.result if theirs.result.column == mine.result.column else None))
+    for operand, twin in pairs:
         if twin is None or not isinstance(operand.value, (int, float)) or not isinstance(twin.value, (int, float)):
             continue
         if not ops.same_unit(operand.unit, twin.unit):
