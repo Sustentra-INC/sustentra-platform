@@ -175,7 +175,8 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
         found = _find(out, target_id)
         if found is None:
             outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="not_on_this_line",
-                                              message="This input is no longer part of the line's working."))
+                                              message=mobile.NOT_OFFERED if target_id == mobile.FUEL_ECONOMY
+                                              else "This input is no longer part of the line's working."))
             continue
         if why is not None:
             outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="set_elsewhere",
@@ -212,14 +213,19 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
                                               message=f"Not applied: the value is in {unit}, the input in "
                                                       f"{side_now.unit}."))
             continue
+        implausible: str | None = None
         if panel == "stationary" and target_id in stationary.SITE_INPUTS:
             implausible = stationary.check_site(target_id, number, out, context, bool(decision.get("reason")))
-            if implausible is not None:
+        elif panel == "mobile" and target_id == mobile.FUEL_ECONOMY:
+            implausible = mobile.check_economy(number, out)
+        if implausible is not None:
                 outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="invalid_value",
                                                   message=implausible))
                 continue
         values[target_id] = (number, decision, record)
-        outcome.applied.append(_entry(target, target_id, side, status=status, value=number))
+        outcome.applied.append(_entry(target, target_id, side, status=status, value=number, unit=side_now.unit,
+                                      decided_by=_by(decision), decided_at=str(decision.get("at") or ""),
+                                      reason_given=str(decision.get("reason") or "")))
 
     site = {k: values[k][0] for k in stationary.SITE_INPUTS if k in values}
     for target_id, decision in chosen:
@@ -307,9 +313,12 @@ def _stale(trace: LineTrace, found: Any, decision: Mapping[str, Any]) -> tuple[d
     now = {"value": side.value if side else None, "unit": side.unit if side else None,
            "source": (side.source.citation[:200] if side and side.source and side.source.citation else None),
            "grid_region": grid.recomputed.value if grid is not None and grid.recomputed is not None else None}
-    if all(_same(then.get(k), now[k]) for k in now):
+    # A fuel economy is a rate: its automatic value is the line's distance over its fuel, so a new fuel record moves
+    # the distance (fuel x the decided rate) instead of making the decision stale. Only its unit is checked.
+    keys = ("unit",) if getattr(found, "id", None) == mobile.FUEL_ECONOMY else tuple(now)
+    if all(_same(then.get(k), now[k]) for k in keys):
         return None
-    return {k: then.get(k) for k in now}, now
+    return {k: then.get(k) for k in keys}, {k: now[k] for k in keys}
 
 
 def _equation_overrides(trace: LineTrace, values: dict[str, Any], outcome: Outcome) -> None:

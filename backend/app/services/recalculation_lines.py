@@ -104,7 +104,29 @@ class DecidedLine:
             row["mass_t"], row["co2e_t"] = worked["mass_t"], worked["co2e_t"]
             if row.get("company_co2e_t") is not None:
                 row["difference_to_company_t"] = row["co2e_t"] - row["company_co2e_t"]
+        self._summary_distance()
         out["flags"] = sorted({*out["flags"], "reviewer_decisions_applied"})
+
+    def _summary_distance(self) -> None:
+        """An on-road line's summary fields (``step2.distance`` and the fuel economy it implies) follow the distance
+        the decided figures worked, so the summary panel never contradicts the trace and the total."""
+
+        step2 = self.line["step2"]
+        distance = step2.get("distance")
+        row = next((r for r in self.line["step3"]["gases"] if r["gas"] == "CH4"), None)
+        if not distance or row is None or row["activity"]["unit"] != "mi":
+            return
+        miles, fuel = float(row["activity"]["value"]), float(step2["result"]["quantity"])
+        decided = {a.get("id") for a in self.decided.applied}
+        if "fuel_economy" in decided:
+            source = "Fuel decided for this line x the fuel economy decided for it"
+        elif "distance" in decided:
+            source = "Distance decided for this line"
+        else:
+            return
+        step2["distance"] = {**distance, "quantity": miles, "source": source}
+        if step2.get("implied_fuel_economy") is not None and fuel > 0:
+            step2["implied_fuel_economy"] = {**step2["implied_fuel_economy"], "value": miles / fuel}
 
 
 @dataclass

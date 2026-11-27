@@ -4,7 +4,6 @@ non-road equipment. Every expected number is the plan's (calc-panels-plan.md, C3
 from __future__ import annotations
 
 import json
-import math
 from pathlib import Path
 from typing import Any
 
@@ -197,11 +196,25 @@ def test_a_hostile_fuel_economy_is_reported_and_never_used(value: Any, unit: str
     assert trace_of(response)["steps"] == trace_of(plain)["steps"]
 
 
-@pytest.mark.parametrize("value", [1e15, 1e-300])
-def test_an_extreme_but_valid_fuel_economy_leaves_a_finite_whole_response(value: float) -> None:
-    response = run(diesel_store(), vehicle_groups=[GROUP_7MPG], line_decisions=[event(DIESEL, ECONOMY, "edited", value, "mi/gal")])
-    assert math.isfinite(mobile_total(response)) and trace_of(response) is not None
-    json.dumps(response, allow_nan=False)
+@pytest.mark.parametrize("value", [0.1, 0.4, 500, 65.5, 100.5, 2.0])
+def test_an_implausible_fuel_economy_is_refused_with_a_sentence_even_with_a_reason(value: float) -> None:
+    """Against 6.55 (distance 2,489,000 mi over 380,000 gal): a slip of units must not move a total."""
+
+    group = {**GROUP_ROAD, "distance": 2_489_000}
+    plain = run(diesel_store(), vehicle_groups=[group])
+    response = run(diesel_store(), vehicle_groups=[group], line_decisions=[event(DIESEL, ECONOMY, "edited", value, "mi/gal")])
+    assert response["categories"] == plain["categories"]
+    refused = line_of(response, DIESEL)["decisions"]["not_applied"]
+    assert [n["reason"] for n in refused] == ["invalid_value"] and "mi/gal is outside" in refused[0]["message"]
+    assert "6.55" in refused[0]["message"]
+
+
+@pytest.mark.parametrize("value", [2.2, 6.0, 6.55, 19.0, 19.6])
+def test_a_plausible_fuel_economy_is_used(value: float) -> None:
+    group = {**GROUP_ROAD, "distance": 2_489_000}
+    response = run(diesel_store(), vehicle_groups=[group], line_decisions=[event(DIESEL, ECONOMY, "edited", value, "mi/gal")])
+    assert line_of(response, DIESEL)["decisions"]["not_applied"] == []
+    assert block(trace_of(response), "distance")["recomputed"]["result"]["value"] == pytest.approx(380000 * value)
 
 
 def test_a_fuel_economy_decision_on_a_line_without_one_is_reported_on_that_line_only() -> None:
@@ -267,3 +280,88 @@ def test_the_frontend_fixture_is_the_backends_current_trace() -> None:
     live = trace_of(run(diesel_store(), vehicle_groups=[GROUP_7MPG], reported_activity=COMPANY))
     path = Path(__file__).parents[4] / "frontend" / "features" / "s1" / "api" / "__fixtures__" / "calcTraceMobile.json"
     assert json.loads(path.read_text()) == live
+
+
+# --- the summary fields, the Excel Working sheet, the message and the stale rule --------------------------------------
+def _summary_agrees(response: dict, miles: float, fuel: float = 380000) -> None:
+    line = line_of(response, DIESEL)
+    assert line["step2"]["distance"]["quantity"] == pytest.approx(miles)
+    assert line["step2"]["implied_fuel_economy"]["value"] == pytest.approx(miles / fuel)
+    assert line["step2"]["distance"]["source"].startswith(("Fuel decided", "Distance decided"))
+    ch4 = next(r for r in line["step3"]["gases"] if r["gas"] == "CH4")
+    assert ch4["activity"]["value"] == pytest.approx(miles)
+    trace = line["trace"]
+    assert block(trace, "distance")["recomputed"]["result"]["value"] == pytest.approx(miles)
+    assert trace["inputs"]["fuel_economy"]["recomputed"]["value"] == pytest.approx(miles / fuel)
+    assert trace["result"]["recomputed"] == pytest.approx(line["results"]["total_co2e_t"], abs=ABS)
+
+
+def test_the_summary_fields_agree_with_the_trace_after_a_fuel_economy_decision() -> None:
+    response = run(diesel_store(), vehicle_groups=[GROUP_7MPG], line_decisions=[event(DIESEL, ECONOMY, "edited", 6.55, "mi/gal")])
+    _summary_agrees(response, 2_489_000)
+    assert line_of(response, DIESEL)["results"]["total_co2e_t"] == pytest.approx(3908.8901875, abs=ABS)
+
+
+def test_the_summary_fields_agree_with_the_trace_after_a_distance_decision() -> None:
+    response = run(diesel_store(), vehicle_groups=[GROUP_7MPG], line_decisions=[event(DIESEL, "input|distance|recomputed", "edited", 2_489_000, "mi")])
+    _summary_agrees(response, 2_489_000)
+
+
+def test_the_summary_fields_are_untouched_with_no_decision() -> None:
+    plain = line_of(run(diesel_store(), vehicle_groups=[GROUP_7MPG]), DIESEL)["step2"]
+    assert plain["distance"]["source"].startswith("Vehicle group distance entered")
+    assert plain["implied_fuel_economy"]["value"] == pytest.approx(7.0)
+
+
+def _working(response: dict) -> list[tuple]:
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    from backend.app.services.workpaper_export_service import build_workbook
+
+    book = build_workbook(engagement={"name": "E", "settings": {}}, recalculation=response, register={}, items=[],
+                          exported_by="x")
+    return [r for r in load_workbook(BytesIO(book))["Working"].iter_rows(min_row=2, values_only=True)]
+
+
+def test_the_working_sheet_shows_the_decided_fuel_economy_the_distance_who_and_why() -> None:
+    response = run(diesel_store(), vehicle_groups=[GROUP_7MPG],
+                   line_decisions=[event(DIESEL, ECONOMY, "edited", 6.55, "mi/gal")])
+    rows = [r for r in _working(response) if r[2] and ("Decided input" in r[2] or "Distance from" in r[2])]
+    text = " | ".join(str(c) for r in rows for c in r)
+    assert "Decided input: Fuel economy" in text and "6.55 mi/gal" in text
+    assert "decided by Rev Iewer" in text and "Corrected from the invoice" in text
+    distance = next(r for r in rows if "Distance from the decided fuel economy" in r[2])
+    assert float(distance[5]) == pytest.approx(2_489_000) and distance[6] == "mi"
+    assert "380000" in distance[4]
+
+
+def test_the_working_sheet_shows_any_decided_input_not_only_the_fuel_economy() -> None:
+    response = run(diesel_store(), vehicle_groups=[GROUP_7MPG], line_decisions=[
+        event(DIESEL, "input|activity.total|recomputed", "edited", 400000, "gal"),
+        event(DIESEL, "input|ef.CO2|recomputed", "edited", 10.0, "kg/gal")])
+    names = [r[2] for r in _working(response) if r[2] and "Decided input" in r[2]]
+    assert any("Activity" in n for n in names) and any("CO2 emission factor" in n for n in names)
+
+
+def test_without_decisions_the_working_sheet_has_no_decided_input_rows() -> None:
+    assert not [r for r in _working(run(diesel_store(), vehicle_groups=[GROUP_7MPG])) if r[2] and "Decided input" in r[2]]
+
+
+def test_a_fuel_economy_decision_on_a_line_that_never_offered_one_says_so() -> None:
+    response = run(diesel_store(12000), vehicle_groups=[NON_ROAD], line_decisions=[event(LOADERS, ECONOMY, "edited", 7.0, "mi/gal")])
+    note = line_of(response, LOADERS)["decisions"]["not_applied"][0]
+    assert note["message"] == "Fuel economy isn't used on this line (non-road, or no distance stated)."
+
+
+def test_a_new_fuel_record_moves_the_distance_instead_of_making_the_fuel_economy_stale() -> None:
+    basis = json.dumps({"value": 7.0, "unit": "mi/gal", "source": None, "grid_region": None})
+    decision = event(DIESEL, ECONOMY, "edited", 6.55, "mi/gal")
+    decision["record"]["decision"]["basis"] = basis
+    store = FakeStore()
+    store.add_document("F", "CT-S1-MOBFUEL", [_diesel_purchase(380000), _diesel_purchase(20000, "2025-06-01")])
+    response = run(store, vehicle_groups=[GROUP_7MPG], line_decisions=[decision])
+    line = line_of(response, DIESEL)
+    assert line["decisions"]["not_applied"] == []
+    assert block(trace_of(response), "distance")["recomputed"]["result"]["value"] == pytest.approx(400000 * 6.55)

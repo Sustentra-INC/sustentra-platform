@@ -38,6 +38,9 @@ FUEL_ECONOMY = "fuel_economy"
 ECONOMY_UNIT = "mi/gal"
 DISTANCE_BLOCK = "distance"
 STEP2_NOTE = "To the unit the emission factor is in, then fuel × fuel economy = distance"
+NOT_OFFERED = "Fuel economy isn't used on this line (non-road, or no distance stated)."
+BAND = 3.0  # a decided fuel economy within 1/3 to 3 times what the line's distance implies
+ABSOLUTE = (0.5, 100.0)  # mi/gal: below or above this is a slip of units, whatever the vehicle
 DISTANCE_FROM_ECONOMY_FLAG = "distance_from_fuel_economy"
 
 
@@ -51,6 +54,25 @@ def build(line: dict[str, Any], context: dict[str, Any] | None = None) -> LineTr
         # The shared trace stands, with the distance as entered: a failed extra never takes the line's working down.
         return trace_for("mobile", line, "epa_hub_fuel_and_vehicle_group", context)
     return trace
+
+
+def check_economy(number: float, trace: LineTrace) -> str | None:
+    """None when a decided fuel economy may be used for the line, else why not (a sentence for ``not_applied``).
+    It is checked against the line's own figures: within 1/3 to 3 times the fuel economy its distance and fuel imply,
+    and between 0.5 and 100 mi/gal (a slip of units, km/L or L/100 km, is the usual mistake). Like the site values
+    of a stationary line, a reason does not lift this: a value outside is a slip, not a judgement."""
+
+    low, high = ABSOLUTE
+    item = trace.inputs.get(FUEL_ECONOMY)
+    implied = _number(item.recomputed.value) if item is not None and item.recomputed else None
+    if implied is not None and implied > 0:
+        low, high = max(low, implied / BAND), min(high, implied * BAND)
+    if not low <= number <= high:
+        return (f"Not applied: {number:g} mi/gal is outside {low:.3g} to {high:.3g}, around the {implied:.3g} this "
+                "line's distance and fuel imply. Check the unit (miles per gallon, not km per litre)."
+                if implied is not None else
+                f"Not applied: {number:g} mi/gal is outside {low:g} to {high:g}. Check the unit (miles per gallon).")
+    return None
 
 
 def _number(value: Any) -> float | None:
