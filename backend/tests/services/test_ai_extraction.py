@@ -685,7 +685,9 @@ def _record_items(store: FakeStore, document_id: str) -> list[dict[str, Any]]:
     return copy.deepcopy(store.results[document_id][0]["items"])
 
 
-def test_a_multi_record_document_is_not_filled_and_creates_no_record() -> None:
+def test_a_multi_record_document_with_nothing_empty_is_not_read_and_creates_no_record() -> None:
+    # Several records go to ai_record_fill (MVP-238, tested in test_ai_record_fill): only a record's own empty
+    # fields are asked, so with none empty there is no call, and a known-gap field never adds a candidate.
     store = FakeStore()
     store.add_document("LOG", "CT-S1-FUELQTY", [_gas(1000), _gas(2000)])  # two records, all reviewed
     before = _service(store).recalculate(_engagement(), _own)
@@ -694,8 +696,7 @@ def test_a_multi_record_document_is_not_filled_and_creates_no_record() -> None:
     claude = FakeClaude([read("meter_number", "MTR-4471", "Meter Number MTR-4471", "L4")])
     outcome, ledger = assist(claude, items, gap=[METER], targets=[target("fuel_type", "Fuel type")])
     assert claude.calls == [] and ledger.rows == []  # nothing is read: no cost either
-    assert outcome.result["items"] == items and outcome.dropped == {"multi_record_document": 1}
-    assert any("dropped 1 (multi_record_document 1)" in w for w in outcome.warnings)
+    assert outcome.result["items"] == items and outcome.dropped == {} and outcome.warnings == []
     store.results["LOG"][0]["items"] = outcome.result["items"]
     after = _service(store).recalculate(_engagement(), _own)
     assert after["awaiting_review"] == before["awaiting_review"] == []  # nothing new to review

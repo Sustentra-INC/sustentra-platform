@@ -19,6 +19,8 @@ from backend.app.repositories.extraction_result_repository import InMemoryExtrac
 from backend.app.repositories.pipeline_repository import InMemoryPipelineRunRepository
 from backend.app.services.ai_extraction import AiExtraction
 from backend.app.services.ai_facility import AiFacility
+from backend.app.services.ai_locator import row_lines
+from backend.app.services.ai_record_fill import record_rows
 from backend.app.services.ai_routing import AiRouting
 from backend.app.services.parser_service import ParserService
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
@@ -95,6 +97,7 @@ def extract_document(service: PipelineOrchestrationService, org_id: str | None, 
         return ExtractedDoc(filename=path.name, error=f"{type(exc).__name__}")
     run = out["pipeline_run"]
     targets = frozenset(str(t.get("field_id")) for t in out.get("extraction_targets") or [] if t.get("field_id"))
+    line_texts, record_texts = _texts(out)
     return ExtractedDoc(
         filename=path.name,
         status=run.get("status"),
@@ -102,7 +105,18 @@ def extract_document(service: PipelineOrchestrationService, org_id: str | None, 
         halt_code=(run.get("halt_reason") or {}).get("code"),
         targets=targets,
         items=_items(out),
+        line_texts=line_texts,
+        record_texts=record_texts,
     )
+
+
+def _texts(out: dict[str, Any]) -> tuple[tuple[str, ...], dict[int, tuple[str, ...]]]:
+    """The parser's lines (a sheet row as one line) and each record's own rows, as the record fill sees them."""
+
+    lines = row_lines(out.get("parser_output") or {})
+    rows = record_rows(lines, (out.get("extraction_result") or {}).get("items") or [])
+    return (tuple(line.text for line in lines),
+            {record: tuple(lines[p].text for p in positions) for record, positions in rows.own.items()})
 
 
 def run_folder(folder: Path, service: PipelineOrchestrationService, org_id: str | None,
