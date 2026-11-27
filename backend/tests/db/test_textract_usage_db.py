@@ -75,3 +75,11 @@ def test_the_app_can_insert_but_never_update_or_delete_and_never_a_bad_row() -> 
     for pages, cost in ((0, 0), (-1, 0), (1, -5)):
         with pytest.raises(DBAPIError):
             _record(ledger, ORG, cost=cost, pages=pages)
+
+
+def test_the_month_spend_counts_the_pages_of_a_multi_page_row() -> None:
+    ledger = DbScanLedger(ENGINE)
+    asyncio.run(_admin("INSERT INTO ai_usage (org_id, feature, model, provider, outcome, cost_microusd) "
+                       "VALUES ($1, 'routing', 'm', 'anthropic', 'ok', 2000000)", ORG))
+    _record(ledger, ORG, pages=2, cost=130_000)
+    assert ledger.month_spend_microusd(ORG) == 2_130_000

@@ -15,7 +15,7 @@ import logging
 import re
 from typing import Any
 
-from backend.app.services.pdf_scan_pages import SCAN_LIMIT_SENTENCE
+from backend.app.services.pdf_scan_pages import SCAN_LIMIT_SENTENCE, SCAN_UNCHECKED_SENTENCE
 
 # A halt code to the sentence for it. ``document_too_long`` is not here: its own sentence is
 # already plain and carries the page counts (see ``plain_halt``).
@@ -24,6 +24,7 @@ PLAIN_HALT: dict[str, str] = {
     "ocr_required": "Photo or scan: its text is read once OCR is switched on. Ask for a text PDF meanwhile.",
     "password_protected": "Password-protected: ask the client for a copy without a password.",
     "scan_limit_reached": SCAN_LIMIT_SENTENCE,
+    "scan_limit_unchecked": SCAN_UNCHECKED_SENTENCE,
     "unsupported_document": "We couldn't tell what kind of document this is. Choose its type in Evidence.",
 }
 
@@ -85,7 +86,7 @@ _WARNING_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^Pipeline orchestration failed"), PIPELINE_FAILED),
 )
 # Codes whose text is already counts and ranges only; kept as written.
-_KEPT_CODES = ("pages_unread:", "scan_cap_reached:", "ai_unavailable:", "ai_cap_reached:", "ai_double_check_skipped:", "ai_pages_skipped:", "ai_time_budget:")
+_KEPT_CODES = ("pages_unread:", "scan_cap_reached:", "scan_limit_unchecked:", "ai_unavailable:", "ai_cap_reached:", "ai_double_check_skipped:", "ai_pages_skipped:", "ai_time_budget:")
 
 logger = logging.getLogger("sustentra.halt_text")
 

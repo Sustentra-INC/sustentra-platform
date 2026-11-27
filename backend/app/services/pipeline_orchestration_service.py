@@ -44,7 +44,13 @@ from backend.app.adapters.parsers.email_parser import PARSER_NAME as EMAIL_PARSE
 from backend.app.adapters.parsers.email_reader import ENCRYPTED_EMAIL
 from backend.app.adapters.parsers.xls_parser import PASSWORD_PROTECTED
 from backend.app.services.document_chunk_service import pages_unread_message
-from backend.app.services.pdf_scan_pages import SCAN_CAP_REACHED, SCAN_LIMIT_SENTENCE, unread_scan_pages
+from backend.app.services.pdf_scan_pages import (
+    SCAN_CAP_REACHED,
+    SCAN_LIMIT_SENTENCE,
+    SCAN_UNCHECKED,
+    SCAN_UNCHECKED_SENTENCE,
+    unread_scan_pages,
+)
 from backend.app.services.parser_service import ParserService
 from backend.app.services.mobile_combustion_extractor import (
     CANONICAL_TYPE_ID as MOBFUEL_TYPE_ID,
@@ -76,6 +82,8 @@ HALT_OCR_REQUIRED = "ocr_required"
 HALT_PASSWORD_PROTECTED = "password_protected"
 # The month's AI and scan limit stopped the scan: readable later (next month, or when the limit is raised).
 HALT_SCAN_LIMIT = "scan_limit_reached"
+# The limit could not be checked, so nothing was scanned: the next read tries again.
+HALT_SCAN_UNCHECKED = "scan_limit_unchecked"
 PDF_PARSER_NAMES = {"pymupdf", "pdfplumber", "pdf_parser"}
 HALT_UNSUPPORTED = "unsupported_document"
 LOW_CONFIDENCE_THRESHOLD = 0.5
@@ -274,8 +282,11 @@ class PipelineOrchestrationService:
                 warnings.append(
                     "pages_unread: " + pages_unread_message(unread_pages)
                 )
-            if any(isinstance(w, dict) and w.get("code") == SCAN_CAP_REACHED for w in parser_output.get("warnings") or []):
+            parser_codes = {w.get("code") for w in parser_output.get("warnings") or [] if isinstance(w, dict)}
+            if SCAN_CAP_REACHED in parser_codes:
                 warnings.append(f"{SCAN_CAP_REACHED}: {SCAN_LIMIT_SENTENCE}")
+            if SCAN_UNCHECKED in parser_codes:
+                warnings.append(f"{SCAN_UNCHECKED}: {SCAN_UNCHECKED_SENTENCE}")
 
             if parser_status == "failed" or (parser_status == "empty" and not canonical_type_id_override):
                 halt_reason = self._unreadable_halt(parser_output)
@@ -889,6 +900,8 @@ class PipelineOrchestrationService:
         codes = {str(w.get("code")) for w in (parser_output.get("warnings") or []) if isinstance(w, dict)}
         if SCAN_CAP_REACHED in codes:
             return {"code": HALT_SCAN_LIMIT, "message": SCAN_LIMIT_SENTENCE}
+        if SCAN_UNCHECKED in codes:
+            return {"code": HALT_SCAN_UNCHECKED, "message": SCAN_UNCHECKED_SENTENCE}
         if "password_protected" in codes:
             if parser_output.get("parser_name") == EMAIL_PARSER_NAME:
                 return {"code": HALT_PASSWORD_PROTECTED, "message": ENCRYPTED_EMAIL}

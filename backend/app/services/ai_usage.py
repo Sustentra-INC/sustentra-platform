@@ -29,11 +29,19 @@ _MONTH_SPEND = text(
     )::bigint AS spent
     """
 )
-_MONTH_SCANS = text(
+# One statement, so the AI's and the scans' numbers come from the same snapshot.
+_MONTH_BREAKDOWN = text(
     """
-    SELECT COALESCE(SUM(cost_microusd), 0)::bigint AS spent, COALESCE(SUM(pages), 0)::bigint AS pages
-      FROM textract_usage
-     WHERE org_id = :org_id AND created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+    SELECT
+      COALESCE((SELECT SUM(cost_microusd) FROM ai_usage
+                 WHERE org_id = :org_id
+                   AND created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'), 0)::bigint AS ai,
+      COALESCE((SELECT SUM(cost_microusd) FROM textract_usage
+                 WHERE org_id = :org_id
+                   AND created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'), 0)::bigint AS scans,
+      COALESCE((SELECT SUM(pages) FROM textract_usage
+                 WHERE org_id = :org_id
+                   AND created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'), 0)::bigint AS pages
     """
 )
 _INSERT = text(
@@ -53,11 +61,11 @@ async def month_spend_microusd(db: AsyncSession, org_id: uuid.UUID) -> int:
     return int((await db.execute(_MONTH_SPEND, {"org_id": org_id})).scalar_one())
 
 
-async def month_scans(db: AsyncSession, org_id: uuid.UUID) -> tuple[int, int]:
-    """(micro-USD, pages) the organization's Textract scans cost this month."""
+async def month_breakdown(db: AsyncSession, org_id: uuid.UUID) -> tuple[int, int, int]:
+    """(AI micro-USD, scan micro-USD, scan pages) this month, read in one statement; none is ever negative."""
 
-    row = (await db.execute(_MONTH_SCANS, {"org_id": org_id})).one()
-    return int(row.spent), int(row.pages)
+    row = (await db.execute(_MONTH_BREAKDOWN, {"org_id": org_id})).one()
+    return max(0, int(row.ai)), max(0, int(row.scans)), max(0, int(row.pages))
 
 
 async def month_spend(db: AsyncSession, org_id: uuid.UUID) -> float:

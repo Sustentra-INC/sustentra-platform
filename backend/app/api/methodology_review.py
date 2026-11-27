@@ -283,12 +283,12 @@ async def ai_status(db: AsyncSession, engagement: dict[str, Any], user: CurrentU
     """Whether Claude suggestions can be asked for now, and the numbers behind it."""
 
     settings = settings or get_settings()
-    spent = await ai_usage.month_spend_microusd(db, engagement["org_id"])  # the AI's and the scans' together
-    scan_microusd, scan_pages = await ai_usage.month_scans(db, engagement["org_id"])
+    ai_microusd, scan_microusd, scan_pages = await ai_usage.month_breakdown(db, engagement["org_id"])
+    spent = ai_microusd + scan_microusd  # the one limit counts both
     candidates = await _candidates(db, engagement, user) if settings.ai_suggestions_enabled else []
     code, reason = _gate(settings, spent, candidates)
     return {"enabled": code is None, "reason_code": code, "reason": reason, "provider": settings.ai_provider,
-            "model": settings.ai_model, "month_spend_usd": round((spent - scan_microusd) / ai_usage.MICRO, 2),
+            "model": settings.ai_model, "month_spend_usd": round(ai_microusd / ai_usage.MICRO, 2),
             "scan_spend_usd": round(scan_microusd / ai_usage.MICRO, 2), "scan_pages": scan_pages,
             "cap_usd": settings.ai_monthly_cap_usd}
 

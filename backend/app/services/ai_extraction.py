@@ -623,7 +623,7 @@ class AiExtraction:
         ledger = self._ledger or DbLedger(feature=FEATURE)
         spent = ledger.month_spend_microusd(org_id)
         if ai_usage.cap_reached(spent, settings.ai_monthly_cap_usd):
-            return AssistOutcome(extraction_result, [f"{CAP_REACHED}: this month's limit on Sustentra's AI suggestions is "
+            return AssistOutcome(extraction_result, [f"{CAP_REACHED}: this month's limit on Sustentra's AI and scans is "
                                                      "reached, so the values were not read by Sustentra's AI."])
 
         units = page_units(lines)
@@ -662,7 +662,7 @@ class AiExtraction:
                                 f"{describe(_not_read(left, windows[:index - 1]))} not read.")
                 break
             if ai_usage.cap_reached(spent + cost, settings.ai_monthly_cap_usd):
-                warnings.append(f"{CAP_REACHED}: this month's limit on Sustentra's AI suggestions was reached after "
+                warnings.append(f"{CAP_REACHED}: this month's limit on Sustentra's AI and scans was reached after "
                                 f"{read} of {len(windows)} windows.")
                 break
             window_lines = with_sheet_headers([line for unit in window for line in unit.lines], first_rows)

@@ -257,7 +257,7 @@ class AiRouting:
             return RoutingResult("off")
         # The cap check: its own short transaction, closed before the call.
         if ai_usage.cap_reached(ledger.month_spend_microusd(org_id), settings.ai_monthly_cap_usd):
-            return RoutingResult("off", warning=f"{CAP_REACHED}: this month's limit on Sustentra's AI suggestions is reached, so the type was not read by Sustentra's AI.")
+            return RoutingResult("off", warning=f"{CAP_REACHED}: this month's limit on Sustentra's AI and scans is reached, so the type was not read by Sustentra's AI.")
 
         started = time.monotonic()
         try:

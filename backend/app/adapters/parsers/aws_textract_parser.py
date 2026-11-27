@@ -19,6 +19,12 @@ from backend.app.adapters.parsers.base import (
 )
 from backend.app.adapters.parsers.textract_parser import TextractParser
 from backend.app.services import textract_usage
+from backend.app.services.pdf_scan_pages import (
+    SCAN_CAP_REACHED,
+    SCAN_LIMIT_SENTENCE,
+    SCAN_UNCHECKED,
+    SCAN_UNCHECKED_SENTENCE,
+)
 from backend.app.services.textract_calls import SCAN_LIMIT_UNCHECKED, authorize_textract_call, record_textract_call
 
 PARSER_NAME = "aws_textract"
@@ -89,15 +95,13 @@ class AwsTextractParser:
         features = self._resolved_feature_types()
         refused = authorize_textract_call(pages=1, feature_types=features)
         if refused:  # the monthly limit: no call is made, and the page is "not read" rather than failed
-            unchecked = refused == SCAN_LIMIT_UNCHECKED
+            code, message = ((SCAN_UNCHECKED, SCAN_UNCHECKED_SENTENCE) if refused == SCAN_LIMIT_UNCHECKED
+                             else (SCAN_CAP_REACHED, SCAN_LIMIT_SENTENCE))
             return build_failed_parser_output(
                 document_id=document_id,
                 processing_run_id=processing_run_id,
                 parser_name=self.parser_name,
-                warnings=[build_warning(
-                    textract_usage.SCAN_CAP_REACHED,
-                    textract_usage.MESSAGE_UNCHECKED if unchecked else textract_usage.MESSAGE_CAP_REACHED,
-                    severity="error")],
+                warnings=[build_warning(code, message, severity="error")],
             )
         try:
             response = self._client().analyze_document(

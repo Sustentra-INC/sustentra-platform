@@ -212,7 +212,63 @@ def test_a_ledger_that_cannot_be_read_blocks_the_scan_without_failing_the_read(t
     finally:
         restore()
     assert client.calls == 0
-    assert any(w["code"] == "scan_cap_reached" and "could not be checked" in w["message"] for w in output["warnings"])
+    codes = {w["code"] for w in output["warnings"]}
+    assert "scan_limit_unchecked" in codes and "scan_cap_reached" not in codes  # never "the limit is reached"
+    note = next(w["message"] for w in output["warnings"] if w["code"] == "scan_limit_unchecked")
+    assert "could not be checked" in note and "retried" in note and "limit is reached" not in note
+
+
+def test_an_unchecked_image_halts_with_its_own_code_and_sentence_and_is_not_kept(tmp_path: Path) -> None:
+    class Down(FakeLedger):
+        def month_spend_microusd(self, org_id: uuid.UUID) -> int:
+            raise RuntimeError("db down")
+
+    ledger = Down()
+    service, client, restore = _setup(ledger)
+    image = tmp_path / "bill.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\n")
+    try:
+        output = service.parse_document(image, "DOC-1", "RUN-1", mime_type="image/png", org_id=ORG)
+        halt = PipelineOrchestrationService._unreadable_halt(output)
+        Down.month_spend_microusd = FakeLedger.month_spend_microusd  # the ledger is back: the next pass reads it
+        again = service.parse_document(image, "DOC-1", "RUN-2", mime_type="image/png", org_id=ORG)
+    finally:
+        restore()
+    assert halt == {"code": "scan_limit_unchecked",
+                    "message": "Not read: the scan limit could not be checked. It will be retried."}
+    assert client.calls == 1 and again["status"] != "failed"  # not stored: read again, and now scanned
+
+
+def test_the_two_halts_have_their_own_plain_sentences() -> None:
+    from backend.app.services.halt_text import plain_halt
+
+    assert plain_halt("scan_limit_reached") == "Not read: this month's AI and scan limit is reached. It can be read later."
+    assert plain_halt("scan_limit_unchecked") == "Not read: the scan limit could not be checked. It will be retried."
+
+
+class _Settings:
+    def __init__(self, database_url: str | None) -> None:
+        self.database_url = database_url
+        self.s1_store = "jsonl"
+        self.ai_monthly_cap_usd = 25.0
+
+
+def test_jsonl_with_a_database_url_still_records_and_enforces(monkeypatch: pytest.MonkeyPatch) -> None:
+    ledger = FakeLedger({ORG: 25_000_000})
+    monkeypatch.setattr(tu, "get_settings", lambda: _Settings("postgresql://app@db/x"))
+    monkeypatch.setattr(tu, "_default", ledger)
+    assert tu._active() is ledger
+    assert tu._gate({"org_id": ORG, "pages": 1, "feature_types": ["TABLES"]}) == "scan_cap_reached"
+    ledger.ai[ORG] = 0
+    assert tu._gate({"org_id": ORG, "pages": 1, "feature_types": ["TABLES"]}) is None
+    tu._hook({"org_id": ORG, "pages": 1, "feature_types": ["TABLES"], "ok": True})
+    assert [r["cost_microusd"] for r in ledger.rows] == [15_000]
+
+
+def test_with_no_database_url_at_all_nothing_is_checked_or_recorded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tu, "get_settings", lambda: _Settings(None))
+    assert tu._active() is None
+    assert tu._gate({"org_id": ORG, "pages": 5000, "feature_types": ["FORMS", "TABLES"]}) is None
 
 
 def test_a_call_with_no_organization_is_not_gated_or_recorded(tmp_path: Path) -> None:

@@ -6,8 +6,8 @@ times the mode's price); a call that would take the month over the limit is not 
 "not read", and the document can be read later. Every call that is made is recorded, ok or not (a failed call
 costs 0: AWS does not bill an error). Only ids, counts and cost are stored.
 
-The ledger works for an organization read through the Postgres S1 store; with ``S1_STORE=jsonl`` (local
-development, no database) nothing is recorded or checked. It is wired to ``textract_calls`` (the one place every
+The ledger works wherever there is a database (``DATABASE_URL`` set), whatever ``S1_STORE`` is, as the AI
+ledger does (``ai_routing.DbLedger``); with no database URL at all (local development) nothing is recorded or checked. It is wired to ``textract_calls`` (the one place every
 call goes through) once, the first time a Textract reader is built.
 """
 
@@ -26,14 +26,14 @@ from backend.app.core.db import tenant_transaction
 from backend.app.core.s1_scope import S1Scope
 from backend.app.services import ai_usage
 from backend.app.services.pdf_scan_pages import SCAN_CAP_REACHED as SCAN_CAP_CODE
-from backend.app.services.pdf_scan_pages import SCAN_LIMIT_SENTENCE
+from backend.app.services.pdf_scan_pages import SCAN_LIMIT_SENTENCE, SCAN_UNCHECKED_SENTENCE
 from backend.app.services.textract_calls import register_textract_gate, register_textract_hook
 
 logger = logging.getLogger("sustentra.textract_usage")
 
 SCAN_CAP_REACHED = SCAN_CAP_CODE
 MESSAGE_CAP_REACHED = SCAN_LIMIT_SENTENCE
-MESSAGE_UNCHECKED = "Not read: this month's AI and scan limit could not be checked just now. It can be read later."
+MESSAGE_UNCHECKED = SCAN_UNCHECKED_SENTENCE
 
 FORMS_TABLES = "forms_tables"
 TABLES = "tables"
@@ -134,7 +134,7 @@ _default = DbScanLedger()
 def _active() -> ScanLedger | None:
     if _override is not None:
         return _override
-    return None if get_settings().s1_store == "jsonl" else _default
+    return None if get_settings().database_url is None else _default
 
 
 def use_ledger(ledger: ScanLedger | None) -> Callable[[], None]:

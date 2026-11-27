@@ -160,6 +160,7 @@ export function haltReasonFromCode(code: string | null | undefined, message?: st
   if (code === "unreadable_document") return HALT_REASONS.unreadable;
   if (code === "ocr_required") return HALT_REASONS.ocrRequired;
   if (code === "scan_limit_reached") return HALT_REASONS.scanLimitReached;
+  if (code === "scan_limit_unchecked") return HALT_REASONS.scanLimitUnchecked;
   if (code === "password_protected") return HALT_REASONS.passwordProtected;
   if (code === "unsupported_document") return HALT_REASONS.typeUnknown;
   return null;
