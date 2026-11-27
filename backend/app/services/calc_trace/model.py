@@ -110,6 +110,7 @@ class TraceInput:
     # A default the line uses where nothing is stated yet, shown as such until a reviewer decides the input:
     # "Default: <value> (<source>) · not confirmed"
     assumption: str | None = None
+    source_hint: str | None = None  # where a reviewer finds the value: the entry form's "Its source (…)" prompt
 
 
 @dataclass

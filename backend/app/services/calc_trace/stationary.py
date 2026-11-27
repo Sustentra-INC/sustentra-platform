@@ -147,7 +147,8 @@ def _inputs(line: dict[str, Any], shape: Shape | None) -> dict[str, TraceInput]:
     if per_energy:
         out["hhv"] = TraceInput(
             "hhv", "Site heat content (HHV)", "reviewer_entered", symbol="HHV", required_for=[EQ2],
-            recomputed=Side(None, f"MMBtu/{shape.to_unit}", "awaiting_review"))
+            recomputed=Side(None, f"MMBtu/{shape.to_unit}", "awaiting_review"),
+            source_hint="fuel supplier's certificate of analysis")
         keys = {"CO2": "co2_kg_per_mmbtu", "CH4": "ch4_g_per_mmbtu", "N2O": "n2o_g_per_mmbtu"}
         cite = default_emission_factor_reference().cite(row)
         for gas in line["method"]["equations"]:
@@ -158,7 +159,8 @@ def _inputs(line: dict[str, Any], shape: Shape | None) -> dict[str, TraceInput]:
                     recomputed=Side(float(per_energy[keys[gas]]), ENERGY_UNIT[gas], "reference", reference_source(cite)))
     if shape.mass and "CO2" in line["method"]["equations"]:
         out["cc"] = TraceInput("cc", "Carbon content", "reviewer_entered", symbol="CC", required_for=[EQ3],
-                               recomputed=Side(None, CC_UNIT, "awaiting_review"))
+                               recomputed=Side(None, CC_UNIT, "awaiting_review"),
+                               source_hint="fuel supplier's certificate of analysis")
         out["fuel_to_kg"] = TraceInput(
             "fuel_to_kg", "Fuel mass to kg", "constant", required_for=[EQ3],
             recomputed=Side(fuel_units.convert_exact(1, shape.to_unit, "kg"), f"kg/{shape.to_unit}", "reference",

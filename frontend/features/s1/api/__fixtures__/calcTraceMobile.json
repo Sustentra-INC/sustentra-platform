@@ -171,7 +171,8 @@
      ]
     }
    },
-   "decidable": true
+   "decidable": true,
+   "source_hint": "odometer or trip log"
   },
   "ef.CO2": {
    "id": "ef.CO2",
@@ -356,7 +357,8 @@
    },
    "differs": false,
    "difference": 0.0,
-   "decidable": true
+   "decidable": true,
+   "source_hint": "fleet records or manufacturer rating"
   }
  },
  "steps": [

@@ -130,6 +130,7 @@ function siteInputs(toUnit: string): Record<string, TraceInput> {
     kind: "reviewer_entered",
     required_for: [requiredFor],
     recomputed: { value: null, unit, status: "awaiting_review" },
+    source_hint: "fuel supplier's certificate of analysis",
   });
   return {
     hhv: input("hhv", "Site heat content (HHV)", "HHV", `MMBtu/${toUnit}`, "eq_2"),
@@ -230,6 +231,7 @@ export function traceFromLine(line: CalculationLine, electricity?: DemoElectrici
       kind: "reviewer_entered",
       required_for: [],
       recomputed: side(s2.distance.quantity, s2.distance.unit, "accepted", { kind: "entered", by: s2.distance.source }),
+      source_hint: "odometer or trip log",
     };
   }
 

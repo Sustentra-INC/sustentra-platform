@@ -143,6 +143,8 @@ export interface TraceInput {
   /** A default the line uses where nothing is stated yet, until a reviewer decides the input:
    *  "Default: <value> (<source>) · not confirmed". */
   assumption?: string | null;
+  /** Where a reviewer finds the value ("inventory count"): the entry form asks "Its source (…)". */
+  source_hint?: string | null;
 }
 
 export interface TraceChoiceOption {

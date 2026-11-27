@@ -10,7 +10,11 @@ export const MB_TERMS = ["I_B", "I_E", "P", "S", "C_B", "C_E"] as const;
 type MbTerm = (typeof MB_TERMS)[number];
 const MB_LABEL: Record<MbTerm, string> = {
   I_B: "In storage at the start of the year", I_E: "In storage at the end of the year", P: "Purchased or acquired",
-  S: "Sold or sent off-site", C_B: "Equipment capacity at the start of the year", C_E: "Equipment capacity at the end of the year",
+  S: "Sold or sent off-site", C_B: "Full charge of equipment at the start of the year", C_E: "Full charge of equipment at the end of the year",
+};
+const MB_HINT: Record<MbTerm, string> = {
+  I_B: "inventory count", I_E: "inventory count", P: "purchase invoice", S: "sales, return or disposal record",
+  C_B: "equipment register (full charge)", C_E: "equipment register (full charge)",
 };
 const MB_OP: Record<MbTerm, TraceOpSymbol | null> = { I_B: null, I_E: "−", P: "+", S: "−", C_B: "+", C_E: "−" };
 export const MB_EQUATION = "Emitted = (I_B − I_E) + (P − S) + (C_B − C_E)";
@@ -30,7 +34,7 @@ const termOf = (decided: DemoDecided, t: MbTerm): number | null => {
 export function materialInputs(unit: string, decided: DemoDecided): Record<string, TraceInput> {
   return Object.fromEntries(MB_TERMS.map((t) => {
     const v = termOf(decided, t);
-    const input: TraceInput = { id: t, label: MB_LABEL[t], symbol: t, kind: "reviewer_entered", required_for: ["material_balance"], decidable: true,
+    const input: TraceInput = { id: t, label: MB_LABEL[t], symbol: t, kind: "reviewer_entered", required_for: ["material_balance"], decidable: true, source_hint: MB_HINT[t],
       recomputed: v === null ? { value: null, unit, status: "awaiting_review" } : { value: v, unit, status: "edited" } };
     return [t, input];
   }));

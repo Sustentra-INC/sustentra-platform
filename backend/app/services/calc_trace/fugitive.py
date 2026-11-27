@@ -115,7 +115,11 @@ MATERIAL_BALANCE = "material_balance"
 MB_TERMS = ("I_B", "I_E", "P", "S", "C_B", "C_E")
 MB_LABEL = {"I_B": "In storage at the start of the year", "I_E": "In storage at the end of the year",
             "P": "Purchased or acquired", "S": "Sold or sent off-site",
-            "C_B": "Equipment capacity at the start of the year", "C_E": "Equipment capacity at the end of the year"}
+            "C_B": "Full charge of equipment at the start of the year",
+            "C_E": "Full charge of equipment at the end of the year"}
+MB_HINT = {"I_B": "inventory count", "I_E": "inventory count", "P": "purchase invoice",
+           "S": "sales, return or disposal record", "C_B": "equipment register (full charge)",
+           "C_E": "equipment register (full charge)"}
 _MB_OP = {"I_B": None, "I_E": "−", "P": "+", "S": "−", "C_B": "+", "C_E": "−"}
 MB_EQUATION = "Emitted = (I_B − I_E) + (P − S) + (C_B − C_E)"
 MB_ROUTE = "Material balance: (I_B − I_E) + (P − S) + (C_B − C_E), to metric tons, × GWP"
@@ -656,11 +660,13 @@ def _screening_inputs(inputs: dict[str, TraceInput], units: list[ScreenUnit], ki
         if c_id in decided:
             c_side = decided[c_id][1]
         inputs[c_id] = TraceInput(c_id, f"{u.name} capacity", "evidence_sum" if u.capacity is not None
-                                  else "reviewer_entered", symbol="C", required_for=[SCREENING], recomputed=c_side)
+                                  else "reviewer_entered", symbol="C", required_for=[SCREENING], recomputed=c_side,
+                                  source_hint="equipment nameplate or register")
         t_side = decided[t_id][1] if t_id in decided else Side(DEFAULT_T, None, "derived", SourceRef(
             "derived", from_=["default: in use the whole reporting period"]))
         inputs[t_id] = TraceInput(t_id, f"{u.name} time in use", "reviewer_entered", symbol="T",
-                                  required_for=[SCREENING], recomputed=t_side)
+                                  required_for=[SCREENING], recomputed=t_side,
+                                  source_hint="equipment register (months in use)")
     for f in FACTORS:
         default = kind.factors.get(f) if kind is not None else None
         if f in decided:
@@ -814,7 +820,8 @@ def _material_inputs(inputs: dict[str, TraceInput], decided: Decided, company_te
         side = decided[term][1] if term in decided else Side(None, unit, "awaiting_review")
         given = company_terms.get(term)
         item = TraceInput(term, MB_LABEL[term], "reviewer_entered", symbol=term, required_for=[MATERIAL_BALANCE],
-                          recomputed=side, company=Side(given, unit, "accepted") if given is not None else None)
+                          recomputed=side, company=Side(given, unit, "accepted") if given is not None else None,
+                          source_hint=MB_HINT[term])
         if given is not None and isinstance(side.value, (int, float)):
             item.difference = float(side.value) - given
             item.differs = ops.differs(item.difference, float(side.value))
@@ -1021,7 +1028,7 @@ def _build(line: dict[str, Any], context: dict[str, Any], decided: Decided,
         if input_id in decided:
             entered, side = decided[input_id]
         inputs[input_id] = TraceInput(input_id, f"{c.name} GWP ({gwp_set}, 100-year)", "reviewer_entered", symbol="GWP",
-                                      required_for=[METHOD], recomputed=side)
+                                      required_for=[METHOD], recomputed=side, source_hint="the safety data sheet, say")
         parts_gwp.append((c, entered, input_id))
     missing = [c.name for c, v, _ in parts_gwp if v is None]
     effective = sum(c.share * v for c, v, _ in parts_gwp if v is not None) if blend and not missing else None

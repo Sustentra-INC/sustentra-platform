@@ -183,7 +183,8 @@ def _build(family: str, line: dict[str, Any], rows: list[dict[str, Any]], flags:
         inputs["distance"] = TraceInput(
             "distance", "Distance driven", "reviewer_entered", required_for=["eq4_distance"],
             recomputed=Side(float(distance["quantity"]), normalise_unit(distance["unit"]), "accepted",
-                            SourceRef("derived", from_=[str(distance.get("source"))])))
+                            SourceRef("derived", from_=[str(distance.get("source"))])),
+            source_hint="odometer or trip log")
 
     # --- Steps 3 and 4: the factor applied per gas, then the GWP ---------------------------------------
     emission_blocks: list[TraceBlock] = []

@@ -37,7 +37,9 @@ export const calcTraceRoutes: DemoRoute[] = [
     path: /^\/engagements\/(?<id>[^/]+)\/recalculation\/lines\/(?<key>[^/]+)\/trace$/,
     handle: ({ params }) => {
       const trace = traceOf(params.id, params.key);
-      return { line_key: params.key, trace: trace ? applyDecisions(params.id, trace) : null };
+      // A fugitive line's blocked method says what counts until then (``withChosenMethod``), as on the backend.
+      const decisions = buildRecalculation(params.id).calculation_lines?.find((l) => l.key === params.key)?.decisions;
+      return { line_key: params.key, trace: trace ? applyDecisions(params.id, trace) : null, ...(decisions ? { decisions } : {}) };
     },
   },
   ...decisionRoutes(traceOf),

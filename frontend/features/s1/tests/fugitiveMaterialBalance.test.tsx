@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { LineDecisions, LineTrace } from "../api/calcTrace";
 import { TracePanel } from "../components/calc-trace/TracePanel";
-import { fugitiveLine, fugitiveTrace } from "../demo-backend/calcTrace/fugitive";
+import { fugitiveLine, fugitiveTrace, withChosenMethod } from "../demo-backend/calcTrace/fugitive";
 import type { DemoDecided } from "../demo-backend/calcTrace/fugitiveScreening";
 import type { ModelLine, ModelRecord } from "../demo-backend/linesModel";
 
@@ -55,5 +55,28 @@ describe("demo fugitive material balance (C6)", () => {
     expect(screen.getByText(/^Material balance is chosen but blocked/)).toBeTruthy();
     expect(screen.getAllByText(/^Check: not reported\./)).toHaveLength(2);
     expect(screen.getByText(/^Awaiting review: material balance terms/)).toBeTruthy();
+  });
+
+  it("gives each term its source hint and labels C_B / C_E as the full charge", () => {
+    const t = trace();
+    expect(t.inputs.I_B.source_hint).toBe("inventory count");
+    expect(t.inputs.S.source_hint).toBe("sales, return or disposal record");
+    expect(t.inputs.C_E).toMatchObject({ label: "Full charge of equipment at the end of the year", source_hint: "equipment register (full charge)" });
+  });
+
+  it("routes the line by the chosen method once it is worked, and says what counts while it is blocked", () => {
+    const line = fugitiveLine(ml, [record], { gwp: 1300, set: "AR5", share: 1, company: null, tolerance: 5, reported: null, incomplete: false });
+    expect(withChosenMethod(line, { choices: {}, inputs: {} })).toBe(line);
+    const worked = withChosenMethod(line, { choices: { method: "material_balance" }, inputs: PLAN });
+    expect(worked.method.route).toBe("Material balance: (I_B − I_E) + (P − S) + (C_B − C_E), to metric tons, × GWP");
+    expect(worked.decisions).toBeUndefined();
+    // blocked, with P_S decided at 20 lb: the route stays the balance's, and the note counts the decided P_S
+    const blocked = withChosenMethod(line, { choices: { method: "material_balance" }, inputs: { P_S: 20 } });
+    expect(blocked.method.route).toBe(line.method.route);
+    const total = (20 * T_PER_LB * 1300).toFixed(2);
+    expect(blocked.decisions?.applied[0].uses).toBe(`Material balance is chosen but blocked (awaiting material balance terms). Counting the simplified material balance (${total} t) until then.`);
+    const screening = withChosenMethod(line, { choices: { method: "screening" }, inputs: {} });
+    // C5's screening too: blocked on a capacity, it counts the balance (10 lb → 5.90 t)
+    expect(screening.decisions?.applied[0].uses).toBe("Screening is chosen but blocked (awaiting equipment capacity). Counting the simplified material balance (5.90 t) until then.");
   });
 });
