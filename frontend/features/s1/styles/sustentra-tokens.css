@@ -314,6 +314,16 @@
   --toprow-h:           44px; /* top row: Ask Sustentra and ⋯ buttons */
   --toprow-search-basis: 280px; /* top row: search field basis (top bar 2/3) */
   --ai-panel-w:        404px; /* Ask Sustentra panel width */
+  --search-panel-w:    640px; /* search panel width (capped to the viewport) */
+  --search-panel-top:  12vh;  /* search panel distance from the top */
+  --search-input-h:     52px; /* search panel input row */
+  --search-body-max-h:  60vh; /* search panel results, scroll past this */
+  --search-option-h:    40px; /* search panel result row (minimum) */
+  --search-icon:        18px; /* page icon in a search result */
+  --toprow-search-icon: 17px; /* magnifier in the top-row search field */
+  --key-pad-y:           2px; /* key hint chip (⌘K, Esc) */
+  --key-pad-x:           7px;
+  --r-key:               6px;
 
   /* Coverage & requests: header review card */
   --cr-review-icon-box: 22px; /* leading icon box */

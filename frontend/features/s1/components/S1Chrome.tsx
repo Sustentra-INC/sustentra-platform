@@ -1,14 +1,16 @@
 "use client";
 
 import { ChevronDown, History } from "lucide-react";
-import { IconSparkle, IconTrash } from "./icons";
+import { IconSearch, IconSparkle, IconTrash } from "./icons";
 import Link from "next/link";
-import { useId, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 
 import type { EngagementConfig } from "../types";
 import { formatReportingPeriod } from "../utils/formatPeriod";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AssistantWidget, type AssistantConnection } from "./AssistantWidget";
+import { KeyHint } from "./KeyHint";
+import { SearchPanel, type SearchPage } from "./SearchPanel";
 
 export type NavKey =
   | "dashboard"
@@ -90,11 +92,60 @@ export function S1Chrome({
   const [assistantOpen, setAssistantOpen] = useState(false);
   const assistantPanelId = useId();
   const askButton = useRef<HTMLButtonElement>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchButton = useRef<HTMLButtonElement>(null);
   const changeAssistant = (open: boolean) => {
     setAssistantOpen(open);
+    if (open) setSearchOpen(false);
     // Closed from the panel (X or Escape): focus goes back to the button that opens it.
     if (!open) setTimeout(() => askButton.current?.focus());
   };
+  const changeMore = (open: boolean) => {
+    setMoreOpen(open);
+    if (open) setSearchOpen(false);
+  };
+  const openSearch = () => {
+    // One panel at a time: search takes over from the assistant and the ⋯ menu.
+    setAssistantOpen(false);
+    setMoreOpen(false);
+    setSearchOpen(true);
+  };
+  const closeSearch = () => {
+    // Focus moves back before the panel goes, so a drawer opened from a result returns it here too.
+    searchButton.current?.focus();
+    setSearchOpen(false);
+  };
+
+  // ⌘K / Ctrl+K anywhere toggles search, except while another modal dialog is open.
+  // Re-bound each render so it always sees the current state.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "k") return;
+      if (searchOpen) {
+        e.preventDefault();
+        closeSearch();
+        return;
+      }
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      e.preventDefault();
+      openSearch();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  const searchPages: Array<SearchPage & { open: () => void }> = [
+    ...DESTINATIONS.filter((d) => !hiddenNav?.includes(d.key)).map((d) => ({
+      id: d.key,
+      label: d.label,
+      icon: <NavIcon nav={d.key} />,
+      hint: WORKFLOW_KEYS.includes(d.key) ? "Workflow" : ASSURANCE_KEYS.includes(d.key) ? "Assurance" : undefined,
+      open: () => onNavigate?.(d.key),
+    })),
+    ...(onOpenActivity ? [{ id: "activity", label: "Activity log", icon: <ActivityIcon />, open: onOpenActivity }] : []),
+    ...(onOpenGlossary ? [{ id: "glossary", label: "Glossary", icon: <GlossaryIcon />, open: onOpenGlossary }] : []),
+  ];
   return (
     <div className="s1-shell">
       <Sidebar
@@ -117,6 +168,11 @@ export function S1Chrome({
           onToggleAssistant={() => changeAssistant(!assistantOpen)}
           assistantPanelId={assistantPanelId}
           askRef={askButton}
+          moreOpen={moreOpen}
+          onMoreOpenChange={changeMore}
+          searchOpen={searchOpen}
+          onOpenSearch={() => (searchOpen ? closeSearch() : openSearch())}
+          searchRef={searchButton}
         />
         <ContextBar
           engagement={engagement}
@@ -138,6 +194,16 @@ export function S1Chrome({
         onOpenChange={changeAssistant}
         panelId={assistantPanelId}
       />
+      {searchOpen ? (
+        <SearchPanel
+          pages={searchPages}
+          onClose={closeSearch}
+          onPick={(page) => {
+            closeSearch();
+            searchPages.find((p) => p.id === page.id)?.open();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -335,14 +401,24 @@ function TopRow({
   onToggleAssistant,
   assistantPanelId,
   askRef,
+  moreOpen,
+  onMoreOpenChange,
+  searchOpen,
+  onOpenSearch,
+  searchRef,
 }: {
   onReset?: () => void;
   assistantOpen: boolean;
   onToggleAssistant: () => void;
   assistantPanelId: string;
   askRef: RefObject<HTMLButtonElement | null>;
+  moreOpen: boolean;
+  onMoreOpenChange: (open: boolean) => void;
+  searchOpen: boolean;
+  onOpenSearch: () => void;
+  searchRef: RefObject<HTMLButtonElement | null>;
 }) {
-  const [moreOpen, setMoreOpen] = useState(false);
+  const mac = useSyncExternalStore(noSubscribe, isMac, () => null);
   const entries: ActionMenuEntry[] = [];
   if (onReset) {
     entries.push({
@@ -358,8 +434,19 @@ function TopRow({
   }
   return (
     <div className="s1-toprow">
-      {/* Holds the place of the search field (top bar 2/3). */}
-      <span className="s1-toprow__spacer" aria-hidden />
+      <button
+        ref={searchRef}
+        className="s1-toprow__search"
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={searchOpen}
+        aria-keyshortcuts="Meta+K Control+K"
+        onClick={onOpenSearch}
+      >
+        <IconSearch size={17} aria-hidden />
+        <span className="s1-toprow__search-text">Search documents, facilities, pages</span>
+        {mac === null ? null : <KeyHint className="s1-toprow__search-key">{mac ? "⌘K" : "Ctrl K"}</KeyHint>}
+      </button>
       <button
         ref={askRef}
         className={`s1-toprow__ask${assistantOpen ? " is-on" : ""}`}
@@ -372,9 +459,16 @@ function TopRow({
         <IconSparkle size={18} aria-hidden />
         Ask Sustentra
       </button>
-      {entries.length ? <ActionMenu label="More actions" entries={entries} isOpen={moreOpen} onOpenChange={setMoreOpen} /> : null}
+      {entries.length ? <ActionMenu label="More actions" entries={entries} isOpen={moreOpen} onOpenChange={onMoreOpenChange} /> : null}
     </div>
   );
+}
+
+const noSubscribe = () => () => {};
+/** Apple keyboards show ⌘K; everything else Ctrl K. */
+function isMac(): boolean {
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+  return /mac|iphone|ipad|ipod/i.test(nav.userAgentData?.platform || nav.platform || nav.userAgent);
 }
 
 /* ===================== engagement context bar (relocated, collapsed) ===================== */
