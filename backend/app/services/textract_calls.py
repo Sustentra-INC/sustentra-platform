@@ -5,6 +5,10 @@ with the number of pages billed and the mode. The record is logged (``textract_c
 every registered hook. Who the call was for (organization, document, content hash) comes from
 ``textract_context``, which ``ParserService`` binds around a read; a call made with nothing bound
 carries ``None`` for those. A hook that raises never stops a read.
+
+Before a call, ``authorize_textract_call`` asks every registered gate whether the call may be made (the
+monthly limit, MVP-245). A gate answers ``None`` to allow it, or a reason code to refuse it; the caller then
+makes no call and says why. A gate that raises refuses with ``SCAN_LIMIT_UNCHECKED``.
 """
 
 from __future__ import annotations
@@ -22,6 +26,9 @@ ANALYZE_DOCUMENT = "analyze_document"  # the synchronous API: one image, or one 
 
 _context: ContextVar[dict[str, Any] | None] = ContextVar("textract_call_context", default=None)
 _hooks: list[Callable[[dict[str, Any]], None]] = []
+_gates: list[Callable[[dict[str, Any]], str | None]] = []
+
+SCAN_LIMIT_UNCHECKED = "scan_limit_unchecked"  # a gate could not tell, so the call is not made
 
 
 @contextmanager
@@ -45,6 +52,36 @@ def register_textract_hook(hook: Callable[[dict[str, Any]], None]) -> Callable[[
             _hooks.remove(hook)
 
     return remove
+
+
+def register_textract_gate(gate: Callable[[dict[str, Any]], str | None]) -> Callable[[], None]:
+    """Ask ``gate(request)`` before every Textract call from now on; it returns ``None`` to allow the call or a
+    reason code to refuse it. ``request`` has ``org_id``, ``document_id``, ``sha256``, ``pages`` and
+    ``feature_types``. Returns a function that removes the gate."""
+
+    _gates.append(gate)
+
+    def remove() -> None:
+        if gate in _gates:
+            _gates.remove(gate)
+
+    return remove
+
+
+def authorize_textract_call(*, pages: int = 1, feature_types: list[str] | None = None) -> str | None:
+    """``None`` when the call may be made, else the first refusing gate's reason code."""
+
+    request: dict[str, Any] = {"org_id": None, "document_id": None, "sha256": None,
+                               **(_context.get() or {}), "pages": pages, "feature_types": feature_types or []}
+    for gate in list(_gates):
+        try:
+            reason = gate(request)
+        except Exception:  # noqa: BLE001 - a gate that cannot tell must not let an unchecked scan through
+            logger.exception("textract gate failed")
+            return SCAN_LIMIT_UNCHECKED
+        if reason:
+            return reason
+    return None
 
 
 def record_textract_call(*, pages: int = 1, mode: str = ANALYZE_DOCUMENT, ok: bool = True,

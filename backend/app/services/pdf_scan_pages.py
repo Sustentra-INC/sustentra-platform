@@ -116,7 +116,9 @@ def is_blank(page: Any) -> bool:
 
 OCR_PAGE_LIMIT = "ocr_page_limit"  # scans beyond the per-document OCR cap
 SCAN_PAGE_UNREAD = "scan_page_unread"  # a scan with typed text, OCR off
-_UNREAD_CODES = (OCR_PAGE_LIMIT, SCAN_PAGE_UNREAD, "ocr_page_failed")
+SCAN_CAP_REACHED = "scan_cap_reached"  # scans not read because the month's AI and scan limit is reached
+SCAN_LIMIT_SENTENCE = "Not read: this month's AI and scan limit is reached. It can be read later."
+_UNREAD_CODES = (OCR_PAGE_LIMIT, SCAN_PAGE_UNREAD, "ocr_page_failed", SCAN_CAP_REACHED)
 _PAGES = re.compile(r"^Pages? ([0-9][0-9, \-]*) (?:is a scan|are scans|has no text layer)")
 
 

@@ -624,6 +624,8 @@ export const methodologyRoutes: DemoRoute[] = [
           provider: "anthropic",
           model: AI_MODEL,
           month_spend_usd: 3.18,
+          scan_spend_usd: 1.3,
+          scan_pages: 20,
           cap_usd: 50,
         },
       });

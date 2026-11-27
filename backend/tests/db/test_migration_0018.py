@@ -75,6 +75,7 @@ def test_0018_down_and_up_returns_a_parked_run_to_the_queue() -> None:
             "0026_workpaper_copies",
             "0027_s1_parsed_texts",
             "0028_workpaper_calc_line_kind",
+            "0029_textract_usage",
         )
         fetch("TRUNCATE s1_processing_runs")
         fetch("TRUNCATE users, organizations CASCADE")

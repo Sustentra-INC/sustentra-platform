@@ -44,6 +44,7 @@ from backend.app.adapters.parsers.textract_parser import TextractParser
 from backend.app.adapters.parsers.xls_parser import XlsParser
 from backend.app.services.pdf_scan_pages import (
     OCR_PAGE_LIMIT,
+    SCAN_CAP_REACHED,
     SCAN_MAX_TYPED_CHARACTERS,
     SCAN_PAGE_UNREAD,
     is_blank,
@@ -56,7 +57,7 @@ from backend.app.services.textract_calls import textract_context
 logger = logging.getLogger("sustentra.parser_service")
 
 # Warnings that mean a page was left unread because a call failed: such an output is read again next time.
-_NOT_KEPT_WARNINGS = {"ocr_page_failed", "textract_call_failed"}
+_NOT_KEPT_WARNINGS = {"ocr_page_failed", "textract_call_failed", SCAN_CAP_REACHED}
 
 TEXT_EXTENSIONS = {".txt", ".md", ".markdown"}
 CSV_EXTENSIONS = {".csv"}
@@ -384,10 +385,21 @@ class ParserService:
         merged = {key: list(output.get(key) or []) for key in
                   ("pages", "text_blocks", "tables", "key_value_pairs", "source_references", "warnings")}
         read: list[int] = []
+        capped: list[int] = []  # scans left unread by the monthly limit
+        cap_message = ""
         with fitz.open(path) as pdf:
             for number in page_numbers[:OCR_MAX_PAGES]:
+                if capped:  # the limit only grows within a read: no more checks, no more calls
+                    capped.append(number)
+                    continue
                 image = pdf[number - 1].get_pixmap(matrix=fitz.Matrix(OCR_ZOOM, OCR_ZOOM)).tobytes("png")
                 page = self._live_textract_parser.parse_bytes(image, document_id, processing_run_id)
+                refusal = next((w for w in page.get("warnings") or []
+                                if isinstance(w, dict) and w.get("code") == SCAN_CAP_REACHED), None)
+                if refusal is not None:
+                    capped.append(number)
+                    cap_message = str(refusal.get("message") or "")
+                    continue
                 if page.get("status") == "empty" and is_blank(pdf[number - 1]):
                     continue  # the blank back of a sheet: nothing to read, so nothing was missed
                 if page.get("status") not in ("parsed", "partial"):
@@ -396,6 +408,12 @@ class ParserService:
                     continue
                 read.append(number)
                 self._merge_ocr_page(merged, number, page)
+        if capped:
+            why = ("this month's AI and scan limit could not be checked just now" if "could not be checked" in cap_message
+                   else "this month's AI and scan limit is reached")
+            merged["warnings"].append(build_warning(SCAN_CAP_REACHED, unread_scan_message(
+                capped, f"and {'was' if len(capped) == 1 else 'were'} not read: {why}. "
+                        f"{'It' if len(capped) == 1 else 'They'} can be read later."), severity="warning"))
         if len(page_numbers) > OCR_MAX_PAGES:
             merged["warnings"].append(build_warning(OCR_PAGE_LIMIT, unread_scan_message(
                 page_numbers[OCR_MAX_PAGES:],

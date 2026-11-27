@@ -143,6 +143,21 @@ function fileList(names: string[]): string {
 /** Null when Claude can be asked; otherwise the server's sentence for why not. */
 export { dropReasonWords, itemLabel, valueText };
 
+const usd = (value: number): string => `$${value.toFixed(2)}`;
+
+/** "Sustentra's AI $3.18 · Scans $1.30 (20 pages) · Limit $50.00", or null when the server sent no spend. */
+export function spendWords(ai: AiStatus): string | null {
+  const { month_spend_usd: spent, scan_spend_usd: scans, scan_pages: pages, cap_usd: cap } = ai;
+  if (typeof spent !== "number" || !Number.isFinite(spent)) return null;
+  const parts = [`Sustentra's AI ${usd(spent)}`];
+  if (typeof scans === "number" && Number.isFinite(scans)) {
+    const n = typeof pages === "number" && Number.isFinite(pages) ? pages : 0;
+    parts.push(`Scans ${usd(scans)} (${n} ${n === 1 ? "page" : "pages"})`);
+  }
+  if (typeof cap === "number" && Number.isFinite(cap)) parts.push(`Limit ${usd(cap)}`);
+  return parts.join(" · ");
+}
+
 export function aiStatusWords(ai: AiStatus): string | null {
   if (ai.enabled && ai.reason_code === null) return null;
   return ai.reason ?? "AI suggestions are not available";
@@ -1039,6 +1054,7 @@ export function BackendMethodologyReview({
   }
 
   const aiOff = aiStatusWords(data.ai);
+  const spendLine = spendWords(data.ai);
   // An entity row counts once it has a name: the reviewer's decision, or Claude's suggestion while still undecided.
   const entitiesNamed = data.catalog.some((d) => {
     if (d.kind !== "entity") return false;
@@ -1217,6 +1233,7 @@ export function BackendMethodologyReview({
             {prefilling ? "Reading the reports…" : "Read the client's reports with Sustentra's AI"}
           </button>
           {aiOff ? <span className="s1-mb-ai">{aiOff}</span> : null}
+          {spendLine ? <span className="s1-mr-muted">{spendLine}</span> : null}
         </span>
       </header>
 
