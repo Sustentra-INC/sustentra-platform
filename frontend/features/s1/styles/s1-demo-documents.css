@@ -146,12 +146,22 @@
 }
 .s1-dd-pick:hover { background: var(--accent-softer); border-color: var(--accent-solid); }
 .s1-dd-pick:active { transform: scale(0.97); }
-.s1-dd-pick.is-on { color: var(--sf-card); background: var(--accent-solid); border-style: solid; border-color: var(--accent-solid); }
+.s1-dd-pick.is-on { color: var(--brand-dark); background: var(--accent-soft); border-style: solid; border-color: var(--accent-line); }
 .s1-dd-pick svg { width: 0.85rem; height: 0.85rem; }
 .s1-dd-pickhint {
-  padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); color: var(--accent-strong);
-  background: var(--accent-soft); border: var(--hairline-width) solid var(--accent-line); border-radius: var(--radius-input);
+  display: flex; align-items: center; gap: var(--sp-2-5);
+  padding: var(--sp-2-5) var(--sp-4-5);
+  background: var(--accent-solid); color: var(--on-brand);
+  font-size: var(--text-base); font-weight: var(--weight-medium);
   transition: opacity 0.18s var(--ease-out), transform 0.18s var(--ease-out);
+}
+.s1-dd-pickhint > svg { flex: none; }
+.s1-dd-pickhint > span { flex: 1; }
+.s1-dd-pickhint__esc {
+  flex: none; font-size: var(--text-sm);
+  padding: var(--sp-half) var(--sp-1-5);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--on-brand) 18%, transparent);
 }
 @starting-style { .s1-dd-pickhint { opacity: 0; transform: translateY(-0.25rem); } }
 .s1-dd-fig {
@@ -161,6 +171,13 @@
   transition: background-color 0.15s ease, outline-color 0.15s ease;
 }
 .s1-dd-fig:hover, .s1-dd-fig:focus-visible { background: rgba(61, 131, 199, 0.14); outline-color: var(--accent-solid); outline-style: solid; }
+.s1-dd.is-picking { cursor: crosshair; }
+.s1-dd.is-picking .s1-dd-fig:hover,
+.s1-dd.is-picking .s1-dd-fig:focus-visible {
+  background: var(--accent-softer);
+  outline: var(--nav-current-marker-width) dashed var(--accent);
+  outline-offset: var(--hairline-width);
+}
 .s1-dd.is-picking .s1-dd-page, .s1-dd.is-picking .s1-dd-sheet { box-shadow: 0 0 0 0.125rem rgba(61, 131, 199, 0.35), 0 0.5rem 1.5rem rgba(40, 40, 112, 0.08); }
 .s1-dd-hlform {
   position: absolute; z-index: 5; width: 18.5rem; display: flex; flex-direction: column; gap: var(--sp-2);
@@ -186,4 +203,4 @@
 @media (prefers-reduced-motion: reduce) { .s1-dd-pick, .s1-dd-pickhint, .s1-dd-fig, .s1-dd-hlform { transition: none; } }
 .s1-dd-key--requested::before { background: rgba(160, 170, 185, 0.6); }
 /* While highlighting, the hint stays in view at the top of the document. */
-.s1-dd-pickhint { position: sticky; top: calc(-1 * var(--sp-5)); z-index: 3; }
+.s1-dd-pickhint { position: sticky; top: 0; z-index: 3; }

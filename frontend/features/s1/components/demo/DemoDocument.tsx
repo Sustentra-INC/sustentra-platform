@@ -137,7 +137,9 @@ export function DemoDocument({
       )}
       {ctx.picking && !target ? (
         <div className="s1-dd-pickhint" role="status">
-          Click any figure the reading missed to add it as a value. Press Esc when you are done.
+          <Highlighter aria-hidden size={16} />
+          <span>Click any figure the reading missed to add it as a value.</span>
+          <span className="s1-dd-pickhint__esc">Esc to finish</span>
         </div>
       ) : null}
       {target && onAddValue ? (
