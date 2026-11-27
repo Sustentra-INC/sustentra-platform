@@ -10,6 +10,7 @@ from . import observability
 from .services import auto_read
 from .api import (
     assistant,
+    calculation_line_review,
     document_batches,
     documents,
     engagements,
@@ -48,6 +49,7 @@ S1_ROUTERS = (
     methodology.router,
     reviews.router,
     recalculation.router,
+    calculation_line_review.router,
     evidence_tree.router,
     evidence_actions.router,
     workpaper_items.router,

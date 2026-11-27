@@ -42,6 +42,11 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
 
     monkeypatch.setattr(recalculation_api.workpaper_item_service, "list_items", no_decisions)
 
+    async def no_line_decisions(db, engagement_id, line_key=None):  # noqa: ANN001, ANN202
+        return []
+
+    monkeypatch.setattr(recalculation_api.calc_line_review, "current", no_line_decisions)
+
     async def no_audit(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
         return None
 

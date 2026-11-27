@@ -98,6 +98,9 @@ export interface TraceDecision {
   value?: string | number | null;
   unit?: string;
   reason?: string;
+  document_id?: string;
+  /** Set on an edit: typed by a reviewer on the recomputed side, or a company input. */
+  kind?: "reviewer_entered" | "company_input";
   by: string;
   at: string;
 }

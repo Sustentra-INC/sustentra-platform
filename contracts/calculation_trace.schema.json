@@ -721,6 +721,15 @@
             "null"
           ]
         },
+        "document_id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "reviewer_entered",
+            "company_input"
+          ]
+        },
         "by": {
           "type": "string"
         },
