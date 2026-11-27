@@ -4,6 +4,7 @@ import { Highlighter, X } from "lucide-react";
 import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { GAS_METERS } from "../../fixtures/ai/claudeReadings";
+import { reportedTotal, scope2LocationWorkbookRows } from "../../fixtures/verification/resultsDataset";
 import type { EngagementConfig } from "../../types";
 import type { ReviewValue, ScopePlacement } from "../../types/review";
 
@@ -699,11 +700,13 @@ function sheetLayout(ctx: Ctx): SheetLayout {
       ["Stationary combustion subtotal", "", "", "", ""],
       ["", "", "", "", ""],
       ["Scope 2", "Activity", "Quantity", "tCO₂e", "Source"],
-      ["Electricity · Tualatin", "Grid (NWPP)", "5,140,000 kWh", "1,830", "Monthly bills"],
-      ["Electricity · Kent", "Grid (NWPP)", "6,220,000 kWh", "2,213", "Monthly bills"],
-      ["Electricity · Modesto", "Grid (CAMX)", "7,310,000 kWh", "2,132", "Monthly bills"],
-      ["Total Scope 2, location-based", "", "", "", "Client calculation"],
-      ["Total Scope 2, market-based", "", "", "", "With RECs retired"],
+      // Scope 2: the workbook's own rows (fixtures/verification/resultsDataset.ts), so every screen shows one figure.
+      ...scope2LocationWorkbookRows().map(([facility, , activity, quantity, unit, second, tco2e]) => [
+        `${activity} · ${facility.split(" ")[0]}`, second, `${quantity} ${unit}`, tco2e,
+        activity === "Steam" ? "CHP steam statements" : "Monthly bills",
+      ]),
+      ["Total Scope 2, location-based", "", "", Math.round(reportedTotal("scope2_location")).toLocaleString("en-US"), "Client calculation"],
+      ["Total Scope 2, market-based", "", "", Math.round(reportedTotal("scope2_market")).toLocaleString("en-US"), "With RECs retired"],
       ["", "", "", "", ""],
       ["Prepared by", "Dana Whitfield", "", "", "Feb 2026"],
     ];

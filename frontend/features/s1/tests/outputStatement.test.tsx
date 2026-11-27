@@ -25,7 +25,7 @@ describe("the statement on Output", () => {
     const s = statementFigures(verificationLines, engagementConfig.materialityThreshold);
     expect(s.materialBoxes.map((b) => b.title)).toEqual(["Scope 2, market-based"]);
     render(<OutputScreen engagement={engagementConfig} lines={verificationLines} />);
-    expect(screen.getByRole("note").textContent).toMatch(/^Draft: Scope 2, market-based differs from the evidence by \+8\.2%/);
+    expect(screen.getByRole("note").textContent).toMatch(/^Draft: Scope 2, market-based differs from the evidence by \+7\.8%/);
     expect(screen.getByText(formatTonnes(s.location.verified), { selector: ".s1-out-total td" })).toBeTruthy();
     // With a threshold above every difference, nothing is flagged.
     expect(statementFigures(verificationLines, "10%").materialBoxes).toEqual([]);

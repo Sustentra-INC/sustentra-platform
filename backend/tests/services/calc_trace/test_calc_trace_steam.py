@@ -450,6 +450,24 @@ def test_a_physical_supplier_factor_counts_in_location_and_market_based_and_clea
     jsonschema.validate(trace, SCHEMA)
 
 
+def test_the_no_supplier_flag_stays_until_every_facility_counts_a_supplier_factor() -> None:
+    store = kent_store()
+    store.add_document("STL-STEAM", "CT-S2-THERMAL", [bill(500, "MMBtu", 3, plant="St Louis Plant")])
+    response = run(store, [enthalpy_1048(), *supplier_events()], **HEAT)
+    market = category(response, "market")
+    assert "no_supplier_factor_market_equals_location" in market["flags"]  # St Louis still uses Table 7
+    assert "supplier_factor_decided_on_lines" not in market["flags"]
+    notes = {line["key"]: line["flags"] for line in market["lines"]}
+    assert "supplier_factor_decided_for_facility" in notes[PLANT]
+    assert "supplier_factor_decided_for_facility" not in notes["St Louis Plant"]
+    stl = "s2:purchased_energy:steam:fac-stl2"
+    both = run(store, [enthalpy_1048(), *supplier_events(),
+                       *[event(stl, f"input|supplier_ef.{gas}|recomputed", "edited", value, ef.UNIT[gas])
+                         for gas, value in SUPPLIER.items()]], **HEAT)
+    flags = category(both, "market")["flags"]
+    assert "no_supplier_factor_market_equals_location" not in flags and "supplier_factor_decided_on_lines" in flags
+
+
 def test_a_contractual_supplier_factor_moves_market_based_only() -> None:
     contractual = event(KEY, f"choice|{ef.BASIS_CHOICE}|", "edited", ef.CONTRACTUAL)
     response = run(kent_store(), [enthalpy_1048(), *supplier_events(), contractual], **HEAT)

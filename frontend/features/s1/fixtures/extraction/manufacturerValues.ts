@@ -2,7 +2,7 @@ import type { ReviewValue, ScopePlacement, SourceKind, ValueRecordEntry } from "
 import type { SourceRef } from "../../types/verificationResults";
 import { claudeReadings } from "../ai/claudeReadings";
 import { manufacturerEvidence } from "../evidence/manufacturerEvidence";
-import { verificationLines } from "../verification/resultsDataset";
+import { WORKBOOK_SCOPE2_TOTAL_ROW, reportedTotal, verificationLines } from "../verification/resultsDataset";
 import { PROPANE_BY_DOC, STEAM_MLB_BY_MONTH, fleetQuarter } from "./demoQuantities";
 import { applyReviewDecisions } from "./reviewDecisions";
 
@@ -284,8 +284,8 @@ values.push(
   rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "general", period: "FY2025", whatItIs: "Organizational boundary approach", scope: "general", value: "Operational control", unit: "", ...wbSpread("B3") }),
   rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "scope1", period: "FY2025", whatItIs: "Total Scope 1 (client calc)", scope: "scope1", value: "18,240", unit: "tCO₂e", ...wbSpread("D12") }),
   rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "scope1", period: "FY2025", whatItIs: "Stationary combustion subtotal", scope: "scope1", value: "12,110", unit: "tCO₂e", ...wbSpread("D14") }),
-  rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "scope2", period: "FY2025", whatItIs: "Total Scope 2, location-based (client calc)", scope: "scope2_location", value: "9,880", unit: "tCO₂e", ...wbSpread("D20") }),
-  rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "scope2", period: "FY2025", whatItIs: "Total Scope 2, market-based (client calc)", scope: "scope2_market", value: "7,410", unit: "tCO₂e", ...wbSpread("D21") })
+  rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "scope2", period: "FY2025", whatItIs: "Total Scope 2, location-based (client calc)", scope: "scope2_location", value: Math.round(reportedTotal("scope2_location")).toLocaleString("en-US"), unit: "tCO₂e", ...wbSpread(`D${WORKBOOK_SCOPE2_TOTAL_ROW}`) }),
+  rv({ documentId: "DOC-WORKBOOK", filename: "cascade_inventory_workbook_2025.xlsx", documentType: "Inventory workbook", entityLevel: true, section: "scope2", period: "FY2025", whatItIs: "Total Scope 2, market-based (client calc)", scope: "scope2_market", value: Math.round(reportedTotal("scope2_market")).toLocaleString("en-US"), unit: "tCO₂e", ...wbSpread(`D${WORKBOOK_SCOPE2_TOTAL_ROW + 1}`) })
 );
 
 // entity-level: boundary statement (text) and factor list.

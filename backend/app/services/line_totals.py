@@ -428,6 +428,7 @@ def _apply_fugitive(categories: dict[str, calc.CategoryResult | None], mine: lis
 STEAM_LOCATION, STEAM_MARKET = "purchased_steam_location_based", "purchased_steam_market_based"
 STEAM_MARKET_FLAG = "no_supplier_factor_market_equals_location"
 STEAM_SUPPLIER_FLAG = "supplier_factor_decided_on_lines"
+STEAM_FACILITY_FLAG = "supplier_factor_decided_for_facility"
 SUPPLIER_OPTIONS = ("supplier_specific", "chp_allocated")
 
 
@@ -449,7 +450,8 @@ def _apply_steam(categories: dict[str, calc.CategoryResult | None], mine: list[D
     """Location- and market-based purchased steam moved by their lines' decisions, facility by facility and gas by gas;
     a facility the category did not count is added from its lines. A physical supplier or CHP factor moves both; a
     supplier factor resting on a contractual instrument moves market-based only (location-based takes the line's
-    location working). Once a line counts a supplier or CHP factor, market-based no longer says it has none."""
+    location working). Market-based stops saying it has no supplier factor only once every facility counts one; until
+    then each facility that does is noted."""
 
     location = categories.get(STEAM_LOCATION)
     if not adds_up(line_sums(every, "steam"), location):
@@ -465,7 +467,7 @@ def _apply_steam(categories: dict[str, calc.CategoryResult | None], mine: list[D
     new_lines = [copy.deepcopy(line) for line in base.lines]
     market_lines = [copy.deepcopy(line) for line in market_base.lines]
     usable: list[DecidedLine] = []
-    supplier = False
+    supplier: set[str] = set()  # the facilities whose decided line counts a supplier or CHP factor
     for item in mine:
         here, there = _facility_line(new_lines, item.sub[0]), _facility_line(market_lines, item.sub[0])
         if here is None or there is None:
@@ -478,13 +480,17 @@ def _apply_steam(categories: dict[str, calc.CategoryResult | None], mine: list[D
             _shift(there, replace(item, figures=replace(item.figures, mass_t=dict(contractual["mass_t"]))))
         else:
             _shift(there, item)
-        supplier = supplier or summary.get("option") in SUPPLIER_OPTIONS
+        if summary.get("option") in SUPPLIER_OPTIONS:
+            supplier.add(item.sub[0])
+            there.flags = sorted({*there.flags, STEAM_FACILITY_FLAG})  # the per-line note
         usable.append(item)
     if not usable:
         return []
     categories[STEAM_LOCATION] = _retotal_steam(base, new_lines, ref, location is None)
     moved = _retotal_steam(market_base, market_lines, ref, market is None)
-    if supplier:  # a flag never contradicts the figure
+    # A flag never contradicts the figure: "no supplier factor" goes only once every facility counts one; until then it
+    # stays, and each facility that does carries its own note.
+    if supplier and all(line.key in supplier for line in market_lines):
         moved.flags = sorted((set(moved.flags) - {STEAM_MARKET_FLAG}) | {STEAM_SUPPLIER_FLAG})
     categories[STEAM_MARKET] = moved
     for item in usable:
