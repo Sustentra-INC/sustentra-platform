@@ -269,3 +269,89 @@ def test_rename_and_delete_show_in_the_evidence_activity_with_who(store: FakeSto
     assert kinds[:2] == ["evidence_level2_deleted", "evidence_level2_renamed"]
     assert items[0]["actor_name"] and items[0]["label"] == "LPG" and items[0]["lines_deleted"] == 1
     assert items[1]["old_label"] == "Propane" and items[1]["new_label"] == "LPG" and items[1]["at"]
+
+
+# --- the Calculation side, new fuels, hidden documents, two writers ----------------------------
+def test_a_rename_reaches_the_recalculation_the_schedule_and_the_excel_export(store: FakeStore) -> None:
+    import io
+
+    from openpyxl import load_workbook
+
+    from backend.app.services.workpaper_export_service import build_workbook
+    from backend.tests.db.test_evidence_actions import recalculate
+
+    engagement_id = with_propane(store, docs=1)
+    assert move(engagement_id, "D0", GAS_KENT, PROPANE_KEY).status_code == 200
+    assert rename(engagement_id, "LPG").status_code == 200
+    result = recalculate(store, engagement_id)
+    on_line = [ln for ln in result["calculation_lines"] if ln["key"] == PROPANE_KEY]
+    assert [ln["level2"] for ln in on_line] == ["LPG"]
+    schedule = call("GET", path(engagement_id, f"calculation-lines/{PROPANE_KEY}/schedule"), "a_member")
+    assert schedule.status_code == 200 and schedule.json()["line"]["level2_label"] == "LPG"
+    engagement = call("GET", f"{BASE}/{engagement_id}", "a_member").json()
+    book = load_workbook(io.BytesIO(build_workbook(engagement=engagement, recalculation=result, register={}, items=[],
+                                                   exported_by="t@example.com")))
+    cells = [str(c.value) for sheet in book for row in sheet.iter_rows() for c in row if c.value is not None]
+    assert any("LPG" in c for c in cells) and not any("Propane" in c for c in cells)
+
+
+def test_a_new_fuel_never_merges_into_one_that_was_renamed_away_from_its_name(store: FakeStore) -> None:
+    engagement_id = with_propane(store, facilities=[KENT, TACOMA])
+    assert rename(engagement_id, "LPG").status_code == 200  # propane is now called LPG
+    fresh = create_line(engagement_id, anchor_id="F2", label="Propane at Tacoma")  # a new fuel named Propane
+    assert fresh.status_code == 201, fresh.text
+    assert fresh.json()["line"]["key"] == "s1:stationary:propane-2:f2"
+    nodes = fuels(engagement_id)
+    assert nodes["stationary:propane"]["label"] == "LPG" and nodes["stationary:propane-2"]["label"] == "Propane"
+    assert [n["line"]["key"] for n in nodes["stationary:propane"]["lines"]] == [PROPANE_KEY]
+    third = create_line(engagement_id, level2_label="Propane", anchor_id="F1", label="More propane")  # joins the new one
+    assert third.status_code == 201 and third.json()["line"]["key"] == "s1:stationary:propane-2:f1"
+
+
+def test_renaming_another_fuel_to_the_old_name_then_adding_a_line_joins_that_one(store: FakeStore) -> None:
+    engagement_id = with_propane(store, facilities=[KENT, TACOMA])
+    assert create_line(engagement_id, level2_label="Butane", label="Butane at Kent").status_code == 201
+    assert rename(engagement_id, "LPG").status_code == 200  # propane -> LPG
+    assert rename(engagement_id, "Propane", "butane").status_code == 200  # butane -> Propane (the old name is free now)
+    added = create_line(engagement_id, level2_label="Propane", anchor_id="F2", label="At Tacoma")
+    assert added.status_code == 201 and added.json()["line"]["key"] == "s1:stationary:butane:f2"
+    nodes = fuels(engagement_id)
+    assert nodes["stationary:propane"]["label"] == "LPG" and nodes["stationary:butane"]["label"] == "Propane"
+    assert len(nodes["stationary:butane"]["lines"]) == 2
+
+
+def test_delete_moves_documents_the_signed_in_user_cannot_see(store: FakeStore, monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.api import evidence_tree as tree_api2
+
+    engagement_id = with_propane(store, docs=3)
+    for i in range(3):
+        assert move(engagement_id, f"D{i}", GAS_KENT, PROPANE_KEY).status_code == 200
+    real = tree_api2.can_see
+    with monkeypatch.context() as hidden:
+        hidden.setattr(tree_api2, "can_see", lambda record, user: record.get("document_id") != "D1" and real(record, user))
+        deleted = call("DELETE", fuel_path(engagement_id), "a_member")
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["documents_moved"] == 3 and set(deleted.json()["documents"]) == {"D0", "D1", "D2"}
+    assert sorted(tree_lines(engagement_id)[UNASSIGNED]) == ["D0", "D1", "D2"]
+
+
+def test_a_delete_and_a_move_at_once_run_one_after_the_other_and_no_document_is_lost(store: FakeStore) -> None:
+    engagement_id = with_propane(store, docs=3)
+    for i in range(3):
+        assert move(engagement_id, f"D{i}", GAS_KENT, PROPANE_KEY).status_code == 200
+
+    async def both() -> list[Any]:
+        return list(await asyncio.gather(
+            asyncio.to_thread(call, "DELETE", fuel_path(engagement_id), "a_member"),
+            asyncio.to_thread(move, engagement_id, "D0", PROPANE_KEY, GAS_KENT)))
+
+    deleted, moved = asyncio.run(both())
+    assert deleted.status_code == 200 and moved.status_code in (200, 409, 422), (deleted.text, moved.text)
+    lines = tree_lines(engagement_id)
+    assert PROPANE_KEY not in lines
+    placed = [d for docs in lines.values() for d in docs]
+    assert sorted(placed) == ["D0", "D1", "D2"]  # every document is in exactly one place
+    if moved.status_code == 200:  # the move ran first: D0 sits on gas; the delete then moved the other two
+        assert lines[GAS_KENT] == ["D0"] and sorted(lines[UNASSIGNED]) == ["D1", "D2"]
+    else:  # the delete ran first: all three are in Unassigned and the move found nothing to move
+        assert sorted(lines[UNASSIGNED]) == ["D0", "D1", "D2"]

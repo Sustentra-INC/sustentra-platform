@@ -149,6 +149,23 @@ describe("a fuel's row menu", () => {
     expect(onDeleteFuel).not.toHaveBeenCalled();
   });
 
+  it("describes the unavailable Delete by visible text in the menu, and stays open when it is chosen", async () => {
+    render(<Harness />);
+    await screen.findByText("Natural gas");
+    const menu = await menuOf("Natural gas");
+    const remove = within(menu).getByRole("menuitem", { name: "Delete" });
+    const hint = document.getElementById(remove.getAttribute("aria-describedby") ?? "none");
+    expect(hint).not.toBeNull();
+    expect(menu).toContainElement(hint);
+    expect(hint).toBeVisible();
+    expect(hint).toHaveTextContent("Created by the system from your Setup; can't be deleted");
+    fireEvent.click(remove);
+    expect(screen.getByRole("menu")).toBeInTheDocument(); // never closes silently
+    expect(hint).toBeVisible();
+    // the entry that can be used has no hint
+    expect(within(menu).getByRole("menuitem", { name: "Rename" })).not.toHaveAttribute("aria-describedby");
+  });
+
   it("works by keyboard: the first item has the cursor, arrows reach Delete, Escape returns to the button", async () => {
     render(<Harness />);
     await screen.findByText("Natural gas");

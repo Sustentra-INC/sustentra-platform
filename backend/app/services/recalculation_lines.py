@@ -626,7 +626,7 @@ def file_records(ref: EmissionFactorReference, records: list[ReviewedRecord], in
                                company=company)
         for r in records}
     system = cl.default_lines(placements.values(), facilities, inputs.vehicle_groups)
-    known = {line.key: line for line in cl.merge_lines(system, cl.user_lines(settings))}
+    known = {line.key: line for line in cl.merge_lines(system, cl.user_lines(settings), cl.stored_level2_names(settings))}
     by_document: dict[str, list[ReviewedRecord]] = {}
     for record in records:
         by_document.setdefault(record.document_id, []).append(record)

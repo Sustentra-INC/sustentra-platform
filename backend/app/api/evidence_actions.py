@@ -254,11 +254,30 @@ async def create_line(
     engagement = await _locked(db, engagement_id)
     stored = _stored_lines(engagement)
     wanted = body.model_dump(exclude_none=True)
-    if "level2" not in wanted:  # a name a reviewer gave a fuel is that fuel, whatever it was called before
+    if "level2" not in wanted:
+        renamed_ids = {fid.partition(":")[2] for fid in cl.stored_level2_names(engagement.get("settings"))
+                       if fid.partition(":")[0] == body.category}
+        # a name a reviewer gave a fuel is that fuel, whatever it was called before
         for found_id, renamed in cl.stored_level2_names(engagement.get("settings")).items():
             found_category, _, found_level2 = found_id.partition(":")
             if found_category == body.category and cl.folder_name_key(renamed["label"]) == cl.folder_name_key(body.level2_label):
                 wanted["level2"] = found_level2
+        base = cl.slug(body.level2_label)
+        if "level2" not in wanted and base in renamed_ids:
+            # a fuel made under this name since (it has an id of its own): the line joins it
+            for line in stored:
+                same = cl.folder_name_key(str(line.get("level2_label"))) == cl.folder_name_key(body.level2_label)
+                if line.get("category") == body.category and same and line.get("level2") not in renamed_ids:
+                    wanted["level2"] = line.get("level2") or cl.slug(str(line.get("level2_label")))
+                    break
+        if "level2" not in wanted and base in renamed_ids:
+            # A different fuel was renamed away from this id: the new fuel gets an id of its own, never the renamed one's.
+            taken = renamed_ids | {str(line.get("level2") or cl.slug(str(line.get("level2_label"))))
+                                   for line in stored if line.get("category") == body.category}
+            number = 2
+            while f"{base[:56]}-{number}" in taken:
+                number += 1
+            wanted["level2"] = f"{base[:56]}-{number}"
     try:
         entry = cl.normalize_line(wanted)
     except ValueError as exc:
@@ -455,7 +474,9 @@ async def delete_fuel(
     409 (``level2_system_created``). One transaction: the documents move and the fuel goes, or nothing changes."""
 
     engagement = await _locked(db, engagement_id)
-    loaded, decisions = await _load(db, engagement, user)
+    # Server scope: the fuel's documents move whoever may see them, so none is left filed on a deleted line.
+    decisions = await tree_api.document_decisions(db, engagement)
+    loaded = tree_api._service().load(engagement, lambda record: True, decisions)
     group = _fuel(loaded, category, level2)
     system_keys = {line.key for line in loaded.system}
     if any(ln.key in system_keys or not ln.created_by_user for ln in group):
