@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { AuthShell } from "../../auth/AuthShell";
+import styles from "../../auth/auth.module.css";
 import { isOrgSlug, signInPath } from "../../auth/lastRealm";
 
 /**
@@ -25,9 +27,9 @@ export function SessionEndedPanel({
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <main className="s1-signin">
+    <AuthShell title={title} subtitle={subtitle}>
       <form
-        className="s1-signin__card"
+        className={styles.form}
         onSubmit={(e) => {
           e.preventDefault();
           const value = slug.trim().toLowerCase();
@@ -38,22 +40,19 @@ export function SessionEndedPanel({
           onNavigate(signInPath({ kind: "org", slug: value }, next));
         }}
       >
-        <div className="s1-signin__brand">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="s1-signin__logo" src="/sustentra-logo.png" alt="Sustentra" />
-        </div>
-        <h1 className="s1-signin__title">{title}</h1>
-        <p className="s1-signin__sub">{subtitle}</p>
-
         {error ? (
-          <p className="s1-signin__sub" role="alert">
+          <p className={styles.error} role="alert">
             {error}
           </p>
         ) : null}
 
-        <label className="s1-signin__field">
-          <span>Organization</span>
+        <div className={styles.field}>
+          <label className="s1-field-label" htmlFor="org-slug">
+            Organization
+          </label>
           <input
+            id="org-slug"
+            className="s1-input s1-input--lg"
             value={slug}
             onChange={(e) => {
               setSlug(e.target.value);
@@ -64,18 +63,16 @@ export function SessionEndedPanel({
             autoCapitalize="none"
             spellCheck={false}
           />
-        </label>
+        </div>
 
-        <button className="s1-signin__submit" type="submit">
+        <button className={`s1-button s1-button--pri s1-button--lg ${styles.submitBtn}`} type="submit">
           Continue
         </button>
 
-        <div className="s1-signin__foot">
-          <a className="s1-linklike" href={signInPath({ kind: "provider" }, next)}>
-            Provider admin sign-in
-          </a>
-        </div>
+        <a className={styles.link} href={signInPath({ kind: "provider" }, next)}>
+          Provider admin sign-in
+        </a>
       </form>
-    </main>
+    </AuthShell>
   );
 }

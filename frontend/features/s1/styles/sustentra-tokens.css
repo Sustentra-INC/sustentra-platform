@@ -447,6 +447,26 @@
   --r-pill:  999px;    /* pills, badges */
 
   --auth-form-w: 400px; /* activate / sign-in form inner max-width */
+  /* Auth pages: exact design px (the general --sp-4 to --sp-7 render larger, see audit 00) */
+  --auth-brand-basis:  520px; /* brand panel flex basis */
+  --auth-brand-min:    360px; /* brand panel never narrower than this beside the form */
+  --auth-form-basis:   460px; /* form side flex basis */
+  --auth-brand-pad-y:   56px; /* brand panel top and bottom padding */
+  --auth-pad-lg:        48px; /* brand panel sides; form side top and bottom */
+  --auth-pad-md:        32px; /* stacked (narrow) layout: top and bottom */
+  --auth-pad:           24px; /* form side left and right */
+  --auth-brand-gap:     36px; /* logo to brand copy */
+  --auth-logo-w:       560px; /* brand logo, capped to the panel */
+  --auth-logo-w-sm:    140px; /* brand logo in the stacked layout */
+  --auth-stack-gap:     28px; /* heading, banner, form */
+  --auth-form-gap:      18px; /* sign-in form rows */
+  --auth-form-gap-sm:   16px; /* activate form rows; hint columns */
+  --auth-form-gap-lg:   20px; /* verify form rows */
+  --auth-chip-h:        30px; /* invitation chip */
+  --auth-dot:           22px; /* chip avatar, ready banner mark */
+  --auth-icon-tile:     56px; /* verify screen icon tile */
+  --auth-otp-h:         60px; /* one code box */
+  --auth-check:         18px; /* keep me signed in checkbox */
 
   --input-h:    40px;   /* standard form input height */
   --input-h-md: 44px;   /* medium form input — setup and similar screens */

@@ -1748,18 +1748,6 @@ select:focus-visible,
 
 /* ---- Demo sign-in gate ---- */
 .s1-signin { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--sf-page); padding: var(--sp-5); }
-.s1-signin__card { width: min(24rem, 92vw); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); padding: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); box-shadow: 0 var(--sp-1) var(--sp-4) rgba(0,0,0,0.05); }
-.s1-signin__brand { font-size: var(--text-lg); font-weight: var(--weight-strong); letter-spacing: -0.01em; }
-.s1-signin__title { font-size: var(--text-lg); font-weight: var(--weight-strong); margin: var(--sp-3) 0 0; }
-.s1-signin__sub { margin: 0 0 var(--sp-2); color: var(--ink-3); font-size: var(--text-sm); }
-.s1-signin__field { display: flex; flex-direction: column; gap: var(--sp-1-5); font-size: var(--text-sm); color: var(--ink-3); }
-.s1-signin__field input { font: inherit; font-size: var(--text-title); color: var(--ink); background: var(--sf-card); border: var(--border-strong); border-radius: var(--r-card-sm); height: var(--input-h-lg); padding: 0 var(--sp-3-5); box-sizing: border-box; }
-.s1-signin__field input::placeholder { color: var(--ink-3); }
-.s1-signin__field input:hover { border-color: color-mix(in srgb, var(--line-strong) 88%, var(--ink) 12%); }
-.s1-signin__field input:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-.s1-signin__submit { margin-top: var(--sp-2); font: inherit; font-size: var(--text-md); font-weight: var(--weight-strong); cursor: pointer; color: var(--sf-card); background: var(--state-active-fg); border: var(--hairline-width) solid var(--state-active-fg); border-radius: var(--radius-input); padding: var(--sp-2) var(--sp-3); }
-.s1-signin__submit:hover { filter: brightness(1.05); }
-.s1-signin__foot { display: flex; align-items: center; justify-content: space-between; font-size: var(--text-sm); color: var(--ink-3); margin-top: var(--sp-1); }
 
 /* ---- Rail reset ---- */
 .s1-rail__reset { margin-top: auto; padding-top: var(--sp-4); }
@@ -1897,11 +1885,8 @@ select:focus-visible,
    ========================================================================== */
 .s1-rail__brand { margin-bottom: var(--sp-5); }
 .s1-rail__logo { height: 1.5rem; width: auto; display: block; }
-.s1-signin__brand { display: flex; }
-.s1-signin__logo { height: 1.9rem; width: auto; display: block; }
 
 /* .s1-button--pri base + hover defined in the shared button section above */
-.s1-signin__submit { background: var(--brand-ink); border-color: var(--brand-ink); }
 
 /* ===================================================================
    REDESIGN PASS — baby-blue accent on warm paper, tabs & filters as real
@@ -2055,8 +2040,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 /* ---- Primary buttons: the baby-blue accent (brand indigo stays on the logo) ---- */
 .s1-button--pri { background: var(--accent-solid); border-color: var(--accent-solid); }
 .s1-button--pri:hover { filter: none; background: var(--accent-strong); border-color: var(--accent-strong); }
-.s1-signin__submit { background: var(--accent-solid); border-color: var(--accent-solid); }
-.s1-signin__submit:hover { filter: none; background: var(--accent-strong); }
 
 /* ===================================================================
    MOBILE BASELINE — usable on a phone (scan a doc, check status). Deep

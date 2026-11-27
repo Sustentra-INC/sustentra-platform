@@ -222,15 +222,15 @@ export function LoginFlow({
 
   return (
     <AuthShell title="Sign in" subtitle={isReadyBanner ? undefined : (notice ?? undefined)}>
+      {isReadyBanner && (
+        <div className={styles.readyBanner} role="status">
+          <span className={styles.readyDot} aria-hidden="true">
+            <IconCheck size={14} />
+          </span>
+          {ACCOUNT_READY_NOTICE}
+        </div>
+      )}
       <form className={`${styles.form} ${styles.signinForm}`} onSubmit={onPasswordSubmit} noValidate>
-        {isReadyBanner && (
-          <div className={styles.readyBanner} role="status">
-            <span className={styles.readyDot} aria-hidden="true">
-              <IconCheck size={14} />
-            </span>
-            {ACCOUNT_READY_NOTICE}
-          </div>
-        )}
         {error ? (
           <p className={styles.error} role="alert">
             {error}

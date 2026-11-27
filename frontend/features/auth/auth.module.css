@@ -1,7 +1,8 @@
 /* Scoped styles for the auth pages. Uses the global design tokens from
    sustentra-tokens.css; CSS-Module-scoped so it never leaks into the workpaper.
-   Note: auth.module.css is not checked by the contract test; raw px/rgba() values
-   used here for layout dimensions without matching tokens (noted in report). */
+   Sizes come from the --auth-* tokens (exact design px): the general --sp-4 to --sp-7
+   render larger than their names say. The only raw lengths left are the breakpoints,
+   which a media query cannot read from a custom property. */
 
 /* ---- Split layout (MVP-273) ---------------------------------------------- */
 
@@ -14,18 +15,18 @@
 }
 
 .brandPanel {
-  flex: 1 1 360px;
-  min-width: 360px;
+  /* Shares the row with the form at every desktop width: it shrinks, it never wraps into a block. */
+  flex: 1 1 var(--auth-brand-basis);
+  min-width: var(--auth-brand-min);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: calc(var(--sp-6) + var(--sp-1)); /* 36px */
-  /* 56px top/bottom: calc(--sp-7 + --sp-2) = 48+8; 48px sides: --sp-7 */
-  padding: calc(var(--sp-7) + var(--sp-2)) var(--sp-7);
-  margin: var(--sp-3);                  /* 12px */
-  border-radius: var(--r-xl);           /* 24px */
+  gap: var(--auth-brand-gap);
+  padding: var(--auth-brand-pad-y) var(--auth-pad-lg);
+  margin: var(--sp-3);
+  border-radius: var(--r-xl);
   background: var(--accent-solid);
   color: var(--on-brand);
   text-align: center;
@@ -35,21 +36,22 @@
 @media (max-width: 899px) {
   .authLayout {
     flex-wrap: wrap;
+    align-content: flex-start; /* the logo band is as tall as its content, the form follows it */
   }
 
   .brandPanel {
     flex-basis: 100%;
     min-width: 0;
     justify-content: center;
-    gap: var(--sp-4);                   /* 16px */
-    padding: var(--sp-6) var(--sp-5);  /* 32px 24px per spec */
+    gap: var(--auth-form-gap-sm);
+    padding: var(--auth-pad-md) var(--auth-pad);
     margin: var(--sp-2) var(--sp-2) 0;
     border-radius: var(--r-lg);
   }
 }
 
 .brandLogo {
-  width: min(240px, 70%);
+  width: min(var(--auth-logo-w), 100%);
   height: auto;
   display: block;
   /* FLAG: no white logo in /public — dark PNG inverted with CSS filter */
@@ -58,7 +60,7 @@
 
 @media (max-width: 899px) {
   .brandLogo {
-    width: 140px;
+    width: var(--auth-logo-w-sm);
   }
 }
 
@@ -66,7 +68,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-2-5); /* 10px */
+  gap: var(--sp-2-5);
+  max-width: 100%;
 }
 
 @media (max-width: 899px) {
@@ -77,30 +80,34 @@
 
 .brandHeadline {
   margin: 0;
-  font-size: var(--text-lg);            /* 20px — clamp(14px,1.45vw,21px) ≈ 20px at 1440px */
+  /* Scales with the window so the line stays on one row in a narrow panel. */
+  font-size: clamp(var(--text-md), 1.45vw, var(--text-lg));
   line-height: 1.25;
-  font-weight: var(--weight-strong);    /* 600 */
-  letter-spacing: -0.01em;
+  font-weight: var(--weight-strong);
+  letter-spacing: var(--tracking-tight);
+  white-space: nowrap;
 }
 
 .brandTagline {
   margin: 0;
-  font-size: var(--text-md);            /* 14px */
+  font-size: clamp(var(--text-sm), 1.1vw, var(--text-title));
   color: var(--on-brand-muted);
+  white-space: nowrap;
 }
 
 .formSide {
-  flex: 1.2 1 460px;
+  flex: 1.2 1 var(--auth-form-basis);
+  min-width: 0;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--sp-7) var(--sp-5);    /* 48px 24px */
+  padding: var(--auth-pad-lg) var(--auth-pad);
 }
 
 @media (max-width: 899px) {
   .formSide {
-    padding: var(--sp-6) var(--sp-5);
+    padding: var(--auth-pad-md) var(--auth-pad);
   }
 }
 
@@ -109,7 +116,13 @@
   max-width: var(--auth-form-w);
   display: flex;
   flex-direction: column;
-  gap: calc(var(--sp-5) + var(--sp-1)); /* 28px */
+  gap: var(--auth-stack-gap);
+}
+
+/* Field labels on the auth pages: one step larger and in the primary ink, as designed. */
+.formInner :global(.s1-field-label) {
+  font-size: var(--text-base);
+  color: var(--ink);
 }
 
 /* ---- Form heading --------------------------------------------------------- */
@@ -131,7 +144,7 @@
 
 .subtitle {
   margin: 0;
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   color: var(--ink-3);
 }
 
@@ -140,7 +153,7 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);                     /* 16px — base for all auth forms */
+  gap: var(--auth-form-gap-sm);         /* base for all auth forms */
 }
 
 .field {
@@ -168,10 +181,9 @@
   height: var(--input-h-lg);
 }
 
-.input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: var(--shadow-focus);
+.input:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
 }
 
 .input:disabled,
@@ -219,10 +231,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-.otp:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: var(--shadow-focus);
+.otp:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
 }
 
 .button {
@@ -251,7 +262,7 @@
   font-size: var(--text-sm);
   color: var(--state-blocking-fg);
   background: var(--state-blocking-bg);
-  border: 1px solid var(--state-blocking-line);
+  border: var(--hairline-width) solid var(--state-blocking-line);
   border-radius: var(--r-card-sm);
   padding: var(--sp-2) var(--sp-3);
   margin: 0;
@@ -311,7 +322,7 @@
 /* ---- Sign-in form restyling (MVP-274) ------------------------------------- */
 
 .signinForm {
-  gap: calc(var(--sp-4) + var(--sp-half)); /* 18px */
+  gap: var(--auth-form-gap);
 }
 
 /* Password label row: label on left, Forgot password link on right */
@@ -334,10 +345,9 @@
   box-sizing: border-box;
 }
 
-.pwWrap:focus-within {
-  border: 2px solid var(--accent);
-  box-shadow: var(--shadow-focus);
-  padding-inline-start: calc(var(--sp-3-5) - 1px); /* compensate for 2→1px border delta */
+.pwWrap:has(:focus-visible) {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
 }
 
 .pwInput {
@@ -354,8 +364,8 @@
 
 .pwShow {
   flex: none;
-  height: 34px;
-  padding: 0 var(--sp-2-5);            /* 0 10px */
+  height: var(--icon-button-size);
+  padding: 0 var(--sp-2-5);
   border: 0;
   border-radius: var(--r-sm);           /* 8px */
   background: var(--sf-inset);
@@ -376,6 +386,19 @@
   cursor: pointer;
 }
 
+.keepSignedIn :global(.s1-checkbox) {
+  width: var(--auth-check);
+  height: var(--auth-check);
+  margin: 0;
+  flex: none;
+}
+
+/* Sign-in link beside the password label */
+.labelRow .link {
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+
 /* Full-width submit button override */
 .submitBtn {
   width: 100%;
@@ -389,8 +412,9 @@
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);                      /* 8px */
-  height: 30px;
-  padding: 0 var(--sp-3) 0 var(--sp-1); /* 0 12px 0 4px */
+  height: var(--auth-chip-h);
+  margin-bottom: var(--sp-2);            /* the title sits 16px under the chip */
+  padding: 0 var(--sp-3) 0 var(--sp-1);
   border-radius: var(--r-pill);
   background: var(--sf-inset);
   font-size: var(--text-base);           /* 13px */
@@ -400,8 +424,8 @@
 
 /* Circle avatar inside the chip showing org initials */
 .inviteAvatar {
-  width: 22px;
-  height: 22px;
+  width: var(--auth-dot);
+  height: var(--auth-dot);
   flex: none;
   border-radius: var(--r-pill);
   background: var(--accent-soft);
@@ -420,7 +444,7 @@
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-1-5) var(--sp-4);       /* 6px row, 16px col */
+  gap: var(--sp-1-5) var(--auth-form-gap-sm);
 }
 
 .hintItem {
@@ -440,8 +464,7 @@
   display: flex;
   align-items: center;
   gap: var(--sp-1-5);                    /* 6px */
-  font-size: var(--text-base);           /* 13px */
-  margin-top: var(--sp-1);              /* 4px */
+  font-size: var(--text-base);
 }
 
 .confirmMatch {
@@ -459,10 +482,11 @@
 
 /* ---- Verification code screen (MVP-276) ----------------------------------- */
 
-/* 56px icon tile (--sp-7 + --sp-2 = 48+8) using --r-pop per ticket spec */
+/* Icon tile above the title; the title starts one stack gap below it. */
 .iconTile {
-  width: calc(var(--sp-7) + var(--sp-2));
-  height: calc(var(--sp-7) + var(--sp-2));
+  width: var(--auth-icon-tile);
+  height: var(--auth-icon-tile);
+  margin-bottom: calc(var(--auth-stack-gap) - var(--sp-2));
   border-radius: var(--r-pop);
   background: var(--accent-soft);
   color: var(--brand-dark);
@@ -480,7 +504,7 @@
 
 /* Tighter gap for the verify form */
 .verifyForm {
-  gap: calc(var(--sp-4) + var(--sp-1)); /* 20px */
+  gap: var(--auth-form-gap-lg);
 }
 
 /* OTP multi-box fieldset */
@@ -491,7 +515,8 @@
 }
 
 .otpLegend {
-  margin-bottom: var(--sp-2-5); /* 10px */
+  margin-bottom: var(--sp-2-5);
+  padding: 0;
 }
 
 .otpGrid {
@@ -501,7 +526,7 @@
 }
 
 .otpBox {
-  height: calc(var(--sp-7) + var(--sp-3)); /* 60px */
+  height: var(--auth-otp-h);
   width: 100%;
   box-sizing: border-box;
   text-align: center;
@@ -515,9 +540,9 @@
   outline: none;
 }
 
-.otpBox:focus {
-  border-color: var(--accent);
-  box-shadow: var(--shadow-focus);
+.otpBox:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
 }
 
 .otpBoxEmpty {
@@ -525,7 +550,7 @@
 }
 
 .otpBoxError,
-.otpBoxError:focus {
+.otpBoxError:focus-visible {
   border-color: var(--state-blocking-fg);
 }
 
@@ -536,17 +561,17 @@
   justify-content: space-between;
   gap: var(--sp-2);
   font-size: var(--text-md);
-  color: var(--ink-2);
+  color: var(--ink-3);
 }
 
 .otpResend {
-  font-weight: var(--weight-strong);
   color: var(--accent);
   background: none;
   border: 0;
   padding: 0;
   font: inherit;
   font-size: var(--text-md);
+  font-weight: var(--weight-strong);
   cursor: pointer;
 }
 
@@ -556,13 +581,13 @@
 }
 
 .otpDiffAccount {
-  font-weight: var(--weight-medium);
   color: var(--ink-2);
   background: none;
   border: 0;
   padding: 0;
   font: inherit;
   font-size: var(--text-md);
+  font-weight: var(--weight-medium);
   cursor: pointer;
 }
 
@@ -581,8 +606,8 @@
 
 /* 22px green dot with check icon */
 .readyDot {
-  width: calc(var(--sp-4) + var(--sp-1-5)); /* 22px */
-  height: calc(var(--sp-4) + var(--sp-1-5));
+  width: var(--auth-dot);
+  height: var(--auth-dot);
   flex: none;
   border-radius: var(--r-pill);
   background: var(--dot-success);
