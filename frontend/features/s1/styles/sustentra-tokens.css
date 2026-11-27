@@ -377,10 +377,15 @@
   --source-snippet-max-height: 7.5rem;
   --selected-source-max-height: 8rem;
   --source-notice-max-width: 280px;
-  --setup-col-left-min: 10.625rem;  /* setup two-col: left column min basis (170px) */
-  --setup-col-left-max: 13.75rem;   /* setup two-col: left column max width (220px) */
-  --setup-col-right-min: 26.25rem;  /* setup two-col: right column min basis (420px) */
-  --setup-grid-col-min: 17.5rem;    /* setup field grid: column min (280px) */
+  /* Setup: exact design px (rem would render at 82%; --sp-4 to --sp-7 render larger) */
+  --setup-col-left-min: 170px;      /* setup two-col: left column min basis */
+  --setup-col-left-max: 220px;      /* setup two-col: left column max width */
+  --setup-col-right-min: 420px;     /* setup two-col: right column min basis */
+  --setup-grid-col-min: 280px;      /* setup field grid: column min */
+  --setup-stack-gap: 20px;          /* between header, tabs and cards */
+  --setup-card-pad: 24px;           /* card padding */
+  --setup-card-gap-x: 40px;         /* section title column to fields */
+  --setup-grid-gap-x: 16px;         /* between field columns */
   --fac-name-min: 140px;            /* facility name input: min flex basis before wrapping */
   --fac-addr-min: 240px;            /* facility address wrapper: min flex basis before wrapping */
   --contact-fields-min: 360px;      /* contact panel: fields area min flex basis */

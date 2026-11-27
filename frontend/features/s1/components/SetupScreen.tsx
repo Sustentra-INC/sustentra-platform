@@ -244,15 +244,6 @@ export function SetupScreen({
                       value={engagement.dataScope ?? DATA_SCOPE_OPTIONS[0]}
                       onChange={(v) => set({ dataScope: v })}
                     />
-                    <div className="s1-setup-field">
-                      <span id="setup-standard-label" className="s1-field-label">Assurance standard</span>
-                      <Dropdown
-                        value={engagement.assuranceStandard ?? ASSURANCE_STANDARD_OPTIONS[0]}
-                        onChange={(v) => set({ assuranceStandard: v })}
-                        options={ASSURANCE_STANDARD_OPTIONS.map((o) => ({ value: o, label: o }))}
-                        labelId="setup-standard-label"
-                      />
-                    </div>
                     <SegmentedField
                       id="setup-level-label"
                       label="Assurance level"
@@ -267,6 +258,15 @@ export function SetupScreen({
                       value={engagement.materialityThreshold ?? MATERIALITY_OPTIONS[0]}
                       onChange={(v) => set({ materialityThreshold: v })}
                     />
+                    <div className="s1-setup-field">
+                      <span id="setup-standard-label" className="s1-field-label">Assurance standard</span>
+                      <Dropdown
+                        value={engagement.assuranceStandard ?? ASSURANCE_STANDARD_OPTIONS[0]}
+                        onChange={(v) => set({ assuranceStandard: v })}
+                        options={ASSURANCE_STANDARD_OPTIONS.map((o) => ({ value: o, label: o }))}
+                        labelId="setup-standard-label"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

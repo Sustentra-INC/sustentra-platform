@@ -3875,7 +3875,7 @@ html, body { margin: 0; padding: 0; }
 /* Facility rows: flex overrides. Width/height resets for inputs inside .s1-fac__row. */
 .s1-fac { margin: 0; }
 .s1-fac__row .s1-fac__name { width: auto; }
-.s1-fac__row .s1-fac__address { width: auto; height: 100%; border: 0; padding: 0; background: transparent; border-radius: 0; }
+.s1-fac__row .s1-fac__address { flex: 1; min-width: 0; width: auto; height: 100%; border: 0; padding: 0; background: transparent; border-radius: 0; }
 .s1-fac__row .s1-fac__address:focus-visible { outline: none; }
 .s1-fac__region-wrap { flex: 1 1 var(--tooltip-min-width); min-width: 0; }
 .s1-sr-only { position: absolute; overflow: hidden; white-space: nowrap; width: var(--sp-half); height: var(--sp-half); clip-path: inset(50%); padding: 0; margin: 0; }
@@ -3942,6 +3942,8 @@ html, body { margin: 0; padding: 0; }
 .s1-points-table th { padding: 0 var(--sp-3) var(--sp-2); text-align: left; font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
 .s1-points-table td { padding: var(--sp-2-5) var(--sp-3); font-size: var(--text-md); color: var(--ink); vertical-align: middle; }
 .s1-points-table tbody tr { min-height: var(--sp-7); }
+.s1-points-table th { white-space: nowrap; }
+.s1-points-table td:nth-child(2) { font-weight: var(--weight-medium); }
 .s1-points-table tbody tr.is-off td { background: var(--sf-sunken); color: var(--ink-3); }
 .s1-points-table tbody tr.is-off td:first-child { border-radius: var(--r-card-sm) 0 0 var(--r-card-sm); }
 .s1-points-table tbody tr.is-off td:last-child { border-radius: 0 var(--r-card-sm) var(--r-card-sm) 0; }
@@ -3967,7 +3969,20 @@ html, body { margin: 0; padding: 0; }
 .s1-setup .s1-ws-header__id h1 { font-size: var(--text-display); font-weight: var(--weight-bold); }
 
 /* Two-column card shells: left = section title + tip, right = fields */
-.s1-setup-card { flex-direction: row; flex-wrap: wrap; gap: var(--sp-4) var(--sp-6); }
+.s1-setup-card {
+  flex-direction: row; flex-wrap: wrap; gap: var(--card-pad-lg) var(--setup-card-gap-x);
+  padding: var(--setup-card-pad); border: 0; border-radius: var(--r-lg); box-shadow: var(--shadow-card-soft);
+}
+.s1-setup-card h2 { font-size: var(--text-title); white-space: nowrap; }
+/* Two field columns at most, as designed; one when the card is narrow. */
+.s1-setup-card .s1-setup-grid {
+  grid-template-columns: repeat(auto-fit, minmax(max(min(var(--setup-grid-col-min), 100%), calc((100% - var(--setup-grid-gap-x)) / 2)), 1fr));
+  gap: var(--sp-4-5) var(--setup-grid-gap-x);
+}
+/* Page frame: cards line up with the top row; the tab track hugs its tabs. */
+.s1-setup { padding: 0; gap: var(--setup-stack-gap); }
+.s1-setup .s1-ws-header { margin: 0; padding: var(--sp-2) var(--sp-1) var(--sp-1); }
+.s1-setup > .s1-ws-factabs--page { align-self: flex-start; }
 .s1-setup-card--wide { flex-direction: column; gap: var(--sp-3); }
 .s1-setup-card__col-left {
   flex: 1 1 var(--setup-col-left-min); max-width: var(--setup-col-left-max);

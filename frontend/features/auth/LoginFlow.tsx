@@ -16,7 +16,7 @@ const MAX_OTP_ATTEMPTS = 3;
 const RESEND_SECONDS = 60;
 const GENERIC_LOGIN_ERROR = "Invalid email or password.";
 /** `?status=ready` on the org login, after an invite is accepted (FE-003). */
-export const ACCOUNT_READY_NOTICE = "Your account is ready — sign in.";
+export const ACCOUNT_READY_NOTICE = "Your account is ready. Sign in to continue.";
 
 /** Password + email-OTP login (FE-002). Both steps live on the same route. */
 export function LoginFlow({
@@ -210,7 +210,7 @@ export function LoginFlow({
               className={styles.otpDiffAccount}
               onClick={() => backToPassword("")}
             >
-              Use a different account
+              Use a different email
             </button>
           </div>
         </form>

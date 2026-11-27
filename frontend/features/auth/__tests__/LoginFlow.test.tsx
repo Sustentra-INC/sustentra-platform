@@ -105,6 +105,6 @@ describe("LoginFlow", () => {
 describe("LoginFlow notices", () => {
   it("shows the account-ready message after an accepted invite (FE-003)", () => {
     render(<LoginFlow realm={{ kind: "org", slug: "acme" }} initialNotice={ACCOUNT_READY_NOTICE} />);
-    expect(screen.getByText("Your account is ready — sign in.")).toBeInTheDocument();
+    expect(screen.getByText("Your account is ready. Sign in to continue.")).toBeInTheDocument();
   });
 });
