@@ -87,6 +87,31 @@ OCR_MAX_PAGES = 50  # per document: Textract is billed per page
 OCR_ZOOM = 2.0  # ~150 dpi for a letter page, well under the 10 MB synchronous limit
 
 
+_BACKEND_APP = Path(__file__).resolve().parents[1]
+# Every module whose code shapes a parser output: all the parser adapters, the PDF scan rules and this file.
+PARSER_SOURCE_FILES: tuple[Path, ...] = (
+    *sorted((_BACKEND_APP / "adapters" / "parsers").glob("*.py")),
+    _BACKEND_APP / "services" / "pdf_scan_pages.py",
+    Path(__file__).resolve(),
+)
+
+
+def reader_source_digest(files: Any = PARSER_SOURCE_FILES) -> str:
+    """A short sha256 over the names and source of ``files``. An unreadable file counts as its name only."""
+
+    digest = hashlib.sha256()
+    for path in files:
+        digest.update(Path(path).name.encode())
+        try:
+            digest.update(Path(path).read_bytes())
+        except OSError:
+            digest.update(b"?")
+    return digest.hexdigest()[:12]
+
+
+_SOURCE_DIGEST = reader_source_digest()  # once, at import
+
+
 def _sha256_of(path: Path) -> str | None:
     digest = hashlib.sha256()
     try:
@@ -107,30 +132,45 @@ def _worth_keeping(output: Any) -> bool:
                    for w in output.get("warnings") or [])
 
 
-def _replace_strings(value: Any, swaps: dict[str, str]) -> Any:
-    if isinstance(value, str):
-        return swaps.get(value, value)
-    if isinstance(value, list):
-        return [_replace_strings(item, swaps) for item in value]
-    if isinstance(value, dict):
-        return {key: _replace_strings(item, swaps) for key, item in value.items()}
-    return value
+def _swap_strings_in_place(root: Any, swaps: dict[str, str]) -> None:
+    """Replace, inside ``root`` itself, every string equal to a key of ``swaps``. No second copy is built."""
+
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            items: Any = list(node.items())
+            for key, value in items:
+                if isinstance(value, str):
+                    if value in swaps:
+                        node[key] = swaps[value]
+                elif isinstance(value, (dict, list)):
+                    stack.append(value)
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                if isinstance(value, str):
+                    if value in swaps:
+                        node[index] = swaps[value]
+                elif isinstance(value, (dict, list)):
+                    stack.append(value)
 
 
 def _for_run(kept: dict, document_id: str, processing_run_id: str) -> dict:
-    """Kept output as this read's own: the ids of the document and run it carries are this read's."""
+    """Kept output as this read's own: the ids of the document and run it carries are this read's.
+    ``kept`` is the store's own fresh copy, so it is changed in place (a large output is never held twice)."""
 
     swaps: dict[str, str] = {}
     for key, new in (("document_id", document_id), ("processing_run_id", processing_run_id)):
         old = kept.get(key)
         if isinstance(old, str) and old and old != new:
             swaps[old] = new
-    output = _replace_strings(kept, swaps) if swaps else dict(kept)
-    output["document_id"] = document_id
-    output["processing_run_id"] = processing_run_id
-    output["parser_output_id"] = make_parser_output_id(
-        document_id, processing_run_id, str(output.get("parser_name") or "parser"))
-    return output
+    if swaps:
+        _swap_strings_in_place(kept, swaps)
+    kept["document_id"] = document_id
+    kept["processing_run_id"] = processing_run_id
+    kept["parser_output_id"] = make_parser_output_id(
+        document_id, processing_run_id, str(kept.get("parser_name") or "parser"))
+    return kept
 
 
 def _squash(text: str) -> str:
@@ -151,7 +191,9 @@ def _not_read_by_ocr(line: str, ocr_all: str, ocr_lines: set[str]) -> bool:
 class ParserService:
     """Detects the correct parser adapter and produces ``parser_output`` dicts."""
 
-    READER_VERSION = PARSER_RUNTIME_VERSION  # bump when a reader's output changes: kept text is then read again
+    # Names the reader code: it changes whenever a module that shapes the stored output changes, so kept text
+    # from before a parser fix is read again (see ``reader_source_digest``).
+    READER_VERSION = f"{PARSER_RUNTIME_VERSION}-{_SOURCE_DIGEST}"
 
     def __init__(self, live_textract_parser: AwsTextractParser | None = None,
                  parsed_texts: Any | None = None) -> None:
@@ -213,8 +255,9 @@ class ParserService:
                 return self._read_document(path, document_id, processing_run_id, mime_type, pages)
             version = self.reader_version()
             page_from, page_to = pages if pages else (0, 0)
+            kind = path.suffix.lower() + (f"|{mime_type.split(';', 1)[0].strip().lower()}" if mime_type else "")
             try:
-                kept = store.get(org_id, digest, version, page_from, page_to)
+                kept = store.get(org_id, digest, version, page_from, page_to, kind)
             except Exception as exc:  # noqa: BLE001 - a store fault means "not kept": read the file
                 logger.warning("kept text unreadable (%s); reading the file", type(exc).__name__)
                 kept = None
@@ -223,7 +266,7 @@ class ParserService:
             output = self._read_document(path, document_id, processing_run_id, mime_type, pages)
             if _worth_keeping(output):
                 try:
-                    store.put(org_id, digest, version, page_from, page_to, output)
+                    store.put(org_id, digest, version, page_from, page_to, output, kind)
                 except Exception as exc:  # noqa: BLE001 - the read succeeded; keeping it is best effort
                     logger.warning("parsed text not kept (%s)", type(exc).__name__)
             return output

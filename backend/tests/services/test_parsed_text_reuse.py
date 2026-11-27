@@ -100,7 +100,7 @@ def test_another_organization_with_the_same_bytes_reads_again(tmp_path: Path) ->
     service.parse_document(path, "DOC-9", "RUN-10", org_id=OTHER_ORG)
 
     assert len(live.byte_calls) == 2
-    assert store.get(OTHER_ORG, _sha(path), service.reader_version()) is not None
+    assert store.get(OTHER_ORG, _sha(path), service.reader_version(), 0, 0, ".pdf") is not None
 
 
 def test_without_an_organization_nothing_is_kept(tmp_path: Path) -> None:
@@ -285,8 +285,8 @@ def test_the_jsonl_store_keeps_by_key_and_skips_damaged_lines(tmp_path: Path) ->
     service.parse_document(path, "DOC-1", "RUN-3", org_id=OTHER_ORG)
 
     assert again["status"] == "parsed" and len(live.byte_calls) == 2
-    assert store.get(ORG, _sha(path), service.reader_version()) is not None
-    assert store.get(OTHER_ORG, "0" * 64, service.reader_version()) is None
+    assert store.get(ORG, _sha(path), service.reader_version(), 0, 0, ".pdf") is not None
+    assert store.get(OTHER_ORG, "0" * 64, service.reader_version(), 0, 0, ".pdf") is None
 
 
 def _sha(path: Path) -> str:

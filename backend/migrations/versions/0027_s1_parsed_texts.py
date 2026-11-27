@@ -7,6 +7,7 @@ hash and the reader version match.
 
 - ``reader_version`` names the reader build and its OCR setting, so a new reader, or OCR switched on after
   a read without it, reads the file again instead of reusing the older text.
+- ``file_ext`` is part of the key too (extension and mime type of the file).
 - ``page_from`` / ``page_to`` are 0 for the whole document, else the range of a chunk of a large PDF.
 - ``parser_output`` is the whole normalized output (pages, text blocks, tables, key-values, source
   references): everything the pipeline uses, so a reuse skips Textract entirely.
@@ -52,6 +53,8 @@ def upgrade() -> None:
         sa.Column("reader_version", sa.Text(), nullable=False),
         sa.Column("page_from", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("page_to", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        # The file's extension (and mime type): the same bytes named .xls or .xlsx are read by different readers.
+        sa.Column("file_ext", sa.Text(), nullable=False, server_default=sa.text("''")),
         sa.Column("reader_name", sa.Text(), nullable=False),
         sa.Column("page_count", sa.Integer(), nullable=False),
         sa.Column("ocr_used", sa.Boolean(), nullable=False, server_default=sa.text("false")),
@@ -65,7 +68,8 @@ def upgrade() -> None:
         sa.CheckConstraint("page_count >= 0", name=f"ck_{TABLE}_page_count"),
         sa.CheckConstraint("status IN ('parsed', 'partial', 'empty')", name=f"ck_{TABLE}_status"),
         sa.CheckConstraint("jsonb_typeof(parser_output) = 'object'", name=f"ck_{TABLE}_parser_output_is_object"),
-        sa.UniqueConstraint("org_id", "sha256", "reader_version", "page_from", "page_to", name=f"uq_{TABLE}_key"),
+        sa.UniqueConstraint("org_id", "sha256", "reader_version", "page_from", "page_to", "file_ext",
+                            name=f"uq_{TABLE}_key"),
     )
     op.execute(f"ALTER TABLE {TABLE} ENABLE ROW LEVEL SECURITY")
     op.execute(f"ALTER TABLE {TABLE} FORCE ROW LEVEL SECURITY")
