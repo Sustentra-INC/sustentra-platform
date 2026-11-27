@@ -54,10 +54,13 @@ BACKEND = Path(__file__).resolve().parents[2]
 
 @pytest.fixture(autouse=True)
 def one_line(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake(db: Any, engagement: dict, user: Any, **_: Any) -> dict:
+    async def fake(db: Any, engagement: dict, user: Any, **kw: Any) -> dict:
+        if kw.get("proposal") is not None:  # a decision POST: its move is made on the line's (automatic) trace
+            kw["proposal"].offer(LINE, copy.deepcopy(TRACE))
         return {"calculation_lines": [{"key": LINE, "trace": copy.deepcopy(TRACE)}]}
 
     monkeypatch.setattr(recalculation_api, "traced_recalculation", fake)
+    monkeypatch.setattr(recalculation_api, "run_recalculation", fake)
 
 
 def path(engagement_id: str, tail: str) -> str:

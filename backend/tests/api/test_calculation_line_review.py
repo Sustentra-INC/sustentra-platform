@@ -347,3 +347,62 @@ def test_a_decision_the_working_cannot_take_is_refused_up_front_with_a_code(act_
                               json={"action": "edit", "value": 5, "reason": "r"})
         assert no_unit.status_code == 422 and "enter the unit" in no_unit.json()["detail"]
     assert rows.events == [] and rows.audit == []
+
+
+def test_a_post_runs_the_engine_once_off_the_event_loop_and_locks_only_to_write(  # noqa: ANN001
+        act_as, rows: Rows, monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    from backend.app.api import recalculation as recalculation_api
+
+    make_service = recalculation_api._service
+    runs: list[int] = []  # the thread each engine run was on
+    order: list[str] = []
+    loop: list[int] = []  # the event loop's thread (the lock is awaited on it)
+
+    def counted() -> Any:
+        service = make_service()
+        inner = service.recalculate
+
+        def recalculate(*args: Any, **kw: Any) -> dict:
+            runs.append(threading.get_ident())
+            order.append("engine")
+            return inner(*args, **kw)
+
+        service.recalculate = recalculate  # type: ignore[method-assign]
+        return service
+
+    async def lock(*args: Any) -> None:
+        order.append("lock")
+        loop.append(threading.get_ident())
+
+    act_as("org_member", ORG_A)
+    with TestClient(app) as client:
+        key, t = trace_of(client)
+        unit = t["inputs"]["activity.total"]["recomputed"]["unit"]
+        monkeypatch.setattr(recalculation_api, "_service", counted)
+        monkeypatch.setattr(calc_line_review, "lock", lock)
+        done = client.post(f"{BASE}/{key}/inputs/activity.total/recomputed",
+                           json={"action": "edit", "value": 9, "unit": unit, "reason": "r"})
+        assert done.status_code == 200, done.text
+    assert len(runs) == 1 and order == ["engine", "lock"]  # one run, and the lock only after it
+    assert runs[0] != loop[0]  # the engine ran in a worker thread, not on the event loop
+
+
+def test_a_stream_that_moves_between_the_check_and_the_write_is_a_409_state_changed(  # noqa: ANN001
+        act_as, rows: Rows, monkeypatch: pytest.MonkeyPatch) -> None:
+    act_as("org_member", ORG_A)
+    with TestClient(app) as client:
+        key, t = trace_of(client)
+        unit = t["inputs"]["activity.total"]["recomputed"]["unit"]
+        stream = "input|activity.total|recomputed"
+
+        async def someone_else_first(*args: Any) -> None:  # another request wrote while this one was checking
+            rows.events.append({"line_key": key, "stream": stream, "target": "input", "target_id": "activity.total",
+                                "side": "recomputed", "seq": 1, "record": calc_line_review.new_record(stream)})
+
+        monkeypatch.setattr(calc_line_review, "lock", someone_else_first)
+        late = client.post(f"{BASE}/{key}/inputs/activity.total/recomputed",
+                           json={"action": "edit", "value": 9, "unit": unit, "reason": "r"})
+        assert late.status_code == 409 and late.json()["code"] == "state_changed", late.text
+    assert len(rows.events) == 1 and rows.audit == []

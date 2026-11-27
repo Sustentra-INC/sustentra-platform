@@ -370,3 +370,14 @@ def test_a_real_trace_with_decisions_still_validates_against_the_schema() -> Non
         shown = c.with_decisions(t, records)
         validator.validate(shown)
         assert shown["result"] == t["result"] and shown["steps"] == t["steps"]
+
+
+def test_a_revert_keeps_a_long_basis_so_the_restored_decision_can_still_be_found_stale() -> None:
+    holder = {"recomputed": {"value": 2350.0, "unit": "gal", "status": "accepted",
+                             "source": {"kind": "reference", "citation": "EPA GHG Emission Factors Hub 2025 " + "x" * 900}}}
+    basis = c.basis_of(trace(), holder)
+    assert 500 < len(basis) <= 4000
+    first = edit(new(), 2400, basis=basis)
+    second = edit(first, 2500, basis=basis)
+    back = act_input(second, "revert")
+    assert back["decision"]["value"] == 2400 and back["decision"]["basis"] == basis

@@ -23,7 +23,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorNotFoundError, EmissionFactorReference
@@ -46,6 +46,15 @@ ELECTRICITY_LEVEL2 = "Electricity"
 UNIT_SOURCE = "fuel_units conversion table"
 DISTANCE_SOURCE = "Vehicle group distance entered under Recalculation inputs"
 BIOGENIC_FLAG = "biogenic_co2_reported_separately"
+
+
+class Proposal(Protocol):
+    """``calc_line_review.Proposal``: a decision POST's move, offered the target line's automatic trace."""
+
+    stream: str
+    line_key: str
+
+    def offer(self, line_key: str, trace: dict[str, Any] | None) -> dict[str, Any] | None: ...
 
 
 @dataclass
@@ -181,8 +190,10 @@ def _group_miles(sub: _Sub) -> float | None:
 class _Builder:
     def __init__(self, ref: EmissionFactorReference, ledger: Ledger, inputs: RecalculationInputs,
                  tolerance: float, open_sources: dict[str, bool], with_traces: bool = False,
-                 line_decisions: dict[str, dict[str, dict[str, Any]]] | None = None) -> None:
+                 line_decisions: dict[str, dict[str, dict[str, Any]]] | None = None,
+                 proposal: Proposal | None = None) -> None:
         self.with_traces = with_traces
+        self.proposal = proposal
         self.line_decisions = line_decisions or {}
         self.decided: list[DecidedLine] = []
         self.ref = ref
@@ -303,6 +314,10 @@ class _Builder:
             self._company_and_reported(out, bucket, subs, share_pct)
         out["flags"] = sorted(flags | set(out["flags"]))
         records = self.line_decisions.get(line.key) if line is not None else None
+        if self.proposal is not None and line is not None and line.key == self.proposal.line_key:
+            made = self.proposal.offer(line.key, build_trace(family, out, self._context(family, bucket, primary)))
+            if made is not None:  # the decision POST's move, worked in as if it were stored
+                records = {**(records or {}), self.proposal.stream: made}
         if records:  # the reviewer's decisions on the line, read into its working
             decided = decided_trace(family, out, self._context(family, bucket, primary), records,
                                     serialise=self.with_traces)
@@ -599,7 +614,8 @@ def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRe
           inputs: RecalculationInputs, settings: dict[str, Any], decisions: dict[str, dict[str, Any]],
           tolerance: float, open_sources: dict[str, bool], facilities: list[dict[str, Any]],
           company: str | None, filing: Filing, with_traces: bool = False,
-          line_decisions: dict[str, dict[str, dict[str, Any]]] | None = None) -> Built:
+          line_decisions: dict[str, dict[str, dict[str, Any]]] | None = None,
+          proposal: Proposal | None = None) -> Built:
     """The calculation lines of one recalculation, from what its categories counted (``ledger``).
     ``records`` are all the records the lines are made from (a line exists because a document files
     there, counted or not); ``filing`` is ``file_records`` of them, made once by the caller.
@@ -607,7 +623,7 @@ def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRe
     ``calc_line_review``): a line with any is traced with them read in, and carries ``decisions``."""
 
     placements, known, slot_of = filing.placements, filing.known, filing.slot_of
-    builder = _Builder(ref, ledger, inputs, tolerance, open_sources, with_traces, line_decisions)
+    builder = _Builder(ref, ledger, inputs, tolerance, open_sources, with_traces, line_decisions, proposal)
     facility_names = {cl.facility_anchor_id(f): str(f.get("name")) for f in facilities}
     anchors = cl.vehicle_group_anchors(inputs.vehicle_groups)
     biogenic_fuels = calc.biogenic_fuel_names(ref)

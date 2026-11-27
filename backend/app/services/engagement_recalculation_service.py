@@ -570,13 +570,15 @@ class EngagementRecalculationService:
     def recalculate(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
                     decisions: dict[str, dict[str, Any]] | None = None, *,
                     with_traces: bool = False,
-                    line_decisions: Iterable[Mapping[str, Any]] | None = None) -> dict[str, Any]:
+                    line_decisions: Iterable[Mapping[str, Any]] | None = None,
+                    proposal: recalculation_lines.Proposal | None = None) -> dict[str, Any]:
         """``decisions``: the reviewer's per-document decisions (facility, withdrawn,
         duplicate / supersedes), keyed by document id. ``with_traces`` adds each calculation line's ``trace``
         (``calc_trace``); off by default, so the response is exactly what it was before traces existed.
         ``line_decisions``: the current decision events on calculation lines (``calc_line_review.current``). A line
         with any is worked with them (its trace, and its ``decisions``); one on a line that does not exist is listed
-        under ``calculation_line_decisions.orphaned``, never applied. None or empty leaves the response as it was."""
+        under ``calculation_line_decisions.orphaned``, never applied. None or empty leaves the response as it was.
+        ``proposal``: a decision POST's move (``calc_line_review.Proposal``), made and checked in this one run."""
 
         engagement_id = str(engagement.get("id") or engagement.get("engagement_id"))
         inputs = parse_inputs(engagement.get("settings"))
@@ -741,7 +743,7 @@ class EngagementRecalculationService:
                 built = recalculation_lines.build(
                     self.reference, self._ledger, placed, inputs, settings, decisions,
                     tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities, self._company, filing,
-                    with_traces, by_line)
+                    with_traces, by_line, proposal)
             except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
                 log.warning("calculation lines failed: %s", type(exc).__name__)
                 built = recalculation_lines.Built(needs_input=[{

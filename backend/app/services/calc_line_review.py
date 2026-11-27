@@ -31,7 +31,8 @@ import json
 import math
 import re
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -54,7 +55,7 @@ MAX_TEXT = 200  # a text value, a choice or input id
 MAX_UNIT = 40
 MAX_NUMBER = 1e15
 EXTRAS = ("reason", "unit", "document_id", "kind", "basis")  # what a revert restores beyond status and value
-MAX_CITATION = 200
+MAX_CITATION = 1000  # a basis stays well inside review_field.MAX_EXTRA["basis"] (4,000), so a revert keeps it
 REVIEWER_ENTERED = "reviewer_entered"  # the recomputed side's value was typed by a reviewer, with the reason
 COMPANY_INPUT = "company_input"
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
@@ -62,6 +63,34 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 class RecordTooLarge(ReviewInvalid):
     """The stream's record would pass the size limit of one stored row (422)."""
+
+
+@dataclass
+class Proposal:
+    """A decision POST's move, made inside the one engine run that checks it (``recalculate(proposal=...)``): the
+    engine offers the target line's automatic trace, ``make`` turns it into the stream's new record (or raises), and
+    the run then works the line with that record in place, by the rules the totals use."""
+
+    line_key: str
+    stream: str
+    make: Callable[[dict[str, Any]], dict[str, Any]]
+    seen: bool = False
+    trace: dict[str, Any] | None = None
+    record: dict[str, Any] | None = None
+    error: BaseException | None = None
+
+    def offer(self, line_key: str, trace: dict[str, Any] | None) -> dict[str, Any] | None:
+        if line_key != self.line_key:
+            return None
+        self.seen, self.trace = True, trace
+        if not trace:
+            return None
+        try:
+            self.record = self.make(trace)
+        except Exception as exc:  # noqa: BLE001 - re-raised by the caller, outside the engine
+            self.error = exc
+            return None
+        return self.record
 
 
 class Refused(ReviewConflict):
@@ -338,9 +367,8 @@ def _with_basis(record: dict[str, Any], basis: str | None) -> dict[str, Any]:
 def decide_input(record: Mapping[str, Any], item: Mapping[str, Any], row: Mapping[str, Any] | None, side: str,
                  action: str, *, value: Any = None, unit: Any = None, reason: Any = None, document_id: Any = None,
                  actor: Actor, now: datetime, basis: str | None = None) -> dict[str, Any]:
-    """``basis`` (``basis_of``): what a recomputed decision replaces, stored with it to tell later when it is stale."""
-
-    """accept (the AI's suggestion) | edit | reject | revert, on one side of an input (or of one of its rows)."""
+    """accept (the AI's suggestion) | edit | reject | revert, on one side of an input (or of one of its rows).
+    ``basis`` (``basis_of``): what a recomputed decision replaces, stored with it to tell later when it is stale."""
 
     if side not in SIDES:
         raise ReviewInvalid("The side is company or recomputed.")

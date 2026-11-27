@@ -12,9 +12,11 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from functools import partial
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api import documents as documents_api
@@ -75,11 +77,14 @@ LOAD = "load"  # run_recalculation's default: the engagement's current line deci
 
 
 async def run_recalculation(db: AsyncSession, engagement: dict, user: CurrentUser, *, with_traces: bool = False,
-                            line_decisions: list[dict] | None | str = LOAD) -> dict:
+                            line_decisions: list[dict] | None | str = LOAD,
+                            proposal: calc_line_review.Proposal | None = None) -> dict:
     """THE entry point of one recalculation (Results, the trace, the decision checks): the documents' decisions, the
     Methodology GWP and, by default, the reviewer's decisions on the calculation lines (``calc_line_review.current``),
     then ``EngagementRecalculationService.recalculate``. A cache belongs around that call, with the line decisions in
-    its key. ``line_decisions=None`` runs without them; a list runs with exactly those."""
+    its key. ``line_decisions=None`` runs without them; a list runs with exactly those. ``proposal``: a decision
+    POST's move, made and checked in the same run. The engine is synchronous: it runs in a worker thread, never on
+    the event loop."""
 
     decisions = {
         str(item["payload"].get("documentId") or item["item_key"]): item["payload"]
@@ -88,8 +93,10 @@ async def run_recalculation(db: AsyncSession, engagement: dict, user: CurrentUse
     engagement = await methodology_gwp.attach_choice(db, engagement)  # the Methodology review's GWP set
     events = await calc_line_review.current(db, engagement["id"]) if line_decisions == LOAD else line_decisions
     assert not isinstance(events, str)
-    return _service().recalculate(engagement, lambda record: can_see(record, user), decisions,
-                                  with_traces=with_traces, line_decisions=events)
+    service = _service()
+    return await run_in_threadpool(partial(
+        service.recalculate, engagement, lambda record: can_see(record, user), decisions, with_traces=with_traces,
+        line_decisions=events, proposal=proposal))
 
 
 async def traced_recalculation(db: AsyncSession, engagement: dict, user: CurrentUser, *,
