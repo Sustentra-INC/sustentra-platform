@@ -110,10 +110,10 @@ beforeEach(() => {
 });
 
 describe("Methodology review on real data", () => {
-  it("tells the reviewer the result lists the documents read", async () => {
+  it("tells the reviewer the whole documents are read in the background, and that a read in part is said", async () => {
     await open();
     fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
-    expect(screen.getByRole("alertdialog").textContent).toMatch(/list the documents it read/);
+    expect(screen.getByRole("alertdialog").textContent).toMatch(/every page of each.*reads in the background.*read in part/);
   });
 
   it("words activity actions and adds Claude's suggestion", async () => {

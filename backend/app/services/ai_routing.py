@@ -44,7 +44,8 @@ from typing import Any, Literal, Protocol
 from sqlalchemy import Engine
 from pydantic import BaseModel, ConfigDict, create_model, model_validator
 
-from backend.app.adapters.llm.base import LlmClient, LlmNotConfigured, StructuredReply
+from backend.app.adapters.llm.base import MAX_RETRIES, LlmClient, LlmNotConfigured, StructuredReply
+from backend.app.adapters.llm.base import REQUEST_TIMEOUT_S as DEFAULT_TIMEOUT_S
 from backend.app.adapters.llm.factory import get_llm
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.db import tenant_transaction
@@ -67,6 +68,7 @@ MIN_QUOTE = 8  # characters
 # no retry. A document the rules could not place depends on the AI for its type and keeps the default client
 # (90 s, one retry).
 REQUEST_TIMEOUT_S = 15.0
+CALL_WORST_CASE_S = DEFAULT_TIMEOUT_S * (MAX_RETRIES + 1)  # the default client: a timeout, then one retry
 NONE_ID = "none"
 UNAVAILABLE = "ai_unavailable"
 CAP_REACHED = "ai_cap_reached"
@@ -269,7 +271,7 @@ class AiRouting:
 
     def suggest(self, parser_output: dict[str, Any], *, org_id: str | None, engagement_id: str,
                 has_targets: Callable[[str], bool], quick: bool = False,
-                document_id: str | None = None) -> RoutingResult:
+                document_id: str | None = None, deadline: dp.Deadline | None = None) -> RoutingResult:
         """Ask Claude which type the document is. Never raises. ``quick``: the optional double-check,
         with the short timeout and no retry."""
 
@@ -278,14 +280,14 @@ class AiRouting:
             return RoutingResult("off")
         try:
             return self._suggest(settings, parser_output, org_id, engagement_id, has_targets, quick,
-                                 document_id or str(parser_output.get("document_id") or "") or None)
+                                 document_id or str(parser_output.get("document_id") or "") or None, deadline)
         except Exception as exc:  # the pipeline must go on; the type only is logged
             logger.warning("ai routing: failed (%s)", type(exc).__name__)
             return RoutingResult("unavailable", warning=f"{UNAVAILABLE}: Sustentra's AI could not be used to read the type.")
 
     def _suggest(self, settings: Settings, parser_output: dict[str, Any], org_id_text: str, engagement_id: str,
                  has_targets: Callable[[str], bool], quick: bool = False,
-                 document_id: str | None = None) -> RoutingResult:
+                 document_id: str | None = None, deadline: dp.Deadline | None = None) -> RoutingResult:
         org_id = uuid.UUID(org_id_text)
         ledger = self._ledger or DbLedger()
         client = (self._quick_client_factory if quick else self._client_factory)(settings)
@@ -304,9 +306,14 @@ class AiRouting:
         stop_reason = dp.LIMIT_REASON
         read = 0
         failure: RoutingResult | None = None
+        worst_case = REQUEST_TIMEOUT_S if quick else CALL_WORST_CASE_S
         for part in dp.iter_parts(lines, max_chars=part_chars(settings)):
             if read and spend.reached():
                 not_read = dp.not_read(lines, part)
+                break
+            if read and deadline is not None and not deadline.allows(worst_case):
+                # Out of time (inline: inside the upload request): what was read decides, the rest is said
+                not_read, stop_reason = dp.not_read(lines, part), dp.TIME_REASON
                 break
             started = time.monotonic()
             try:

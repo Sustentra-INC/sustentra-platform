@@ -183,7 +183,10 @@ only suggests.
   call fails, the read stops, what was read is kept, the run is `partial`, and the warning says
   `ai_read_in_part: Read in part: pages X–Y not read because ...`. Each part's call is recorded in
   `ai_usage` with its `document_id` (migration 0030), so a document's cost is the sum of its rows
-  (`ai_usage.document_spend_microusd_sync`). The type and facility reads do the same.
+  (`ai_usage.document_spend_microusd_sync`). The type and facility reads do the same, under the run's one
+  time budget (`document_parts.deadline_for`): inline, what the upload's budget allows is read and the rest is
+  marked read in part. Any AI read in part makes the run `partial`. A read that runs out of time is not resumed
+  in a later reader pass: the run keeps the honest partial state (see PR #373 for why).
 - **What is asked.** Fields whose document-level candidate is empty (`normalized_value` and
   `raw_value` null), each as an enum value with its label and allowed units, plus the known-gap
   fields of the type (extraction-config rows with `ai_only: true`: `heat_content`

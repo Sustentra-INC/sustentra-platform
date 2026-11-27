@@ -39,6 +39,8 @@ export function mapBackendDocumentToEvidenceItem(
       page_number?: number | null;
       used: boolean;
       disagrees?: boolean;
+      other_types?: string[] | null;
+      read_in_part?: string | null;
     } | null;
   } | null
 ): EvidenceItem {
@@ -99,6 +101,10 @@ export function mapBackendDocumentToEvidenceItem(
               resolveCanonicalTypeDisplayName({ canonical_type_id: routing.canonical_type_id }) ?? "another type",
             used: routing.used,
             disagrees: Boolean(routing.disagrees),
+            otherTypes: (routing.other_types ?? []).map(
+              (id) => resolveCanonicalTypeDisplayName({ canonical_type_id: id }) ?? "another type"
+            ),
+            readInPart: routing.read_in_part ?? null,
           },
         }
       : {}),

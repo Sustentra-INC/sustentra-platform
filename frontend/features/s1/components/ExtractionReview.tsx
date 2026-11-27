@@ -1852,6 +1852,8 @@ function FacilitySuggestion({
         facilityName={facility.name}
         quote={suggestion.quote}
         where={suggestion.where}
+        readInPart={suggestion.readInPart}
+        candidates={suggestion.candidates}
         disabled={busy}
         onPlace={() => {
           setBusy(true);

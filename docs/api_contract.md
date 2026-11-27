@@ -247,12 +247,24 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   `methodology_decision` audit event with the field id, action and status only.
 - `POST .../prefill` (s1_writer, open engagement, no body) asks Claude to propose values from the engagement's
   client-prepared summary documents (latest type in `calculation_lines.SUMMARY_TYPES`; every document, read
-  whole: each is cut into parts of at most 150,000 characters and every part is asked, MVP-237). The monthly
-  limit is checked before every part; a document the limit stopped is `truncated: true` with `not_read`
-  ("pages 8–12") and `note` ("Read in part: pages 8–12 not read because this month's limit on Sustentra's AI and
-  scans is reached."). One `ai_usage` row per document read (the sum of its parts' calls, with `document_id`).
-  Answers `{suggested, dropped: {reason: count}, kept_reviewer_decision, documents_read: [{document_id,
-  file_name, truncated, not_read?, note?}], cost_usd, model}`.
+  whole: each is cut into parts of at most 150,000 characters and every part is asked, MVP-237).
+  - **Background read (MVP-237).** The request checks reuse and the gate (409s as before), takes the engagement's
+    read claim and answers at once: `{state: "started", auto_read}`. A read already running is joined:
+    `{state: "joined", auto_read}` (never a second read). The read runs on the background reader the automatic
+    read uses (`services/auto_read.py`), holding the claim until it ends. The page polls `GET .../auto-read` (and
+    the review's `auto_read`): `done` carries `result` (the counts below) and `not_read` (each document read in
+    part), `failed` carries `reason` and `status`. A crashed read releases its claim; a stopped process's claim
+    expires and reads as interrupted, so the read can be started again.
+  - Spend: every call is written to `ai_usage` as it comes back (with `document_id`); before every part, this
+    month's spend (AI and scans) is read again and the part's four calls are sent only if their estimated cost
+    still fits the limit. A document the limit stopped is `truncated: true` with `not_read` ("pages 8–12") and
+    `note` ("Read in part: pages 8–12 not read because this month's limit on Sustentra's AI and scans is
+    reached."); its earlier suggestions stand.
+  - Parts that state different answers for one field: the first stays the suggestion, marked `conflicting`, with
+    `conflict_note` ("Part 2 says Yes (p. 4); part 7 says No (p. 31)") and `conflicts` (value, quote, document,
+    page, part of each other answer).
+  - `result`: `{suggested, dropped: {reason: count}, kept_reviewer_decision, documents_read: [{document_id,
+    file_name, truncated, not_read?, note?}], cost_usd, model}`.
   - Claude only suggests: each kept suggestion is written to the field's record `suggestion` (the shape above;
     `source_reference` is the parser's reference for the quoted line; a quote over 1,000 characters is stored cut
     with `quote_truncated: true`, after it was verified whole) and nothing else changes. Fields the

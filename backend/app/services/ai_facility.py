@@ -48,7 +48,7 @@ from backend.app.core.s1_scope import S1Scope
 from backend.app.services import document_parts as dp
 from backend.app.services.ai_reason import NO_REASON, clean_reason
 from backend.app.services.ai_locator import DocumentLine, NotLocated, document_lines, locate_quote, norm
-from backend.app.services.ai_routing import DbLedger, Ledger, new_client
+from backend.app.services.ai_routing import CALL_WORST_CASE_S, DbLedger, Ledger, new_client
 from backend.app.services.reviewed_evidence import (
     ELECTRICITY,
     REFRIGERANT,
@@ -109,12 +109,17 @@ class FacilitySuggestion:
     model: str | None = None
     read_at: str | None = None
     read_in_part: str | None = None  # what was not read when the read stopped ("pages 12–40")
+    # Other facilities other parts of the document point at (``decide``): the reviewer chooses, nothing is dropped.
+    others: tuple[FacilitySuggestion, ...] = ()
 
     def as_record(self) -> dict[str, Any]:
         return {"facility_id": self.facility_id, "quote": self.quote, "source": self.source,
                 "page_number": self.page_number,
                 **{k: v for k, v in (("reason", self.reason), ("model", self.model), ("read_at", self.read_at),
-                                     ("read_in_part", self.read_in_part)) if v}}
+                                     ("read_in_part", self.read_in_part)) if v},
+                **({"several": True, "candidates": [
+                    {"facility_id": c.facility_id, "quote": c.quote, "source": c.source, "page_number": c.page_number}
+                    for c in (self, *self.others)]} if self.others else {})}
 
 
 # --- when to ask ------------------------------------------------------------------------------------------
@@ -238,7 +243,7 @@ class AiFacility:
     def suggest(self, *, parser_output: Mapping[str, Any], extraction_result: Mapping[str, Any],
                 canonical_type_id: str | None, file_name: str, org_id: str | None,
                 engagement_id: str, document_id: str | None = None,
-                warnings: list[str] | None = None) -> FacilitySuggestion | None:
+                warnings: list[str] | None = None, deadline: dp.Deadline | None = None) -> FacilitySuggestion | None:
         """A verified suggestion, or None. Never raises. A read stopped in the document adds its
         ``ai_read_in_part`` warning to ``warnings``."""
 
@@ -247,14 +252,15 @@ class AiFacility:
             return None
         try:
             return self._suggest(settings, parser_output, extraction_result, canonical_type_id, file_name, org_id,
-                                 engagement_id, document_id, warnings if warnings is not None else [])
+                                 engagement_id, document_id, warnings if warnings is not None else [], deadline)
         except Exception as exc:  # the pipeline goes on without it; the type only is logged
             logger.warning("ai facility: failed (%s)", type(exc).__name__)
             return None
 
     def _suggest(self, settings: Settings, parser_output: Mapping[str, Any], extraction_result: Mapping[str, Any],
                  canonical_type_id: str | None, file_name: str, org_text: str,
-                 engagement_id: str, document_id: str | None, warnings: list[str]) -> FacilitySuggestion | None:
+                 engagement_id: str, document_id: str | None, warnings: list[str],
+                 deadline: dp.Deadline | None = None) -> FacilitySuggestion | None:
         facilities, company = self._facilities_for(org_text, engagement_id)
         decided = self._decided_for(org_text, engagement_id, document_id) if document_id else None
         if not needs_facility(canonical_type_id, extraction_result.get("items") or [], facilities, company, decided):
@@ -277,13 +283,15 @@ class AiFacility:
         parts = dp.iter_parts(lines, max_chars=dp.part_chars(settings.ai_part_tokens, RESERVED_TOKENS)) if lines \
             else iter([dp.Part(1, (), 0, 0, 0)])
         candidates: list[tuple[FacilitySuggestion, Any]] = []  # each part's verified site, with its reply
-        seen: set[str] | None = None  # the whole document's words, made once when first needed
         not_read: str | None = None
         reason = dp.LIMIT_REASON
         read = 0
         for part in parts:
             if read and spend.reached():
                 not_read = dp.not_read(lines, part)
+                break
+            if read and deadline is not None and not deadline.allows(CALL_WORST_CASE_S):
+                not_read, reason = dp.not_read(lines, part), dp.TIME_REASON  # inline: inside the upload request
                 break
             try:
                 reply = client.structured(system=system_prompt(), content=render(facilities, file_name, part.lines),
@@ -302,8 +310,9 @@ class AiFacility:
                 not_read, reason = (dp.not_read(lines, part) if lines else None), dp.FAILED_REASON
                 break
             # The quote is found in this part; "points two ways" looks at the whole document.
-            seen = seen if seen is not None else document_words(file_name, lines)
-            found = verified(reply.output, facilities, file_name, part.lines, company, seen=seen)
+            # The quote is found in this part, and "points two ways" looks at this part: across parts, every site
+            # read is kept as a candidate (``decide``), so the reviewer sees all of them.
+            found = verified(reply.output, facilities, file_name, part.lines, company)
             if found is not None:
                 candidates.append((found, reply))
         if not_read is not None and read:
@@ -313,16 +322,22 @@ class AiFacility:
 
 def decide(candidates: Sequence[tuple[FacilitySuggestion, Any]], not_read: str | None = None
            ) -> FacilitySuggestion | None:
-    """One decision from every part's verified site: the facility when they all name the same one (the first part's
-    quote stands), none when they name two or more."""
+    """One decision from every part's verified site. They all name one facility: that is the suggestion (the first
+    part's quote). They name two or more: none is picked; the first stays the card's facility, marked ``several``,
+    and every facility read is kept in ``others`` with its quote and page, so the reviewer sees and chooses."""
 
-    if not candidates or len({found.facility_id for found, _ in candidates}) > 1:
-        if candidates:
-            logger.info("ai facility: parts named %d facilities, no suggestion", len({f.facility_id for f, _ in candidates}))
+    if not candidates:
         return None
     found, reply = candidates[0]
+    others: list[FacilitySuggestion] = []
+    for other, _ in candidates[1:]:
+        if other.facility_id != found.facility_id and all(o.facility_id != other.facility_id for o in others):
+            others.append(other)
+    if others:
+        logger.info("ai facility: parts named %d facilities, kept as candidates", len(others) + 1)
     return replace(found, reason=clean_reason(getattr(reply.output, "reason", "")), model=reply.model or None,
-                   read_at=datetime.now(UTC).isoformat(timespec="seconds"), read_in_part=not_read)
+                   read_at=datetime.now(UTC).isoformat(timespec="seconds"), read_in_part=not_read,
+                   others=tuple(others))
 
 
 def _words(text_: str) -> list[str]:
@@ -416,8 +431,16 @@ def explanation(found: Mapping[str, Any], facility_name: str, file_name: str, do
         f"The quote holds a word that points at {facility_name} and at no other Setup facility.",
         "The bill names no facility or address of its own, and no account or meter number matched a Setup facility.",
     ]
+    read_in_part = str(found.get("read_in_part") or "") or None
+    if read_in_part:
+        checks.append(dp.read_in_part(read_in_part).split(": ", 1)[1])
+    candidates = [c for c in found.get("candidates") or [] if isinstance(c, dict)] if found.get("several") else []
     return {"field_id": "facility", "label": "Facility", "reason": reason, "reason_note": None if reason else NO_REASON,
             "read_at": found.get("read_at"), "model": found.get("model"),
+            **({"read_in_part": read_in_part} if read_in_part else {}),
+            **({"candidates": [{"facility_id": str(c.get("facility_id") or ""), "quote": str(c.get("quote") or ""),
+                                "page": c.get("page_number") if isinstance(c.get("page_number"), int) else None}
+                               for c in candidates]} if candidates else {}),
             "items": [{"label": None, "reason": reason, "quote": quote, "document_id": document_id,
                        "file_name": file_name, "page": None if from_name else page,
                        "location": "" if from_name else (f"page {page}" if page else ""),

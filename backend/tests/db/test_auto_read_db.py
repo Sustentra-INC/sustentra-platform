@@ -21,7 +21,7 @@ from backend.tests.db.test_engagements import (  # noqa: F401
     A_MEMBER, APP_URL, ORG_A, ORIGIN, _admin, call, create, pytestmark, seeded)
 from backend.tests.db.test_methodology_review import BASE
 from backend.tests.db.test_methodology_prefill_db import (  # noqa: F401
-    ON, FakeClaude, _async_candidates, act, ledger, prefill_events, record, review)
+    ON, FakeClaude, _async_candidates, act, background_now, ledger, prefill_events, record, review)
 from backend.tests.services.test_methodology_prefill import REPORT, doc
 
 ACTOR = "Sustentra's AI (automatic)"
@@ -78,12 +78,14 @@ def test_the_automatic_read_stores_suggestions_records_the_call_and_names_its_ac
     assert result == api.AutoReadResult("done")
     assert record(eid, "consolidation_approach")["suggestion"]["value"] == "Operational Control"
     assert review(eid).json()["prefill_ran_at"] is not None
-    [row] = ledger()
-    assert (row["outcome"], row["feature"], row["created_by"]) == ("ok", "methodology_prefill", None)
+    rows = ledger()  # one row per call
+    assert len(rows) == 4 and {(r["outcome"], r["feature"], r["created_by"]) for r in rows} == {
+        ("ok", "methodology_prefill", None)}
     [event] = events()
     assert event["actor"] == ACTOR and event["automatic"] is True and event["outcome"] == "ok"
     assert event["actor_user_id"] is None and event["suggested"] == 6 and len(claude.calls) == 4  # 6: Scope 1 is offered from its category
-    assert review(eid).json()["auto_read"] is None  # finished: nothing is shown any more
+    shown = review(eid).json()["auto_read"]  # finished: shown as done, with nothing read in part
+    assert shown["state"] == "done" and shown["not_read"] == [] and shown["result"]["suggested"] == 6
 
 
 def test_a_reviewers_decision_is_kept_by_the_automatic_read(claude: FakeClaude) -> None:
@@ -141,7 +143,7 @@ def test_busy_waits_for_the_current_read_to_end_and_then_reads_once(claude: Fake
     api._RUNNING.add(eid)
     threading.Timer(0.4, lambda: api._RUNNING.discard(eid)).start()
     result = auto(eid)
-    assert result.state == "done" and len(ledger()) == 1 and len(claude.calls) == 4
+    assert result.state == "done" and len(ledger()) == 4 and len(claude.calls) == 4
     assert [e["outcome"] for e in events()] == ["ok"]  # nothing was lost, nothing skipped
 
 
@@ -192,7 +194,7 @@ def test_two_concurrent_callers_make_exactly_one_ai_call(claude: FakeClaude, mon
     results = asyncio.run(both())
     assert sorted(r.state for r in results) == ["done", "skipped"]
     assert [r.reason_code for r in results if r.state == "skipped"] == ["busy"]
-    assert len(ledger()) == 1 and len(claude.calls) == 4  # one read: its four parts, once
+    assert len(ledger()) == 4 and len(claude.calls) == 4  # one read: its four parts, once
     assert claim_of(eid) is None  # released
 
 
@@ -212,11 +214,11 @@ def hold_claim(eid: str, seconds_ago: int = 0) -> None:
         eid, float(seconds_ago)))
 
 
-def test_the_button_answers_409_while_another_process_holds_the_claim(claude: FakeClaude) -> None:
+def test_the_button_joins_while_another_process_holds_the_claim(claude: FakeClaude) -> None:
     eid = create()["id"]
     hold_claim(eid)
-    refused = call("POST", f"{BASE}/{eid}/methodology-review/prefill")
-    assert refused.status_code == 409 and "already being prepared" in refused.json()["detail"]
+    joined = call("POST", f"{BASE}/{eid}/methodology-review/prefill")
+    assert joined.status_code == 200 and joined.json()["state"] == "joined"
     assert claude.calls == [] and ledger() == []
     hold_claim(eid, seconds_ago=120)  # an expired claim (its process stopped) is free
     assert call("POST", f"{BASE}/{eid}/methodology-review/prefill").status_code == 200

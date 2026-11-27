@@ -36,7 +36,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -1319,11 +1319,33 @@ def chunks(document: PrefillDocument) -> Iterator[dp.Part]:
     return dp.iter_parts(document.lines, max_chars=PART_CHARS)
 
 
-def run_parts(client: LlmClient, documents: Sequence[PrefillDocument], chunk: tuple[PrefillDocument, dp.Part] | None = None
-              ) -> list[PartResult]:
+class PrefillLedger(Protocol):
+    """Where the read writes its calls as they come back, and reads this month's spend (AI and scans) from."""
+
+    def month_spend_microusd(self) -> int: ...
+
+    def record(self, reply: StructuredReply[Any], document_id: str | None) -> None: ...
+
+
+def estimate_microusd(client: LlmClient, system: str, content: str, max_tokens: int) -> int:
+    """What one call may cost at most: its prompt at ``document_parts.CHARS_PER_TOKEN`` and a full reply."""
+
+    from backend.app.adapters.llm.base import TokenUsage
+    from backend.app.adapters.llm.pricing import cost_microusd
+
+    tokens = -(-(len(system) + len(content)) // dp.CHARS_PER_TOKEN)
+    try:
+        return cost_microusd(client.provider, client.model, TokenUsage(input_tokens=tokens, output_tokens=max_tokens))
+    except Exception:  # an unpriced test model: the fresh spend still stops the read
+        return 0
+
+
+def run_parts(client: LlmClient, documents: Sequence[PrefillDocument], chunk: tuple[PrefillDocument, dp.Part] | None = None,
+              on_reply: Callable[[StructuredReply[Any], str | None], None] | None = None) -> list[PartResult]:
     """Ask the four questions at once (one thread each) and say how each went. A call that raises does not stop the
     others. Runs in a worker thread: the client is synchronous. With ``chunk``, the questions are about that one
-    part of that one document; else about ``documents`` whole, as one content."""
+    part of that one document; else about ``documents`` whole, as one content. ``on_reply`` gets every reply as
+    soon as it comes back (the ledger row, written before the other calls end)."""
 
     content = render_documents(documents) if chunk is None else render_chunk(*chunk)
     document_id = chunk[0].document_id if chunk else None
@@ -1335,6 +1357,11 @@ def run_parts(client: LlmClient, documents: Sequence[PrefillDocument], chunk: tu
                                       max_tokens=PART_MAX_OUTPUT_TOKENS)
         except Exception as exc:  # reported per part by the caller
             return PartResult(part, error=exc, document_id=document_id, chunk=index)
+        if on_reply is not None:
+            try:
+                on_reply(reply, document_id)
+            except Exception as exc:  # the reply still counts for the read; the row is logged as missing
+                logger.error("methodology prefill: usage not recorded part=%s (%s)", part, type(exc).__name__)
         return PartResult(part, reply=reply, document_id=document_id, chunk=index)
 
     with ThreadPoolExecutor(max_workers=len(PART_OUTPUTS)) as pool:
@@ -1342,10 +1369,14 @@ def run_parts(client: LlmClient, documents: Sequence[PrefillDocument], chunk: tu
 
 
 def run_chunks(client: LlmClient, documents: Sequence[PrefillDocument], *, spent_microusd: int = 0,
-               cap_usd: float | None = None) -> WholeRead:
-    """Read every part of every document (the four questions each), in order. Before every part after the first,
-    this month's spend (``spent_microusd`` at the start, plus what this read has cost) is checked against
-    ``cap_usd``: when it is reached the read stops there, and each document left unfinished is in ``not_read``."""
+               cap_usd: float | None = None, ledger: PrefillLedger | None = None) -> WholeRead:
+    """Read every part of every document (the four questions each), in order.
+
+    Spend: each call is written to ``ledger`` as soon as it comes back. Before every part, this month's spend is
+    read again from ``ledger`` (AI and scans; without one, ``spent_microusd`` plus what this read has cost) and the
+    part's four calls are sent only if that spend plus their estimated cost (``estimate_microusd``) stays under
+    ``cap_usd``. So the limit is passed by at most the estimate's error, never by a part's worth of unchecked calls.
+    When the limit stops the read, each document left unfinished is in ``not_read``."""
 
     results: list[PartResult] = []
     not_read: dict[str, str] = {}
@@ -1353,11 +1384,17 @@ def run_chunks(client: LlmClient, documents: Sequence[PrefillDocument], *, spent
     stopped = False
     for document in documents:
         for part in chunks(document):
-            if stopped or (results and cap_usd is not None and ai_usage.cap_reached(spent_microusd + cost, cap_usd)):
-                stopped = True
+            if not stopped and cap_usd is not None:
+                content = render_chunk(document, part)
+                estimate = sum(estimate_microusd(client, PART_PROMPTS[name], content, PART_MAX_OUTPUT_TOKENS)
+                               for name in PART_OUTPUTS)
+                spent = ledger.month_spend_microusd() if ledger is not None else spent_microusd + cost
+                stopped = ai_usage.cap_reached(max(spent, spent_microusd + cost) + estimate, cap_usd)
+            if stopped:
                 not_read[document.document_id] = dp.not_read(document.lines, part)
                 break
-            answered = run_parts(client, documents, (document, part))
+            answered = run_parts(client, documents, (document, part),
+                                 on_reply=ledger.record if ledger is not None else None)
             results.extend(answered)
             cost += sum(int(r.reply.cost_microusd or 0) for r in answered if r.reply is not None)
             logger.info("methodology prefill: document=%s part=%d cost_microusd=%d", document.document_id, part.index,
@@ -1512,6 +1549,62 @@ def _parse(document: dict[str, Any], storage: Any, parser: Any) -> list[Document
 
 
 # --- checking the reply -----------------------------------------------------------------------
+
+MAX_CONFLICTS = 5  # other answers kept with a suggestion
+
+
+def _part_numbers(documents: Sequence[PrefillDocument]) -> dict[tuple[str, str], int]:
+    """(document alias, line alias) -> the part the line was read in, for documents read in more than one part."""
+
+    out: dict[tuple[str, str], int] = {}
+    for document in documents:
+        parts = list(chunks(document))
+        if len(parts) > 1:
+            for part in parts:
+                for line in part.own_lines:
+                    out.setdefault((document.alias, line.alias), part.index)
+    return out
+
+
+def _differs(a: Any, b: Any) -> bool:
+    """Two answers for one field that say different things ("Not detected" says nothing, so it never differs)."""
+
+    if "Not detected" in (a, b):
+        return False
+    return json.dumps(a, sort_keys=True, default=str) != json.dumps(b, sort_keys=True, default=str)
+
+
+def _where(answer: Mapping[str, Any], several_documents: bool) -> tuple[str, str]:
+    part, page = answer.get("part"), answer.get("page")
+    who = (f"{answer.get('file_name') or 'a document'} " if several_documents else "") + (
+        f"part {part}" if part else (f"page {page}" if page else "the document"))
+    return who, (f"p. {page}" if page and part else "")
+
+
+def conflict_note(answers: Sequence[Mapping[str, Any]]) -> str:
+    """"Part 2 says Yes (p. 4); part 7 says No (p. 31)": every answer, where it was read, in reading order."""
+
+    several = len({a.get("document_id") for a in answers}) > 1
+    pieces = []
+    for answer in answers:
+        who, page = _where(answer, several)
+        value = answer.get("value")
+        shown = value if isinstance(value, str) else json.dumps(value, default=str)
+        pieces.append(f"{who} says {shown}" + (f" ({page})" if page else ""))
+    text = "; ".join(pieces)
+    return text[:1].upper() + text[1:]
+
+
+def _add_conflict(suggestion: dict[str, Any], answer: Mapping[str, Any]) -> None:
+    """Mark the kept suggestion as conflicting: another part (or document) states a different answer. Both are kept,
+    with their quotes and pages, so the reviewer sees both and chooses; nothing is picked silently."""
+
+    conflicts = suggestion.setdefault("conflicts", [])
+    if len(conflicts) >= MAX_CONFLICTS or any(not _differs(c["value"], answer["value"]) for c in conflicts):
+        return
+    conflicts.append(dict(answer))
+    suggestion["conflicting"] = True
+    suggestion["conflict_note"] = conflict_note([suggestion["_answer"], *conflicts])
 
 @dataclass(frozen=True)
 class Verified:
@@ -1755,6 +1848,8 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     dropped = Dropped()
     by_alias = {d.alias: d for d in documents}
     seen: set[str] = set()
+    first_answer: dict[str, Verified] = {}  # a fixed field's kept suggestion, which later answers are compared with
+    part_of = _part_numbers(documents)
 
     def drop(reason: str, field: str | None, item: _Cited | None = None, *, document: str | None = None,
              line: str | None = None, count: int = 1) -> None:
@@ -1850,16 +1945,26 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         elif not holds(item.quote) and not extended(item, value, holds, to_clause_end=clause):
             drop("value_not_in_quote", field_id or row_group, item, line=line.alias)
             return
+        answer = {"value": value, "quote": item.quote.strip(), "document_id": document.document_id,
+                  "file_name": document.file_name, "page": line.page_number,
+                  "part": part_of.get((document.alias, line.alias))}
         if field_id is not None:
-            if field_id in seen:  # a second answer for one field: the first stands, not counted
+            if field_id in seen:  # a second answer for one field: the first stands, and a different one is shown
+                first = first_answer.get(field_id)
+                if first is not None and _differs(first.suggestion["value"], value):
+                    _add_conflict(first.suggestion, answer)
                 return
             seen.add(field_id)
         # The whole quote was found on the line; the store (rules.bound_suggestion) bounds what is kept.
-        kept.append(Verified(field_id, row_group, {
+        one = Verified(field_id, row_group, {
             "value": value, "quote": item.quote.strip(), "document_id": document.document_id,
             "file_name": document.file_name, "source_reference": line.source_reference, "origin": "ai",
             "model": model, "request_id": request_id, "suggested_at": now_iso,
-            **({"reason": reason} if (reason := clean_reason(item.reason)) else {})}))
+            "_answer": answer,
+            **({"reason": reason} if (reason := clean_reason(item.reason)) else {})})
+        kept.append(one)
+        if field_id is not None:
+            first_answer[field_id] = one
 
     def keep_list(field_id: str, parts: list[dict[str, str]],
                   quoted: list[tuple[str, str, PrefillDocument, DocumentLine, str]],
@@ -2205,6 +2310,8 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             return edition_in(e, quote)
 
         keep(factor, value, None, group, ok=edition_printed if has_digits else None, clause=True)
+    for each in kept:
+        each.suggestion.pop("_answer", None)
     return kept, dropped
 
 

@@ -134,7 +134,7 @@ def auto_read_view(marker: Any, claim: Any = None, now: datetime | None = None) 
     claim has not been renewed for CLAIM_TTL_SECONDS (or is gone) belongs to a process that stopped: it
     reads as a failure, "Reading was interrupted"."""
 
-    if not isinstance(marker, dict) or marker.get("state") not in ("waiting", "reading", "skipped", "failed"):
+    if not isinstance(marker, dict) or marker.get("state") not in ("waiting", "reading", "skipped", "failed", "done"):
         return None
     now = now or _now()
     state, reason = marker["state"], marker.get("reason")
@@ -147,7 +147,14 @@ def auto_read_view(marker: Any, claim: Any = None, now: datetime | None = None) 
         return None
     if state == "reading" and (beat is None or (now - beat).total_seconds() > CLAIM_TTL_SECONDS):
         state, reason = "failed", INTERRUPTED
-    return {"state": state, "file_names": list(marker.get("file_names") or []), "reason": reason}
+    view: dict[str, Any] = {"state": state, "file_names": list(marker.get("file_names") or []), "reason": reason}
+    if state == "done":  # a finished read (MVP-237): what it read, and each document read in part with its sentence
+        view["not_read"] = [d for d in marker.get("not_read") or [] if isinstance(d, dict)]
+        if isinstance(marker.get("result"), dict):
+            view["result"] = marker["result"]
+    if state == "failed" and isinstance(marker.get("status"), int):
+        view["status"] = marker["status"]
+    return view
 
 
 @contextmanager
@@ -768,16 +775,33 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: _HasId,
     return suggested, kept, len(replaced)
 
 
-async def _audit_prefill(db: AsyncSession, request: Request | None, user: CurrentUser | _Caller,
+@dataclass(frozen=True)
+class _RequestInfo:
+    """What an audit event records of the request that asked for a read: kept, because the read itself runs after
+    the request has answered (on the background reader)."""
+
+    request_id: str | None
+    ip_address: str | None
+    user_agent: str | None
+
+
+def _request_info(request: Request | _RequestInfo | None) -> _RequestInfo | None:
+    if request is None or isinstance(request, _RequestInfo):
+        return request
+    return _RequestInfo(getattr(request.state, "request_id", None), request.client.host if request.client else None,
+                        request.headers.get("user-agent"))
+
+
+async def _audit_prefill(db: AsyncSession, request: Request | _RequestInfo | None, user: CurrentUser | _Caller,
                          engagement: dict[str, Any], metadata: dict[str, Any]) -> None:
-    if request is None:  # the automatic read: no request, no person; the event names its actor
+    info = _request_info(request)
+    if info is None:  # the automatic read: no request, no person; the event names its actor
         metadata = {**metadata, "actor": AUTOMATIC_ACTOR, "automatic": True}
     await write_audit_event(
         db, "methodology_prefill", org_id=engagement["org_id"], actor_user_id=user.id, actor_role=user.role,
         target_type="engagement", target_id=str(engagement["id"]),
-        request_id=getattr(request.state, "request_id", None) if request else None,
-        ip_address=(request.client.host if request.client else None) if request else None,
-        user_agent=request.headers.get("user-agent") if request else None,
+        request_id=info.request_id if info else None, ip_address=info.ip_address if info else None,
+        user_agent=info.user_agent if info else None,
         metadata=metadata)  # counts and cost only
 
 
@@ -857,18 +881,23 @@ async def _heartbeat(sessions: async_sessionmaker[AsyncSession], engagement: dic
 
 
 @asynccontextmanager
-async def _claimed(sessions: async_sessionmaker[AsyncSession], engagement: dict[str, Any]) -> AsyncIterator[None]:
+async def _claimed(sessions: async_sessionmaker[AsyncSession], engagement: dict[str, Any],
+                   token: str | None = None) -> AsyncIterator[None]:
     """One read of the engagement at a time, in this process (``_RUNNING``) and across processes (the claim,
-    renewed while the read lasts, released at the end). Another read in flight: ``_Declined("busy")``."""
+    renewed while the read lasts, released at the end). Another read in flight: ``_Declined("busy")``. With
+    ``token``, the claim was already taken (and the engagement put in ``_RUNNING``) by the request that started the
+    read: it is held, renewed and released here, until the read finishes."""
 
     key = str(engagement["id"])
-    if key in _RUNNING:
-        raise _Declined("busy", _BUSY)
-    _RUNNING.add(key)
-    try:
-        token = uuid.uuid4().hex
-        if not await _claim(sessions, engagement, token):
+    if token is None:
+        if key in _RUNNING:
             raise _Declined("busy", _BUSY)
+        _RUNNING.add(key)
+    try:
+        if token is None:
+            token = uuid.uuid4().hex
+            if not await _claim(sessions, engagement, token):
+                raise _Declined("busy", _BUSY)
         beat = asyncio.ensure_future(_heartbeat(sessions, engagement, token))
         try:
             yield
@@ -897,30 +926,118 @@ async def prefill_methodology(
     db: AsyncSession = Depends(get_db_session, scope="function"),
     sessions: async_sessionmaker[AsyncSession] = Depends(get_sessionmaker_dependency),
 ) -> Any:
-    """Ask Claude to propose values from the client's summary documents (one call, synchronous).
+    """Ask Sustentra's AI to propose values from the client's summary documents. Starts the read, or joins the one
+    running, and answers at once (MVP-237): the read runs on the background reader the automatic read uses
+    (``services/auto_read.py``), never inside this request, so a long set of reports cannot time the request out
+    and a closed browser cannot stop a read that is paying for calls.
 
-    Three short steps, never holding a database connection while documents are parsed or Claude
-    answers (up to 90 s):
+    In the request: the reuse check (nothing changed since the last read: answered at once, no call), then the gate
+    (the organization's advisory lock is only tried; the switch, the client, this month's spend against the limit
+    and the documents), each refusal a 409 with a sentence as before. Then the engagement's read claim is taken
+    (``_claim``) and the page's marker says "reading". The answer is ``{state: "started", auto_read}``; a read
+    already running is joined: ``{state: "joined", auto_read}``. The page polls the marker (GET .../auto-read, the
+    same one the automatic read shows): it ends ``done`` (with what was read, and any document read in part) or
+    ``failed`` with its sentence.
 
-    1. Gate, in the request's transaction (committed before the slow part): the organization's
-       advisory lock is only *tried* (``pg_try_advisory_xact_lock``; held means another prefill is
-       deciding right now: 409), then the switch, the client, this month's spend against the cap and
-       the documents are checked.
-    2. Read the documents and make the one Claude call, with no transaction open.
-    3. Record the call in the ledger in its own committed transaction (a call that was made is
-       always recorded, whatever happens next), then verify and store the suggestions and write the
-       audit event in a second one; if that fails, nothing is kept and the answer is a 502 sentence.
-
-    Race safety: one read per engagement at a time, in this process and across processes (the claim in
-    the database, ``_claimed``): a second caller answers 409 and makes no call. The cap is read after
-    the previous call's ledger row, under the organization's advisory lock; reads of different
-    engagements of one organization may overlap, so the cap can be passed by at most one call per
-    engagement in flight. Answers 409 with a sentence when it is switched off, over the monthly limit,
-    has no documents, is already running, or Claude declines.
+    On the reader: the claim is held, and renewed, until the read finishes, then released. Every call is written to
+    the usage ledger as it comes back, and the limit is checked again before every part (``run_chunks``). A read
+    that crashes releases its claim (or, when the process stops, the claim expires after CLAIM_TTL_SECONDS and the
+    marker reads as interrupted), so it can be started again.
     """
 
-    async with _claimed(sessions, engagement):
-        return await _prefill(request, user, engagement, db, sessions, get_settings())
+    settings = get_settings()
+    key = str(engagement["id"])
+    if key in _RUNNING or not await _claim_free(sessions, engagement):
+        return await _joined(db, engagement)
+    plan = await _plan_prefill(request, user, engagement, db, settings)
+    if isinstance(plan, dict):  # nothing changed since the last read: answered now
+        return plan
+    if key in _RUNNING:  # another click got here first
+        return await _joined(db, engagement)
+    token = uuid.uuid4().hex
+    _RUNNING.add(key)
+    names = [str(c.get("file_name") or "") for c in plan.candidates]
+    try:
+        if not await _claim(sessions, engagement, token):
+            _RUNNING.discard(key)
+            return await _joined(db, engagement)
+        await _mark_auto_read(sessions, user, engagement, "reading", names)
+        info = _request_info(request)
+
+        async def job(job_sessions: async_sessionmaker[AsyncSession]) -> None:
+            await _requested_read(job_sessions, info, user, engagement, plan, names, token)
+
+        _start_background(job)
+    except Exception as exc:  # the read did not start: free the engagement so it can be asked again
+        logger.error("methodology prefill: not started (%s)", type(exc).__name__)
+        with contextlib.suppress(Exception):
+            async with _short_transaction(sessions, engagement["org_id"]) as release:
+                await release.execute(_RELEASE, _claim_params(engagement, by=token))
+        _RUNNING.discard(key)
+        with contextlib.suppress(Exception):
+            await _mark_auto_read(sessions, user, engagement, "failed", names, _NOT_STARTED)
+        raise HTTPException(status_code=503, detail=_NOT_STARTED) from exc
+    return {"state": "started", "auto_read": {"state": "reading", "file_names": names, "reason": None}}
+
+
+_NOT_STARTED = "Sustentra's AI could not start reading the documents. Try again."
+
+
+def _start_background(job: Any) -> None:
+    """Run ``job(sessions)`` on the background reader (``auto_read``'s loop and its own database pool). Tests replace
+    this to run the job where they can wait for it."""
+
+    from backend.app.services import auto_read
+
+    auto_read.default_reader().submit(job)
+
+
+async def _joined(db: AsyncSession, engagement: dict[str, Any]) -> dict[str, Any]:
+    """The read already running for the engagement, as the page shows it: ``{state: "joined", auto_read}``."""
+
+    found = await workpaper_item_service.get_items(db, engagement["id"], KIND, [rules.META_KEY])
+    payload = found[0]["payload"] if found else {}
+    view = auto_read_view(payload.get("auto_read"), payload.get("claim"))
+    return {"state": "joined", "auto_read": view or {"state": "reading", "file_names": [], "reason": None}}
+
+
+async def _requested_read(sessions: async_sessionmaker[AsyncSession], info: _RequestInfo | None, user: CurrentUser,
+                          engagement: dict[str, Any], plan: "_Plan", names: list[str], token: str) -> None:
+    """The read a reviewer asked for, on the background reader: holds the claim the request took until it ends,
+    then leaves the marker ``done`` (with what was read) or ``failed`` (with the sentence the request used to
+    answer, and its status). Never raises."""
+
+    try:
+        async with _claimed(sessions, engagement, token=token):
+            with scoped(S1Scope.tenant(engagement["org_id"])):
+                try:
+                    result = await _run_prefill(info, user, engagement, sessions, plan)
+                except _ReadFailed as exc:
+                    await _mark_auto_read(sessions, user, engagement, "failed", names, exc.detail, status=exc.status)
+                    return
+                except HTTPException as exc:
+                    await _mark_auto_read(sessions, user, engagement, "failed", names, str(exc.detail),
+                                          status=exc.status_code)
+                    return
+                except Exception as exc:  # never raises into the reader; the type only is logged
+                    logger.error("methodology prefill: read failed (%s)", type(exc).__name__)
+                    await _mark_auto_read(sessions, user, engagement, "failed", names, INTERRUPTED, status=500)
+                    return
+                await _mark_auto_read(sessions, user, engagement, "done", names, extra=_done_extra(result))
+    except Exception as exc:  # the marker or the claim could not be written: the claim expires on its own
+        logger.error("methodology prefill: background read not recorded (%s)", type(exc).__name__)
+
+
+def _done_extra(result: dict[str, Any]) -> dict[str, Any]:
+    """What a finished read leaves on the page's marker: the counts, the documents read, and each document read in
+    part with its sentence (``not_read``), so the page can say so after it polled the read to its end."""
+
+    documents = result.get("documents_read") or []
+    return {"not_read": [d for d in documents if d.get("not_read")],
+            "result": {**{k: result.get(k) for k in ("suggested", "dropped", "kept_reviewer_decision", "documents_read",
+                                                      "cost_usd", "model", "failed_sections", "reused", "read_at")
+                          if k in result},
+                       "dropped_detail": list(result.get("dropped_detail") or [])[:100]}}
 
 
 async def _reuse_last_read(request: Request | None, user: CurrentUser | _Caller, engagement: dict[str, Any],
@@ -964,8 +1081,31 @@ def _document_read(document: prefill.PrefillDocument, not_read: str | None) -> d
     return out
 
 
-async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagement: dict[str, Any],
-                   db: AsyncSession, sessions: async_sessionmaker[AsyncSession], settings: Settings) -> Any:
+@dataclass(frozen=True)
+class _Plan:
+    """What the gate decided, for the read that follows it (in the request, or on the background reader)."""
+
+    candidates: list[dict[str, Any]]
+    fingerprint: str | None
+    spent: int
+    client: LlmClient
+    storage: Any
+    settings: Settings
+
+
+class _ReadFailed(Exception):
+    """The read was made but ended without saved suggestions: the status and sentence the request answers with."""
+
+    def __init__(self, status: int, detail: str) -> None:
+        super().__init__(detail)
+        self.status, self.detail = status, detail
+
+
+async def _plan_prefill(request: Request | None, user: CurrentUser | _Caller, engagement: dict[str, Any],
+                        db: AsyncSession, settings: Settings) -> dict[str, Any] | _Plan:
+    """The reuse check and the gate, in ``db``'s transaction, committed before the slow part. The reused answer
+    (nothing changed since the last read), or the plan for the read. A refusal raises ``_Declined``."""
+
     org_id = engagement["org_id"]
     candidates = await _candidates(db, engagement, user)
     storage = documents_api.current_upload_service().storage_service
@@ -987,17 +1127,61 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
     client = new_client(settings)
     assert client is not None
     await db.commit()  # releases the connection and the lock before the slow part
+    return _Plan(candidates, fingerprint, spent, client, storage, settings)
 
+
+class _LoopLedger:
+    """The usage ledger as the read's worker threads use it: each call runs on the read's event loop in its own short
+    transaction (``_short_transaction``), and the thread waits for it. So every call is recorded the moment it comes
+    back, and the spend before each part is this month's as the database has it (AI and scans)."""
+
+    def __init__(self, sessions: async_sessionmaker[AsyncSession], loop: asyncio.AbstractEventLoop, org_id: Any,
+                 engagement_id: Any, user_id: Any, provider: str) -> None:
+        self._sessions, self._loop = sessions, loop
+        self._org_id, self._engagement_id, self._user_id, self._provider = org_id, engagement_id, user_id, provider
+
+    def _wait(self, coro: Any) -> Any:
+        return asyncio.run_coroutine_threadsafe(coro, self._loop).result(timeout=120)
+
+    def month_spend_microusd(self) -> int:
+        async def spend() -> int:
+            async with _short_transaction(self._sessions, self._org_id) as db:
+                return await ai_usage.month_spend_microusd(db, self._org_id)
+
+        return int(self._wait(spend()))
+
+    def record(self, reply: StructuredReply[Any], document_id: str | None) -> None:
+        async def write() -> None:
+            async with _short_transaction(self._sessions, self._org_id) as db:
+                await ai_usage.record(db, org_id=self._org_id, engagement_id=self._engagement_id,
+                                      feature=prefill.FEATURE, provider=self._provider, reply=reply,
+                                      user_id=self._user_id, document_id=document_id)
+
+        self._wait(write())
+
+
+async def _run_prefill(info: _RequestInfo | None, user: CurrentUser | _Caller, engagement: dict[str, Any],
+                       sessions: async_sessionmaker[AsyncSession], plan: _Plan) -> dict[str, Any]:
+    """Read the documents part by part and store what holds up. No transaction is held while documents are parsed
+    or Sustentra's AI answers. Raises ``_ReadFailed`` (a call made, nothing saved), ``HTTPException`` (nothing
+    read, or every call failed) or ``_Declined`` (the limit stopped the read before its first part)."""
+
+    org_id = engagement["org_id"]
+    client, settings, fingerprint = plan.client, plan.settings, plan.fingerprint
     documents = await asyncio.to_thread(
-        prefill.read_documents, candidates, storage=storage, parser=ParserService())
+        prefill.read_documents, plan.candidates, storage=plan.storage, parser=ParserService())
     if not any(d.lines for d in documents):
         raise HTTPException(status_code=409, detail="The company's summary documents could not be read. "
                                                     "Upload a readable copy of the report or methodology document.")
     started = time.monotonic()
-    # Every part of every document, the monthly limit checked before each part (MVP-237).
-    whole = await asyncio.to_thread(prefill.run_chunks, client, documents, spent_microusd=spent,
-                                    cap_usd=settings.ai_monthly_cap_usd)
+    ledger = _LoopLedger(sessions, asyncio.get_running_loop(), org_id, engagement["id"], user.id, client.provider)
+    # Every part of every document; each call recorded as it comes back, the limit checked before each part.
+    whole = await asyncio.to_thread(prefill.run_chunks, client, documents, spent_microusd=plan.spent,
+                                    cap_usd=settings.ai_monthly_cap_usd, ledger=ledger)
     results = whole.results
+    if not results and whole.not_read:  # the next part's cost would pass the limit: nothing was sent
+        raise _Declined("cap_reached", f"This month's limit on Sustentra's AI and scans (${settings.ai_monthly_cap_usd:,.2f}) "
+                                       "would be passed by reading the documents, so they were not read.")
     for result in results:
         if result.error is not None:  # no usage to record; type, status and provider message are logged, never content
             _log_call_failure(result.error, result.part)
@@ -1012,20 +1196,14 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
         ) from errors[0]
     cost_usd = round((reply.cost_microusd or 0) / ai_usage.MICRO, 6)
     ok = reply.outcome == "ok" and reply.output is not None
-    async with _short_transaction(sessions, org_id) as ledger:  # committed whatever happens next
-        for document in documents:  # one row per document: the sum of its parts' calls, so its cost is known
-            document_reply, _ = _combine(whole.for_document(document.document_id))
-            if document_reply is not None:
-                await ai_usage.record(ledger, org_id=org_id, engagement_id=engagement["id"], feature=prefill.FEATURE,
-                                      provider=client.provider, reply=document_reply, user_id=user.id,
-                                      document_id=document.document_id)
-        if not ok:
-            await _audit_prefill(ledger, request, user, engagement, {
-                "outcome": reply.outcome, "documents": len(documents), "cost_usd": cost_usd})
     logger.info("methodology prefill: outcome=%s documents=%d cost_microusd=%s duration_ms=%d", reply.outcome,
                 len(documents), reply.cost_microusd, int((time.monotonic() - started) * 1000))
     if not ok or reply.output is None:
-        return JSONResponse(status_code=409, content={"detail": _FAILED.get(reply.outcome, _FAILED["invalid"])})
+        async with _short_transaction(sessions, org_id) as failed:
+            await _audit_prefill(failed, info, user, engagement, {
+                "outcome": reply.outcome, "documents": len(documents), "cost_usd": cost_usd})
+        raise _ReadFailed(409, _FAILED.get(reply.outcome, _FAILED["invalid"]))
+    read = [_document_read(d, whole.not_read.get(d.document_id)) for d in documents]
     try:
         verified, dropped = prefill.verify(reply.output, documents, model=reply.model, request_id=reply.request_id,
                                            now_iso=stamp(_now()))
@@ -1035,34 +1213,49 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
         async with _short_transaction(sessions, org_id) as work:
             failed_parts = {p for p, label in prefill.PART_LABELS.items() if label in {f["section"] for f in failed_sections}}
             read_groups = frozenset(g for g, part in rules.ROW_GROUP_PART.items() if part not in failed_parts)
-            read_ids = frozenset(d.document_id for d in documents if whole.for_document(d.document_id))
+            # Every document of the read is in scope, read whole, in part or not reached: a document the limit
+            # stopped before is still the client's, so its earlier suggestions stand (they are never taken as gone).
             suggested, kept, replaced = await _store(
-                work, engagement, user, verified, dropped, read_groups, read_ids)
+                work, engagement, user, verified, dropped, read_groups, frozenset(d.document_id for d in documents))
+            answer = {"suggested": suggested, "dropped": dict(dropped), "dropped_detail": dropped.detail,
+                      "kept_reviewer_decision": kept, "documents_read": read, "cost_usd": cost_usd,
+                      "model": reply.model, "failed_sections": failed_sections}
             await _update_meta(work, engagement, user, prefill_ran_at=stamp(_now()),
                                covered=[f["field_id"] for f in rules.CATALOG],
                                # a read with a failed part, or one the limit stopped, is not reusable: the next
                                # click tries again
                                fingerprint=None if failed_sections or whole.not_read else fingerprint,
-                               auto_read={"state": "done", "file_names": [], "reason": None, "at": stamp(_now())})
-            await _audit_prefill(work, request, user, engagement, {
+                               auto_read={"state": "done", "file_names": [d.file_name for d in documents],
+                                          "reason": None, "at": stamp(_now()), **_done_extra(answer)})
+            await _audit_prefill(work, info, user, engagement, {
                 "outcome": "ok", "documents": len(documents), "suggested": suggested,
                 "dropped": sum(dropped.values()), "kept_reviewer_decision": kept, "replaced_rows": replaced,
                 "cost_usd": cost_usd,
                 **({"failed_sections": [f["section"] for f in failed_sections]} if failed_sections else {}),
                 **({"read_in_part": len(whole.not_read)} if whole.not_read else {})})
-    except Exception as exc:  # the call is already recorded; keep nothing and say so
+    except Exception as exc:  # the calls are already recorded; keep nothing and say so
         logger.error("methodology prefill: suggestions not saved (%s)", type(exc).__name__)
         try:
             async with _short_transaction(sessions, org_id) as failed:
-                await _audit_prefill(failed, request, user, engagement, {
+                await _audit_prefill(failed, info, user, engagement, {
                     "outcome": "not_saved", "documents": len(documents), "cost_usd": cost_usd})
         except Exception as audit_exc:  # best effort
             logger.error("methodology prefill: audit not written (%s)", type(audit_exc).__name__)
-        return JSONResponse(status_code=502, content={"detail": _NOT_SAVED})
-    read = [_document_read(d, whole.not_read.get(d.document_id)) for d in documents]
-    return {"suggested": suggested, "dropped": dict(dropped), "dropped_detail": dropped.detail,
-            "kept_reviewer_decision": kept,
-            "documents_read": read, "cost_usd": cost_usd, "model": reply.model, "failed_sections": failed_sections}
+        raise _ReadFailed(502, _NOT_SAVED) from exc
+    return answer
+
+
+async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagement: dict[str, Any],
+                   db: AsyncSession, sessions: async_sessionmaker[AsyncSession], settings: Settings) -> Any:
+    """The gate and the read in one go: the automatic read's path (it already runs on the background reader)."""
+
+    plan = await _plan_prefill(request, user, engagement, db, settings)
+    if isinstance(plan, dict):
+        return plan
+    try:
+        return await _run_prefill(_request_info(request), user, engagement, sessions, plan)
+    except _ReadFailed as exc:
+        return JSONResponse(status_code=exc.status, content={"detail": exc.detail})
 
 
 # --- the automatic read ---------------------------------------------------------------------------
@@ -1078,13 +1271,16 @@ class AutoReadResult:
     reason: str | None = None
 
 
-async def _mark_auto_read(sessions: async_sessionmaker[AsyncSession], caller: _Caller, engagement: dict[str, Any],
-                          state: str, file_names: list[str], reason: str | None = None) -> None:
-    """The page's "Sustentra's AI is reading ..." marker (engagement page state), in its own transaction."""
+async def _mark_auto_read(sessions: async_sessionmaker[AsyncSession], caller: _HasId, engagement: dict[str, Any],
+                          state: str, file_names: list[str], reason: str | None = None, *, status: int | None = None,
+                          extra: dict[str, Any] | None = None) -> None:
+    """The page's "Sustentra's AI is reading ..." marker (engagement page state), in its own transaction. A finished
+    read carries what it read (``extra``: ``_done_extra``); a failed one the status the request would have had."""
 
     async with _short_transaction(sessions, engagement["org_id"]) as db:
         await _update_meta(db, engagement, caller, auto_read={
-            "state": state, "file_names": file_names, "reason": reason, "at": stamp(_now())})
+            "state": state, "file_names": file_names, "reason": reason, "at": stamp(_now()),
+            **({"status": status} if status is not None else {}), **(extra or {})})
 
 
 async def _auto_read_context(sessions: async_sessionmaker[AsyncSession], caller: _Caller, engagement_id: str
@@ -1149,7 +1345,8 @@ async def _read_when_free(sessions: async_sessionmaker[AsyncSession], caller: _C
                     detail = json.loads(bytes(answer.body)).get("detail")
                     await _mark_auto_read(sessions, caller, engagement, "failed", file_names, str(detail))
                     return AutoReadResult("failed", "not_saved", str(detail))
-                await _mark_auto_read(sessions, caller, engagement, "done", file_names)
+                await _mark_auto_read(sessions, caller, engagement, "done", file_names,
+                                      extra=_done_extra(answer) if isinstance(answer, dict) else None)
                 return AutoReadResult("done")
         except _Declined as exc:
             if exc.code == "busy" and attempt == 1 and await _wait_until_free(sessions, engagement):

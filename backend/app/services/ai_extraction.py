@@ -79,7 +79,7 @@ FEATURE = "extraction"
 MIN_QUOTE = 8  # characters
 MAX_OUTPUT_TOKENS = 4_000
 RESERVED_TOKENS = 4_000 + MAX_OUTPUT_TOKENS  # the system prompt, the document header and the reply
-BUDGET_FRACTION = 0.8
+BUDGET_FRACTION = dp.BUDGET_FRACTION
 # The longest one call can take (a timeout, then one retry): a window starts only if it can end in time.
 CALL_WORST_CASE_S = REQUEST_TIMEOUT_S * (MAX_RETRIES + 1)
 MULTI_RECORD = "multi_record_document"
@@ -565,7 +565,6 @@ class AiExtraction:
             return AssistOutcome(extraction_result, [f"{CAP_REACHED}: this month's limit on Sustentra's AI and scans is "
                                                      "reached, so the values were not read by Sustentra's AI."])
 
-        inline = settings.s1_processing == "inline"
         max_chars = part_chars(settings)
 
         def parts() -> Iterator[dp.Part]:
@@ -585,19 +584,16 @@ class AiExtraction:
             parser = confidences.get(line.block_id)
             return MAX_CONFIDENCE if parser is None else min(MAX_CONFIDENCE, float(parser))
 
-        # No part starts after ``stop_starting`` (inline: a short budget inside the request; queued: 80% of
-        # the reader's run), and none starts unless a call's worst case still ends before ``hard_limit``.
-        hard_limit = started + settings.s1_reader_max_run_seconds
-        stop_starting = started + (settings.ai_inline_budget_seconds if inline
-                                   else BUDGET_FRACTION * settings.s1_reader_max_run_seconds)
+        # No part starts after the run's deadline (inline: a short budget inside the request; queued: 80% of the
+        # reader's run), and none starts unless a call's worst case still ends before the run's own limit.
+        deadline = dp.deadline_for(settings, started, self._clock)
         first_rows = sheet_first_rows(lines)
         found: dict[str, list[Verified]] = {}
         dropped: Counter[str] = Counter()
         read = 0
         not_read: str | None = None
         for part in parts():
-            now = self._clock()
-            if now >= stop_starting or now + CALL_WORST_CASE_S > hard_limit:
+            if not deadline.allows(CALL_WORST_CASE_S):
                 not_read = dp.not_read(lines, part)
                 warnings.append(dp.read_in_part(not_read, dp.TIME_REASON))
                 break

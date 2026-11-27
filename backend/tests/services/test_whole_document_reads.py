@@ -153,14 +153,34 @@ def test_a_2000_page_document_is_cut_lazily_and_read_whole() -> None:
     assert first.pages == (1, 2, 3, 4, 5) and consumed[0] < 20  # one part made, not the whole document
     rest = list(parts)
     assert len(rest) == 399 and own([first, *rest]) == [line.alias for line in lines]
-    # The values read sends every one of the 400 parts.
-    claude = Scripted(lambda i, c: {"readings": []})
-    service = AiExtraction(settings=settings(ai_window_pages=5, ai_monthly_cap_usd=100.0), client_factory=lambda s: claude, ledger=Ledger(),
-                           clock=lambda: 0.0)
+
+
+
+def _timed_values(seconds_a_call: float, **over: Any) -> tuple[Any, Scripted]:
+    """The values read of a 2,000-page bundle on a clock that moves ``seconds_a_call`` with every call."""
+
+    now = [0.0]
+    claude = Scripted(lambda i, c: now.__setitem__(0, now[0] + seconds_a_call) or {"readings": []})
+    service = AiExtraction(settings=settings(ai_window_pages=5, ai_monthly_cap_usd=100.0, **over),
+                           client_factory=lambda s: claude, ledger=Ledger(), clock=lambda: now[0])
     outcome = service.assist(parser_output=parsed(bundle(2_000)), extraction_result=result(candidate("account_number")),
                              extraction_targets=TARGETS, canonical_type_id=TYPE, file_name="bundle.pdf", org_id=ORG,
                              engagement_id="ENG-1", started=0.0)
+    return outcome, claude
+
+
+def test_a_2000_page_document_is_read_whole_when_the_reader_has_the_time() -> None:
+    # Queued, a reader run of 7,200 s: 400 parts at 10 s each end well inside 80% of it (5,760 s).
+    outcome, claude = _timed_values(10.0, s1_reader_max_run_seconds=7_200)
     assert len(claude.calls) == 400 and outcome.not_read is None and outcome.windows_read == 400
+
+
+def test_a_2000_page_document_the_time_cuts_short_says_exactly_what_was_not_read() -> None:
+    # The default 900 s run: no part starts after 720 s, and none whose worst case (180 s) ends after 900 s.
+    outcome, claude = _timed_values(10.0)
+    assert len(claude.calls) == 72 and outcome.windows_read == 72  # 72 parts, 5 pages each: pages 1-360
+    assert outcome.not_read == "pages 361–2000"
+    assert dp.read_in_part("pages 361–2000", dp.TIME_REASON) in outcome.warnings
 
 
 def test_a_single_200_kb_line_is_cut_into_overlapping_pieces_that_cover_it() -> None:
@@ -414,8 +434,62 @@ def test_the_facility_read_considers_every_part_and_decides_once() -> None:
     parts = list(dp.iter_parts(lines_of(lines), max_chars=dp.part_chars(10_000, 8_000)))
     assert len(parts) > 2 and len(claude.calls) == len(parts) and found is not None and found.facility_id == "fac-fr" and found.page_number == 14
     assert warnings == [] and found.read_in_part is None
-    two_ways, _, _ = _facility(_log({14: "Site: Fresno Plant", 18: "Site: Tacoma Distribution Center"}), _names)
-    assert two_ways is None  # the parts name two facilities: no suggestion
+
+
+
+def test_a_facility_read_naming_two_facilities_keeps_both_with_their_quotes() -> None:
+    lines = _log({2: "Site: Fresno Plant", 18: "Site: Tacoma Distribution Center"})
+
+    def answer(index: int, content: str) -> dict[str, Any]:
+        if "L2: Site: Fresno Plant" in content:
+            return {"facility_id": "fac-fr", "quote": "Fresno Plant", "source": "line", "line": "L2", "reason": ""}
+        return _names(index, content)
+
+    found, _, _ = _facility(lines, answer)
+    assert found is not None and found.facility_id == "fac-fr" and [o.facility_id for o in found.others] == ["fac-tac"]
+    record = found.as_record()
+    assert record["several"] is True
+    assert [(c["facility_id"], c["quote"], c["page_number"]) for c in record["candidates"]] == [
+        ("fac-fr", "Fresno Plant", 2), ("fac-tac", "Tacoma Distribution Center", 18)]
+    from backend.app.services.ai_facility import explanation
+
+    shown = explanation(record, "Fresno Plant", "generator-log.csv", "DOC-1")
+    assert [c["facility_id"] for c in shown["candidates"]] == ["fac-fr", "fac-tac"]
+
+
+def test_the_type_and_facility_reads_stop_at_the_time_budget_and_say_so() -> None:
+    now = [0.0]
+    deadline = dp.Deadline(stop_starting=60.0, hard_limit=900.0, clock=lambda: now[0])
+
+    def slow_says(index: int, content: str) -> dict[str, Any]:
+        now[0] += 40.0  # each part takes 40 s: the second part starts at 40 s, the third would start at 80 s
+        return _says(index, content)
+
+    claude = Scripted(slow_says)
+    service = AiRouting(settings=settings(ai_part_tokens=10_000), client_factory=lambda s: claude, ledger=Ledger())
+    found = service.suggest(parsed(_typed_bundle()), org_id=ORG, engagement_id="ENG-1", has_targets=lambda t: True,
+                            deadline=deadline)
+    assert len(claude.calls) == 2 and found.not_read == "pages 11–20"
+    assert found.notes()[-1] == dp.read_in_part("pages 11–20", dp.TIME_REASON)
+    now[0] = 0.0
+    lines = _log({2: "Site: Fresno Plant"})
+
+    def slow_names(index: int, content: str) -> dict[str, Any]:
+        now[0] += 40.0
+        if "L2: Site: Fresno Plant" in content:
+            return {"facility_id": "fac-fr", "quote": "Fresno Plant", "source": "line", "line": "L2", "reason": ""}
+        return _names(index, content)
+
+    claude = Scripted(slow_names)
+    facility = AiFacility(settings=settings(ai_part_tokens=10_000), client_factory=lambda s: claude, ledger=Ledger(),
+                          facilities_for=lambda org, eng: (FACILITIES, COMPANY), decided_for=lambda org, eng, doc: None)
+    warnings: list[str] = []
+    suggestion = facility.suggest(parser_output=parsed(lines), extraction_result={"items": ITEMS},
+                                  canonical_type_id=STATIONARY, file_name="generator-log.csv", org_id=ORG,
+                                  engagement_id=str(uuid.uuid4()), document_id="DOC-1", warnings=warnings,
+                                  deadline=deadline)
+    assert len(claude.calls) == 2 and suggestion is not None and suggestion.read_in_part
+    assert warnings and warnings[0].endswith(f"not read because {dp.TIME_REASON}.")
 
 
 def test_the_facility_read_stopped_by_the_limit_is_marked_read_in_part() -> None:
@@ -479,13 +553,67 @@ def test_the_methodology_read_uses_every_document_and_every_part() -> None:
     assert by_field["category:scope1:stationary"]["document_id"] == "DOC-7"
 
 
-def test_the_methodology_read_stops_at_the_limit_and_marks_the_documents_not_finished() -> None:
+class PrefillLedger:
+    """The methodology read's ledger: rows written as calls come back; the spend read fresh before each part."""
+
+    def __init__(self, spent: int = 0) -> None:
+        self.spent, self.rows, self.reads = spent, [], 0
+
+    def month_spend_microusd(self) -> int:
+        self.reads += 1
+        return self.spent + sum(int(r["cost"]) for r in self.rows)
+
+    def record(self, reply: Any, document_id: str | None) -> None:
+        self.rows.append({"cost": reply.cost_microusd or 0, "document_id": document_id})
+
+
+def test_the_methodology_read_records_each_call_and_checks_a_fresh_spend_and_estimate_before_each_part(
+        monkeypatch: Any) -> None:
     documents = [_report("D1", "DOC-A", 12, {}), _report("D2", "DOC-B", 2, {})]
     claude = Scripted(_prefill_answer)
-    whole = mp.run_chunks(claude, documents, spent_microusd=1_000_000 - 4 * COST, cap_usd=1.0)
+    monkeypatch.setattr(mp, "estimate_microusd", lambda *a, **k: 10_000)  # 40,000 for a part's four calls
+    ledger = PrefillLedger(spent=1_000_000 - 4 * COST - 40_000)  # room for the first part only
+    whole = mp.run_chunks(claude, documents, spent_microusd=0, cap_usd=1.0, ledger=ledger)
     assert len(claude.calls) == 4  # the first part's four questions, then the limit
+    assert [r["document_id"] for r in ledger.rows] == ["DOC-A"] * 4  # each recorded as it came back
+    assert ledger.reads == 2  # this month's spend read again before each part
     assert whole.not_read == {"DOC-A": "pages 8–12", "DOC-B": "pages 1–2"}
     assert {r.document_id for r in whole.results} == {"DOC-A"}
+    # Spend from elsewhere (a scan) while the read runs counts at once: with no room left, no part is sent.
+    claude = Scripted(_prefill_answer)
+    whole = mp.run_chunks(claude, documents, spent_microusd=0, cap_usd=1.0, ledger=PrefillLedger(spent=1_000_000 - 39_999))
+    assert claude.calls == [] and set(whole.not_read) == {"DOC-A", "DOC-B"}
+
+
+def test_parts_that_disagree_keep_the_suggestion_marked_conflicting_with_both_quotes() -> None:
+    document = _report("D1", "DOC-A", 40, {4: "Scope 1 stationary combustion is included.",
+                                            31: "Scope 1 stationary combustion is not included."})
+
+    def answer(index: int, content: str) -> dict[str, Any]:
+        out: dict[str, Any] = {k: [] for k in EMPTY}
+        if "L4: Scope 1 stationary combustion is included." in content:
+            out["choices"] = [{"field_id": "category:scope1:stationary", "value": "Yes", "document": "D1",
+                               "line": "L4", "quote": "stationary combustion is included", "reason": ""}]
+        if "L31: Scope 1 stationary combustion is not included." in content:
+            out["choices"] = [{"field_id": "category:scope1:stationary", "value": "No", "document": "D1",
+                               "line": "L31", "quote": "stationary combustion is not included", "reason": ""}]
+        return out
+
+    claude = Scripted(answer)
+    whole = mp.run_chunks(claude, [document], spent_microusd=0, cap_usd=100.0)
+    merged = mp.merge_parts([r.reply.output for r in whole.results if r.reply and r.reply.output is not None])
+    verified, _ = mp.verify(merged, [document], model="m", request_id="r", now_iso="2026-11-26T00:00:00.000Z")
+    (kept,) = [v.suggestion for v in verified if v.field_id == "category:scope1:stationary"]
+    assert kept["value"] == "Yes" and kept["conflicting"] is True  # kept, never picked silently
+    assert kept["conflict_note"] == "Part 1 says Yes (p. 4); part 5 says No (p. 31)"
+    (other,) = kept["conflicts"]
+    assert (other["value"], other["page"], other["part"]) == ("No", 31, 5)
+    assert other["quote"] == "stationary combustion is not included"
+    from backend.app.services import methodology_review as rules
+
+    stored = rules.bound_suggestion(rules.catalog_field("category:scope1:stationary") or {}, kept)
+    assert stored["conflicting"] is True and stored["conflicts"][0]["page"] == 31
+    assert stored["conflict_note"] == kept["conflict_note"] and "_answer" not in kept
 
 
 def test_the_fingerprint_covers_every_document_and_matches_when_nothing_changed() -> None:

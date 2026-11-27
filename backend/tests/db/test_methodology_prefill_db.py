@@ -9,15 +9,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from typing import Any
 
 import pytest
 
 from backend.app.adapters.llm.base import StructuredReply, TokenUsage
 from backend.app.api import methodology_review as api
+from backend.app.core import db as core_db
 from backend.app.core.config import Settings
 from backend.app.services import methodology_prefill as mp
-from backend.tests.db.test_engagements import ORIGIN, _admin, call, create, pytestmark, seeded  # noqa: F401
+from backend.tests.db.test_engagements import APP_URL, ORIGIN, _admin, call, create, pytestmark, seeded  # noqa: F401
 from backend.tests.db.test_methodology_review import BASE, act, record, review
 from backend.tests.services.test_methodology_prefill import REPORT, doc
 
@@ -103,8 +105,60 @@ def claude(monkeypatch: pytest.MonkeyPatch) -> FakeClaude:
     return fake
 
 
-def prefill(engagement_id: str, token: str = "a_member") -> Any:
+def run_now(job: Any) -> None:
+    """The background reader, made to finish before the POST answers: the job runs in its own thread with its own
+    event loop and pool (as on the reader), and the POST waits for it, so a test can read what it left."""
+
+    async def go() -> None:
+        engine = core_db.create_engine(APP_URL or "", pool_size=4, max_overflow=2)
+        try:
+            await job(core_db.build_sessionmaker(engine))
+        finally:
+            await engine.dispose()
+
+    worker = threading.Thread(target=lambda: asyncio.run(go()))
+    worker.start()
+    worker.join()
+
+
+@pytest.fixture(autouse=True)
+def background_now(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(api, "_start_background", run_now)
+
+
+class Answer:
+    """What a started read came to, as the old synchronous answer: the marker's result (200), or its failure's
+    status and sentence."""
+
+    def __init__(self, status_code: int, body: dict[str, Any]) -> None:
+        self.status_code, self._body = status_code, body
+
+    def json(self) -> dict[str, Any]:
+        return self._body
+
+    @property
+    def text(self) -> str:
+        return json.dumps(self._body)
+
+
+def start(engagement_id: str, token: str = "a_member") -> Any:
     return call("POST", f"{BASE}/{engagement_id}/methodology-review/prefill", token)
+
+
+def marker(engagement_id: str, token: str = "a_member") -> Any:
+    return call("GET", f"{BASE}/{engagement_id}/methodology-review/auto-read", token).json()["auto_read"]
+
+
+def prefill(engagement_id: str, token: str = "a_member") -> Any:
+    """Start the read (the POST answers at once) and, once the background read has ended, what it came to."""
+
+    response = start(engagement_id, token)
+    if response.status_code != 200 or response.json().get("state") != "started":
+        return response  # refused by the gate, reused, or joined: the POST's own answer
+    found = marker(engagement_id, token)
+    if found["state"] == "done":
+        return Answer(200, found["result"])
+    return Answer(int(found.get("status") or 500), {"detail": found["reason"]})
 
 
 def ledger() -> list[Any]:
@@ -135,10 +189,13 @@ def test_prefill_stores_verified_suggestions_and_records_the_call(claude: FakeCl
     assert {r["suggestion"]["value"].get("name") or r["suggestion"]["value"]["database"] for r in rows} == {
         "Acme Foods Kent LLC", "U.S. EPA GHG Emission Factors Hub"}
     assert {c["field_id"] for c in full["catalog"]} >= {r["field_id"] for r in rows}
-    [row] = ledger()
-    assert (row["outcome"], row["feature"], row["provider"], row["request_id"]) == ("ok", "methodology_prefill", "anthropic", "req-9")
-    assert (row["input_tokens"], row["output_tokens"], row["cost_microusd"]) == (8_000, 1_200, COST)
-    assert str(row["engagement_id"]) == engagement["id"] and row["created_by"] is not None
+    rows = ledger()  # one row per call, written as each came back (MVP-237)
+    assert len(rows) == 4
+    assert {(r["outcome"], r["feature"], r["provider"], r["request_id"]) for r in rows} == {
+        ("ok", "methodology_prefill", "anthropic", "req-9")}
+    assert (sum(r["input_tokens"] for r in rows), sum(r["output_tokens"] for r in rows),
+            sum(r["cost_microusd"] for r in rows)) == (8_000, 1_200, COST)
+    assert {str(r["engagement_id"]) for r in rows} == {engagement["id"]} and all(r["created_by"] for r in rows)
     [event] = prefill_events()
     assert json.loads(event["metadata"]) == {"outcome": "ok", "documents": 1, "suggested": 6, "dropped": 1,
                                              "kept_reviewer_decision": 0, "replaced_rows": 0, "cost_usd": 0.012344}
@@ -170,7 +227,7 @@ def test_a_second_run_replaces_pending_suggestions_and_does_not_repeat_rows(clau
     assert body["suggested"] == 2 and body["dropped"] == {}  # the choice and the text; both rows already there
     assert record(eid, "category:scope1:stationary")["suggestion"]["value"] == "No"
     rows = [f for f in review(eid).json()["fields"] if f["field_id"].startswith(("entity:", "factor:"))]
-    assert len(rows) == 2 and len(ledger()) == 2
+    assert len(rows) == 2 and len(ledger()) == 8  # two reads of four calls
 
 
 def test_an_accepted_suggestion_is_a_normal_decision(claude: FakeClaude) -> None:
@@ -279,13 +336,16 @@ def test_the_cap_refuses_before_a_call_and_only_this_months_spend_counts(claude:
     eid = create()["id"]
     seed_spend(eid, 5_000_000, "now() - interval '40 days'")  # last month's spend does not count
     seed_spend(eid, 999_999)
-    assert prefill(eid).status_code == 200  # 0.999999 + 0.012344 spent; the next call is over the cap
-    status = review(eid).json()["ai"]
-    assert status["reason_code"] == "cap_reached" and status["cap_usd"] == 1.0 and status["month_spend_usd"] == 1.01
-    before = len(ledger())
-    refused = prefill(eid)
+    refused = prefill(eid)  # under the limit, but the first part's four calls could pass it: none is sent
     assert refused.status_code == 409 and "limit" in refused.json()["detail"]
-    assert len(claude.calls) == 4 and len(ledger()) == before
+    assert claude.calls == [] and len(ledger()) == 2
+    seed_spend(eid, 1)
+    status = review(eid).json()["ai"]
+    assert status["reason_code"] == "cap_reached" and status["cap_usd"] == 1.0 and status["month_spend_usd"] == 1.0
+    before = len(ledger())
+    refused = prefill(eid)  # at the limit: refused by the gate, in the request
+    assert refused.status_code == 409 and "limit" in refused.json()["detail"]
+    assert claude.calls == [] and len(ledger()) == before
 
 
 def test_another_orgs_spend_does_not_count(claude: FakeClaude) -> None:
@@ -302,8 +362,8 @@ def test_a_call_that_ends_badly_is_recorded_and_stores_nothing(claude: FakeClaud
     claude.outcome = outcome
     response = prefill(eid)
     assert response.status_code == 409 and response.json()["detail"]
-    [row] = ledger()
-    assert row["outcome"] == outcome and row["cost_microusd"] == COST
+    rows = ledger()
+    assert {r["outcome"] for r in rows} == {outcome} and sum(r["cost_microusd"] for r in rows) == COST
     assert json.loads(prefill_events()[0]["metadata"])["outcome"] == outcome
     assert all(f["suggestion"] is None for f in review(eid).json()["fields"])
 
@@ -318,8 +378,8 @@ def test_one_failing_call_keeps_the_others_and_names_the_section(claude: FakeCla
     assert "ConnectionError" in body["failed_sections"][0]["reason"]
     assert record(eid, "consolidation_approach")["suggestion"]["value"] == "Operational Control"  # call (a) kept
     assert record(eid, "category:scope1:stationary")["suggestion"] is None  # call (b) gave nothing
-    [row] = ledger()
-    assert row["outcome"] == "ok" and row["cost_microusd"] == 3 * (COST // 4)  # only the answered calls are billed
+    rows = ledger()
+    assert len(rows) == 3 and all(r["outcome"] == "ok" and r["cost_microusd"] == COST // 4 for r in rows)  # answered only
     assert json.loads(prefill_events()[0]["metadata"])["failed_sections"] == ["Categories, gases and exclusions"]
 
 
@@ -365,16 +425,93 @@ def test_the_same_entity_twice_in_one_reply_makes_one_row(claude: FakeClaude) ->
     assert len(rows) == 2
 
 
-def test_a_prefill_already_running_for_the_engagement_is_refused(claude: FakeClaude) -> None:
+def test_a_second_click_joins_the_read_already_running(claude: FakeClaude) -> None:
     eid = create()["id"]
     api._RUNNING.add(eid)
     try:
-        refused = prefill(eid)
+        joined = start(eid)
     finally:
         api._RUNNING.discard(eid)
-    assert refused.status_code == 409 and "already being prepared" in refused.json()["detail"]
+    assert joined.status_code == 200 and joined.json()["state"] == "joined"  # no second read, no 409
     assert claude.calls == [] and ledger() == []
     assert prefill(eid).status_code == 200  # and it is free again afterwards
+
+
+def test_the_button_starts_the_read_and_the_page_polls_it_to_done(claude: FakeClaude,
+                                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    jobs: list[Any] = []
+    monkeypatch.setattr(api, "_start_background", jobs.append)  # started, not yet run
+    started = start(eid)
+    assert started.status_code == 200 and started.json()["state"] == "started"
+    assert started.json()["auto_read"]["state"] == "reading" and claude.calls == []  # answered at once
+    assert marker(eid)["state"] == "reading"
+    again = start(eid)  # a second click while it runs: joins it
+    assert again.json()["state"] == "joined" and again.json()["auto_read"]["state"] == "reading" and len(jobs) == 1
+    run_now(jobs[0])  # the background reader runs it
+    done = marker(eid)
+    assert done["state"] == "done" and done["result"]["suggested"] == 6 and done["not_read"] == []
+    assert len(claude.calls) == 4 and len(ledger()) == 4
+    assert eid not in api._RUNNING and start(eid).json()["state"] != "joined"  # the claim was released
+
+
+def test_a_read_that_crashes_leaves_a_clean_state_and_can_be_started_again(claude: FakeClaude,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+
+    def crash(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("a bug with private text")
+
+    monkeypatch.setattr(mp, "run_chunks", crash)
+    failed = prefill(eid)
+    assert failed.status_code == 500 and "private text" not in failed.text
+    shown = marker(eid)
+    assert shown["state"] == "failed" and shown["reason"] == api.INTERRUPTED
+    assert eid not in api._RUNNING
+    monkeypatch.undo()
+    monkeypatch.setattr(api, "get_settings", lambda: ON)
+    monkeypatch.setattr(api, "new_client", lambda settings: claude)
+    monkeypatch.setattr(api, "_candidates", _async_candidates([{"document_id": "DOC-1"}]))
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT)])
+    monkeypatch.setattr(api, "_start_background", run_now)
+    assert prefill(eid).status_code == 200 and marker(eid)["state"] == "done"  # retried: claim and guard were freed
+
+
+def test_a_document_the_limit_stopped_before_keeps_its_earlier_suggestions(claude: FakeClaude,
+                                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    """D1 is read in part and D2 not at all (the limit): D2's earlier row suggestions stand (they are not gone)."""
+
+    eid = create()["id"]
+    d2 = [(1, "Kent site boundary"), (1, "Emission factors: U.S. EPA GHG Emission Factors Hub, 2024 edition.")]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(d2, "D1", "DOC-2")])
+    claude.output = {**GOOD, "choices": [], "periods": [], "entities": [],
+                     "factors": [{"scope": "scope1", "database": "U.S. EPA GHG Emission Factors Hub", "edition": "2024",
+                                  **cite("L2", "EPA GHG Emission Factors Hub, 2024 edition")}]}
+    assert prefill(eid).status_code == 200
+    factor = [f for f in review(eid).json()["fields"] if f["field_id"].startswith("factor:")]
+    assert len(factor) == 1 and factor[0]["suggestion"]["document_id"] == "DOC-2"
+    # Now the read holds D1 (long, cut short by the limit) and D2 (never reached).
+    long_d1 = [(page, f"Narrative page {page} " + "text " * 4_000) for page in range(1, 13)]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(long_d1, "D1", "DOC-1"),
+                                                                          doc(d2, "D2", "DOC-2")])
+    monkeypatch.setattr(api, "_candidates", _async_candidates([{"document_id": "DOC-1"}, {"document_id": "DOC-2"}]))
+    claude.output = {**GOOD, "choices": [], "periods": [], "entities": [], "factors": []}
+    estimated = {"calls": 0}
+
+    def estimate(*args: Any, **kwargs: Any) -> int:  # the first part's four calls fit the limit; the next would pass it
+        estimated["calls"] += 1
+        return 0 if estimated["calls"] <= 4 else 10**9
+
+    monkeypatch.setattr(mp, "estimate_microusd", estimate)
+    body = prefill(eid).json()
+    read = {d["document_id"]: d for d in body["documents_read"]}
+    assert read["DOC-1"]["truncated"] and read["DOC-1"]["not_read"] == "pages 8–12"
+    assert read["DOC-2"]["truncated"] and read["DOC-2"]["not_read"] == "page 1"
+    assert read["DOC-1"]["note"].startswith("Read in part: pages 8–12 not read because this month's limit")
+    factor = [f for f in review(eid).json()["fields"] if f["field_id"].startswith("factor:")]
+    assert len(factor) == 1 and factor[0]["suggestion"]["document_id"] == "DOC-2"  # D2's suggestion kept
+    shown = marker(eid)
+    assert shown["state"] == "done" and {d["document_id"] for d in shown["not_read"]} == {"DOC-1", "DOC-2"}
 
 
 def test_the_ledger_row_survives_a_failure_while_saving(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -387,8 +524,8 @@ def test_the_ledger_row_survives_a_failure_while_saving(claude: FakeClaude, monk
     response = prefill(eid)
     assert response.status_code == 502 and "could not be saved" in response.json()["detail"]
     assert "private text" not in response.text
-    [row] = ledger()
-    assert row["outcome"] == "ok" and row["cost_microusd"] == COST
+    rows = ledger()
+    assert {r["outcome"] for r in rows} == {"ok"} and sum(r["cost_microusd"] for r in rows) == COST
     assert json.loads(prefill_events()[0]["metadata"])["outcome"] == "not_saved"
     assert all(f["suggestion"] is None for f in review(eid).json()["fields"])
 
@@ -1034,13 +1171,13 @@ def test_the_same_inputs_are_not_read_again(claude: FakeClaude, monkeypatch: pyt
     hashed(monkeypatch, "aaa", "bbb")
     first = prefill(eid)
     assert first.status_code == 200 and "reused" not in first.json()
-    assert len(claude.calls) == 4 and len(ledger()) == 1
+    assert len(claude.calls) == 4 and len(ledger()) == 4
     second = prefill(eid)
     assert second.status_code == 200, second.text
     body = second.json()
     assert body["reused"] is True and body["read_at"] and body["cost_usd"] == 0.0
     assert [d["document_id"] for d in body["documents_read"]] == ["DOC-1", "DOC-2"]
-    assert len(claude.calls) == 4 and len(ledger()) == 1  # no call, no usage row
+    assert len(claude.calls) == 4 and len(ledger()) == 4  # no call, no usage row
     [event] = reuse_events()
     assert json.loads(event["metadata"])["documents"] == 2 and "operational control" not in event["metadata"]
 
@@ -1061,7 +1198,7 @@ def test_a_changed_added_or_removed_document_reads_again(claude: FakeClaude, mon
     prefill(eid)
     hashed(monkeypatch, *after)
     body = prefill(eid).json()
-    assert "reused" not in body and len(claude.calls) == 8 and len(ledger()) == 2
+    assert "reused" not in body and len(claude.calls) == 8 and len(ledger()) == 8
 
 
 def test_a_new_prompt_version_reads_again(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:

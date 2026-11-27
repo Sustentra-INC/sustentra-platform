@@ -48,6 +48,7 @@ class AutoReader:
         self._busy: dict[str, asyncio.Lock] = {}
         self._sessions: Any = None
         self._engine: Any = None
+        self._jobs: set[Any] = set()  # reads started by ``submit`` and not yet ended
 
     def debounce_seconds(self) -> float:
         value = self._debounce
@@ -96,6 +97,23 @@ class AutoReader:
                 await self._run_fn()(org_id, engagement_id, names)
             except Exception as exc:
                 logger.error("auto_read_failed", extra={"error_type": type(exc).__name__})
+
+    def submit(self, job: Callable[[Any], Awaitable[Any]]) -> None:
+        """Run ``job(sessions)`` on this reader's loop, with its own database pool, now (no debounce): the read a
+        reviewer asked for (``methodology_review.prefill_methodology``). It outlives the request that asked for it.
+        Safe from any thread; never raises from the job into the caller."""
+
+        loop = self._ensure_loop()
+
+        async def run() -> None:
+            try:
+                await job(self._sessionmaker())
+            except Exception as exc:  # the job records its own ending; this is the last resort
+                logger.error("requested_read_failed", extra={"error_type": type(exc).__name__})
+
+        future = asyncio.run_coroutine_threadsafe(run(), loop)
+        self._jobs.add(future)  # a reference until it ends, so the task is never collected mid-read
+        future.add_done_callback(self._jobs.discard)
 
     # The real work is built on first use, on the loop thread (the pool belongs to this loop).
     def _sessionmaker(self) -> Any:

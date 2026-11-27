@@ -117,6 +117,11 @@ export interface MethodologySuggestion {
   suggested_at: string;
   /** The AI's reason (at most 240 characters); missing on a suggestion saved before reasons were kept. */
   reason?: string;
+  /** Parts of the documents state different answers (MVP-237): the reviewer chooses. */
+  conflicting?: boolean;
+  /** "Part 2 says Yes (p. 4); part 7 says No (p. 31)". */
+  conflict_note?: string;
+  conflicts?: { value: string; quote: string; document_id: string; file_name: string; page: number | null; part: number | null }[];
 }
 
 export interface MethodologyDecision {
@@ -171,9 +176,20 @@ export interface AiStatus {
 /** Sustentra's AI reading the engagement's summary documents by itself, after an upload (`waiting`: until the batch
  *  is complete; `reading`: the call is made; `skipped`: it did not start, `failed`: it started and did not finish, including a stopped read ("Reading was interrupted"); `reason` says why). */
 export interface AutoRead {
-  state: "waiting" | "reading" | "skipped" | "failed";
+  state: "waiting" | "reading" | "skipped" | "failed" | "done";
   file_names: string[];
   reason: string | null;
+  /** A finished read (`done`): each document it did not read to the end, with its sentence. */
+  not_read?: DocumentRead[];
+}
+
+/** One document of a read. `note` ("Read in part: pages 8–12 not read because ...") when the read stopped in it. */
+export interface DocumentRead {
+  document_id: string;
+  file_name: string;
+  truncated: boolean;
+  not_read?: string;
+  note?: string;
 }
 
 /** Whether a read is waiting or running now. */
@@ -193,13 +209,17 @@ export interface PrefillResult {
   suggested: number;
   dropped: Record<string, number>;
   kept_reviewer_decision: number;
-  documents_read: { document_id: string; file_name: string; truncated: boolean }[];
+  documents_read: DocumentRead[];
   cost_usd: number;
   model: string | null;
   /** True when nothing changed since the last successful read, so the AI was not asked again. */
   reused?: boolean;
   /** When that last read ran (set with `reused`). */
   read_at?: string;
+  /** The read runs on the background reader: `started`, or `joined` (one was already running). The page polls the
+   *  marker (`auto_read`) to its end. */
+  state?: "started" | "joined";
+  auto_read?: AutoRead | null;
 }
 
 const base = (engagementId: string) => `/engagements/${encodeURIComponent(engagementId)}/methodology-review`;

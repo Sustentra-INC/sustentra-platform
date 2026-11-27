@@ -30,7 +30,7 @@ from __future__ import annotations
 import dataclasses
 import re
 import uuid
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -227,6 +227,33 @@ def iter_parts(lines: Iterable[DocumentLine], *, max_chars: int, max_pages: int 
         last_page = page
     if current:
         yield make()
+
+
+# --- time --------------------------------------------------------------------------------------------------
+
+BUDGET_FRACTION = 0.8  # of S1_READER_MAX_RUN_SECONDS: a queued run starts no part after it
+
+
+@dataclass(frozen=True)
+class Deadline:
+    """When a run's AI reads stop starting parts. Inline (inside the upload request): ``AI_INLINE_BUDGET_SECONDS``
+    from the start of the run. Queued (the reader): 80% of ``S1_READER_MAX_RUN_SECONDS``. And never a part whose
+    worst-case call (timeout and retries) would end after the run's own limit. The type check, the values and the
+    facility read of one run share it, counted from the run's start."""
+
+    stop_starting: float
+    hard_limit: float
+    clock: Callable[[], float]
+
+    def allows(self, worst_case_s: float) -> bool:
+        now = self.clock()
+        return now < self.stop_starting and now + worst_case_s <= self.hard_limit
+
+
+def deadline_for(settings: Any, started: float, clock: Callable[[], float]) -> Deadline:
+    inline = settings.s1_processing == "inline"
+    budget = settings.ai_inline_budget_seconds if inline else BUDGET_FRACTION * settings.s1_reader_max_run_seconds
+    return Deadline(started + budget, started + settings.s1_reader_max_run_seconds, clock)
 
 
 # --- spend ---------------------------------------------------------------------------------------------------
