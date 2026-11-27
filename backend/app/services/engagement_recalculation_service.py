@@ -20,6 +20,7 @@ engagement:
 
 from __future__ import annotations
 
+import copy
 import logging
 import math
 import re
@@ -42,7 +43,7 @@ from backend.app.reference.emission_factor_loader import (
 from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
 from backend.app.services import emissions_rollup as rollup
-from backend.app.services import recalculation_lines
+from backend.app.services import line_totals, recalculation_lines
 from backend.app.services import reported_totals
 from backend.app.services.methodology_gwp import GwpChoice, default_choice
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
@@ -704,6 +705,7 @@ class EngagementRecalculationService:
                                           for f in facilities]
             categories[f"{source}_location_based"] = location
             categories[f"{source}_market_based"] = market
+        certificates: list[calc.Certificate] = []
         if electricity:
             categories["purchased_electricity_location_based"] = calc.electricity_location_based(
                 electricity, self.reference, gwp_set=inputs.gwp_set)
@@ -725,11 +727,31 @@ class EngagementRecalculationService:
                             line.flags.append("grid_region_from_zip")
                     part.flags = sorted({*part.flags, *(f for line in part.lines for f in line.flags)})
 
+        tolerance = materiality_tolerance(engagement.get("settings"))
+        open_items = Counter(str(item.get("category")) for item in needs_input + awaiting)
+        # The calculation lines, then the reviewer's decisions on them into the categories (F3b): each category
+        # is its lines plus the records on no line, so a decided line moves its category and every total after it.
+        events = [e for e in line_decisions or [] if isinstance(e, Mapping) and e.get("line_key") is not None]
+        by_line: dict[str, dict[str, dict[str, Any]]] = {}
+        for event in events:
+            by_line.setdefault(str(event["line_key"]), {})[str(event.get("stream"))] = event.get("record") or {}
+        built = recalculation_lines.Built()
+        if filing is not None:
+            try:
+                built = recalculation_lines.build(
+                    self.reference, self._ledger, placed, inputs, settings, decisions,
+                    tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities, self._company, filing,
+                    with_traces, by_line)
+            except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
+                log.warning("calculation lines failed: %s", type(exc).__name__)
+                built = recalculation_lines.Built(needs_input=[{
+                    "kind": "calculation_lines", "key": "calculation_lines",
+                    "message": "The calculation lines could not be built. Try again, and report it if it persists."}])
+        if built.decided:
+            self._count_line_decisions(categories, built, tolerance, electricity, certificates)
         totals = self._scope_totals(categories)
         incomplete = bool(needs_input or awaiting)
-        tolerance = materiality_tolerance(engagement.get("settings"))
         not_in_scope = out_of_scope(engagement.get("settings"))
-        open_items = Counter(str(item.get("category")) for item in needs_input + awaiting)
         response = {
             "engagement_id": engagement_id,
             "gwp_set": inputs.gwp_set if gwp_choice["supported"] else None,  # blocked: no set was used
@@ -767,22 +789,6 @@ class EngagementRecalculationService:
                                           out_of_scope=not_in_scope, tolerance=tolerance, gwp_set=inputs.gwp_set,
                                           ref=self.reference),
         }
-        events = [e for e in line_decisions or [] if isinstance(e, Mapping) and e.get("line_key") is not None]
-        by_line: dict[str, dict[str, dict[str, Any]]] = {}
-        for event in events:
-            by_line.setdefault(str(event["line_key"]), {})[str(event.get("stream"))] = event.get("record") or {}
-        built = recalculation_lines.Built()
-        if filing is not None:
-            try:
-                built = recalculation_lines.build(
-                    self.reference, self._ledger, placed, inputs, settings, decisions,
-                    tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities, self._company, filing,
-                    with_traces, by_line)
-            except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
-                log.warning("calculation lines failed: %s", type(exc).__name__)
-                built = recalculation_lines.Built(needs_input=[{
-                    "kind": "calculation_lines", "key": "calculation_lines",
-                    "message": "The calculation lines could not be built. Try again, and report it if it persists."}])
         response.update(calculation_lines=built.lines, calculation_unplaced=built.unplaced,
                         calculation_line_inputs=built.inputs)
         if events:
@@ -796,6 +802,29 @@ class EngagementRecalculationService:
             if item.get("key") in reported_sources:
                 item["reported_source"] = reported_sources[item["key"]]
         return response
+
+    def _count_line_decisions(self, categories: dict[str, calc.CategoryResult | None],
+                              built: recalculation_lines.Built, tolerance: float,
+                              electricity: list[calc.FacilityElectricity], certificates: list[calc.Certificate]
+                              ) -> None:
+        """``line_totals.apply``, all or nothing: if it fails, the categories and lines are as calculated and every
+        decision that would change a number is reported as not applied."""
+
+        # Only the decided lines are written (and the categories replaced, never changed): those are all to keep.
+        kept_categories = dict(categories)
+        kept_lines = {id(item.line): copy.deepcopy(item.line) for item in built.decided}
+        try:
+            line_totals.apply(categories, built.decided, built.lines, built.unplaced, ref=self.reference,
+                              tolerance=tolerance, electricity=electricity, certificates=certificates)
+        except Exception as exc:  # noqa: BLE001 - a decision must never take the totals down
+            log.warning("line decisions could not be counted: %s", type(exc).__name__)
+            categories.clear()
+            categories.update(kept_categories)
+            built.lines[:] = [kept_lines.get(id(line), line) for line in built.lines]
+            for item in built.decided:
+                line_totals.refuse(kept_lines[id(item.line)], item.decided.default, "could_not_count",
+                                   "Not applied: the decision could not be counted in the totals. Try again, "
+                                   "and report it if it persists.")
 
     @staticmethod
     def _line_decision_report(events: list[Mapping[str, Any]], built: recalculation_lines.Built) -> dict[str, Any]:

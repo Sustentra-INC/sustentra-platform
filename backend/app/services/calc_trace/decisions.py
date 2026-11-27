@@ -24,7 +24,6 @@ A line whose working holds more than one calculator run (it mixes fuels or units
 
 from __future__ import annotations
 
-import copy
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
@@ -126,9 +125,10 @@ def not_decidable(input_id: str) -> str | None:
 
 def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
           ) -> tuple[LineTrace, Outcome, Figures | None]:
-    """The decided trace (a copy; ``trace`` is not changed), the outcome of every decision, and the figures."""
+    """The decided trace (``trace`` itself, worked in place: a copy of a trace costs more than building it again),
+    the outcome of every decision, and the figures."""
 
-    out = copy.deepcopy(trace)
+    out = trace
     outcome = Outcome()
     values: dict[str, tuple[float, Mapping[str, Any], Mapping[str, Any]]] = {}  # input id -> (value, decision, record)
     rejected: list[str] = []

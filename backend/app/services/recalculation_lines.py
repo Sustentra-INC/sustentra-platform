@@ -29,7 +29,8 @@ from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorNotFoundError, EmissionFactorReference
 from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
-from backend.app.services.calc_trace import build_trace, decided_trace
+from backend.app.services.calc_trace import Decided, build_trace, decided_trace
+from backend.app.services.calc_trace.decisions import Figures
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
 from backend.app.services.reviewed_evidence import ReviewedRecord, place_on_facility, to_date
 
@@ -48,11 +49,58 @@ BIOGENIC_FLAG = "biogenic_co2_reported_separately"
 
 
 @dataclass
+class DecidedLine:
+    """A line whose reviewer decisions change its numbers. ``line`` is the line as calculated (its results are what
+    the category counted for it) until ``write`` puts the decided figures on it; ``sub`` is the calculator run the
+    category holds it under, (fuel, base unit) or (facility,); ``activity`` is its Step 2 result as calculated."""
+
+    line: dict[str, Any]
+    family: str
+    sub: tuple[str, ...]
+    activity: float
+    decided: Decided
+    figures: Figures
+    before: dict[str, Any] = field(default_factory=dict)
+
+    def write(self, tolerance: float) -> None:
+        """The decided figures on the line: its results, the difference to the company and to the reported total,
+        and Steps 1 to 3. The evidence rows of Step 1 stay as they were read."""
+
+        out, figures = self.line, self.figures
+        results = out["results"]
+        self.before = {k: (dict(v) if isinstance(v, dict) else v) for k, v in results.items()}
+        results["mass_t"] = {g: figures.mass_t.get(g, results["mass_t"].get(g, 0.0)) for g in calc.GASES}
+        results["gas_co2e_t"] = {g: figures.gas_co2e_t.get(g, results["gas_co2e_t"].get(g, 0.0)) for g in calc.GASES}
+        results["sum_co2e_t"], results["total_co2e_t"] = figures.sum_co2e_t, figures.total_co2e_t
+        results["biogenic_co2_t"] = figures.biogenic_co2_t
+        if results.get("company_total_co2e_t") is not None:
+            results["difference_to_company_t"] = figures.total_co2e_t - results["company_total_co2e_t"]
+        reported = out.get("reported_total_co2e_t")
+        if reported is not None:
+            out["difference_t"] = figures.total_co2e_t - reported
+            verdict = calc.compare(out["key"], reported, figures.total_co2e_t, tolerance)
+            out["difference_pct_of_base"] = verdict["difference_pct"]
+            out["status"] = "within" if verdict["status"] == "within_tolerance" else "above"
+        out["step1"]["total"]["quantity"] = figures.activity_total
+        out["step2"]["result"]["quantity"] = figures.activity
+        for row in out["step3"]["gases"]:
+            worked = figures.rows.get(row["gas"])
+            if worked is None:
+                continue
+            row["activity"]["value"], row["ef"]["value"] = worked["activity"], worked["ef"]
+            row["mass_t"], row["co2e_t"] = worked["mass_t"], worked["co2e_t"]
+            if row.get("company_co2e_t") is not None:
+                row["difference_to_company_t"] = row["co2e_t"] - row["company_co2e_t"]
+        out["flags"] = sorted({*out["flags"], "reviewer_decisions_applied"})
+
+
+@dataclass
 class Built:
     lines: list[dict[str, Any]] = field(default_factory=list)
     unplaced: list[dict[str, Any]] = field(default_factory=list)
     inputs: dict[str, Any] = field(default_factory=dict)
     needs_input: list[dict[str, Any]] = field(default_factory=list)
+    decided: list[DecidedLine] = field(default_factory=list)  # lines whose decisions change a number (not yet written)
 
 
 @dataclass
@@ -136,6 +184,7 @@ class _Builder:
                  line_decisions: dict[str, dict[str, dict[str, Any]]] | None = None) -> None:
         self.with_traces = with_traces
         self.line_decisions = line_decisions or {}
+        self.decided: list[DecidedLine] = []
         self.ref = ref
         self.ledger = ledger
         self.inputs = inputs
@@ -255,10 +304,14 @@ class _Builder:
         out["flags"] = sorted(flags | set(out["flags"]))
         records = self.line_decisions.get(line.key) if line is not None else None
         if records:  # the reviewer's decisions on the line, read into its working
-            decided = decided_trace(family, out, self._context(family, bucket, primary), records)
+            decided = decided_trace(family, out, self._context(family, bucket, primary), records,
+                                    serialise=self.with_traces)
             out["decisions"] = {"applied": decided.applied, "not_applied": decided.not_applied}
             if self.with_traces:
                 out["trace"] = decided.trace
+            if decided.figures is not None and primary is not None:
+                self.decided.append(DecidedLine(out, family, primary.sub, float(out["step2"]["result"]["quantity"]),
+                                                decided, decided.figures))
         elif self.with_traces:  # opt-in: the default response carries no trace key at all
             out["trace"] = self._trace(family, out, bucket, primary) if line is not None else None
         return out
@@ -647,4 +700,5 @@ def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRe
         "unknown_facility_ids": sorted(set(inputs.consolidated_shares) - known_facilities),
     }
     built.needs_input = builder.needs_input
+    built.decided = builder.decided
     return built
