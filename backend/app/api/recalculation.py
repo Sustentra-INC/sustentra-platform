@@ -207,12 +207,11 @@ async def export_workpaper(
 
     engagement = await _visible(db, engagement_id, user)
     items = await workpaper_item_service.list_items(db, engagement["id"])
-    decisions = {str(i["payload"].get("documentId") or i["item_key"]): i["payload"]
-                 for i in items if i["kind"] == "document"}
     service = _service()
     visible = lambda record: can_see(record, user)  # noqa: E731
+    # the one run Results answers (kept while unchanged); given the engagement as read, so its stamp is the same
+    recalculation = await run_recalculation(db, engagement, user)
     engagement = await methodology_gwp.attach_choice(db, engagement)
-    recalculation = await run_recalculation(db, engagement, user)  # the one Results answers (kept while unchanged)
     if recalculation.get("gwp_blocked"):  # the workpaper must not state numbers Results does not show
         raise HTTPException(status_code=409, detail=recalculation["gwp_blocked"])
     register = service.evidence_register(str(engagement["id"]), visible)

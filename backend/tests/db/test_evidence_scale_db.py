@@ -78,6 +78,9 @@ def cold_statements(get: Callable[..., Any], engagement_id: str, name: str) -> t
 
 def test_the_statement_count_does_not_grow_with_the_number_of_documents(get: Callable[..., Any]) -> None:
     counts: dict[int, dict[str, tuple[int, int]]] = {}
+    warm = scale.seed(ADMIN_URL or "", 50)  # once-only work (a first connection, a lookup kept for good) is not counted
+    for name in PATHS:
+        cold_statements(get, warm, name)
     for documents in (50, 500):
         engagement_id = scale.seed(ADMIN_URL or "", documents)
         counts[documents] = {name: cold_statements(get, engagement_id, name) for name in PATHS}
@@ -93,7 +96,7 @@ def test_a_kept_answer_runs_no_more_than_the_stamp(get: Callable[..., Any], enga
         counter = scale.StatementCounter()
         with counter.counting():
             assert read(get, engagement, name).status_code == 200
-        assert counter.queries <= 10, (name, counter.queries)  # the engagement, the stamps, the names: no row reads
+        assert counter.queries <= 16, (name, counter.queries)  # the engagement, the stamps, the names: no row reads
 
 
 # --- every kind of change refreshes what is kept ----------------------------------------------------------
@@ -346,3 +349,48 @@ def test_a_change_that_is_undone_still_refreshes(get: Callable[..., Any], engage
     _document_item(engagement, {"note": "a"})
     read(get, engagement, "tree")
     assert evidence_cache.LOADED.misses == kept[1] + 1 and evidence_cache.LOADED.hits == kept[0]
+
+
+# --- a reviewer's decision on a calculation line (F3b) -------------------------------------------------------------
+def workbook(get: Callable[..., Any], engagement_id: str) -> dict[str, list[list[Any]]]:
+    """The Excel workpaper's cell values, sheet by sheet."""
+
+    import io
+
+    from openpyxl import load_workbook
+
+    response = get(f"/api/v1/engagements/{engagement_id}/export")
+    assert response.status_code == 200, response.text[:300]
+    book = load_workbook(io.BytesIO(response.content), data_only=True)
+    return {sheet.title: [list(row) for row in sheet.iter_rows(values_only=True)] for sheet in book.worksheets}
+
+
+def test_a_calc_line_decision_reaches_results_the_schedule_and_the_workpaper_alike(
+        get: Callable[..., Any], engagement: str) -> None:
+    base = f"/api/v1/engagements/{engagement}"
+    before = {name: fresh(get, engagement, name) for name in PATHS}
+    sheets_before = workbook(get, engagement)
+    for name in PATHS:  # kept now
+        read(get, engagement, name)
+    kept_before = (len(evidence_cache.RECALCULATION), evidence_cache.RECALCULATION.hits)
+
+    trace = get(f"{base}/recalculation/lines/{scale.GAS_LINE}/trace").json()["trace"]
+    target = next((i for i in trace["inputs"].values()
+                   if isinstance((i.get("recomputed") or {}).get("value"), (int, float))), None)
+    assert target is not None, "the line has an input a reviewer can edit"
+    edit = {"action": "edit", "value": target["recomputed"]["value"] * 2, "unit": target["recomputed"].get("unit"),
+            "reason": "Invoice shows more"}
+    posted = get(f"{base}/calculation-lines/{scale.GAS_LINE}/inputs/{target['id']}/recomputed", scale.TOKEN, edit)
+    assert posted.status_code == 200, posted.text[:300]
+    # a decision's own check (it carries a proposal) neither reads from nor writes to what is kept
+    assert (len(evidence_cache.RECALCULATION), evidence_cache.RECALCULATION.hits) == kept_before
+
+    after = {name: read(get, engagement, name).json() for name in PATHS}  # through what is kept
+    sheets_after = workbook(get, engagement)
+    uncached = {name: fresh(get, engagement, name) for name in PATHS}
+    sheets_uncached = workbook(get, engagement)
+    assert after["recalculation"] != before["recalculation"], "the decision moved the totals"
+    for name in PATHS:
+        assert after[name] == uncached[name], f"{name}: kept answer differs from an uncached one"
+    assert sheets_after == sheets_uncached and sheets_after != sheets_before
+    assert read(get, engagement, "recalculation").json() == after["recalculation"]

@@ -310,13 +310,17 @@ def wired_app(app_url: str) -> Iterator[Any]:
 
     app.dependency_overrides[db.get_db_session] = session_dep
 
-    async def request(path: str, token: str) -> Any:
+    async def request(path: str, token: str, body: Any = None) -> Any:
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+            if body is not None:
+                return await client.post(path, json=body, cookies={SESSION_COOKIE: token}, headers={"Origin": ORIGIN})
             return await client.get(path, cookies={SESSION_COOKIE: token}, headers={"Origin": ORIGIN})
 
-    def get(path: str, token: str = TOKEN) -> Any:
-        return loop.run_until_complete(request(path, token))
+    def get(path: str, token: str = TOKEN, body: Any = None) -> Any:
+        """GET ``path``; with ``body``, POST it as JSON."""
+
+        return loop.run_until_complete(request(path, token, body))
 
     try:
         yield get

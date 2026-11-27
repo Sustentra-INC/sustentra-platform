@@ -28,7 +28,7 @@ from backend.app.api.s1_access import can_see, s1_reader
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
 from backend.app.services import workpaper_item_service
-from backend.app.services import evidence_cache, methodology_gwp  # noqa: F401 - the module the recalculation reads the GWP choice from
+from backend.app.services import calc_line_review, evidence_cache, methodology_gwp  # noqa: F401 - the modules the recalculation reads the decisions and the GWP choice from
 from backend.app.services.evidence_tree_service import EvidenceTreeService
 
 router = APIRouter(prefix="/v1", tags=["evidence-tree"])
