@@ -325,7 +325,7 @@ export interface CalcLineCompany {
   results: CalcLineResults;
 }
 
-export type CalcCountsToward = "stationary" | "mobile" | "purchased_energy";
+export type CalcCountsToward = "stationary" | "mobile" | "purchased_energy" | "fugitive";
 
 /** One calculation line: a facility's (or vehicle group's) fuel, substance or energy. */
 export interface CalculationLine {
@@ -357,6 +357,22 @@ export interface CalculationLine {
   flags: string[];
   /** Reviewer decisions on this line's working that were applied or not (only when it has decisions). */
   decisions?: LineDecisions;
+  /**
+   * A fugitive line only: its simplified material balance (backend calc_trace/fugitive.py). `results.mass_t` is then
+   * keyed by the refrigerant ("R-404A"), not by CO₂, CH₄ and N₂O; `gwp` is null when nothing counts yet.
+   */
+  smb?: CalcLineSmb;
+}
+
+export interface CalcLineSmb {
+  gas: string;
+  unit: string;
+  terms: Record<"P_N" | "C_N" | "P_S" | "C_D" | "R_D", number>;
+  emitted: number;
+  factor: number;
+  emitted_t: number;
+  gwp: { value: number; source: string | null } | null;
+  gwp_set: string;
 }
 
 export type CalcUnplacedReason =

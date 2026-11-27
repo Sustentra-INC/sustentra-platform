@@ -12,6 +12,7 @@ import type {
 import type { RecalculationSettings } from "../types/engagement";
 import { demoGwpChoice } from "./methodology";
 import { companyRegionCode, demoCompanyRegion } from "./calcTrace/companyRegion";
+import { fugitiveLine } from "./calcTrace/fugitive";
 import { DEFAULT_VEHICLE_GROUP, buildModel, engagementNow, recordsOn, shareInPeriod, type Model, type ModelLine, type ModelRecord } from "./linesModel";
 
 const HUB = "EPA GHG Emission Factors Hub 2025";
@@ -232,6 +233,18 @@ export function calculate(): Calculated {
   }
 
   for (const ml of model.lines) {
+    if (ml.category === "fugitive") {
+      // Refrigerants: the simplified material balance of each line's service records (calcTrace/fugitive.ts).
+      const used = recordsOn(model, ml.key).filter((r) => r.kind === "refrigerant" && r.accepted && r.quantity !== null);
+      if (!used.length) continue;
+      const line = fugitiveLine(ml, used, {
+        gwp: gwpOf(inputs.gwp_set).r404a, set: inputs.gwp_set, share: (inputs.shares[ml.facility_id ?? ""] ?? 100) / 100,
+        company: activity[ml.key] ?? null, tolerance: inputs.tolerance_pct, reported: inputs.settings.reported_lines?.[ml.key] ?? null,
+        incomplete: awaiting.some((a) => a.category === "fugitive_refrigerants"),
+      });
+      lines.push({ line, model: ml, records: used.map((r) => ({ r, share: 1 })), facilityName: model.facilities.find((f) => f.facilityId === ml.facility_id)?.name ?? null });
+      continue;
+    }
     if (!["stationary", "mobile", "purchased_energy"].includes(ml.category)) continue;
     const on = recordsOn(model, ml.key).filter((r) => r.accepted && r.quantity !== null);
     const withShare = on.map((r) => ({ r, share: shareInPeriod(r, model.period) }));

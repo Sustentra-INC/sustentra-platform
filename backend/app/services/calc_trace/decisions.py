@@ -18,6 +18,8 @@ What counts, per stream:
 Only the activity (the total, or a document's row), the emission factors and a vehicle group's distance or fuel economy can be decided
 for a line. The GWP, the consolidated share, the unit conversion and the grid region are set for the whole engagement
 (Methodology, Recalculation inputs, the conversion table): a decision on one of them is reported, not applied.
+A fugitive line (``calc_trace/fugitive``) takes its own decisions: a simplified material balance term or one record of
+it, and the GWP of a blend component the reference data lacks (``component_gwp.<name>``); it is worked by ``_fugitive``.
 
 A value is checked again here before it reaches the arithmetic (stored rows may predate a rule): a finite number above
 0 and within ``MAX_NUMBER``, in the input's own unit. A decision that fails is reported (``not_applied``), never used.
@@ -33,14 +35,15 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from backend.app.reference.emission_factor_loader import default_emission_factor_reference
-from backend.app.services.calc_trace import electricity, mobile, ops, stationary
+from backend.app.services.calc_trace import electricity, fugitive, mobile, ops, stationary
 from backend.app.services.calc_trace._line import _annotate, normalise_unit, reference_source
 from backend.app.services.calc_trace.model import (
     Choice, LineTrace, Operand, Operation, Side, SourceRef, Term, TraceBlock, TraceResult,
 )
 
 MAX_NUMBER = 1e15
-DECIDABLE = ("activity.total", "distance", "fuel_economy", *stationary.SITE_INPUTS)  # and every "ef.<gas>"
+DECIDABLE = ("activity.total", "distance", "fuel_economy", *stationary.SITE_INPUTS, *fugitive.TERMS)
+# and every "ef.<gas>", and a fugitive line's "component_gwp.<component>" (a blend component the reference data lacks)
 SET_ELSEWHERE = {
     "unit_conversion": "the unit conversion comes from the conversion table",
     "share": "the consolidated share is set under Recalculation inputs",
@@ -125,7 +128,9 @@ def not_decidable(input_id: str) -> str | None:
         return SET_ELSEWHERE[base]
     if base.startswith("gwp."):
         return "the GWP is chosen for the whole engagement on the Methodology page"
-    if base in DECIDABLE or base.startswith("ef."):
+    if base.startswith("share."):
+        return "a blend's composition comes from the reference data"
+    if base in DECIDABLE or base.startswith(("ef.", fugitive.COMPONENT_GWP)):
         return None
     return "this input cannot be decided for a line"
 
@@ -139,7 +144,8 @@ def mark_decidable(trace: LineTrace) -> None:
     mixed = _multi_run(trace)
     for input_id, item in trace.inputs.items():
         why = not_decidable(input_id)
-        if why is None and (mixed or trace.state == "blocked"):
+        # A fugitive line blocked on a GWP still has its working: its terms and missing component GWPs can be decided.
+        if why is None and (mixed or (trace.state == "blocked" and (trace.panel != "fugitive" or not trace.steps))):
             why = MIXED_RUNS if mixed else "this line has no working to calculate from"
         item.decidable, item.why_not = why is None, why
 
@@ -237,6 +243,8 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
         picked = _choice(out, target_id, decision, outcome, panel, site)
         if picked is not None:  # a grid-region pick: never a route (``outcome.routes``), worked as factors below
             region_pick = (picked, decision, records.get(f"choice|{target_id}|") or {})
+    if panel == "fugitive":  # the simplified material balance: its own working (``calc_trace/fugitive``)
+        return _fugitive(out, values, rejected, outcome, context)
     if panel == "stationary":
         stationary.follow_co2(out, outcome.routes, {i for i, _ in chosen}, site)
     _equation_overrides(out, values, outcome)
@@ -282,6 +290,51 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
         _region_worked(out, region_pick, regional, values)
     out.flags = sorted({*out.flags, APPLIED_FLAG})
     return out, outcome, figures
+
+
+def _fugitive(trace: LineTrace, values: dict[str, tuple[float, Mapping[str, Any], Mapping[str, Any]]],
+              rejected: list[str], outcome: Outcome, context: dict[str, Any] | None
+              ) -> tuple[LineTrace, Outcome, Figures | None]:
+    """A fugitive line worked again with its decided terms, records and component GWPs (``fugitive.rework``). A term
+    decided outright wins over its records. While a GWP is still awaited the decided values are shown, held, and the
+    line counts nothing."""
+
+    for term in fugitive.TERMS:
+        if term in values:
+            for input_id in [i for i in values if i.startswith(f"{term}/")]:
+                values.pop(input_id)
+                _move_to_not_applied(outcome, input_id, "total_decided", "Not applied: this term's total is decided.")
+    line = (context or {}).get("line")
+    worked: dict[str, float] | None = None
+    if values and line is not None:
+        decided: dict[str, tuple[float, Side]] = {}
+        for input_id, (number, decision, record) in values.items():
+            found = _find(trace, input_id)
+            decided[input_id] = (number, _decided_side(found.recomputed if found is not None else None, number,
+                                                       decision, record))
+        worked = fugitive.rework(trace, (line, context or {}), decided)
+        mark_decidable(trace)
+    elif values:
+        for input_id in list(values):
+            _move_to_not_applied(outcome, input_id, "could_not_apply",
+                                 "Not applied: the decision could not be worked in.")
+    for input_id in rejected:
+        found = _find(trace, input_id)
+        if found is not None and found.recomputed is not None:
+            found.recomputed.status = "rejected"  # the automatic value stands: the suggestion was rejected
+    if rejected:
+        trace.flags = sorted({*trace.flags, REJECTED_FLAG})
+    if worked is None or line is None:
+        for item in outcome.applied:
+            if item["id"] in values and item.get("status") in DECIDED:
+                item["uses"] = "held: the line awaits a GWP, so it is not counted yet"
+        return trace, outcome, None
+    trace.flags = sorted({*trace.flags, APPLIED_FLAG})
+    gas = str(line["smb"]["gas"])
+    return trace, outcome, Figures(
+        mass_t={gas: worked["emitted_t"]}, gas_co2e_t={gas: worked["co2e"]}, sum_co2e_t=worked["co2e"],
+        total_co2e_t=worked["total"], biogenic_co2_t=0.0, activity=worked["emitted_t"],
+        activity_total=worked["emitted"], rows={gas: {"gwp": worked["gwp"], "emitted": worked["emitted"]}})
 
 
 def _move_to_not_applied(outcome: Outcome, input_id: str, reason: str, message: str) -> None:

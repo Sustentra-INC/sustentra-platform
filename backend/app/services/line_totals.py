@@ -12,6 +12,9 @@ category total is therefore Σ lines (decided) + unplaced. Market-based electric
 MWh (certificate coverage moves with the total), with a facility whose factor was decided worked as its decided
 location-based mass x (1 - coverage), exactly what the market-based calculator does with a facility's own factor.
 
+Fugitive refrigerants (``_apply_fugitive``) are by refrigerant, not by gas: a decided line moves its refrigerant's mass,
+and a refrigerant the category could not count (no GWP) is counted from the lines whose component GWPs are decided.
+
 With no decision that changes a number nothing here runs, so the categories are the calculators' own, bit for bit.
 When the lines do not add up to their category (a line that could not be calculated, say), its decisions are not
 applied to the totals: the line keeps its calculated figures and the decision is reported, never half applied.
@@ -113,6 +116,9 @@ def apply(categories: dict[str, calc.CategoryResult | None], decided: list[Decid
 
     applied: list[DecidedLine] = []
     every = [*lines, *unplaced]
+    refrigerants = [d for d in decided if d.family == "fugitive"]
+    if refrigerants:
+        applied.extend(_apply_fugitive(categories, refrigerants, every, tolerance))
     for family, name in FAMILY_CATEGORY.items():
         mine = [d for d in decided if d.family == family]
         if not mine:
@@ -183,7 +189,16 @@ def _label(input_id: str) -> str:
         return f"{input_id[3:]} emission factor"
     if input_id.startswith("activity.total/"):
         return "Activity (one record)"
+    if input_id.startswith("component_gwp."):
+        return f"{input_id.split('.', 1)[1]} GWP"
+    term, _, row = input_id.partition("/")
+    if term in _TERM_LABELS:
+        return f"{_TERM_LABELS[term]} {term}" + (" (one record)" if row else "")
     return _LABELS.get(input_id, input_id)
+
+
+_TERM_LABELS = {"P_N": "New equipment charge", "C_N": "New equipment capacity", "P_S": "Added during service",
+                "C_D": "Retired equipment capacity", "R_D": "Recovered from retired equipment"}
 
 
 def _decided_inputs(item: DecidedLine) -> list[calc.Step]:
@@ -271,3 +286,107 @@ def _market(market: calc.CategoryResult | None, location_lines: list[calc.LineRe
     result = calc.retotal(rerun, rerun.lines, ref, [*market.flags, FLAG])
     result.flags = sorted(set(result.flags))
     return True, result
+
+
+# --- fugitive refrigerants (C4) ---------------------------------------------------------------------------------------
+FUGITIVE = "fugitive_refrigerants"
+DECIDED_GWP_SOURCE = "Component GWPs decided on the calculation lines"
+NEGATIVE = "negative_refrigerant_emissions"
+
+
+def fugitive_sums(lines: Iterable[Mapping[str, Any]]) -> dict[str, float]:
+    """Σ of the fugitive lines' (and unplaced records') mass by refrigerant. A line whose refrigerant has no GWP holds
+    no mass: the category does not count it either."""
+
+    out: dict[str, float] = {}
+    for line in lines:
+        if line.get("counts_toward") != "fugitive":
+            continue
+        for gas, mass in (line["results"].get("mass_t") or {}).items():
+            out[gas] = out.get(gas, 0.0) + float(mass)
+    return out
+
+
+def _apply_fugitive(categories: dict[str, calc.CategoryResult | None], mine: list[DecidedLine],
+                    every: list[dict[str, Any]], tolerance: float) -> list[DecidedLine]:
+    """The fugitive category moved by its lines' decisions. A refrigerant the category counted takes each decided
+    line's change of mass (its GWP is the category's: a line cannot decide it). A refrigerant it could not count (no
+    GWP) is counted from the lines whose component GWPs are decided, at the blend GWP they give; every such line of
+    one refrigerant must give the same GWP. Then the category is totalled again as ``calc.refrigerants`` totals it."""
+
+    category = categories.get(FUGITIVE)
+    counted = {line.key: float(line.mass_t.get(line.key, 0.0)) for line in category.lines} if category else {}
+    sums = fugitive_sums(every)
+    if (category is not None and len(counted) != len(category.lines)) or set(sums) != set(counted) or any(
+            not _close(sums[gas], counted[gas]) for gas in counted):
+        for item in mine:
+            _refuse(item, "category_does_not_add_up", "Not applied: this category's lines do not add up to its "
+                    "total, so a change on one line cannot be counted. Check the lines marked as not calculated.")
+        return []
+    gwp: dict[str, dict[str, Any]] = {k: dict(v) for k, v in (category.gwp if category else {}).items()}
+    added: dict[str, float] = {}
+    usable: list[DecidedLine] = []
+    for item in mine:
+        gas = item.sub[0]
+        decided_gwp = (item.figures.rows.get(gas) or {}).get("gwp")
+        if not isinstance(decided_gwp, (int, float)) or gas not in item.figures.mass_t:
+            _refuse(item, "could_not_count", "Not applied: the decision could not be counted in the totals.")
+        elif gas in counted:
+            if not math.isclose(float(decided_gwp), float(gwp[gas]["value"]), rel_tol=1e-12, abs_tol=0.0):
+                _refuse(item, "could_not_count", "Not applied: the line's GWP is not the one its category uses.")
+            else:
+                usable.append(item)
+        elif gas in added and not math.isclose(added[gas], float(decided_gwp), rel_tol=1e-12, abs_tol=0.0):
+            _refuse(item, "gwp_differs_between_lines",
+                    f"Not applied: another {gas} line is worked with other component GWPs (its GWP is "
+                    f"{added[gas]:,.6g}). Decide the same component GWPs on every {gas} line.")
+        else:
+            added.setdefault(gas, float(decided_gwp))
+            usable.append(item)
+    if not usable:
+        return []
+    new_lines = {line.key: copy.deepcopy(line) for line in category.lines} if category else {}
+    details = copy.deepcopy(category.details) if category else {}
+    for item in usable:
+        gas = item.sub[0]
+        line = new_lines.get(gas)
+        if line is None:  # a refrigerant counted for the first time, from its decided lines
+            line = new_lines[gas] = calc.LineResult(gas, {gas: calc.REFRIGERANT_EQUATION}, {gas: 0.0})
+            gwp[gas] = {"value": added[gas], "source": DECIDED_GWP_SOURCE}
+        if gas in added:  # the Working sheet lists the records it counted, as for every other refrigerant
+            entry = next((e for e in details.setdefault("inputs", []) if e.get("fuel") == gas), None)
+            if entry is None:
+                entry = {"fuel": gas, "unit": item.line["smb"]["unit"], "quantity": 0.0, "documents": []}
+                details["inputs"].append(entry)
+            entry["quantity"] += item.figures.activity_total
+            entry["documents"].extend({"document_id": r["document_id"], "record": r.get("record"),
+                                       "service_type": r.get("service_type"), "quantity": r["counted_quantity"],
+                                       "unit": r["unit"]} for r in item.line["step1"]["rows"])
+        before = float(item.line["results"]["mass_t"].get(gas, 0.0))
+        delta = item.figures.mass_t[gas] - before
+        old = line.mass_t.get(gas, 0.0)
+        line.mass_t[gas] = old + delta
+        line.steps.extend(_decided_inputs(item))
+        line.steps.append(calc.Step(f"{gas} after {STEP.lower()}", "calculated + (decided - calculated) per line",
+                                    {"calculated": {"value": old, "unit": "t", "source": None},
+                                     str(item.line["key"]): {"value": delta, "unit": "t", "source": STEP}},
+                                    line.mass_t[gas], "t"))
+        value = float(gwp[gas]["value"])
+        line.steps.append(calc.Step(f"{gas} in CO2e", "mass x GWP", {  # the last step: the refrigerant's CO2e
+            "mass": {"value": line.mass_t[gas], "unit": "t", "source": None},
+            "GWP": {"value": value, "unit": "", "source": gwp[gas]["source"]}}, line.mass_t[gas] * value, "t CO2e"))
+        line.flags = sorted(({*line.flags, FLAG} - {NEGATIVE}) | ({NEGATIVE} if line.mass_t[gas] < 0 else set()))
+    ordered = list(new_lines.values())
+    totals = {line.key: line.mass_t[line.key] for line in ordered}
+    co2e = {line.key: line.steps[-1].result for line in ordered}
+    total = sum(co2e.values())
+    summary = calc.Step("Total refrigerant emissions in CO2e", "sum of each refrigerant's emissions in CO2e",
+                        {k: {"value": v, "unit": "t CO2e", "source": None} for k, v in co2e.items()}, total, "t CO2e")
+    flags = {*(category.flags if category else []), FLAG} - {NEGATIVE}
+    flags |= {f for line in ordered for f in line.flags}
+    gwp_set = category.gwp_set if category else str(usable[0].line["smb"]["gwp_set"])
+    categories[FUGITIVE] = calc.CategoryResult(FUGITIVE, ordered, totals, co2e, total, gwp, 0.0, [summary],
+                                               sorted(flags), details, gwp_set)
+    for item in usable:
+        item.write(tolerance)
+    return usable

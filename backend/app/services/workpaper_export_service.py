@@ -430,7 +430,8 @@ _NOT_ON_A_LINE = "Not on a line"
 _RECORD_NUMBER = re.compile(r"^(?P<file>.*?)(?: \(record (?P<n>\d+)\))?$", re.DOTALL)
 # The category result a calculation line's records are also counted in (its details list the same documents).
 _LINE_FAMILY = {"stationary": "stationary_combustion", "biogenic": "stationary_combustion",
-                "mobile": "mobile_combustion", "purchased_energy": "purchased_electricity_location_based"}
+                "mobile": "mobile_combustion", "purchased_energy": "purchased_electricity_location_based",
+                "fugitive": "fugitive_refrigerants"}
 _DETAIL_NAMES = {"stationary_combustion": CATEGORY_LABEL["stationary"], "mobile_combustion": CATEGORY_LABEL["mobile"],
                  "fugitive_refrigerants": CATEGORY_LABEL["fugitive"],
                  "purchased_electricity_location_based": CATEGORY_LABEL["purchased_energy"]}

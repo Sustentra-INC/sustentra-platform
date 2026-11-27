@@ -13,6 +13,9 @@ from the recalculation's ledger (what the categories counted), the line of a rec
 under ``unplaced`` with its quantity and its own result, so lines plus unplaced add up to the
 category (on ``sum_co2e_t``: a consolidated share below 100% scales ``total_co2e_t`` only).
 
+Fugitive refrigerants: one line per refrigerant and facility, from each service record's simplified material balance
+terms (``calc_trace/fugitive.line_parts``); its results are by refrigerant, not by gas.
+
 Biomass: a biomass fuel's record sits on a ``biogenic`` line. Its CO2 row is marked ``biogenic``
 and carries ``co2e_t`` 0 (the CO2 is reported apart, in ``results.biogenic_co2_t``); its CH4 and N2O
 count as usual. ``counts_toward`` names the category those CH4 and N2O roll into.
@@ -29,7 +32,7 @@ from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorNotFoundError, EmissionFactorReference
 from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
-from backend.app.services.calc_trace import Decided, build_trace, decided_trace, electricity, stationary
+from backend.app.services.calc_trace import Decided, build_trace, decided_trace, electricity, fugitive, stationary
 from backend.app.services.calc_trace.decisions import Figures
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
 from backend.app.services.reviewed_evidence import ReviewedRecord, place_on_facility, to_date
@@ -37,11 +40,12 @@ from backend.app.services.reviewed_evidence import ReviewedRecord, place_on_faci
 if TYPE_CHECKING:
     from backend.app.services.engagement_recalculation_service import RecalculationInputs
 
-COUNTS_TOWARD = {"stationary": "stationary", "mobile": "mobile", "electricity": "purchased_energy"}
+COUNTS_TOWARD = {"stationary": "stationary", "mobile": "mobile", "electricity": "purchased_energy",
+                 "fugitive": "fugitive"}
 ROLLUP_SOURCE = {"stationary": "stationary_combustion", "mobile": "mobile_combustion",
-                 "electricity": "purchased_electricity"}
+                 "electricity": "purchased_electricity", "fugitive": "fugitive_refrigerants"}
 FAMILY_CATEGORIES = {"stationary": {"stationary", "biogenic"}, "mobile": {"mobile", "biogenic"},
-                     "electricity": {"purchased_energy"}}
+                     "electricity": {"purchased_energy"}, "fugitive": {"fugitive"}}
 ELECTRICITY_LEVEL2 = "Electricity"
 UNIT_SOURCE = "fuel_units conversion table"
 DISTANCE_SOURCE = "Vehicle group distance entered under Recalculation inputs"
@@ -78,6 +82,9 @@ class DecidedLine:
         out, figures = self.line, self.figures
         results = out["results"]
         self.before = {k: (dict(v) if isinstance(v, dict) else v) for k, v in results.items()}
+        if self.family == "fugitive":
+            self._write_fugitive(tolerance)
+            return
         results["mass_t"] = {g: figures.mass_t.get(g, results["mass_t"].get(g, 0.0)) for g in calc.GASES}
         results["gas_co2e_t"] = {g: figures.gas_co2e_t.get(g, results["gas_co2e_t"].get(g, 0.0)) for g in calc.GASES}
         results["sum_co2e_t"], results["total_co2e_t"] = figures.sum_co2e_t, figures.total_co2e_t
@@ -106,6 +113,43 @@ class DecidedLine:
                 row["difference_to_company_t"] = row["co2e_t"] - row["company_co2e_t"]
         self._summary_distance()
         out["flags"] = sorted({*out["flags"], "reviewer_decisions_applied"})
+
+    def _write_fugitive(self, tolerance: float) -> None:
+        """A fugitive line's decided figures: its refrigerant's mass and CO2e, Step 1's emitted total, Step 2's tonnes,
+        and the GWP it was worked with (a blend's from its decided components)."""
+
+        out, figures, results = self.line, self.figures, self.line["results"]
+        gas = str(out["smb"]["gas"])
+        worked = figures.rows.get(gas) or {}
+        results["mass_t"], results["gas_co2e_t"] = dict(figures.mass_t), dict(figures.gas_co2e_t)
+        results["sum_co2e_t"], results["total_co2e_t"] = figures.sum_co2e_t, figures.total_co2e_t
+        out["step1"]["total"]["quantity"] = figures.activity_total
+        out["step2"]["result"]["quantity"] = figures.activity
+        out["smb"] = {**out["smb"], "emitted": figures.activity_total, "emitted_t": figures.activity}
+        if out["smb"].get("gwp") is None and "gwp" in worked:
+            out["smb"]["decided_gwp"] = {"value": worked["gwp"], "source": "component GWPs decided for this line"}
+        company = out.get("company")
+        if company is not None and company.get("counted") is False and "gwp" in worked:
+            # the company's emitted mass, now that the line has a GWP: the same GWP, as on every panel
+            tonnes = float(company["step2"]["result"]["quantity"])
+            co2e = tonnes * float(worked["gwp"])
+            share = float(out["consolidated_share_pct"])
+            company["results"] = {**company["results"], "gas_co2e_t": {gas: co2e}, "sum_co2e_t": co2e,
+                                  "total_co2e_t": co2e * share / 100}
+            company["counted"] = True
+            results["company_total_co2e_t"] = co2e * share / 100
+        if results.get("company_total_co2e_t") is not None:
+            results["difference_to_company_t"] = figures.total_co2e_t - results["company_total_co2e_t"]
+        reported = out.get("reported_total_co2e_t")
+        if reported is not None:
+            out["difference_t"] = figures.total_co2e_t - reported
+            verdict = calc.compare(out["key"], reported, figures.total_co2e_t, tolerance)
+            out["difference_pct_of_base"] = verdict["difference_pct"]
+            out["status"] = "within" if verdict["status"] == "within_tolerance" else "above"
+        flags = set(out["flags"]) - {fugitive.NO_GWP_FLAG, fugitive.NEGATIVE_FLAG}
+        if figures.activity_total < 0:
+            flags.add(fugitive.NEGATIVE_FLAG)
+        out["flags"] = sorted(flags | {"reviewer_decisions_applied"})
 
     def _summary_distance(self) -> None:
         """An on-road line's summary fields (``step2.distance`` and the fuel economy it implies) follow the distance
@@ -290,6 +334,9 @@ class _Builder:
     # --- a whole line --------------------------------------------------------------------------
     def assemble(self, bucket: _Bucket, share_pct: float) -> dict[str, Any]:
         family = bucket.family
+        if family == "fugitive":  # the simplified material balance of one refrigerant (``calc_trace/fugitive``)
+            made = self._fugitive_line(bucket, share_pct)
+            return self._finish(made, family, bucket, None, (str(made["smb"]["gas"]),))
         subs_order: list[tuple[str, ...]] = []
         for sub in [c.sub for c in bucket.contribs] + list(bucket.groups):
             if sub not in subs_order:
@@ -340,26 +387,85 @@ class _Builder:
         else:
             self._company_and_reported(out, bucket, subs, share_pct)
         out["flags"] = sorted(flags | set(out["flags"]))
+        return self._finish(out, family, bucket, primary, primary.sub if primary is not None else None)
+
+    def _finish(self, out: dict[str, Any], family: str, bucket: _Bucket, primary: _Sub | None,
+                sub: tuple[str, ...] | None) -> dict[str, Any]:
+        """The reviewer's decisions on the line read into its working (or its plain trace): ``sub`` is the calculator
+        run the category holds it under."""
+
+        line = bucket.line
         records = self.line_decisions.get(line.key) if line is not None else None
         if self.proposal is not None and line is not None and line.key == self.proposal.line_key:
-            made = self.proposal.offer(line.key, build_trace(family, out, self._context(family, bucket, primary)))
+            made = self.proposal.offer(line.key, build_trace(family, out, self._context(family, bucket, primary, out)))
             if made is not None:  # the decision POST's move, worked in as if it were stored
                 records = {**(records or {}), self.proposal.stream: made}
         if records:  # the reviewer's decisions on the line, read into its working
-            decided = decided_trace(family, out, self._context(family, bucket, primary), records,
+            decided = decided_trace(family, out, self._context(family, bucket, primary, out), records,
                                     serialise=self.with_traces)
             out["decisions"] = {"applied": decided.applied, "not_applied": decided.not_applied}
             if self.with_traces:
                 out["trace"] = decided.trace
-            if decided.figures is not None and primary is not None:
-                self.decided.append(DecidedLine(out, family, primary.sub, float(out["step2"]["result"]["quantity"]),
+            if decided.figures is not None and sub is not None:
+                self.decided.append(DecidedLine(out, family, sub, float(out["step2"]["result"]["quantity"]),
                                                 decided, decided.figures))
         elif self.with_traces:  # opt-in: the default response carries no trace key at all
             out["trace"] = self._trace(family, out, bucket, primary) if line is not None else None
         return out
 
-    def _context(self, family: str, bucket: _Bucket, primary: _Sub | None) -> dict[str, Any]:
+    def _fugitive_line(self, bucket: _Bucket, share_pct: float) -> dict[str, Any]:
+        """One refrigerant's line: its records' terms, the balance, and the GWP the category counted it with."""
+
+        line = bucket.line
+        gas = bucket.contribs[0].sub[0] if bucket.contribs else bucket.level2
+        parts = fugitive.line_parts(bucket.contribs, gas=gas, gwp=self.ledger.refrigerant_gwp.get(gas),
+                                    gwp_set=self.inputs.refrigerant_gwp_set, share_pct=share_pct, iso=_iso)
+        out: dict[str, Any] = {
+            "key": line.key if line else None, "scope": line.scope if line else "s1",
+            "category": line.category if line else "fugitive", "counts_toward": "fugitive",
+            "level2": line.level2_label if line else bucket.level2,
+            "level2_key": line.level2 if line else cl.slug(bucket.level2),
+            "label": bucket.anchor or (line.label if line else bucket.level2),
+            "facility_id": line.facility_id if line else None, "consolidated_share_pct": share_pct,
+            "method": parts["method"], "step1": parts["step1"], "step2": parts["step2"], "step3": parts["step3"],
+            "results": parts["results"], "smb": parts["smb"],
+            "company": None, "reported_total_co2e_t": None, "difference_t": None,
+            "difference_pct_of_base": None, "status": "not_reported",
+            "inputs_incomplete": self.open_sources.get(ROLLUP_SOURCE["fugitive"], False), "flags": parts["flags"],
+        }
+        if line is None:
+            out["reason"] = bucket.reason or "no_calculation_line"
+            out["target"] = bucket.target
+            return out
+        key = line.key
+        reported = self.inputs.reported_lines.get(key)
+        if reported is not None:
+            recomputed = out["results"]["total_co2e_t"]
+            out["reported_total_co2e_t"], out["difference_t"] = reported, recomputed - reported
+            verdict = calc.compare(key, reported, recomputed, self.tolerance)
+            out["difference_pct_of_base"] = verdict["difference_pct"]
+            out["status"] = "within" if verdict["status"] == "within_tolerance" else "above"
+        given = self.inputs.reported_activity.get(key)
+        if given is not None:
+            company = fugitive.company_parts(given, out)
+            if isinstance(company, str):
+                self.needs_input.append({"kind": "company_activity", "key": key,
+                                         "message": f"{out['level2']}, {out['label']}: {company}"})
+            else:
+                out["company"] = company
+                if company["counted"]:
+                    total = company["results"]["total_co2e_t"]
+                    out["results"]["company_total_co2e_t"] = total
+                    out["results"]["difference_to_company_t"] = out["results"]["total_co2e_t"] - total
+                    out["results"]["company_gas_co2e_t"] = company["results"]["gas_co2e_t"]
+        return out
+
+    def _context(self, family: str, bucket: _Bucket, primary: _Sub | None,
+                 out: dict[str, Any] | None = None) -> dict[str, Any]:
         context: dict[str, Any] = {}
+        if family == "fugitive":  # the reference (a blend's components), the company's terms, and the line to rework
+            records = self.line_decisions.get(bucket.line.key) if bucket.line is not None else None
+            return {"ref": self.ref, "company_terms": fugitive.company_terms_of(records), "line": out}
         if family == "electricity":
             name = primary.sub[0] if primary is not None else (bucket.anchor or bucket.level2)
             setup = bucket.facility or self.setup_facilities.get(bucket.line.anchor_id if bucket.line else "") or {}
@@ -381,7 +487,7 @@ class _Builder:
     def _trace(self, family: str, out: dict[str, Any], bucket: _Bucket, primary: _Sub | None) -> dict[str, Any] | None:
         """The step-level working of the line (``calc_trace``). Read-only: it restates ``out``, never changes it."""
 
-        return build_trace(family, out, self._context(family, bucket, primary))
+        return build_trace(family, out, self._context(family, bucket, primary, out))
 
     def _empty_sub(self, bucket: _Bucket) -> tuple[str, ...]:
         """The run a line with no evidence stands on: its fuel in the unit the company gave (or the

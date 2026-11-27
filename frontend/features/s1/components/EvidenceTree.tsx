@@ -1020,7 +1020,7 @@ function lineDocuments(tree: EvidenceTreeData, lineKey: string): number {
   return 0;
 }
 
-const FAMILY_WORDS: Record<CalculationFamily, string> = { stationary: "stationary fuel", mobile: "mobile fuel", electricity: "electricity" };
+const FAMILY_WORDS: Record<CalculationFamily, string> = { stationary: "stationary fuel", mobile: "mobile fuel", electricity: "electricity", fugitive: "refrigerants" };
 
 /** "3 values move" / "1 value moves". */
 function valuesText(n: number): string {

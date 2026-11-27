@@ -768,6 +768,21 @@ class EngagementRecalculationService:
                     "message": "The calculation lines could not be built. Try again, and report it if it persists."}])
         if built.decided:
             self._count_line_decisions(categories, built, tolerance, electricity, certificates)
+            # A refrigerant now counted from its lines' decided component GWPs no longer asks for a GWP, once no line
+            # of it is still waiting for one (calc_trace/fugitive).
+            refrigerants = categories.get("fugitive_refrigerants")
+            counted_now = ({line.key for line in refrigerants.lines} if refrigerants else set()) - set(
+                self._ledger.refrigerant_gwp)
+            waiting = {str(ln["smb"]["gas"]) for ln in [*built.lines, *built.unplaced]
+                       if "smb" in ln and "refrigerant_gwp_needed" in ln["flags"]}
+            answered = counted_now - waiting
+            if answered:
+                needs_input[:] = [n for n in needs_input
+                                  if not (n.get("kind") == "refrigerant_gwp" and n.get("key") in answered)]
+                open_items = Counter(str(item.get("category")) for item in needs_input + awaiting)
+                for ln in built.lines:
+                    if ln.get("counts_toward") == "fugitive":
+                        ln["inputs_incomplete"] = open_items.get("fugitive_refrigerants", 0) > 0
         totals = self._scope_totals(categories)
         incomplete = bool(needs_input or awaiting)
         not_in_scope = out_of_scope(engagement.get("settings"))
@@ -1570,6 +1585,13 @@ class EngagementRecalculationService:
                     "document_id": record.document_id, "record": record.label, "service_type": kind,
                     "quantity": amounts.get("refrigerant_added", amounts.get("refrigerant_recovered", 0.0)),
                     "unit": entry["unit"]})
+                # The record's own terms, for its calculation line (``calc_trace/fugitive``).
+                own = ({"P_N": amounts["refrigerant_added"], "C_N": amounts["equipment_capacity"]} if kind == INSTALLATION
+                       else {"C_D": amounts["equipment_capacity"], "R_D": amounts["refrigerant_recovered"]}
+                       if kind == DISPOSAL else {"P_S": amounts["refrigerant_added"]})
+                main = entry["documents"][-1]["quantity"]
+                self._ledger.contributions.append(Contribution(
+                    "fugitive", record, (gas,), main, main, entry["unit"], 1.0, day, day, [], terms=own))
         fridge_set = inputs.refrigerant_gwp_set
         uses: list[calc.RefrigerantUse] = []
         for gas, entry in totals.items():
@@ -1617,6 +1639,7 @@ class EngagementRecalculationService:
              "documents": totals[use.gas]["documents"]}
             for i, use in enumerate(uses)
         ]
+        self._ledger.refrigerant_gwp.update({gas: dict(gwp) for gas, gwp in result.gwp.items()})
         return result
 
     @staticmethod
