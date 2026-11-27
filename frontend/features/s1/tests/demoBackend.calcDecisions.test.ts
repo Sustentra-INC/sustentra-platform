@@ -51,7 +51,7 @@ describe("demo calculation decisions", () => {
   it("chooses an option: a reason is needed off the automatic one, an unavailable option is 409, an unknown one 422", async () => {
     const choice = (await trace()).choices.find((c) => c.id.startsWith("equation:"))!;
     const path = `/choices/${encodeURIComponent(choice.id)}`;
-    expect((await failure(post(path, { action: "choose", option_id: "eq2", reason: "x" })))?.status).toBe(409);
+    expect((await failure(post(path, { action: "choose", option_id: "eq_2", reason: "x" })))?.status).toBe(409);
     expect((await failure(post(path, { action: "choose", option_id: "nope" })))?.status).toBe(422);
     // the automatic option needs no reason
     await post(path, { action: "choose", option_id: choice.chosen });

@@ -29,7 +29,7 @@ from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorNotFoundError, EmissionFactorReference
 from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
-from backend.app.services.calc_trace import Decided, build_trace, decided_trace
+from backend.app.services.calc_trace import Decided, build_trace, decided_trace, stationary
 from backend.app.services.calc_trace.decisions import Figures
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
 from backend.app.services.reviewed_evidence import ReviewedRecord, place_on_facility, to_date
@@ -97,6 +97,10 @@ class DecidedLine:
             if worked is None:
                 continue
             row["activity"]["value"], row["ef"]["value"] = worked["activity"], worked["ef"]
+            if "ef_unit" in worked:  # a gas on Eq. 2 or Eq. 3: its activity, factor and units are its own
+                row["activity"]["unit"], row["ef"]["unit"] = worked["activity_unit"], worked["ef_unit"]
+                row["ef"]["source"], row["unit_conversion"] = worked["ef_source"], worked["unit_conversion"]
+                out["method"]["equations"][row["gas"]] = worked["equation"]  # the label names the equation used
             row["mass_t"], row["co2e_t"] = worked["mass_t"], worked["co2e_t"]
             if row.get("company_co2e_t") is not None:
                 row["difference_to_company_t"] = row["co2e_t"] - row["company_co2e_t"]
@@ -335,6 +339,9 @@ class _Builder:
         context: dict[str, Any] = {}
         if family == "electricity" and primary is not None:
             context["grid_region"] = self.ledger.regions.get(primary.sub[0]) or self._region_of(bucket, primary.sub[0])
+        if family == "stationary" and primary is not None:  # the equations a line can be worked on (C1)
+            records = self.line_decisions.get(bucket.line.key) if bucket.line is not None else None
+            context["fuel"], context["decided"] = primary.sub[0], stationary.site_decided(records)
         return context
 
     def _trace(self, family: str, out: dict[str, Any], bucket: _Bucket, primary: _Sub | None) -> dict[str, Any] | None:

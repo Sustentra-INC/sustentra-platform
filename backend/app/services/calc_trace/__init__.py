@@ -74,7 +74,7 @@ def decided_trace(panel: str, line: dict[str, Any], context: dict[str, Any] | No
         return Decided(None, not_applied=_unread(records, "line_not_traceable",
                                                  "Not applied: this line's working could not be built."))
     try:
-        decided, outcome, figures = decisions.apply(trace, records, panel)
+        decided, outcome, figures = decisions.apply(trace, records, panel, context)
     except Exception as exc:  # noqa: BLE001 - the default working stands, every decision reported
         log.warning("calculation decisions failed: %s", type(exc).__name__)
         return Decided(default(line) if serialise else None, not_applied=_unread(

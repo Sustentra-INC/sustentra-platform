@@ -39,8 +39,40 @@
      "id": "eq_1",
      "label": "Eq. 1",
      "available": true,
-     "equation": "Eq. 1",
+     "equation": "Fuel × EF₁",
      "required_inputs": [],
+     "citation": {
+      "kind": "reference",
+      "dataset": "EPA GHG Emission Factors Hub",
+      "edition": "2025",
+      "citation": "EPA GHG Emission Factors Hub 2025"
+     }
+    },
+    {
+     "id": "eq_2",
+     "label": "Eq. 2",
+     "available": false,
+     "equation": "Fuel × HHV × EF₂",
+     "why_unavailable": "The fuel is already measured in energy: Eq. 1 uses it directly.",
+     "required_inputs": [
+      "hhv"
+     ],
+     "citation": {
+      "kind": "reference",
+      "dataset": "EPA GHG Emission Factors Hub",
+      "edition": "2025",
+      "citation": "EPA GHG Emission Factors Hub 2025"
+     }
+    },
+    {
+     "id": "eq_3",
+     "label": "Eq. 3",
+     "available": false,
+     "equation": "Fuel × carbon content × 44/12",
+     "why_unavailable": "Eq. 3 takes the carbon content as % by mass: the fuel must be measured in mass.",
+     "required_inputs": [
+      "cc"
+     ],
      "citation": {
       "kind": "reference",
       "dataset": "EPA GHG Emission Factors Hub",
@@ -60,7 +92,37 @@
      "id": "eq_1",
      "label": "Eq. 1",
      "available": true,
-     "equation": "Eq. 1",
+     "equation": "Fuel × EF₁",
+     "required_inputs": [],
+     "citation": {
+      "kind": "reference",
+      "dataset": "EPA GHG Emission Factors Hub",
+      "edition": "2025",
+      "citation": "EPA GHG Emission Factors Hub 2025"
+     }
+    },
+    {
+     "id": "eq_2",
+     "label": "Eq. 2",
+     "available": false,
+     "equation": "Fuel × HHV × EF₂",
+     "why_unavailable": "The fuel is already measured in energy: Eq. 1 uses it directly.",
+     "required_inputs": [
+      "hhv"
+     ],
+     "citation": {
+      "kind": "reference",
+      "dataset": "EPA GHG Emission Factors Hub",
+      "edition": "2025",
+      "citation": "EPA GHG Emission Factors Hub 2025"
+     }
+    },
+    {
+     "id": "eq_3",
+     "label": "Eq. 3",
+     "available": false,
+     "equation": "Fuel × carbon content × 44/12",
+     "why_unavailable": "Eq. 3 gives CO₂ only: CH₄ and N₂O use Eq. 2, or Eq. 1 without a heat content.",
      "required_inputs": [],
      "citation": {
       "kind": "reference",
@@ -81,7 +143,37 @@
      "id": "eq_1",
      "label": "Eq. 1",
      "available": true,
-     "equation": "Eq. 1",
+     "equation": "Fuel × EF₁",
+     "required_inputs": [],
+     "citation": {
+      "kind": "reference",
+      "dataset": "EPA GHG Emission Factors Hub",
+      "edition": "2025",
+      "citation": "EPA GHG Emission Factors Hub 2025"
+     }
+    },
+    {
+     "id": "eq_2",
+     "label": "Eq. 2",
+     "available": false,
+     "equation": "Fuel × HHV × EF₂",
+     "why_unavailable": "The fuel is already measured in energy: Eq. 1 uses it directly.",
+     "required_inputs": [
+      "hhv"
+     ],
+     "citation": {
+      "kind": "reference",
+      "dataset": "EPA GHG Emission Factors Hub",
+      "edition": "2025",
+      "citation": "EPA GHG Emission Factors Hub 2025"
+     }
+    },
+    {
+     "id": "eq_3",
+     "label": "Eq. 3",
+     "available": false,
+     "equation": "Fuel × carbon content × 44/12",
+     "why_unavailable": "Eq. 3 gives CO₂ only: CH₄ and N₂O use Eq. 2, or Eq. 1 without a heat content.",
      "required_inputs": [],
      "citation": {
       "kind": "reference",
