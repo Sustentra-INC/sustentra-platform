@@ -231,8 +231,10 @@ function RowsTable({ block, input, name, onOpenDocument }: { block: TraceBlock; 
 function BlockView({ block, step, trace, onOpenDocument }: { block: TraceBlock; step: TraceStep; trace: LineTrace; onOpenDocument?: OpenDocument }) {
   const name = `${step.title} · ${block.label}`;
   const inputs = trace.inputs ?? {};
-  const only = block.recomputed?.terms.length === 1 ? block.recomputed.terms[0].operand.input_id : undefined;
-  const summed = only ? inputs[only] : undefined;
+  // A block whose result is a summed input (twelve monthly bills, any number of parts) is drawn as that
+  // input's rows and a total, never as a row of terms: the company gives one figure for the whole.
+  const sumId = (block.recomputed ?? block.company)?.result.input_id;
+  const summed = sumId ? inputs[sumId] : undefined;
   const choice = block.choice_id ? (trace.choices ?? []).find((c) => c.id === block.choice_id) : undefined;
   const unused = block.tag === "not_used_for_this_line";
   return (
@@ -329,6 +331,11 @@ export function TracePanel({ trace, onOpenDocument }: { trace: LineTrace; onOpen
       {trace.state === "partial" ? (
         <p className="s1-cp-note" role="status">
           Part of this line could not be calculated; what could be is shown.
+        </p>
+      ) : null}
+      {(trace.flags ?? []).includes("company_total_is_reported_figure") ? (
+        <p className="s1-cp-note" role="status">
+          The company&apos;s total is the figure entered for this line, not the sum of its gases.
         </p>
       ) : null}
       {trace.method_mismatch ? (

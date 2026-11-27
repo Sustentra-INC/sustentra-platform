@@ -3993,3 +3993,4 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-cp-lines td:nth-child(2) .s1-vw-rowbtn { white-space: nowrap; }
 .s1-cp-lines td:nth-child(2) { min-width: 12rem; }
 .s1-cp--bare .s1-cp-scroll { border-top: var(--border-hairline); }
+.s1-cp-lines td:first-child { white-space: nowrap; }

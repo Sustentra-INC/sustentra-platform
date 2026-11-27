@@ -11,15 +11,25 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 export function decimalsFor(value: number, display?: Display): number {
   if (display?.dp !== undefined) return clamp(Math.trunc(display.dp), 0, 20);
   const sig = clamp(Math.trunc(display?.sig ?? DEFAULT_SIG), 1, 21);
-  if (value === 0 || !Number.isFinite(value)) return 0;
+  if (!Number.isFinite(value)) return 0;
+  // A zero has no magnitude: it keeps the precision a small value would have, so 0 beside 0.6 reads 0.6.
+  if (value === 0) return sig - 1;
   return clamp(sig - 1 - Math.floor(Math.log10(Math.abs(value))), 0, 20);
 }
 
-export function formatNumber(value: number, display?: Display): string {
+/**
+ * A number to the column's precision. A `dp` column always shows its fixed decimals ("1.00"); a `sig`
+ * column shows what its significant digits need, without trailing zeros.
+ */
+export function formatNumber(value: number, display?: Display, digits?: number): string {
   if (!Number.isFinite(value)) return "—";
-  const digits = decimalsFor(value, display);
-  const rounded = Number(value.toFixed(digits));
-  return (Object.is(rounded, -0) ? 0 : rounded).toLocaleString("en-US", { maximumFractionDigits: digits });
+  const places = digits ?? decimalsFor(value, display);
+  const fixed = display?.dp !== undefined;
+  const rounded = Number(value.toFixed(places));
+  return (Object.is(rounded, -0) ? 0 : rounded).toLocaleString("en-US", {
+    minimumFractionDigits: fixed ? places : 0,
+    maximumFractionDigits: places,
+  });
 }
 
 /** "t CO2e" reads "t CO₂e"; the wire carries plain ASCII. */
@@ -41,13 +51,21 @@ export function operandText(operand: Pick<TraceOperand, "value" | "unit" | "colu
 }
 
 /**
- * "+344.9" or "−30" for a difference that survives the value's display rounding; null when it rounds to
- * zero (the `differs()` rule of utils/verificationTable.ts, at the column's own precision).
+ * "+344.9" or "−30" for a difference between two sides that are shown differently; null when the two
+ * displayed strings are the same ("1.00" against "1.00"), or the difference rounds to nothing at the
+ * precision of the larger side (so 0 against 0.6 shows 0.6, not a rounded 1 or 0).
  */
 export function differenceText(difference: number | null | undefined, value: unknown, display?: Display): string | null {
   if (!isNumber(difference)) return null;
-  const digits = decimalsFor(isNumber(value) ? value : difference, display);
+  let digits: number;
+  if (isNumber(value)) {
+    const other = value - difference;
+    if (formatNumber(value, display) === formatNumber(other, display)) return null;
+    digits = decimalsFor(Math.max(Math.abs(value), Math.abs(other)), display);
+  } else {
+    digits = decimalsFor(Math.abs(difference), display);
+  }
   const rounded = Number(difference.toFixed(digits));
   if (rounded === 0) return null;
-  return `${rounded > 0 ? "+" : "−"}${formatNumber(Math.abs(rounded), { dp: digits })}`;
+  return `${rounded > 0 ? "+" : "−"}${formatNumber(Math.abs(rounded), display, digits)}`;
 }

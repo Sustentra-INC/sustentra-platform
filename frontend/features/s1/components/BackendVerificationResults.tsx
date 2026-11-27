@@ -21,7 +21,7 @@ import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig, RecalculationSettings } from "../types";
 import type { TeamMember } from "../types/engagement";
 import type { VerificationStore } from "../verification/verificationStore";
-import { CalculationPanels } from "./CalculationPanels";
+import { CalculationPanels, panelIds } from "./CalculationPanels";
 import { QualityChecksPanel } from "./QualityChecksPanel";
 import { RecalculationInputs } from "./RecalculationInputs";
 import { VerificationResults } from "./VerificationResults";
@@ -214,7 +214,8 @@ export function BackendVerificationResults({
       liveMateriality={result.tolerance_pct / 100}
       lineDetail={(line) => {
         const only = DRAWER_PANELS[line.id];
-        if (!only || !result.calculation_lines?.length) return null;
+        // No line (and no unplaced record) in this panel: the drawer keeps its facility table.
+        if (!only || !panelIds(result.calculation_lines ?? [], result.calculation_unplaced).includes(only)) return null;
         const reported = lineReported(line);
         const recomputed = lineRecomputed(line);
         return (

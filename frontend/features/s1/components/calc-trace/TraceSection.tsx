@@ -49,7 +49,7 @@ export function TraceSection({
   if (state.status === "error") return failed;
   if (state.status === "ready")
     return (
-      <Boundary fallback={failed}>
+      <Boundary key={version} fallback={failed}>
         <TracePanel trace={state.trace} onOpenDocument={onOpenDocument} />
       </Boundary>
     );

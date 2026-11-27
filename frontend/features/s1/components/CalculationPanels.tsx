@@ -887,6 +887,13 @@ function LineDetail({
   );
 }
 
+/** The panel ids the lines (and unplaced records) fill, in display order. */
+export function panelIds(lines: CalculationLine[], unplaced: CalcUnplaced[] = []): string[] {
+  const all = [...lines, ...unplaced];
+  const energy = [...new Set(all.filter((l) => l.counts_toward === "purchased_energy").map((l) => l.level2))];
+  return [...FIXED_PANELS, ...energy.map(energyPanel)].filter((p) => all.some((l) => belongs(l, p))).map((p) => p.id);
+}
+
 export function CalculationPanels({
   lines,
   comparisons,

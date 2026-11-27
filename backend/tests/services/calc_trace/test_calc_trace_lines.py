@@ -246,3 +246,39 @@ def test_gases_added_pairs_each_co2e_term_with_its_own_company_twin() -> None:
         block["recomputed"]["result"]["value"] - block["company"]["result"]["value"])
     # A pair that matches shows no difference, and the sum of the term differences is the result's.
     assert sum(t["operand"]["difference"] for t in mine) == pytest.approx(block["recomputed"]["result"]["difference"])
+
+
+def _gas_trace(parts: int, recomputed_each: int, company_total: int) -> dict:
+    from backend.tests.services.test_engagement_recalculation_service import FakeStore as Store
+
+    store = Store()
+    for month in range(1, parts + 1):
+        store.add_document(f"G{month}", "CT-S1-FUELQTY", [_gas_record(recomputed_each, f"2025-{month:02d}-01",
+                                                                      f"2025-{month:02d}-28")])
+    line = _line(run(store, reported_activity={GAS_KC: {"quantity": company_total, "unit": "MMBtu"}}), GAS_KC)
+    return line["trace"]
+
+
+def test_step_one_total_carries_the_difference_from_the_builder() -> None:
+    """Company 650,000 therms against our 600,000: the Step 1 total's own result says -50,000."""
+
+    trace = _gas_trace(1, 600000, 650000)
+    block = _block(trace, "activity", "activity")
+    assert block["company"]["result"]["value"] == 650000
+    assert block["recomputed"]["result"]["value"] == 600000
+    assert block["recomputed"]["result"]["difference"] == pytest.approx(-50000)
+    assert block["recomputed"]["result"]["differs"] is True
+    assert trace["inputs"]["activity.total"]["difference"] == pytest.approx(-50000)
+
+
+def test_step_one_with_twelve_parts_has_one_company_total_and_a_total_difference() -> None:
+    """Twelve monthly bills are twelve terms and twelve input rows; the company gave one figure. The total's
+    difference is made on the result, and no part is compared with the company's whole."""
+
+    trace = _gas_trace(12, 50000, 650000)
+    block = _block(trace, "activity", "activity")
+    assert len(block["recomputed"]["terms"]) == 12 and len(trace["inputs"]["activity.total"]["rows"]) == 12
+    assert len(block["company"]["terms"]) == 1
+    assert block["recomputed"]["result"]["value"] == 600000
+    assert block["recomputed"]["result"]["difference"] == pytest.approx(-50000)
+    assert all("difference" not in t["operand"] for t in block["recomputed"]["terms"])

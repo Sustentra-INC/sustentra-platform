@@ -150,6 +150,8 @@ def _build(family: str, line: dict[str, Any], rows: list[dict[str, Any]], flags:
     step1_block = TraceBlock("activity", "Activity data", [Column("activity", "Activity", total_unit, True, {"dp": 2})],
                              recomputed=_sum_operation(parts, total_unit, total) if parts else None,
                              company=_entered(given) if given else None)
+    if step1_block.recomputed and step1_block.company:  # the total's difference, as on every other result cell
+        _annotate(step1_block.recomputed, step1_block.company)
 
     # --- Step 2: conversion to the factor's unit -----------------------------------------------------
     to_unit = normalise_unit(step2["to_unit"])

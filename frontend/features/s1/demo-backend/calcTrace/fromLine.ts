@@ -49,7 +49,8 @@ function withDifferences(recomputed: TraceOperation, company: TraceOperation | u
   const diff = (r: TraceOperand, c: TraceOperand | undefined): TraceOperand =>
     typeof r.value === "number" && typeof c?.value === "number" ? { ...r, difference: r.value - c.value } : r;
   return {
-    terms: recomputed.terms.map((t, i) => ({ ...t, operand: diff(t.operand, company.terms[i]?.operand) })),
+    // Terms pair by position only when both sides have the same shape (twelve bills against one figure do not).
+    terms: recomputed.terms.length === company.terms.length ? recomputed.terms.map((t, i) => ({ ...t, operand: diff(t.operand, company.terms[i]?.operand) })) : recomputed.terms,
     result: diff(recomputed.result, company.result),
   };
 }
@@ -94,6 +95,17 @@ export function traceFromLine(line: CalculationLine): LineTrace {
   const actCol = [col("activity", "Activity data", total.unit, true, { dp: 2 })];
   const act = (a: { quantity: number; unit: string }, id?: string) =>
     operation([{ op: null, operand: operand("activity", a.quantity, a.unit, { input_id: id }) }], "activity", a.unit, { input_id: id });
+  // The recomputed side is one term per evidence record, as the backend builds it; the company gives one figure.
+  const parts = line.step1.rows.filter((r) => r.counted_in_base !== null);
+  const sum = (): TraceOperation =>
+    parts.length > 1
+      ? operation(
+          parts.map((r, i) => ({ op: i === 0 ? null : ("+" as TraceOpSymbol), operand: operand("activity", r.counted_in_base ?? 0, total.unit, { input_id: "activity.total" }) })),
+          "activity",
+          total.unit,
+          { input_id: "activity.total" },
+        )
+      : act(total, "activity.total");
   const step1: TraceStep = {
     id: "activity",
     n: 1,
@@ -105,7 +117,7 @@ export function traceFromLine(line: CalculationLine): LineTrace {
         label: "Annual activity data",
         columns: actCol,
         ...(co ? { company: act(co.activity, "activity.total") } : {}),
-        recomputed: withDifferences(act(total, "activity.total"), co ? act(co.activity) : undefined),
+        recomputed: withDifferences(sum(), co ? act(co.activity) : undefined),
       },
     ],
   };
@@ -219,6 +231,17 @@ export function traceFromLine(line: CalculationLine): LineTrace {
       ? operation([{ op: null, operand: operand("sum", Number(sum.result.value), "t CO2e", { step_ref: "sum" }) }, { op: "×", operand: operand("share", line.consolidated_share_pct / 100, undefined, { input_id: "share" }) }], "total", "t CO2e")
       : // The demo's company figure is the sum as reported, before any consolidated share.
         operation([{ op: null, operand: operand("sum", Number(sum.result.value), "t CO2e", { step_ref: "sum" }) }], "total", "t CO2e");
+  // The company's line total is the figure the row reports (Reported), so the panel and the row agree. When the
+  // reviewer entered a total that is not the company's own sum, the row's figure is shown and the trace says so.
+  const reported = line.reported_total_co2e_t;
+  // A line the company gave only a total for (no step-by-step) still shows that total, as the row does.
+  const companyTotal = companySum
+    ? totalOp(companySum, false)
+    : reported !== null
+      ? operation([{ op: null, operand: operand("total", reported, "t CO2e") }], "total", "t CO2e")
+      : undefined;
+  const reportedIsEntered = Boolean(companySum) && reported !== null && Math.abs(reported - Number(companyTotal?.result.value)) > 1e-6;
+  if (companyTotal && reported !== null) companyTotal.result.value = reported;
   const results: TraceStep = {
     id: "results",
     n: null,
@@ -236,8 +259,8 @@ export function traceFromLine(line: CalculationLine): LineTrace {
         id: "results.total",
         label: "Line total",
         columns: [col("sum", "Sum of gases", "t CO2e", false, { dp: 2 }), col("share", "Consolidated share", undefined, false), col("total", "Total", "t CO2e", true, { dp: 2 })],
-        ...(companySum ? { company: totalOp(companySum, false) } : {}),
-        recomputed: withDifferences(totalOp(recomputedSum, true), companySum ? totalOp(companySum, false) : undefined),
+        ...(companyTotal ? { company: companyTotal } : {}),
+        recomputed: withDifferences(totalOp(recomputedSum, true), companyTotal),
       },
     ],
   };
@@ -266,11 +289,11 @@ export function traceFromLine(line: CalculationLine): LineTrace {
     steps,
     result: {
       unit: "t CO2e",
-      company: companySum ? Number(companySum.result.value) : null,
+      company: companyTotal ? Number(companyTotal.result.value) : null,
       recomputed: line.results.total_co2e_t,
       difference: line.difference_t,
     },
     method_mismatch: false,
-    flags: line.flags,
+    flags: reportedIsEntered ? [...line.flags, "company_total_is_reported_figure"] : line.flags,
   };
 }
