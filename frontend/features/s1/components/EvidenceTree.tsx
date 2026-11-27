@@ -1,10 +1,10 @@
 "use client";
 
 import { ChevronRight, PanelsTopLeft, Plus } from "lucide-react";
-import { IconBuilding, IconClose, IconDocument, IconExpandAll, IconCollapseAll, IconPlus, IconTag, IconTrash } from "./icons";
+import { IconBuilding, IconDocument, IconExpandAll, IconCollapseAll, IconPlus, IconTag, IconTrash } from "./icons";
 
 import { Dropdown } from "./Dropdown";
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
   BLOCK_SUMMARY,
@@ -30,6 +30,7 @@ import { createAuditIntent, type AuditIntentAction, type SessionAuditEntry } fro
 import { formatPeriod } from "../utils/formatPeriod";
 import { ActionMenu } from "./ActionMenu";
 import { ContainerStateSurface } from "./ContainerStateSurface";
+import { Dialog } from "./Dialog";
 
 /**
  * The Evidence page in backend mode: one tree, Scope > Category > fuel > calculation line, with the
@@ -664,53 +665,6 @@ function Fold({
 }
 
 /* =============================== dialogs =============================== */
-
-/** A window that closes on Escape and puts the cursor in its first field. */
-function Dialog({
-  title,
-  context,
-  icon,
-  onClose,
-  children,
-}: {
-  title: string;
-  context?: string;
-  icon?: ReactNode;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  const box = useRef<HTMLDivElement>(null);
-  const close = useRef(onClose);
-  const titleId = useId();
-  useEffect(() => {
-    close.current = onClose;
-  });
-  useEffect(() => {
-    box.current?.querySelector<HTMLElement>("input, select, textarea, button:not([disabled]):not(.s1-modal__close)")?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close.current();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
-  return (
-    <div className="s1-modal-scrim">
-      <div className="s1-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={box}>
-        <div className="s1-modal__head">
-          {icon ? <span className="s1-modal__head-icon" aria-hidden>{icon}</span> : null}
-          <div className="s1-modal__head-text">
-            <h2 id={titleId} className="s1-modal__title">{title}</h2>
-            {context ? <span className="s1-modal__context">{context}</span> : null}
-          </div>
-          <button className="s1-button s1-button--icon s1-modal__close" type="button" onClick={onClose} aria-label="Close">
-            <IconClose size={15} aria-hidden />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
 
 function useSubmit(onError: OnError) {
   const [busy, setBusy] = useState(false);

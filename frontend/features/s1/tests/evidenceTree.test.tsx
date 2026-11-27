@@ -223,6 +223,29 @@ describe("the Evidence tree", () => {
     expect(onOpenSchedule).toHaveBeenCalledWith(KENT.key);
   });
 
+  it("draws the Move and New fuel dialogs as it always has", async () => {
+    // Generated ids depend on test order; swap them for a fixed placeholder before snapshotting.
+    const stable = (node: Element | null) => {
+      const copy = node!.cloneNode(true) as Element;
+      for (const el of [copy, ...Array.from(copy.querySelectorAll("*"))]) {
+        for (const attr of Array.from(el.attributes)) {
+          if (/_r_[a-z0-9]+_/.test(attr.value)) el.setAttribute(attr.name, attr.value.replace(/_r_[a-z0-9]+_/g, "ID"));
+        }
+      }
+      return copy;
+    };
+    render(<Harness />);
+    await expandAll();
+    const row = screen.getByRole("button", { name: "feb.pdf" }).closest(".s1-et-doc") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Actions for feb.pdf" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to…" }));
+    const move = screen.getByRole("dialog", { name: "Move to…" });
+    expect(stable(move.closest(".s1-modal-scrim"))).toMatchSnapshot("move dialog");
+    fireEvent.click(within(move).getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New fuel" })[0]);
+    expect(stable(screen.getByRole("dialog", { name: "New fuel" }).closest(".s1-modal-scrim"))).toMatchSnapshot("new fuel dialog");
+  });
+
   it("asks before a move that changes a calculation, then saves it once", async () => {
     const onMovePlacement = vi.fn().mockResolvedValue(undefined);
     const onAudit = vi.fn();
