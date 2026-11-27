@@ -26,6 +26,9 @@ is checked before every part; when it is reached, when the time runs out (80% of
 ``S1_READER_MAX_RUN_SECONDS``, or the inline budget) or a call fails, the read stops, what was read is
 kept, and the document is marked ``ai_read_in_part`` with the pages not read (``AssistOutcome.not_read``).
 
+A file with several records (a bundle, a log, a fuel card) is filled record by record from each record's own
+rows by ``ai_record_fill`` (MVP-238): only a record's empty fields, never its facility or period placement.
+
 Document text is untrusted data. The system prompt says so, the reply is bound to a strict schema
 whose field names are an enum of the asked fields, and Claude has no tools.
 
@@ -56,8 +59,9 @@ from pydantic import BaseModel, ConfigDict, create_model
 
 from backend.app.adapters.llm.base import MAX_RETRIES, REQUEST_TIMEOUT_S, LlmClient
 from backend.app.core.config import Settings, get_settings
-from backend.app.services import ai_usage
+from backend.app.services import ai_record_fill, ai_usage
 from backend.app.services import document_parts as dp
+from backend.app.services import printed_numbers as pn
 from backend.app.services.ai_locator import (
     DocumentLine,
     Located,
@@ -82,7 +86,6 @@ RESERVED_TOKENS = 4_000 + MAX_OUTPUT_TOKENS  # the system prompt, the document h
 BUDGET_FRACTION = dp.BUDGET_FRACTION
 # The longest one call can take (a timeout, then one retry): a window starts only if it can end in time.
 CALL_WORST_CASE_S = REQUEST_TIMEOUT_S * (MAX_RETRIES + 1)
-MULTI_RECORD = "multi_record_document"
 MAX_CONFIDENCE = 0.6
 NUMERIC_TYPES = {"number", "integer", "quantity", "percentage", "currency"}
 
@@ -179,8 +182,8 @@ def ask_fields(items: Sequence[Mapping[str, Any]], targets: Sequence[Mapping[str
     """The fields to ask for, or none when there is nothing missing and no known-gap field to add.
 
     Only the candidates of ``record`` (None: the document's own) are looked at: a document with
-    several records is not filled at all (the caller drops it as ``multi_record_document``), and no
-    record is ever created. The rule-read fields are included as ``check`` fields only when a call
+    several records is filled record by record by ``ai_record_fill`` instead, and no record is ever
+    created. The rule-read fields are included as ``check`` fields only when a call
     is made anyway."""
 
     by_field = {str(t.get("field_id")): t for t in targets}
@@ -287,19 +290,38 @@ class Verified:
     confidence: float
 
 
-_NUMBER = re.compile(r"-?\d[\d,]*(?:\.\d+)?|-?\.\d+")
+def parse_number(value: str, decimal_comma: bool | None = False) -> float | None:
+    """The whole value as a number ("1,915.3"), else None: "12 kWh" is not a bare number, and neither is a number
+    whose comma could be read two ways ("1,20", "0,500"; ``printed_numbers.read_number``, with the document's
+    convention ``decimal_comma``)."""
+
+    read = pn.read_number(" ".join(value.split()), decimal_comma)
+    return float(read) if read is not None else None
 
 
-def parse_number(value: str) -> float | None:
-    """The whole value as a number ("1,915.3"), else None: "12 kWh" is not a bare number."""
+NUMBER_MISMATCH = "number_not_as_printed"
+# On the extraction result when the AI read values: how the document's numbers were read (``printed_numbers``), with
+# the evidence count, so a reviewer can see why "1,204" was read, or left for them.
+NUMBER_CONVENTION = "number_convention"
 
-    cleaned = " ".join(value.split())
-    if not _NUMBER.fullmatch(cleaned):
-        return None
-    try:
-        return float(cleaned.replace(",", ""))
-    except ValueError:
-        return None
+
+def printed_number(value: str, line_text: str, decimal_comma: bool | None) -> tuple[str, float] | str:
+    """The number as printed on the line that matches the AI's ``value``: (the token as printed, its number). The
+    stored number is always the printed token's, never the AI's string. Dropped: ``invalid_value`` when the AI's value
+    is not one readable number; ``number_not_as_printed`` when the line prints the same digits as a different number
+    (printed "88,0", read "880"); ``value_not_in_quote`` when no token on the line is that number."""
+
+    number = parse_number(value, decimal_comma)
+    if number is None:
+        return "invalid_value"
+    digits = re.sub(r"\D", "", value)
+    same_digits = False
+    for token in pn.tokens(line_text):
+        printed = pn.read_number(token, decimal_comma)
+        if printed is not None and math.isclose(float(printed), number, rel_tol=1e-12, abs_tol=1e-12):
+            return token, float(printed)
+        same_digits = same_digits or re.sub(r"\D", "", token) == digits
+    return NUMBER_MISMATCH if same_digits else "value_not_in_quote"
 
 
 def _allowed_unit(unit: str, allowed: Sequence[str]) -> str | None:
@@ -308,7 +330,7 @@ def _allowed_unit(unit: str, allowed: Sequence[str]) -> str | None:
 
 
 def verify_reading(reading: Any, by_name: Mapping[str, AskField], lines: Sequence[DocumentLine],
-                   confidence_of: Callable[[DocumentLine], float]) -> Verified | str:
+                   confidence_of: Callable[[DocumentLine], float], decimal_comma: bool | None = False) -> Verified | str:
     """The reading as a verified value, or the code it is dropped under."""
 
     field_ = by_name.get(str(reading.field_name))
@@ -325,16 +347,19 @@ def verify_reading(reading: Any, by_name: Mapping[str, AskField], lines: Sequenc
         if isinstance(cell, NotLocated):
             return cell.reason
         found = Located(line=cell, source_reference=copy.deepcopy(cell.source_reference))
-    return _checked(field_, reading, found, confidence_of)
+    return _checked(field_, reading, found, confidence_of, decimal_comma)
 
 
-def _checked(field_: AskField, reading: Any, found: Located, confidence_of: Callable[[DocumentLine], float]
-             ) -> Verified | str:
+def _checked(field_: AskField, reading: Any, found: Located, confidence_of: Callable[[DocumentLine], float],
+             decimal_comma: bool | None = False) -> Verified | str:
     raw = " ".join(str(reading.value).split())
     unit: str | None = None
     if field_.value_type in NUMERIC_TYPES:
-        number = parse_number(raw)
-        if number is None or (field_.value_type == "integer" and number != int(number)):
+        printed = printed_number(raw, found.line.text, decimal_comma)
+        if isinstance(printed, str):
+            return printed
+        raw, number = printed
+        if field_.value_type == "integer" and number != int(number):
             return "invalid_value"
         if field_.units:
             unit = _allowed_unit(str(reading.unit), field_.units)
@@ -546,15 +571,9 @@ class AiExtraction:
         # A display-only rule field the bill did not print has no item: Claude may still fill it.
         gaps += [t for t in targets if t.get("field_id") in DISPLAY_ONLY_FIELDS]
         records = records_of(items)
-        if len(records) > 1:  # several records: no document-level field is filled and no record is created
-            skipped_fields = [f for f in ask_fields([{**i, "record_index": None} for i in items], targets, gaps)
-                              if f.role != "check"]
-            if not skipped_fields:
-                return AssistOutcome(extraction_result)
-            n = len(skipped_fields)
-            logger.info("ai extraction: not read, records=%d dropped=%d", len(records), n)
-            return AssistOutcome(extraction_result, [_summary(Counter(), Counter({MULTI_RECORD: n}), 0, 0, 0)],
-                                 dropped={MULTI_RECORD: n})
+        if len(records) > 1:  # several records: each record's own empty fields, from its own rows (MVP-238)
+            return self._fill_records(settings, client, lines, parser_output, extraction_result, targets,
+                                      canonical_type_id, file_name, org_id, engagement_id, started)
         record = records[0] if records else None
         asked = ask_fields(items, targets, gaps, record)
         if not asked:
@@ -577,12 +596,9 @@ class AiExtraction:
         system = system_prompt(asked, sheets=any(isinstance(line, RowLine) for line in lines))
         output_type = reading_output(tuple(by_name))
         header = document_header(canonical_type_id, file_name, items)
-        confidences = {str(b.get("block_id")): b.get("confidence") for b in parser_output.get("text_blocks") or []
-                       if isinstance(b, Mapping)}
-
-        def confidence_of(line: DocumentLine) -> float:
-            parser = confidences.get(line.block_id)
-            return MAX_CONFIDENCE if parser is None else min(MAX_CONFIDENCE, float(parser))
+        confidence_of = _confidence_of(parser_output)
+        convention = pn.convention_of(line.text for line in lines)
+        decimal_comma = convention.decimal_comma
 
         # No part starts after the run's deadline (inline: a short budget inside the request; queued: 80% of the
         # reader's run), and none starts unless a call's worst case still ends before the run's own limit.
@@ -626,7 +642,7 @@ class AiExtraction:
                 warnings.append(dp.read_in_part(not_read, dp.FAILED_REASON))
                 break
             for reading in getattr(reply.output, "readings"):
-                verdict = verify_reading(reading, by_name, window_lines, confidence_of)
+                verdict = verify_reading(reading, by_name, window_lines, confidence_of, decimal_comma)
                 if isinstance(verdict, str):
                     dropped[verdict] += 1
                 else:
@@ -636,9 +652,63 @@ class AiExtraction:
         result, counts = merge(extraction_result, found, by_name, record) if found else (extraction_result, Counter())
         if read:
             warnings.append(_summary(counts, dropped, cost, read, planned))
+            result = {**result, NUMBER_CONVENTION: convention.as_record()}
         logger.info("ai extraction: suggested=%d disagrees=%d conflicts=%d dropped=%d parts=%d cost_microusd=%d",
                     counts["suggested"], counts["disagrees"], counts["conflicts"], sum(dropped.values()), read, cost)
         return AssistOutcome(result, warnings, counts["suggested"], dict(dropped), cost, read, not_read)
+
+    def _fill_records(self, settings: Settings, client: LlmClient, lines: Sequence[DocumentLine],
+                      parser_output: Mapping[str, Any], extraction_result: dict[str, Any],
+                      targets: Sequence[Mapping[str, Any]], canonical_type_id: str, file_name: str,
+                      org_id: uuid.UUID, engagement_id: str, started: float) -> AssistOutcome:
+        """A file with several records: ``ai_record_fill`` asks for each record's empty fields from its own rows."""
+
+        items = list(extraction_result.get("items") or [])
+        fields = {str(t["field_id"]): _ask(t, "missing") for t in targets if t.get("field_id")}
+        ledger = self._ledger or DbLedger(feature=FEATURE)
+        spend = dp.Spend(ledger, org_id, settings.ai_monthly_cap_usd)
+        confidence_of = _confidence_of(parser_output)
+        convention = pn.convention_of(line.text for line in lines)
+        decimal_comma = convention.decimal_comma
+        document_id = str(extraction_result.get("document_id") or parser_output.get("document_id") or "") or None
+        if spend.reached(fresh=False):
+            asks, _ = ai_record_fill.record_asks(lines, items, set(fields), ai_record_fill.record_rows(lines, items))
+            if not asks:
+                return AssistOutcome(extraction_result)
+            return AssistOutcome(extraction_result, [f"{CAP_REACHED}: this month's limit on Sustentra's AI and scans is "
+                                                     "reached, so the values were not read by Sustentra's AI."])
+        filled = ai_record_fill.run(
+            settings=settings, client=client, ledger=ledger, org_id=org_id, engagement_id=_uuid_or_none(engagement_id),
+            document_id=document_id, lines=lines, extraction_result=extraction_result, targets=fields,
+            header=document_header(canonical_type_id, file_name, items),
+            verify=lambda reading, by_name, own: verify_reading(reading, by_name, own, confidence_of, decimal_comma),
+            min_quote=MIN_QUOTE, spend=spend, deadline=dp.deadline_for(settings, started, self._clock),
+            worst_case_s=CALL_WORST_CASE_S, max_chars=part_chars(settings), clock=self._clock)
+        if filled is None:
+            return AssistOutcome(extraction_result)
+        warnings = list(filled.warnings)
+        result = filled.result
+        if filled.calls:
+            warnings.append(_summary(Counter({"suggested": filled.suggested}), Counter(filled.dropped),
+                                     filled.cost_microusd, filled.calls, filled.planned))
+            result = {**result, NUMBER_CONVENTION: convention.as_record()}
+        logger.info("ai extraction: records suggested=%d dropped=%d calls=%d cost_microusd=%d", filled.suggested,
+                    sum(filled.dropped.values()), filled.calls, filled.cost_microusd)
+        return AssistOutcome(result, warnings, filled.suggested, filled.dropped, filled.cost_microusd,
+                             filled.calls, filled.not_read)
+
+
+def _confidence_of(parser_output: Mapping[str, Any]) -> Callable[[DocumentLine], float]:
+    """A value's confidence: the parser's for its line, at most ``MAX_CONFIDENCE``."""
+
+    confidences = {str(b.get("block_id")): b.get("confidence") for b in parser_output.get("text_blocks") or []
+                   if isinstance(b, Mapping)}
+
+    def confidence_of(line: DocumentLine) -> float:
+        parser = confidences.get(line.block_id)
+        return MAX_CONFIDENCE if parser is None else min(MAX_CONFIDENCE, float(parser))
+
+    return confidence_of
 
 
 def _summary(counts: Counter[str], dropped: Counter[str], cost_microusd: int, parts: int, planned: int) -> str:

@@ -6,7 +6,15 @@ Scores the real extraction pipeline against the answer keys, per field family.
     python -m backend.tools.accuracy --set NAME DOCS_DIR KEY_CSV --out DIR
     python -m backend.tools.accuracy --ai-record DIR  # real Claude (needs credentials); replies saved in DIR
     python -m backend.tools.accuracy --ai-replay DIR  # recorded replies, no network; a missing reply fails the run
+    python -m backend.tools.accuracy --sort-misses       # also sort the misses on multi-record files (counts only)
     python -m backend.tools.accuracy --write-baseline backend/tests/data/accuracy-baseline.json
+
+**Sorting misses** (`--sort-misses`, `misses.py`). Each `missed` cell on a file read into two or more records is
+sorted by a deterministic search of the parser's text (numbers as numbers, dates as days, ids and names without
+punctuation; no AI): `not_printed` (not in the text or the file name), `printed_missed` (on the record's own rows,
+as `ai_record_fill.record_rows` defines them) or `elsewhere` (a header, another record or page, a summary row, the
+file name). It also counts the record-level fields on those files, how many are empty and how many Sustentra's AI
+filled. Counts only: the JSON gets `miss_sort` and `record_fields` per set.
 
 **Data rules.** Documents, keys, reports and recorded replies stay outside the repository (the tool refuses
 paths inside it). The only thing it writes into the repo is the baseline: aggregate counts per field family,

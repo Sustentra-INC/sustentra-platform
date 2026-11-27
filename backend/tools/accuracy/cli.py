@@ -5,6 +5,7 @@
     python -m backend.tools.accuracy --set NAME DOCS_DIR KEY_CSV   # any other set (repeatable)
     python -m backend.tools.accuracy --ai-record DIR      # real Claude, replies saved (needs credentials)
     python -m backend.tools.accuracy --ai-replay DIR      # recorded replies, no network, deterministic
+    python -m backend.tools.accuracy --sort-misses        # also sort the misses on multi-record files (counts)
     python -m backend.tools.accuracy --write-baseline backend/tests/data/accuracy-baseline.json
 
 Documents, keys, reports and recorded replies stay outside the repository: every such path is refused
@@ -23,6 +24,7 @@ from typing import Any
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
 from backend.tools.accuracy.ai_replay import RecordingClaude, ReplayClaude
 from backend.tools.accuracy.keys import KeyCell, read_key
+from backend.tools.accuracy.misses import keyed_multi_record, record_fields, render_sort, sort_misses
 from backend.tools.accuracy.report import baseline_payload, render_markdown, render_table, summarize_set
 from backend.tools.accuracy.runner import build_service, run_folder
 from backend.tools.accuracy.scorer import SetScorer
@@ -57,19 +59,24 @@ def discover_sets(downloads: Path) -> list[tuple[str, Path, Path]]:
     return found
 
 
-def score_set(label: str, docs_dir: Path, key_path: Path, service: PipelineOrchestrationService, org_id: str | None) -> dict[str, Any]:
+def score_set(label: str, docs_dir: Path, key_path: Path, service: PipelineOrchestrationService, org_id: str | None,
+              sort: bool = False) -> dict[str, Any]:
     cells: list[KeyCell] = read_key(key_path, label)
     keyed = {c.filename for c in cells}
     keyed_files = keyed & {p.name for p in docs_dir.iterdir() if p.is_file()}
     docs = run_folder(docs_dir, service, org_id, only=keyed_files)
     scorer = SetScorer(label, cells, docs)
     outcomes = scorer.score()
-    return summarize_set(
+    summary = summarize_set(
         label, outcomes,
         documents_in_folder=sum(1 for p in docs_dir.iterdir() if p.is_file() and not p.name.startswith(".")),
         documents_keyed=len(keyed), documents_not_found=len(keyed - keyed_files),
         extracted_unscored=dict(scorer.extracted_unscored), unmapped_labels=dict(scorer.unmapped_labels),
     )
+    if sort:
+        summary["miss_sort"] = sort_misses(outcomes, docs, keyed_multi_record(cells))
+        summary["record_fields"] = record_fields(docs)
+    return summary
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -86,6 +93,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     mode.add_argument("--rules-only", action="store_true", help="rule readers only: free, offline, deterministic (default)")
     mode.add_argument("--ai-replay", type=Path, metavar="DIR", help="AI on, answered from replies recorded in DIR")
     mode.add_argument("--ai-record", type=Path, metavar="DIR", help="AI on, real Claude; replies saved to DIR")
+    parser.add_argument("--sort-misses", action="store_true",
+                        help="sort each miss on a multi-record file: not_printed, printed_missed or elsewhere (counts)")
     parser.add_argument("--write-baseline", type=Path, metavar="FILE", help="write aggregate counts only to FILE")
     return parser.parse_args(argv)
 
@@ -128,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             mode = "ai-record"
 
     service, org_id = build_service(client)
-    summaries = {name: score_set(name, docs, key, service, org_id) for name, docs, key in sets}
+    summaries = {name: score_set(name, docs, key, service, org_id, sort=args.sort_misses) for name, docs, key in sets}
 
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "accuracy_scores.json").write_text(json.dumps({"mode": mode, "sets": summaries}, indent=1, sort_keys=True),
@@ -139,6 +148,9 @@ def main(argv: list[str] | None = None) -> int:
         args.write_baseline.write_text(json.dumps(baseline_payload(summaries, mode), indent=1, sort_keys=True) + "\n",
                                        encoding="utf-8")
     print(render_table(summaries))
+    for name, summary in summaries.items():
+        if "miss_sort" in summary:
+            print(render_sort(name, summary["miss_sort"], summary.get("record_fields")))
     print(f"Reports written to {args.out}")
 
     misses = client.misses if isinstance(client, ReplayClaude) else None

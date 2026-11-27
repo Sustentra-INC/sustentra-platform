@@ -188,12 +188,12 @@ class SetScorer:
     # -- helpers --------------------------------------------------------------------------
     def _out(self, cell: KeyCell, family: str, status: str, *, reason: str = "", actual: str = "",
              exact: bool = False, item: Item | None = None, expected: str | None = None,
-             label: str | None = None) -> Outcome:
+             label: str | None = None, record: int | None = None) -> Outcome:
         outcome = Outcome(
             self.set_name, cell.filename, family, status, reason=reason, label=cell.label if label is None else label,
             expected=cell.expected if expected is None else expected, actual=actual, exact=exact,
             silent=status == WRONG and is_silent(item), flags=item.flags if item else (),
-            confidence=item.confidence if item else None,
+            confidence=item.confidence if item else None, record=record,
         )
         self.outcomes.append(outcome)
         return outcome
@@ -371,7 +371,7 @@ class SetScorer:
                 break
         found = record.get(fields)
         if found is None:
-            self._out(cell, family, MISSED, reason="no_value", item=record.null_item(fields))
+            self._out(cell, family, MISSED, reason="no_value", item=record.null_item(fields), record=record.index)
             return
         used.add(id(found))
         self._compare(cell, family, spec.kind, found, record, used)

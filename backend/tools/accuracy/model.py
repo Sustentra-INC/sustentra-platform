@@ -61,6 +61,10 @@ class ExtractedDoc:
     targets: frozenset[str] = frozenset()
     items: list[Item] = field(default_factory=list)
     error: str | None = None
+    # The parser's text, for sorting misses (``misses``): every line, and each record's own rows
+    # (``ai_record_fill.record_rows``). Held in memory only; never written out.
+    line_texts: tuple[str, ...] = ()
+    record_texts: dict[int, tuple[str, ...]] = field(default_factory=dict)
 
     @property
     def read(self) -> bool:
@@ -83,3 +87,4 @@ class Outcome:
     silent: bool = False  # a wrong value that carried no flag
     flags: tuple[str, ...] = ()
     confidence: float | None = None
+    record: int | None = None  # the record a miss is on, when the record was found
