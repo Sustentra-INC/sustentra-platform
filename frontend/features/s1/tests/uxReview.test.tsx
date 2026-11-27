@@ -356,8 +356,8 @@ describe("extraction review: the document's key, pinned with the cards", () => {
     const key = screen.getByRole("group", { name: "Highlights on the document" });
     expect(key.textContent).toContain("1 not found");
     expect(within(key).getByText("Not found")).toBeInTheDocument();
-    fireEvent.click(within(key).getByRole("button", { name: "Highlight a figure" }));
-    expect(within(key).getByRole("button", { name: "Done highlighting" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(key).getByRole("button", { name: "Extract" }));
+    expect(within(key).getByRole("button", { name: "Done extracting" })).toHaveAttribute("aria-pressed", "true");
     expect(seen.at(-1)).toBe(true);
   });
 
@@ -463,7 +463,7 @@ describe("demo documents: the whole document, values highlighted in place", () =
     const highlighted = Array.from(document.querySelectorAll(".s1-dd-hl")).map((h) => h.textContent);
     expect(highlighted).toEqual(["01 Feb 2025 – 28 Feb 2025", "182,400 kWh", "1,240 kW", "0.223 kgCO2e/kWh", "40.68 tCO2e"]);
     // Its key and highlight switch, like any other demo document.
-    expect(screen.getByRole("button", { name: "Highlight a figure" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Extract" })).toBeInTheDocument();
   });
 
   it("marks a value the reading could not find where it belongs", async () => {
@@ -514,7 +514,7 @@ describe("highlight a figure the reading missed", () => {
       <DemoDocument values={gas} engagement={engagementConfig} selectedId={null} onPick={vi.fn()} onAddValue={onAddValue} />
     );
     expect(container.querySelector(".s1-dd-fig")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Highlight a figure" }));
+    fireEvent.click(screen.getByRole("button", { name: "Extract" }));
     fireEvent.click(container.querySelector('[data-anchor="heat-content"]')!);
 
     expect(screen.getByText("Add this figure as a value")).toBeInTheDocument();
@@ -532,7 +532,7 @@ describe("highlight a figure the reading missed", () => {
     const { container } = render(
       <DemoDocument values={partial} engagement={engagementConfig} selectedId={null} onPick={vi.fn()} onAddValue={onAddValue} />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Highlight a figure" }));
+    fireEvent.click(screen.getByRole("button", { name: "Extract" }));
     fireEvent.click(container.querySelector('[data-anchor="current-read-date"]')!);
     expect(screen.getByText("Fill in a value the reading missed")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Fill in" }));

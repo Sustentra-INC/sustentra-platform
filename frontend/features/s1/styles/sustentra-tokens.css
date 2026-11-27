@@ -99,6 +99,7 @@
   --hl-requested-hover:    rgba(160, 170, 185, 0.55);
   --hl-requested-stroke:   rgba(78, 93, 108, 0.5);
   --hl-missing:            rgba(251, 234, 234, 0.9);
+  --hl-passage:            #FFF1DE;   /* PDF passage highlight background */
   --hl-selected-halo:      rgba(61, 131, 199, 0.18);
   --hl-selected-pulse:     rgba(61, 131, 199, 0.45);
   --hl-selected-pulse-end: rgba(61, 131, 199, 0);
@@ -279,6 +280,8 @@
   --xr-nav-min:     200px;   /* navigator minimum (flex clamp lower bound) */
   --xr-panel-w:     380px;   /* review panel width */
   --xr-panel-min:   320px;   /* review panel minimum (flex clamp lower bound) */
+  --cv-sheet-max-w: 760px;   /* spreadsheet card max width */
+  --cv-doc-max-w:   620px;   /* PDF / drawn document card max width */
   --icon-btn-lg:     44px;   /* large icon button: rail items + expand toggle */
   --empty-content-max-width: 720px;
   --queue-width: 190px;
@@ -382,6 +385,8 @@
   --shadow-focus:       0 0 0 3px #D4D4EC;
   --shadow-inset:       inset 0 0 0 1px #DCDEE6;
   --shadow-pop:         0 0 0 1px rgba(20, 21, 26, 0.06), 0 24px 48px rgba(20, 21, 26, 0.16);
+  --shadow-doc:         0 8px 24px rgba(20, 21, 26, 0.10);   /* document viewer card (sheet, PDF) */
+  --shadow-tab-active:  0 -1px 0 var(--line), 1px 0 0 var(--line), -1px 0 0 var(--line);   /* active sheet tab border illusion */
   --shadow-subtle: none;   /* kept for backward compat */
 
 

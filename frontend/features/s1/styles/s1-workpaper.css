@@ -5046,3 +5046,76 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
   .s1-xr { flex-direction: column; overflow: visible; }
   .s1-xr-grid { grid-template-columns: 1fr; min-height: 0; overflow: visible; padding: var(--sp-3); row-gap: var(--sp-3); column-gap: 0; }
 }
+
+/* ============================================================
+   TICKET 8: Viewer toolbar, sheet view and PDF view
+   ============================================================ */
+
+/* --- Viewer toolbar: horizontal flex row --- */
+.s1-xr-src-head {
+  flex-direction: row;
+  align-items: center;
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
+  gap: var(--sp-3);
+  background: var(--sf-card);
+}
+.s1-xr-src-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-half); }
+.s1-xr-src-fn { font-size: var(--text-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s1-xr-src-head .s1-muted { font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s1-xr-src-head .s1-xr-pager { margin-top: 0; flex-shrink: 0; }
+
+/* --- Extract button de-emphasis in review panel (MVP-227) --- */
+.s1-xr-key .s1-xr-key__pick {
+  height: var(--button-h);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--sf-page);
+  border: none;
+  color: var(--ink);
+  font-size: var(--text-base);
+  font-weight: var(--weight-strong);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.s1-xr-key .s1-xr-key__pick:hover { background: var(--sf-sunken); }
+.s1-xr-key .s1-xr-key__pick.is-on { background: var(--accent-soft); color: var(--brand-dark); }
+.s1-xr-key .s1-xr-key__pick svg { width: 1rem; height: 1rem; }
+
+/* --- Spreadsheet card and tabs (DocumentContentView) --- */
+.s1-cv { background: var(--sf-card); border-radius: var(--r-card); box-shadow: var(--shadow-doc); overflow: hidden; max-width: var(--cv-sheet-max-w); }
+.s1-cv__tabs { background: var(--sf-sunken); border-bottom: var(--border-hairline); padding: var(--sp-2) var(--sp-2) 0; gap: 0; border-radius: 0; flex-wrap: nowrap; }
+.s1-cv__tab { height: var(--button-h-sm); border-radius: var(--r-sm) var(--r-sm) 0 0; padding: 0 var(--sp-3); color: var(--ink-2); font-size: var(--text-sm); background: transparent; box-shadow: none; }
+.s1-cv__tab--on { background: var(--sf-card); color: var(--ink); font-weight: var(--weight-strong); box-shadow: var(--shadow-tab-active); }
+/* Highlighted cell: inline chip within the cell instead of a full-cell block */
+.s1-cv__grid .s1-cv__mark {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  padding: var(--sp-half) var(--sp-2);
+  margin: 0 calc(-1 * var(--sp-2));
+  border-radius: var(--r-xs);
+}
+
+/* --- PDF / drawn document card and passage highlight --- */
+.s1-xr-paper {
+  max-width: var(--cv-doc-max-w);
+  border: none;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-doc);
+  padding: var(--sp-6) var(--sp-6) var(--sp-5);
+}
+.s1-xr-passage {
+  padding: var(--sp-1) var(--sp-2);
+  margin-left: calc(-1 * var(--sp-2));
+  margin-right: calc(-1 * var(--sp-2));
+  border-radius: var(--r-md);
+  background: var(--hl-passage);
+  border: none;
+  margin-top: 0;
+}
+.s1-xr-passage.s1-cv__mark--selected { box-shadow: 0 0 0 var(--hairline-width) var(--accent-solid); }

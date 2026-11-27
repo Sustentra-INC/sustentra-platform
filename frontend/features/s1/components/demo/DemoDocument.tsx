@@ -130,7 +130,7 @@ export function DemoDocument({
               setTarget(null);
             }}
           >
-            <Highlighter aria-hidden /> {picking ? "Done highlighting" : "Highlight a figure"}
+            <Highlighter aria-hidden /> {picking ? "Done extracting" : "Extract"}
           </button>
         ) : null}
       </div>

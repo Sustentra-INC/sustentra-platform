@@ -857,7 +857,7 @@ function DocumentKey({ values, highlight }: { values: ReviewValue[]; highlight?:
             aria-pressed={highlight.on}
             onClick={highlight.toggle}
           >
-            <Highlighter aria-hidden /> {highlight.on ? "Done highlighting" : "Highlight a figure"}
+            <Highlighter aria-hidden /> {highlight.on ? "Done extracting" : "Extract"}
           </button>
         ) : null}
       </div>
@@ -1102,17 +1102,19 @@ function SourcePane({
   return (
     <div className="s1-xr-src">
       <div className="s1-xr-src-head">
-        <div className="s1-xr-src-fn">{value.filename}</div>
-        <div className="s1-muted">
-          {realPage && value.reviewToken
-            ? placed
-              ? "The uploaded document, the value outlined where it was read."
-              : "The uploaded document. Check the value against it."
-            : realPage
-              ? "Click a highlighted figure to review it."
-              : value.span
-              ? "Opened at the page, value highlighted."
-              : "Highlight unavailable for this value."}
+        <div className="s1-xr-src-info">
+          <div className="s1-xr-src-fn">{value.filename}</div>
+          <div className="s1-muted">
+            {realPage && value.reviewToken
+              ? placed
+                ? "The uploaded document, the value outlined where it was read."
+                : "The uploaded document. Check the value against it."
+              : realPage
+                ? "Click a highlighted figure to review it."
+                : value.span
+                ? "Opened at the page, value highlighted."
+                : "Highlight unavailable for this value."}
+          </div>
         </div>
         {value.sourceKind !== "text" && !realPage ? (
           <div className="s1-xr-pager">
