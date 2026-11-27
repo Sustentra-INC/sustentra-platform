@@ -14,8 +14,16 @@ const TABS: { key: GlossaryTab; label: string }[] = [
   { key: "states", label: "States" },
 ];
 
-/** "processing" reads as "Processing"; a camelCase or multi-word code has no display name yet. */
+/** Approved names for codes that are not a plain word. */
+const DISPLAY_NAMES: Record<string, string> = {
+  facilityResolution: "Facility resolution",
+  periodResolution: "Period resolution",
+  valueProperty: "Value property",
+};
+
+/** "processing" reads as "Processing"; other codes use an approved name, or show as code alone. */
 function displayName(code: string): string | null {
+  if (DISPLAY_NAMES[code]) return DISPLAY_NAMES[code];
   return /^[a-z]+$/.test(code) ? code[0].toUpperCase() + code.slice(1) : null;
 }
 
