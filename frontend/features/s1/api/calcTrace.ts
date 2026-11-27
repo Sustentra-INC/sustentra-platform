@@ -211,7 +211,8 @@ export interface TraceBlock {
   tag?: TraceTag;
   /** The choice whose pills are shown above the block. */
   choice_id?: string;
-  /** A default the working uses that no reviewer has confirmed, shown as a muted tag: "Default: 10% (EPA Table 1, …) · not confirmed". */
+  /** A default the working uses that has no input of its own, shown as a muted tag. A default an input holds is the
+   *  input's `assumption` (the single source): the panel draws it on the blocks that read the input. */
   assumption?: string;
   /** Something a reviewer should check about this block's input, shown as a warning: "Capacities differ between records (…)". */
   warning?: string;

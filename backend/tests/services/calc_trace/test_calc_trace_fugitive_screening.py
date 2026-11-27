@@ -123,19 +123,21 @@ def test_r410a_screening_is_the_plans_example_exactly() -> None:
 
 def test_every_default_is_shown_as_an_assumption_until_a_reviewer_confirms_it() -> None:
     trace = line_of(run(office_store(), line_decisions=screening()), R410A_KC)["trace"]
-    tags = {b["id"]: b.get("assumption") for s in trace["steps"] for b in s["blocks"]}
-    assert tags["factor.x"] == "Default 10% (EPA Table 1; IPCC range 1–10%) · not confirmed"
-    assert tags["factor.y"] == "Default 80% (EPA Table 1; IPCC range 0–80%) · not confirmed"
-    assert tags["factor.z"] == "Default 80% (EPA Table 1; IPCC range 0–80%) · not confirmed"
-    assert all(t.startswith("Default 1.00 (in use the whole reporting period) · not confirmed")
-               for k, t in tags.items() if k.startswith("unit."))
+    # the default is the input's (one source of truth); the panel draws it on the block that uses the input
+    tags = {k: v.get("assumption") for k, v in trace["inputs"].items()}
+    assert tags["x"] == "Default 10% (EPA Table 1; IPCC range 1–10%) · not confirmed"
+    assert tags["y"] == "Default 80% (EPA Table 1; IPCC range 0–80%) · not confirmed"
+    assert tags["z"] == "Default 80% (EPA Table 1; IPCC range 0–80%) · not confirmed"
+    units = [t for k, t in tags.items() if k.startswith("T.")]
+    assert units and all(t.startswith("Default 1.00 (in use the whole reporting period) · not confirmed") for t in units)
+    assert not any(b.get("assumption") for s in trace["steps"] for b in s["blocks"])
     x = trace["inputs"]["x"]["recomputed"]
     assert x["value"] == 10 and x["unit"] == "%" and x["status"] == "reference"
     assert x["source"]["table"] == "EPA Table 1" and "page 11" in x["source"]["citation"]
     # confirmed (edited with the same value): no tag, the decided value is the operand
     confirm = event(R410A_KC, "input|x|recomputed", "edited", 10, "%")
     trace = line_of(run(office_store(), line_decisions=[*screening(), confirm, half_year()]), R410A_KC)["trace"]
-    assert block(trace, "factor.x").get("assumption") is None
+    assert trace["inputs"]["x"].get("assumption") is None and block(trace, "factor.x").get("assumption") is None
     assert trace["inputs"]["x"]["recomputed"]["status"] == "edited"
     assert round(trace["result"]["recomputed"], 4) == 14.3823
 

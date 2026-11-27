@@ -145,7 +145,8 @@ export function screeningSteps(units: Unit[], unit: string, terms: { P_N: number
     const c = `C.${u.uid}`;
     const t = `T.${u.uid}`;
     const op = worked([{ op: null, operand: operand("C", valueOf(inputs[c]), unit, { input_id: c }) }, { op: "×", operand: operand("T", valueOf(inputs[t]), undefined, { input_id: t }) }], "CT", unit);
-    step1.push({ id: `unit.${u.uid}`, label: `${u.name} · equipment in use`, columns: [col("C", "Capacity · C", unit), col("T", "Time in use · T", undefined, false, { dp: 2 }), col("CT", "C × T", unit, true, { sig: 6 })], recomputed: op, ...(t in decided.inputs ? {} : { assumption: T_TAG }) });
+    step1.push({ id: `unit.${u.uid}`, label: `${u.name} · equipment in use`, columns: [col("C", "Capacity · C", unit), col("T", "Time in use · T", undefined, false, { dp: 2 }), col("CT", "C × T", unit, true, { sig: 6 })], recomputed: op });
+    if (!(t in decided.inputs) && inputs[t]) inputs[t].assumption = T_TAG;
     if (valueOf(inputs[c]) === null) blocking.push({ input_id: c, message: `equipment capacity. Enter the refrigerant capacity (C) of ${u.name}, from the equipment register or its nameplate.` });
     inUseTerms.push({ op: inUseTerms.length ? "+" : null, operand: operand("CT", op.result.value as number | null, unit, { step_ref: `unit.${u.uid}` }) });
   }
@@ -162,7 +163,8 @@ export function screeningSteps(units: Unit[], unit: string, terms: { P_N: number
     fraction[f] = pct === null ? null : pct / 100;
     const name = fire && f === "x" ? "Annual emission rate" : FACTOR_LABEL[f];
     const tag = !(f in decided.inputs) && pct !== null && kind ? defaultTag(kind, f, pct) : null;
-    step1.push({ id: `factor.${f}`, label: `${name} · ${f}`, columns: [col(f, name, "%", true)], recomputed: one(f, fraction[f] ?? null, undefined, f), ...(tag ? { assumption: tag } : {}) });
+    step1.push({ id: `factor.${f}`, label: `${name} · ${f}`, columns: [col(f, name, "%", true)], recomputed: one(f, fraction[f] ?? null, undefined, f) });
+    if (tag && inputs[f]) inputs[f].assumption = tag;
   }
   const missing = needed.filter((f) => fraction[f] === null);
   if (missing.length) blocking.push(kind ? { input_id: missing[0], message: `screening factors. EPA gives no ${missing.join(", ")} for ${kind.label}: enter ${missing.length === 1 ? "it" : "them"}.` } : { input_id: "equipment_type", message: `the equipment type. Pick it under Equipment type to use EPA's screening factors, or enter ${missing.join(", ")} for this line.` });
