@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronRight, PanelsTopLeft, Plus } from "lucide-react";
+import { useWindowedRows } from "../hooks/useWindowedRows";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import {
@@ -447,7 +448,8 @@ export function EvidenceTree(props: EvidenceTreeProps) {
   }
 
   function docList(docs: TreeDocRow[], section: string) {
-    return <div className="s1-et-docs">{docs.map((d) => docRow(d, section))}</div>;
+    // A group of more than 100 documents draws only the rows near the screen.
+    return <WindowedDocs docs={docs} renderRow={(d) => docRow(d, section)} />;
   }
 
   function lineNode(node: TreeLineNode) {
@@ -948,6 +950,29 @@ function processingText(status: string): string {
   if (s === "queued" || s === "processing" || s === "pending") return "Still reading";
   if (s === "unsupported") return "Not a supported file type";
   return "Needs a document type";
+}
+
+/* ============================ long lists ============================ */
+
+/** The documents of one group: all of them when there are 100 or fewer, else a window of the rows near the screen
+ *  (an empty spacer stands in for the rest). Row order, keys and the row markup are unchanged. */
+function WindowedDocs({ docs, renderRow }: { docs: TreeDocRow[]; renderRow: (doc: TreeDocRow) => ReactNode }) {
+  const { host, ...win } = useWindowedRows(docs.length);
+  return (
+    <div className="s1-et-docs" ref={host as (el: HTMLDivElement | null) => void} onKeyDown={win.onKeyDown}>
+      {win.enabled
+        ? win.parts.map((p) =>
+            p.type === "spacer" ? (
+              <div key={`spacer-${p.key}`} aria-hidden style={{ height: p.height }} />
+            ) : (
+              <div key={docs[p.index].document_id} {...win.rowProps(p.index)}>
+                {renderRow(docs[p.index])}
+              </div>
+            ),
+          )
+        : docs.map((d) => renderRow(d))}
+    </div>
+  );
 }
 
 /* =============================== fold row =============================== */

@@ -28,7 +28,7 @@ from backend.app.api.s1_access import can_see, s1_reader
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
 from backend.app.services import workpaper_item_service
-from backend.app.services import calc_line_review, methodology_gwp
+from backend.app.services import calc_line_review, evidence_cache, methodology_gwp  # noqa: F401 - the modules the recalculation reads the decisions and the GWP choice from
 from backend.app.services.evidence_tree_service import EvidenceTreeService
 
 router = APIRouter(prefix="/v1", tags=["evidence-tree"])
@@ -90,6 +90,34 @@ def system_line_keys(engagement: dict[str, Any], visible: Callable[[dict], bool]
     return _service().system_line_keys(engagement, visible, decisions)
 
 
+async def loaded_for(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser, service: EvidenceTreeService,
+                     stamp: str | None) -> tuple[Any, dict[str, dict[str, Any]]]:
+    """The engagement's loaded documents and lines with the reviewers' document decisions: kept per organization
+    and engagement while nothing they are built from has changed (``services/evidence_cache.py``), else read in
+    bulk and worked out again."""
+
+    key = (evidence_cache.scope_of(user), str(engagement["id"]))
+    found = evidence_cache.LOADED.get(key, stamp)
+    if found is not None:
+        return found
+    decisions = await document_decisions(db, engagement)
+    loaded = service.load(engagement, lambda record: can_see(record, user), decisions)
+    # Kept only when nothing changed while it was read: the stamp taken again must be the one taken before.
+    if stamp is not None and await service.cache_stamp(db, engagement, fresh=True) == stamp:
+        size = 600 * sum(len(r.fields) for d in loaded.docs for r in d.records)  # a rough size of the records
+        evidence_cache.LOADED.put(key, stamp, (loaded, decisions), size)
+    return loaded, decisions
+
+
+async def recalculation_for(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser) -> dict[str, Any]:
+    """The engagement's recalculation: the very one Results answers (``run_recalculation``, kept while nothing it is
+    built from has changed), so the schedule, Results and the Excel workpaper agree."""
+
+    from backend.app.api import recalculation as recalculation_api
+
+    return await recalculation_api.run_recalculation(db, engagement, user)
+
+
 @router.get("/engagements/{engagement_id}/evidence-tree")
 async def get_evidence_tree(
     engagement_id: str,
@@ -98,9 +126,12 @@ async def get_evidence_tree(
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> dict:
     engagement = await _visible(db, engagement_id, user)
-    decisions = await document_decisions(db, engagement)
+    service = _service()
+    stamp = await service.cache_stamp(db, engagement)  # before any read: a change in between is caught next time
+    loaded, decisions = await loaded_for(db, engagement, user, service, stamp)
     names = await creator_names(db, engagement["org_id"])
-    return _service().tree(engagement, lambda record: can_see(record, user), decisions, facility_id, names)
+    return service.tree(engagement, lambda record: can_see(record, user), decisions, facility_id, names,
+                        loaded=loaded)
 
 
 @router.get("/engagements/{engagement_id}/calculation-lines/{line_key}/schedule")
@@ -111,13 +142,15 @@ async def get_line_schedule(
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> dict:
     engagement = await _visible(db, engagement_id, user)
-    decisions = await document_decisions(db, engagement)
+    service = _service()
+    stamp = await service.cache_stamp(db, engagement)
+    loaded, decisions = await loaded_for(db, engagement, user, service, stamp)
     names = await reviewer_names(db, engagement["org_id"])
-    engagement = await methodology_gwp.attach_choice(db, engagement)  # the schedule runs the recalculation
-    schedule = _service().schedule(
+    # the schedule runs the recalculation: kept, not run again for every line and every visit
+    recalculation = await recalculation_for(db, engagement, user)
+    schedule = service.schedule(
         engagement, lambda record: can_see(record, user), line_key, decisions,
-        name_of=lambda login: names.get(str(login).lower(), str(login)),
-        line_decisions=await calc_line_review.current(db, engagement["id"]),
+        name_of=lambda login: names.get(str(login).lower(), str(login)), loaded=loaded, recalculation=recalculation,
     )
     if schedule is None:
         raise HTTPException(status_code=404, detail="This calculation line does not exist in this engagement.")

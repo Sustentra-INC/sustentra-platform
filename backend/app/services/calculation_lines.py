@@ -19,6 +19,7 @@ Where a document is filed
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 import unicodedata
 import uuid
 from collections.abc import Iterable
@@ -125,7 +126,12 @@ def type_name(canonical_type_id: str | None) -> str | None:
 def slug(text: Any) -> str:
     """Lowercase ``[a-z0-9-]``, at most 60 characters; "none" for text with nothing usable."""
 
-    return re.sub(r"[^a-z0-9]+", "-", str(text or "").lower()).strip("-")[:60].strip("-") or "none"
+    return _slug_str(str(text or ""))
+
+
+@lru_cache(maxsize=32768)
+def _slug_str(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:60].strip("-") or "none"
 
 
 def line_key(scope: str, category: str, level2: str, anchor_kind: str, anchor_id: str) -> str:

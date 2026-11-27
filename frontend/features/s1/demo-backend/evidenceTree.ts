@@ -13,6 +13,7 @@ import {
   type Model, type ModelLine, type ModelRecord,
 } from "./linesModel";
 import { demoError } from "./index";
+import { largeFixtureSize, padTree } from "./largeFixture";
 import { demoDecisions, demoEngagement, saveDemoDecision } from "./state";
 import type { DemoRoute } from "./types";
 
@@ -105,7 +106,7 @@ export function buildTree(facilityId: string | null): EvidenceTree {
     const folder = demoDecisions().get(row.document_id)?.folderId;
     return { ...row, folder_id: folder && folderIds.has(folder) ? folder : null };
   });
-  return {
+  const tree: EvidenceTree = {
     blocks: {
       summary, summary_counts: countsOf([BLOCK_SUMMARY]),
       summary_folders: folders.map((f) => ({ folder_id: f.id, name: f.name, documents: summary.filter((r) => r.folder_id === f.id).length })),
@@ -118,6 +119,8 @@ export function buildTree(facilityId: string | null): EvidenceTree {
     anchors_for_contractual: "company",
     set_aside: model.setAside.map((s) => ({ ...s })),
   };
+  const large = largeFixtureSize(); // a dev-only switch: the normal demo never pads the tree
+  return large === null || facilityId ? tree : padTree(tree, large);
 }
 
 /* ------------------------------------ schedule ------------------------------------ */

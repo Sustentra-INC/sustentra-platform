@@ -43,7 +43,8 @@ from backend.app.reference.emission_factor_loader import (
 from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
 from backend.app.services import emissions_rollup as rollup
-from backend.app.services import line_totals, recalculation_lines
+from backend.app.services import evidence_cache, line_totals, recalculation_lines
+from backend.app.services.document_reads import DocumentReads, gc_paused
 from backend.app.services import reported_totals
 from backend.app.services.methodology_gwp import GwpChoice, default_choice
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
@@ -504,6 +505,11 @@ class EngagementRecalculationService:
             self._reference = default_emission_factor_reference()
         return self._reference
 
+    async def cache_stamp(self, db: Any, engagement: dict[str, Any], *, fresh: bool = False) -> str | None:
+        """The digest the Evidence cache keeps this engagement's results under (None: do not cache)."""
+
+        return await evidence_cache.stamp(db, engagement, self._upload, self._pipeline, self._reviews, fresh=fresh)
+
     # ---------------------------------------------------------------------------------
     def evidence_register(self, engagement_id: str, can_see: Callable[[dict], bool]) -> dict[str, list[dict[str, Any]]]:
         """Every document of the engagement and every extracted value with its latest review,
@@ -511,11 +517,9 @@ class EngagementRecalculationService:
 
         documents: list[dict[str, Any]] = []
         values: list[dict[str, Any]] = []
-        for document in self._upload.list_documents(engagement_id):
-            if not can_see(document):
-                continue
+        for read in self._reads(engagement_id, can_see):
+            document, results = read.document, read.results
             document_id = str(document.get("document_id"))
-            results = [r for r in self._pipeline.list_extraction_results_by_document(document_id) if can_see(r)]
             latest = results[-1] if results else {}
             documents.append({
                 "document_id": document_id, "file_name": document.get("file_name"),
@@ -524,8 +528,7 @@ class EngagementRecalculationService:
                 "candidate_count": sum(1 for i in latest.get("items") or [] if not _suggested(i)),
                 "suggested_count": sum(1 for i in latest.get("items") or [] if _suggested(i)),
             })
-            reviews = reviews_for_latest_type(
-                results, [d for d in self._reviews.list_by_document(document_id) if can_see(d)])
+            reviews = reviews_for_latest_type(results, read.reviews)
             read_items = latest.get("items") or []
             for item, resolved in zip(read_items, resolve_decisions(read_items, reviews)):
                 review = resolved.decision or {}
@@ -546,13 +549,18 @@ class EngagementRecalculationService:
                 })
         return {"documents": documents, "values": values}
 
-    def reviewed_records(self, engagement_id: str, can_see: Callable[[dict], bool]) -> list[ReviewedRecord]:
+    def _reads(self, engagement_id: str, can_see: Callable[[dict], bool]) -> DocumentReads:
+        """The engagement's documents with their results and decisions, read in bulk (a fixed number of
+        queries, however many documents)."""
+
+        return DocumentReads(self._upload, self._pipeline, self._reviews, engagement_id, can_see)
+
+    def reviewed_records(self, engagement_id: str, can_see: Callable[[dict], bool],
+                         reads: DocumentReads | None = None) -> list[ReviewedRecord]:
         records: list[ReviewedRecord] = []
-        for document in self._upload.list_documents(engagement_id):
-            if not can_see(document):
-                continue
+        for read in reads or self._reads(engagement_id, can_see):
+            document, results = read.document, read.results
             document_id = str(document.get("document_id"))
-            results = [r for r in self._pipeline.list_extraction_results_by_document(document_id) if can_see(r)]
             if not results:
                 continue
             latest = results[-1]
@@ -561,8 +569,7 @@ class EngagementRecalculationService:
                 continue
             if isinstance(latest.get("facility_suggestion"), dict):
                 self._suggested_facilities[document_id] = latest["facility_suggestion"]
-            reviews = reviews_for_latest_type(
-                results, [d for d in self._reviews.list_by_document(document_id) if can_see(d)])
+            reviews = reviews_for_latest_type(results, read.reviews)
             records.extend(group_reviewed_records(document, canonical_type_id, latest.get("items") or [], reviews))
         return records
 
@@ -572,6 +579,15 @@ class EngagementRecalculationService:
                     with_traces: bool = False,
                     line_decisions: Iterable[Mapping[str, Any]] | None = None,
                     proposal: recalculation_lines.Proposal | None = None) -> dict[str, Any]:
+        with gc_paused():  # tens of thousands of records are built: see ``document_reads.gc_paused``
+            return self._recalculate(engagement, can_see, decisions, with_traces=with_traces,
+                                     line_decisions=line_decisions, proposal=proposal)
+
+    def _recalculate(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
+                     decisions: dict[str, dict[str, Any]] | None = None, *,
+                     with_traces: bool = False,
+                     line_decisions: Iterable[Mapping[str, Any]] | None = None,
+                     proposal: recalculation_lines.Proposal | None = None) -> dict[str, Any]:
         """``decisions``: the reviewer's per-document decisions (facility, withdrawn,
         duplicate / supersedes), keyed by document id. ``with_traces`` adds each calculation line's ``trace``
         (``calc_trace``); off by default, so the response is exactly what it was before traces existed.
@@ -588,11 +604,12 @@ class EngagementRecalculationService:
         period = (_date(engagement.get("reporting_period_start")), _date(engagement.get("reporting_period_end")))
         decisions = decisions or {}
         self._suggested_facilities = {}
+        reads = self._reads(engagement_id, can_see)  # one bulk read serves the figures and the records
         # The company's own reported figures, read from its summary documents and accepted by a reviewer, join the
         # Reported side beside any figure typed in (which always wins). They are claims: nothing below the
         # comparison (the recalculated side, the evidence that counts) reads them.
         try:
-            figures = self._document_figures(engagement_id, can_see, decisions)
+            figures = self._document_figures(engagement_id, can_see, decisions, reads)
         except Exception as exc:  # noqa: BLE001 - a summary document that cannot be read must not take the page down
             log.warning("reported figures from documents failed: %s", type(exc).__name__)
             figures = []
@@ -600,7 +617,7 @@ class EngagementRecalculationService:
             inputs.reported, inputs.reported_units, figures,
             reported_totals.period_years(period[0], period[1]))
         inputs.reported, inputs.reported_units = reported, reported_units
-        placed, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
+        placed, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see, reads), decisions)
         if not gwp_choice["supported"]:
             placed = []  # blocked: no number is calculated on a set or horizon the data does not hold
         self._facilities = setup_facilities(engagement.get("settings"))
@@ -844,22 +861,22 @@ class EngagementRecalculationService:
                 "orphaned": sorted(orphaned, key=lambda o: (str(o["line_key"]), str(o["target"]), str(o["id"])))}
 
     def _document_figures(self, engagement_id: str, can_see: Callable[[dict], bool],
-                          decisions: dict[str, dict[str, Any]]) -> list[reported_totals.DocumentFigure]:
+                          decisions: dict[str, dict[str, Any]],
+                          reads: DocumentReads | None = None) -> list[reported_totals.DocumentFigure]:
         """The accepted or corrected reported figures of the engagement's company summary documents (a document
         the reviewer set aside is left out). Only a reviewer's decision makes a figure count."""
 
         superseded = superseded_ids(decisions)
         found: list[reported_totals.DocumentFigure] = []
-        for document in self._upload.list_documents(engagement_id):
+        for read in reads or self._reads(engagement_id, can_see):
+            document, results = read.document, read.results
             document_id = str(document.get("document_id"))
-            if not can_see(document) or set_aside_reason(decisions, document_id, superseded) is not None:
+            if set_aside_reason(decisions, document_id, superseded) is not None:
                 continue
-            results = [r for r in self._pipeline.list_extraction_results_by_document(document_id) if can_see(r)]
             if not results or str(results[-1].get("canonical_type_id") or "") not in reported_totals.REPORTED_TYPES:
                 continue
             items = results[-1].get("items") or []
-            reviews = reviews_for_latest_type(
-                results, [d for d in self._reviews.list_by_document(document_id) if can_see(d)])
+            reviews = reviews_for_latest_type(results, read.reviews)
             resolved_all = resolve_decisions(items, reviews)
             doc_year = reported_totals.document_year(items, [r.decision for r in resolved_all])
             for item, resolved in zip(items, resolved_all):

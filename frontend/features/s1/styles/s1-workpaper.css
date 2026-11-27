@@ -3705,6 +3705,8 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-et-doc .s1-doc-link { font-weight: var(--weight-regular); }
 .s1-et-doc > .s1-action-menu, .s1-et-doc > :last-child { justify-self: end; }
 .s1-et-body > .s1-et-docs > .s1-et-doc:first-child { border-top: 0; }
+/* a long group draws its rows in wrappers (windowed): the first row still has no top border */
+.s1-et-body > .s1-et-docs > [data-win-index="0"] > .s1-et-doc { border-top: 0; }
 .s1-et-doc__meta { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); font-size: var(--text-sm); color: var(--ink-3); }
 .s1-ai-facility { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); }
 .s1-et-doc__vals { font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; text-align: right; }

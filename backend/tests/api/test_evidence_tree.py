@@ -58,6 +58,16 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
         return []
 
     monkeypatch.setattr(tree_api.calc_line_review, "current", no_line_decisions)
+
+    # the schedule's recalculation is Results' (api/recalculation.run_recalculation): the same stores, no database
+    from backend.app.api import recalculation as recalculation_api
+    from backend.app.services.engagement_recalculation_service import EngagementRecalculationService
+
+    async def no_items(db, engagement_id, kind=None):  # noqa: ANN001, ANN202
+        return []
+
+    monkeypatch.setattr(recalculation_api, "_service", lambda: EngagementRecalculationService(store, store, store))
+    monkeypatch.setattr(recalculation_api.workpaper_item_service, "list_items", no_items)
     app.dependency_overrides[get_db_session] = no_db
     yield store
     app.dependency_overrides.pop(get_db_session, None)

@@ -147,6 +147,11 @@ class DocumentUploadService:
         self._require_non_empty(engagement_id, "engagement_id")
         return self._document_repository.list_by_engagement(engagement_id)
 
+    def documents_stamp(self, engagement_id: str) -> str:
+        """Changes whenever a document of the engagement is added or replaced."""
+        self._require_non_empty(engagement_id, "engagement_id")
+        return self._document_repository.engagement_stamp(engagement_id)
+
     def list_documents_by_batch(self, batch_id: str) -> list[dict]:
         self._require_non_empty(batch_id, "batch_id")
         return self._document_repository.list_by_batch(batch_id)

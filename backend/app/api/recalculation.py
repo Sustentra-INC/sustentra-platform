@@ -32,7 +32,8 @@ from backend.app.reference.emission_factor_loader import (
     GWP_SETS,
     default_emission_factor_reference,
 )
-from backend.app.services import calc_line_review, emissions_rollup, methodology_gwp, workpaper_export_service
+from backend.app.services import calc_line_review, emissions_rollup, evidence_cache, methodology_gwp
+from backend.app.services import workpaper_export_service
 from backend.app.services import workpaper_item_service
 from backend.app.services import workpaper_copy_service
 from backend.app.services.audit_log import write_audit_event
@@ -81,11 +82,27 @@ async def run_recalculation(db: AsyncSession, engagement: dict, user: CurrentUse
                             proposal: calc_line_review.Proposal | None = None) -> dict:
     """THE entry point of one recalculation (Results, the trace, the decision checks): the documents' decisions, the
     Methodology GWP and, by default, the reviewer's decisions on the calculation lines (``calc_line_review.current``),
-    then ``EngagementRecalculationService.recalculate``. A cache belongs around that call, with the line decisions in
-    its key. ``line_decisions=None`` runs without them; a list runs with exactly those. ``proposal``: a decision
-    POST's move, made and checked in the same run. The engine is synchronous: it runs in a worker thread, never on
-    the event loop."""
+    then ``EngagementRecalculationService.recalculate``. ``line_decisions=None`` runs without them; a list runs with
+    exactly those. ``proposal``: a decision POST's move, made and checked in the same run. The engine is synchronous:
+    it runs in a worker thread, never on the event loop.
 
+    The result of a plain run (no traces, no proposal) is kept per organization and engagement while nothing it is
+    built from has changed (``services/evidence_cache.py``: a digest of the engagement, every workpaper item, which
+    includes the document and line decisions and the Methodology choice, and the documents, results and decisions),
+    and the line decisions in use are part of the key. A run with a ``proposal`` or traces is never kept or served
+    from the cache. The result is shared: treat it as read-only."""
+
+    service = _service()
+    keep = proposal is None and not with_traces
+    stamp = await service.cache_stamp(db, engagement) if keep else None  # before any read
+    key: tuple | None = None
+    if keep:
+        # which line decisions: the engagement's current ones (covered by the stamp), none, or exactly this list
+        which = "current" if line_decisions == LOAD else "none" if line_decisions is None else evidence_cache.digest(line_decisions)
+        key = (evidence_cache.scope_of(user), str(engagement["id"]), which)
+        found = evidence_cache.RECALCULATION.get(key, stamp)
+        if found is not None:
+            return found
     decisions = {
         str(item["payload"].get("documentId") or item["item_key"]): item["payload"]
         for item in await workpaper_item_service.list_items(db, engagement["id"], "document")
@@ -93,10 +110,13 @@ async def run_recalculation(db: AsyncSession, engagement: dict, user: CurrentUse
     engagement = await methodology_gwp.attach_choice(db, engagement)  # the Methodology review's GWP set
     events = await calc_line_review.current(db, engagement["id"]) if line_decisions == LOAD else line_decisions
     assert not isinstance(events, str)
-    service = _service()
-    return await run_in_threadpool(partial(
+    result = await run_in_threadpool(partial(
         service.recalculate, engagement, lambda record: can_see(record, user), decisions, with_traces=with_traces,
         line_decisions=events, proposal=proposal))
+    # Kept only when nothing changed while it was calculated: the stamp taken again must be the one taken before.
+    if key is not None and stamp is not None and await service.cache_stamp(db, engagement, fresh=True) == stamp:
+        evidence_cache.RECALCULATION.put(key, stamp, result, evidence_cache.size_of_response(result))
+    return result
 
 
 async def traced_recalculation(db: AsyncSession, engagement: dict, user: CurrentUser, *,
@@ -187,13 +207,11 @@ async def export_workpaper(
 
     engagement = await _visible(db, engagement_id, user)
     items = await workpaper_item_service.list_items(db, engagement["id"])
-    decisions = {str(i["payload"].get("documentId") or i["item_key"]): i["payload"]
-                 for i in items if i["kind"] == "document"}
     service = _service()
     visible = lambda record: can_see(record, user)  # noqa: E731
+    # the one run Results answers (kept while unchanged); given the engagement as read, so its stamp is the same
+    recalculation = await run_recalculation(db, engagement, user)
     engagement = await methodology_gwp.attach_choice(db, engagement)
-    recalculation = service.recalculate(engagement, visible, decisions,
-                                        line_decisions=await calc_line_review.current(db, engagement["id"]))
     if recalculation.get("gwp_blocked"):  # the workpaper must not state numbers Results does not show
         raise HTTPException(status_code=409, detail=recalculation["gwp_blocked"])
     register = service.evidence_register(str(engagement["id"]), visible)
