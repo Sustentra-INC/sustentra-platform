@@ -417,10 +417,22 @@ def test_the_number_stored_is_the_printed_token_never_the_ais_string() -> None:
 
 
 def test_a_decimal_comma_document_reads_its_ambiguous_commas_as_decimals() -> None:
-    parser_output, items = _one_row_each(["1.234,5", "12,34"])
-    claude = FakeClaude([reading("R2", "activity_quantity", "12,34", "Diesel | 12,34", alias_of(parser_output, 3), "L")])
+    # Two unambiguous decimal-comma numbers and no US-format one: the document uses a decimal comma.
+    parser_output, items = _one_row_each(["1.234,5", "88,0", "12,34"])
+    claude = FakeClaude([reading("R3", "activity_quantity", "12,34", "Diesel | 12,34", alias_of(parser_output, 4), "L")])
     outcome, _ = run(claude, parser_output, items, targets=QUANTITY_TARGETS)
-    assert by_key(outcome)[(2, "activity_quantity")]["normalized_value"] == 12.34
+    assert by_key(outcome)[(3, "activity_quantity")]["normalized_value"] == 12.34
+    assert outcome.result["number_convention"] == {
+        "convention": "decimal_comma", "decimal_comma_numbers": 2, "decimal_point_numbers": 0}
+
+
+def test_one_decimal_comma_number_leaves_an_ambiguous_one_for_a_person() -> None:
+    parser_output, items = _one_row_each(["88,0", "1,204"])
+    claude = FakeClaude([reading("R2", "activity_quantity", "1,204", "Diesel | 1,204", alias_of(parser_output, 3), "gal")])
+    outcome, _ = run(claude, parser_output, items, targets=QUANTITY_TARGETS)
+    assert by_key(outcome)[(2, "activity_quantity")]["normalized_value"] is None
+    assert outcome.dropped == {"invalid_value": 1}
+    assert outcome.result["number_convention"]["convention"] == "unsettled"
 
 
 def test_an_ambiguous_comma_is_not_read_when_the_document_does_not_settle_it() -> None:

@@ -209,9 +209,18 @@ only suggests.
   number (and `raw_value`) is the token printed on the quoted line (for a sheet, its cell) that
   equals the AI's value. When the line prints the same digits as a different number (printed
   "88,0", AI "880"), the value is dropped (`number_not_as_printed`). A comma that could mean two
-  things is not read (`invalid_value`): "0,500", "1234,567", "1,20", "12,34". The exception is a
-  document whose other numbers settle a decimal comma ("1.234,56", "88,0"). "1,204" and "12,345.6"
-  are read as thousands, as before, unless the document uses a decimal comma.
+  things is not read (`invalid_value`): "0,500", "1234,567", "1,20", "12,34". The document's
+  convention is decided conservatively, because a wrong switch turns "1,204" into 1.204:
+  - A document counts as decimal-comma only with at least 2 unambiguous decimal-comma numbers
+    ("88,0", "1.234,56") and no unambiguous US-format number ("1,234.56", "12,345.6"). Its
+    ambiguous commas are then read as decimals.
+  - A document with no decimal-comma number reads "1,204" and "12,345.6" as thousands, as before.
+  - Any other document is unsettled (a single decimal-comma number, or mixed evidence). There,
+    "1,204" and "1.234" are not read either: they are dropped and left for a person.
+
+  When the AI read values, the extraction result carries `number_convention`
+  (`{convention, decimal_comma_numbers, decimal_point_numbers}`), so a reviewer can see how the
+  document's numbers were read.
 - **Records** (`ai_record_fill`, MVP-238). For a file with several records, each record's own
   empty fields are asked from that record's own rows only. Own rows are the lines the extractor
   cited for that record alone. On a page, they also include the lines between them, but never a

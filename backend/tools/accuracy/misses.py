@@ -52,7 +52,7 @@ def dates_in(text: str) -> set[date]:
     return {d for pattern in _DATES for m in pattern.finditer(text) if (d := parse_date(m.group(0)))}
 
 
-def printed_in(kind: str, expected: str, texts: Iterable[str], decimal_comma: bool | None = None) -> bool:
+def printed_in(kind: str, expected: str, texts: Iterable[str], decimal_comma: bool | None = False) -> bool:
     """Whether ``expected`` is printed in any of ``texts``, compared the way the family's kind compares. Printed
     numbers are read by the app's own reader (``printed_numbers``, with the document's convention): a number whose
     comma could be read two ways is not counted as printed."""

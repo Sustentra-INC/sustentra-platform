@@ -290,7 +290,7 @@ class Verified:
     confidence: float
 
 
-def parse_number(value: str, decimal_comma: bool | None = None) -> float | None:
+def parse_number(value: str, decimal_comma: bool | None = False) -> float | None:
     """The whole value as a number ("1,915.3"), else None: "12 kWh" is not a bare number, and neither is a number
     whose comma could be read two ways ("1,20", "0,500"; ``printed_numbers.read_number``, with the document's
     convention ``decimal_comma``)."""
@@ -300,6 +300,9 @@ def parse_number(value: str, decimal_comma: bool | None = None) -> float | None:
 
 
 NUMBER_MISMATCH = "number_not_as_printed"
+# On the extraction result when the AI read values: how the document's numbers were read (``printed_numbers``), with
+# the evidence count, so a reviewer can see why "1,204" was read, or left for them.
+NUMBER_CONVENTION = "number_convention"
 
 
 def printed_number(value: str, line_text: str, decimal_comma: bool | None) -> tuple[str, float] | str:
@@ -327,7 +330,7 @@ def _allowed_unit(unit: str, allowed: Sequence[str]) -> str | None:
 
 
 def verify_reading(reading: Any, by_name: Mapping[str, AskField], lines: Sequence[DocumentLine],
-                   confidence_of: Callable[[DocumentLine], float], decimal_comma: bool | None = None) -> Verified | str:
+                   confidence_of: Callable[[DocumentLine], float], decimal_comma: bool | None = False) -> Verified | str:
     """The reading as a verified value, or the code it is dropped under."""
 
     field_ = by_name.get(str(reading.field_name))
@@ -348,7 +351,7 @@ def verify_reading(reading: Any, by_name: Mapping[str, AskField], lines: Sequenc
 
 
 def _checked(field_: AskField, reading: Any, found: Located, confidence_of: Callable[[DocumentLine], float],
-             decimal_comma: bool | None = None) -> Verified | str:
+             decimal_comma: bool | None = False) -> Verified | str:
     raw = " ".join(str(reading.value).split())
     unit: str | None = None
     if field_.value_type in NUMERIC_TYPES:
@@ -594,7 +597,8 @@ class AiExtraction:
         output_type = reading_output(tuple(by_name))
         header = document_header(canonical_type_id, file_name, items)
         confidence_of = _confidence_of(parser_output)
-        decimal_comma = pn.document_convention(line.text for line in lines)
+        convention = pn.convention_of(line.text for line in lines)
+        decimal_comma = convention.decimal_comma
 
         # No part starts after the run's deadline (inline: a short budget inside the request; queued: 80% of the
         # reader's run), and none starts unless a call's worst case still ends before the run's own limit.
@@ -648,6 +652,7 @@ class AiExtraction:
         result, counts = merge(extraction_result, found, by_name, record) if found else (extraction_result, Counter())
         if read:
             warnings.append(_summary(counts, dropped, cost, read, planned))
+            result = {**result, NUMBER_CONVENTION: convention.as_record()}
         logger.info("ai extraction: suggested=%d disagrees=%d conflicts=%d dropped=%d parts=%d cost_microusd=%d",
                     counts["suggested"], counts["disagrees"], counts["conflicts"], sum(dropped.values()), read, cost)
         return AssistOutcome(result, warnings, counts["suggested"], dict(dropped), cost, read, not_read)
@@ -663,7 +668,8 @@ class AiExtraction:
         ledger = self._ledger or DbLedger(feature=FEATURE)
         spend = dp.Spend(ledger, org_id, settings.ai_monthly_cap_usd)
         confidence_of = _confidence_of(parser_output)
-        decimal_comma = pn.document_convention(line.text for line in lines)
+        convention = pn.convention_of(line.text for line in lines)
+        decimal_comma = convention.decimal_comma
         document_id = str(extraction_result.get("document_id") or parser_output.get("document_id") or "") or None
         if spend.reached(fresh=False):
             asks, _ = ai_record_fill.record_asks(lines, items, set(fields), ai_record_fill.record_rows(lines, items))
@@ -681,12 +687,14 @@ class AiExtraction:
         if filled is None:
             return AssistOutcome(extraction_result)
         warnings = list(filled.warnings)
+        result = filled.result
         if filled.calls:
             warnings.append(_summary(Counter({"suggested": filled.suggested}), Counter(filled.dropped),
                                      filled.cost_microusd, filled.calls, filled.planned))
+            result = {**result, NUMBER_CONVENTION: convention.as_record()}
         logger.info("ai extraction: records suggested=%d dropped=%d calls=%d cost_microusd=%d", filled.suggested,
                     sum(filled.dropped.values()), filled.calls, filled.cost_microusd)
-        return AssistOutcome(filled.result, warnings, filled.suggested, filled.dropped, filled.cost_microusd,
+        return AssistOutcome(result, warnings, filled.suggested, filled.dropped, filled.cost_microusd,
                              filled.calls, filled.not_read)
 
 
