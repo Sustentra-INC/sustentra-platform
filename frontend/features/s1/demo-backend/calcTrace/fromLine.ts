@@ -76,10 +76,53 @@ const SET_ELSEWHERE: Record<string, string> = {
 /** `decidable` and `why_not` on each input, by the backend's rule (calc_trace/decisions.py `not_decidable`). */
 function markDecidable(inputs: Record<string, TraceInput>): void {
   for (const [id, input] of Object.entries(inputs)) {
-    const why = SET_ELSEWHERE[id] ?? (id.startsWith("gwp.") ? "the GWP is chosen for the whole engagement on the Methodology page" : id === "activity.total" || id === "distance" || id.startsWith("ef.") ? null : "this input cannot be decided for a line");
+    const why = SET_ELSEWHERE[id] ?? (id.startsWith("gwp.") ? "the GWP is chosen for the whole engagement on the Methodology page" : id === "activity.total" || id === "distance" || id === "hhv" || id === "cc" || id.startsWith("ef.") ? null : "this input cannot be decided for a line");
     input.decidable = why === null;
     if (why !== null) input.why_not = why;
   }
+}
+
+// The stationary equation picker (Eq. 1, 2, 3), as the backend's stationary.py offers it. The demo has no
+// reviewer decisions, so Eq. 2 and Eq. 3 are never available here: they need a site HHV or carbon content a
+// reviewer accepts first. A fuel measured in energy (therms, MMBtu) has neither.
+const EQUATIONS = [
+  { id: "eq_1", label: "Eq. 1", equation: "Fuel × EF₁" },
+  { id: "eq_2", label: "Eq. 2", equation: "Fuel × HHV × EF₂" },
+  { id: "eq_3", label: "Eq. 3", equation: "Fuel × carbon content × 44/12" },
+];
+const MASS_UNITS = new Set(["short_ton", "lb", "kg", "metric_ton", "klb"]);
+const PHYSICAL_UNITS = new Set(["gal", "scf", "L", "bbl", "Mcf", "ccf", "MMcf", "m3", ...MASS_UNITS]);
+
+function stationaryEquations(gas: CalcGas, toUnit: string) {
+  const physical = PHYSICAL_UNITS.has(toUnit);
+  const why = (id: string): string => {
+    if (id === "eq_2") return physical ? "Needs an accepted site heat content (HHV) for this line." : "The fuel is already measured in energy: Eq. 1 uses it directly.";
+    if (gas !== "CO2") return "Eq. 3 gives CO₂ only: CH₄ and N₂O use Eq. 2, or Eq. 1 without a heat content.";
+    return MASS_UNITS.has(toUnit) ? "Needs an accepted carbon content (% by mass) for this fuel." : "Eq. 3 takes the carbon content as % by mass: the fuel must be measured in mass.";
+  };
+  return EQUATIONS.map((o) => ({
+    ...o,
+    available: o.id === "eq_1",
+    ...(o.id === "eq_1" ? {} : { why_unavailable: why(o.id) }),
+    required_inputs: o.id === "eq_2" ? ["hhv"] : o.id === "eq_3" && gas === "CO2" ? ["cc"] : [],
+  }));
+}
+
+/** The site inputs a reviewer accepts to open Eq. 2 and Eq. 3: awaiting review, never a guess. */
+function siteInputs(toUnit: string): Record<string, TraceInput> {
+  if (!PHYSICAL_UNITS.has(toUnit)) return {};
+  const input = (id: string, label: string, symbol: string, unit: string, requiredFor: string): TraceInput => ({
+    id,
+    label,
+    symbol,
+    kind: "reviewer_entered",
+    required_for: [requiredFor],
+    recomputed: { value: null, unit, status: "awaiting_review" },
+  });
+  return {
+    hhv: input("hhv", "Site heat content (HHV)", "HHV", `MMBtu/${toUnit}`, "eq_2"),
+    ...(MASS_UNITS.has(toUnit) ? { cc: input("cc", "Carbon content", "CC", "% by mass", "eq_3") } : {}),
+  };
 }
 
 export function traceFromLine(line: CalculationLine): LineTrace {
@@ -281,8 +324,10 @@ export function traceFromLine(line: CalculationLine): LineTrace {
   };
 
   const steps = [step1, step2, { id: "emissions", n: 3, title: "Step 3 · Emissions by gas", note: "One equation per gas", blocks: mass } as TraceStep, { id: "gwp", n: 4, title: "Step 4 · CO₂e", note: "Mass × global warming potential", blocks: gwp } as TraceStep, results];
-  markDecidable(inputs);
   const equation = (gas: CalcGas) => line.method.equations[gas];
+  const stationary = line.category === "stationary"; // not biogenic, mobile or electricity
+  if (stationary) Object.assign(inputs, siteInputs(line.step2.to_unit));
+  markDecidable(inputs);
   return {
     trace_version: 1,
     line_key: line.key,
@@ -296,11 +341,8 @@ export function traceFromLine(line: CalculationLine): LineTrace {
         .map((gas) => ({
           id: `equation:${gas}`,
           label: `${GAS_LABEL[gas]} equation`,
-          options: [
-            { id: "eq", label: equation(gas) ?? "", equation: equation(gas), available: true, required_inputs: [] },
-            { id: "eq2", label: "Eq. 2 · site heating value", available: false, why_unavailable: "Needs an accepted site heating value (HHV).", required_inputs: ["hhv"] },
-          ],
-          chosen: "eq",
+          options: stationary ? stationaryEquations(gas, line.step2.to_unit) : [{ id: "eq", label: equation(gas) ?? "", equation: equation(gas), available: true, required_inputs: [] }],
+          chosen: stationary ? "eq_1" : "eq",
           chosen_by: "default" as const,
         })),
     ],

@@ -30,14 +30,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from backend.app.services.calc_trace import ops
+from backend.app.services.calc_trace import ops, stationary
 from backend.app.services.calc_trace._line import _annotate, normalise_unit
 from backend.app.services.calc_trace.model import (
     Choice, LineTrace, Operand, Operation, Side, SourceRef, Term, TraceBlock, TraceResult,
 )
 
 MAX_NUMBER = 1e15
-DECIDABLE = ("activity.total", "distance")  # and every "ef.<gas>"
+DECIDABLE = ("activity.total", "distance", *stationary.SITE_INPUTS)  # and every "ef.<gas>"
 SET_ELSEWHERE = {
     "unit_conversion": "the unit conversion comes from the conversion table",
     "share": "the consolidated share is set under Recalculation inputs",
@@ -61,13 +61,16 @@ class Figures:
     biogenic_co2_t: float
     activity: float
     activity_total: float
-    rows: dict[str, dict[str, float]] = field(default_factory=dict)  # per gas: activity, ef, mass_t, co2e_t
+    # per gas: activity, ef, mass_t, co2e_t (a gas worked on Eq. 2 or Eq. 3 also: activity_unit, ef_unit, ef_source,
+    # unit_conversion, as its legacy Step 3 row shows them)
+    rows: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass
 class Outcome:
     applied: list[dict[str, Any]] = field(default_factory=list)
     not_applied: list[dict[str, Any]] = field(default_factory=list)
+    routes: dict[str, tuple[str, str]] = field(default_factory=dict)  # choice id -> (calculated, chosen) equation
 
 
 def _parse(stream: str) -> tuple[str, str, str | None] | None:
@@ -142,8 +145,8 @@ def _multi_run(trace: LineTrace) -> bool:
     return any("#" in b.id for s in trace.steps for b in s.blocks)
 
 
-def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
-          ) -> tuple[LineTrace, Outcome, Figures | None]:
+def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str,
+          context: dict[str, Any] | None = None) -> tuple[LineTrace, Outcome, Figures | None]:
     """The decided trace (``trace`` itself, worked in place: a copy of a trace costs more than building it again),
     the outcome of every decision, and the figures."""
 
@@ -151,6 +154,7 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
     outcome = Outcome()
     values: dict[str, tuple[float, Mapping[str, Any], Mapping[str, Any]]] = {}  # input id -> (value, decision, record)
     rejected: list[str] = []
+    chosen: list[tuple[str, Mapping[str, Any]]] = []  # read after the inputs: a route needs its site values
     multi_run = _multi_run(out)
 
     for stream, record in sorted(records.items()):
@@ -163,7 +167,7 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
         if status == "pending":  # a suggestion, or a revert back to the automatic value: no operand
             continue
         if target == "choice":
-            _choice(out, target_id, decision, outcome)
+            chosen.append((target_id, decision))
             continue
         if side != "recomputed":
             continue  # the company's side is shown, never an operand
@@ -208,8 +212,29 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
                                               message=f"Not applied: the value is in {unit}, the input in "
                                                       f"{side_now.unit}."))
             continue
+        if panel == "stationary" and target_id in stationary.SITE_INPUTS:
+            implausible = stationary.check_site(target_id, number, out, context)
+            if implausible is not None:
+                outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="invalid_value",
+                                                  message=implausible))
+                continue
         values[target_id] = (number, decision, record)
         outcome.applied.append(_entry(target, target_id, side, status=status, value=number))
+
+    site = {k: values[k][0] for k in stationary.SITE_INPUTS if k in values}
+    for target_id, decision in chosen:
+        _choice(out, target_id, decision, outcome, panel, site)
+    _equation_overrides(out, values, outcome)
+    used = {option for _, option in outcome.routes.values()}
+    for input_id, option in (("hhv", stationary.EQ2), ("cc", stationary.EQ3)):
+        # a site value is shown as decided; it is an operand only through the equation that needs it
+        if input_id in values and input_id in out.inputs:
+            number, decision, record = values.pop(input_id)
+            out.inputs[input_id].recomputed = _decided_side(out.inputs[input_id].recomputed, number, decision, record)
+            if option not in used:
+                for item in outcome.applied:
+                    if item["id"] == input_id:
+                        item["uses"] = "held: no equation chosen for this line uses it"
 
     if rejected:
         out.flags = sorted({*out.flags, REJECTED_FLAG})
@@ -226,13 +251,13 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
                     outcome.not_applied.append({**item, "reason": "total_decided",
                                                 "message": "Not applied: the line's activity total is decided."})
                     break
-    if not values or out.state == "blocked" or not out.steps:
+    if (not values and not outcome.routes) or out.state == "blocked" or not out.steps:
         if values:
             for input_id in values:
                 _move_to_not_applied(outcome, input_id, "line_has_no_working",
                                      "Not applied: this line has no working to calculate from.")
         return out, outcome, None
-    figures = _rework(out, values, panel)
+    figures = _rework(out, values, panel, outcome.routes, site, context)
     out.flags = sorted({*out.flags, APPLIED_FLAG})
     return out, outcome, figures
 
@@ -281,7 +306,26 @@ def _stale(trace: LineTrace, found: Any, decision: Mapping[str, Any]) -> tuple[d
     return {k: then.get(k) for k in now}, now
 
 
-def _choice(trace: LineTrace, choice_id: str, decision: Mapping[str, Any], outcome: Outcome) -> None:
+def _equation_overrides(trace: LineTrace, values: dict[str, Any], outcome: Outcome) -> None:
+    """A factor decided for a gas that a chosen equation works another way is not used: that equation has no such
+    factor (Eq. 2 and Eq. 3 do not take the per-unit one). Reported, never half applied."""
+
+    for choice_id, (_, option) in outcome.routes.items():
+        input_id = f"ef.{choice_id.split(':', 1)[1]}"
+        if input_id in values:
+            values.pop(input_id)
+            for item in list(outcome.applied):
+                if item["id"] == input_id:
+                    outcome.applied.remove(item)
+                    outcome.not_applied.append({**{k: v for k, v in item.items() if k != "value"},
+                                                "reason": "equation_not_used",
+                                                "message": f"Not applied: this gas is worked by "
+                                                           f"{stationary.EQUATION[option][0]}, which does not use "
+                                                           "this emission factor."})
+
+
+def _choice(trace: LineTrace, choice_id: str, decision: Mapping[str, Any], outcome: Outcome, panel: str = "",
+            site: Mapping[str, float] | None = None) -> None:
     choice: Choice | None = next((c for c in trace.choices if c.id == choice_id), None)
     status = str(decision.get("status"))
     if choice is None:
@@ -308,10 +352,17 @@ def _choice(trace: LineTrace, choice_id: str, decision: Mapping[str, Any], outco
         outcome.not_applied.append(_entry("choice", choice_id, None, status=status, reason="option_not_available",
                                           message="Not applied: that option is not available for this line."))
         return
-    if option.id != choice.chosen:  # no route but today's exists yet: never a number from a route not built
-        outcome.not_applied.append(_entry("choice", choice_id, None, status=status, reason="no_route_for_option",
-                                          message="Not applied: Sustentra cannot calculate this option yet."))
-        return
+    if option.id != choice.chosen:  # a route is worked only where one is built: never a number from one that is not
+        gas = choice_id.split(":", 1)[1] if choice_id.startswith("equation:") else ""
+        refusal: str | None = "Not applied: Sustentra cannot calculate this option yet."
+        if panel == "stationary" and gas and choice.chosen == stationary.EQ1:
+            refusal = stationary.route_refusal(trace, gas, option.id, site or {})
+        if refusal is not None:
+            outcome.not_applied.append(_entry("choice", choice_id, None, status=status, reason="no_route_for_option",
+                                              message=refusal))
+            return
+        outcome.routes[choice_id] = (choice.chosen, option.id)
+        choice.chosen = option.id
     choice.chosen_by = "reviewer"
     outcome.applied.append(_entry("choice", choice_id, None, status=status, value=option.id))
 
@@ -361,7 +412,8 @@ def _decided_side(side: Side | None, value: float, decision: Mapping[str, Any], 
 
 
 def _rework(trace: LineTrace, values: Mapping[str, tuple[float, Mapping[str, Any], Mapping[str, Any]]],
-            panel: str) -> Figures:
+            panel: str, routes: Mapping[str, tuple[str, str]] | None = None, site: Mapping[str, float] | None = None,
+            context: dict[str, Any] | None = None) -> Figures:
     """Steps 1 to 4 and the results worked again, in order, with the decided values. Units never change: every
     operand keeps its unit and ``make_operation`` re-checks them."""
 
@@ -418,7 +470,7 @@ def _rework(trace: LineTrace, values: Mapping[str, tuple[float, Mapping[str, Any
     mass: dict[str, float] = {}
     co2e: dict[str, float] = {}
     biogenic = 0.0
-    rows_out: dict[str, dict[str, float]] = {}
+    rows_out: dict[str, dict[str, Any]] = {}
     follows_vehicle_group = False
     emission_ids = [b.id for b in blocks.values() if b.id.startswith("emissions.")]
     for block_id in emission_ids:
@@ -427,6 +479,7 @@ def _rework(trace: LineTrace, values: Mapping[str, tuple[float, Mapping[str, Any
         assert block.recomputed is not None
         first, ef_term, conv_term = (t.operand for t in block.recomputed.terms)
         activity_value: float | str | None = first.value
+        route = (routes or {}).get(f"equation:{gas}")
         if first.input_id == "distance":  # on-road CH4 and N2O: Eq. 4
             activity_value = distance[0] if distance is not None else first.value
         elif first.step_ref == "conversion":
@@ -440,7 +493,12 @@ def _rework(trace: LineTrace, values: Mapping[str, tuple[float, Mapping[str, Any
         if ef is not None:
             item = trace.inputs[f"ef.{gas}"]
             item.recomputed = _decided_side(item.recomputed, *ef)
-        emitted = _redo(block.recomputed, [activity_value, ef[0] if ef else ef_term.value, conv_term.value])
+        extra: dict[str, Any] = {}
+        if route is not None:  # a chosen Eq. 2 or Eq. 3 (stationary): the gas worked on that equation
+            made = stationary.worked(trace, gas, route[1], converted, site or {}, context)
+            emitted, block.columns, extra = made.operation, made.columns, made.row
+        else:
+            emitted = _redo(block.recomputed, [activity_value, ef[0] if ef else ef_term.value, conv_term.value])
         _set(block, emitted)
         mass_t = _f(emitted.result.value)
         gwp_block = blocks.get(f"gwp.{gas}")
@@ -454,6 +512,8 @@ def _rework(trace: LineTrace, values: Mapping[str, tuple[float, Mapping[str, Any
             mass[gas], co2e[gas] = 0.0, 0.0
         rows_out[gas] = {"activity": _f(activity_value), "ef": _f(ef[0] if ef else ef_term.value), "mass_t": mass_t,
                          "co2e_t": co2e[gas]}
+        if extra:  # the legacy Step 3 row of a routed gas: its own activity, factor and units
+            rows_out[gas] = {**rows_out[gas], **extra, "mass_t": mass_t}
     if follows_vehicle_group:
         trace.flags = sorted({*trace.flags, GROUP_FUEL_FLAG})
 
