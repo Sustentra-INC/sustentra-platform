@@ -1277,7 +1277,8 @@ button.s1-state:focus-visible { outline: none; box-shadow: var(--shadow-focus); 
 .s1-glossary__tabs { flex: none; }
 .s1-glossary__tabs .s1-ws-factab { gap: var(--sp-2); }
 .s1-glossary__print-title { display: none; }
-.s1-glossary__cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(var(--glossary-card-min), 100%), 1fr)); gap: var(--sp-3-5); }
+/* At most three columns: each column is at least a third of the row (or the card minimum). */
+.s1-glossary__cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, max(var(--glossary-card-min), (100% - 2 * var(--sp-3-5)) / 3)), 1fr)); gap: var(--sp-3-5); }
 .s1-glossary__card {
   display: flex; flex-direction: column; gap: var(--sp-2);
   padding: var(--sp-4-5); border-radius: var(--r-lg); background: var(--sf-card); box-shadow: var(--shadow-card-soft);

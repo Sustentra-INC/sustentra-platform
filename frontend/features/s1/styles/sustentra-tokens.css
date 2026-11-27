@@ -331,7 +331,7 @@
   --source-pane-max-width: 380px;
   --csv-preview-min-width: 520px;
   --glossary-table-max-width: 900px;
-  --glossary-card-min:   300px; /* glossary term card minimum width */
+  --glossary-card-min:   260px; /* glossary term card minimum width (2 fit at 900px) */
   --glossary-title-basis: 420px; /* glossary title block before the tabs wrap under it */
   --glossary-dot:          8px; /* glossary term group dot */
   --field-value-max-height: 8rem;

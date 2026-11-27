@@ -1043,6 +1043,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             current.name === "glossary" ? current : { name: "glossary", previous: current }
           )
         }
+        glossaryOpen={activeView.name === "glossary"}
       >
         {activeView.name === "dashboard" ? (
           STAGING_SCREENS ? (

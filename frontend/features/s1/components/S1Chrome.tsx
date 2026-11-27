@@ -44,6 +44,8 @@ interface S1ChromeProps {
   current?: NavKey;
   onNavigate?: (key: NavKey) => void;
   onOpenGlossary?: () => void;
+  /** The Glossary page is showing: its footer link is the current item and no main nav item is. */
+  glossaryOpen?: boolean;
   onOpenActivity?: () => void;
   onReset?: () => void;
   /** The live assistant's data and links; without it the assistant gives built-in help. */
@@ -76,6 +78,7 @@ export function S1Chrome({
   current,
   onNavigate,
   onOpenGlossary,
+  glossaryOpen = false,
   onOpenActivity,
   onReset,
   assistant,
@@ -87,7 +90,8 @@ export function S1Chrome({
   return (
     <div className="s1-shell">
       <Sidebar
-        current={current}
+        current={glossaryOpen ? undefined : current}
+        glossaryOpen={glossaryOpen}
         onNavigate={onNavigate}
         hidden={hiddenNav}
         expanded={navExpanded}
@@ -129,9 +133,11 @@ function Sidebar({
   user,
   onOpenActivity,
   onOpenGlossary,
+  glossaryOpen,
   navCounts,
 }: {
   current?: NavKey;
+  glossaryOpen?: boolean;
   onNavigate?: (key: NavKey) => void;
   hidden?: NavKey[];
   expanded: boolean;
@@ -250,7 +256,12 @@ function Sidebar({
             </button>
           )}
           {onOpenGlossary && (
-            <button className="s1-side__item" type="button" onClick={onOpenGlossary}>
+            <button
+              className={`s1-side__item${glossaryOpen ? " is-on" : ""}`}
+              type="button"
+              aria-current={glossaryOpen ? "page" : undefined}
+              onClick={onOpenGlossary}
+            >
               <span className="s1-side__icon"><GlossaryIcon /></span>
               <span className="s1-side__label">Glossary</span>
             </button>
