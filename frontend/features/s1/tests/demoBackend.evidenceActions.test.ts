@@ -98,3 +98,44 @@ describe("demo backend: Evidence actions", () => {
     expect(JSON.stringify(items)).not.toMatch(/\.pdf/);
   });
 });
+
+describe("demo backend: rename and delete a fuel (MVP-145)", () => {
+  const fuels = `/engagements/${ID}/evidence-fuels/stationary`;
+  const nodes = async () => (await tree()).blocks.supporting.scopes.flatMap((s) => s.categories.flatMap((c) => c.level2s));
+
+  it("renames a fuel, keeps its id and lines, logs it, and refuses an empty, long or duplicate name", async () => {
+    setDemoEngagement({ ...engagementConfig, evidenceLines: [], evidenceLevel2Names: {} });
+    await demoApi(lines, { method: "POST", body: PROPANE });
+    const before = await nodes();
+    const node = before.find((n) => n.level2 === "kerosene");
+    expect(node).toMatchObject({ created_by_user: true, created_by: engagementConfig.signedInLogin });
+    expect(before.find((n) => n.level2 === "natural-gas")?.created_by_user).toBe(false);
+    for (const name of ["", "   ", "x".repeat(81)]) expect((await refused(demoApi(`${fuels}/kerosene`, { method: "PATCH", body: { name } }))).status).toBe(422);
+    const taken = await refused(demoApi(`${fuels}/kerosene`, { method: "PATCH", body: { name: "natural GAS" } }));
+    expect(taken.status).toBe(409);
+    expect(taken.body).toMatchObject({ code: "level2_name_taken" });
+    await demoApi(`${fuels}/kerosene`, { method: "PATCH", body: { name: "  Heating <b>oil</b>  " } });
+    const after = await nodes();
+    const renamed = after.find((n) => n.level2 === "kerosene");
+    expect(renamed?.label).toBe("Heating <b>oil</b>");
+    expect(renamed?.lines.map((l) => l.line.key)).toEqual([PROPANE_KEY]);
+    // a line added under the new name joins the same fuel
+    await demoApi(lines, { method: "POST", body: { ...PROPANE, level2_label: "heating <b>OIL</b>", anchor_id: "facility-other", label: "Other" } }).catch(() => undefined);
+    expect((await nodes()).filter((n) => n.label === "Heating <b>oil</b>")).toHaveLength(1);
+    expect((await refused(demoApi(`${fuels}/nope`, { method: "PATCH", body: { name: "A" } }))).status).toBe(404);
+    const log = (await demoApi<{ items: EvidenceActivityItem[] }>(`/engagements/${ID}/evidence-activity`)).items;
+    expect(log.find((e) => e.event_type === "evidence_level2_renamed")).toMatchObject({ old_label: "Kerosene", new_label: "Heating <b>oil</b>" });
+  });
+
+  it("deletes a reviewer's fuel with its lines, moves its documents to Unassigned, and refuses the system's", async () => {
+    const refusal = await refused(demoApi(`${fuels}/natural-gas`, { method: "DELETE" }));
+    expect(refusal.status).toBe(409);
+    expect(refusal.body).toMatchObject({ code: "level2_system_created" });
+    const gone = await demoApi<LineAnswer & { documents_moved: number }>(`${fuels}/kerosene`, { method: "DELETE" });
+    expect(gone.evidenceLines.some((l) => l.level2_label === "Kerosene")).toBe(false);
+    expect((await nodes()).some((n) => n.level2 === "kerosene")).toBe(false);
+    expect((await refused(demoApi(`${fuels}/kerosene`, { method: "DELETE" }))).status).toBe(404);
+    const log = (await demoApi<{ items: EvidenceActivityItem[] }>(`/engagements/${ID}/evidence-activity`)).items;
+    expect(log[0]).toMatchObject({ event_type: "evidence_level2_deleted" });
+  });
+});

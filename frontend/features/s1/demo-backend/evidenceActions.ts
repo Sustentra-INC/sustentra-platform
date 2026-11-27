@@ -6,6 +6,7 @@
  * the signed-in person. State lives in memory for the tab. Block 1 folders (create, rename, delete, put a
  * document in or out) follow the server's rules too.
  */
+import type { EngagementConfig } from "../types/engagement";
 import type { EvidenceActivityItem, EvidenceFolderSetting, EvidenceLineSetting, FolderAnswer, LineAnswer, Placement } from "../api/evidenceTree";
 import type { DocumentDecision } from "../types/evidence";
 import { demoError } from "./index";
@@ -71,7 +72,10 @@ export function deriveMoves(defaultTarget: string, chain: Placement[], move: Pla
 }
 
 function chainWith(documentId: string, move: Placement, defaultTarget: string, known: Set<string>): Placement[] {
-  const before = (demoDecisions().get(documentId)?.placements ?? []) as Placement[];
+  return chainFrom((demoDecisions().get(documentId)?.placements ?? []) as Placement[], move, defaultTarget, known);
+}
+
+function chainFrom(before: Placement[], move: Placement, defaultTarget: string, known: Set<string>): Placement[] {
   const full = deriveMoves(defaultTarget, before, move, known);
   if (full.length > MAX_MOVES) demoError(409, "This document has been moved too many times to save another move. Ask Sustentra support to tidy its history.");
   return full;
@@ -113,12 +117,65 @@ function folderOr404(folders: EvidenceFolderSetting[], id: string): EvidenceFold
 
 const answer = (lines: EvidenceLineSetting[], extra: Partial<LineAnswer> = {}): LineAnswer => ({ ...extra, evidenceLines: lines });
 
+export const MAX_LEVEL2_NAME = 80;
+
+/** The server's `clean_level2_name`: Unicode NFC, inner whitespace collapsed, trimmed; a sentence when it can't be used. */
+export function cleanLevel2Name(raw: unknown): string {
+  const name = typeof raw === "string" ? raw.normalize("NFC").split(/\s+/u).filter(Boolean).join(" ") : "";
+  if (!name) return demoError(422, "Give the fuel a name.");
+  if (/\p{C}/u.test(name)) return demoError(422, "A fuel name can't contain control characters.");
+  if ([...name].length > MAX_LEVEL2_NAME) return demoError(422, `A fuel name can be at most ${MAX_LEVEL2_NAME} characters.`);
+  return name;
+}
+
+const level2Names = () => ({ ...(engagementNow().evidenceLevel2Names ?? {}) });
+const saveLevel2Names = (names: NonNullable<EngagementConfig["evidenceLevel2Names"]>) =>
+  setDemoEngagement({ ...engagementNow(), evidenceLevel2Names: names });
+
+/** Every document filed on one of the lines in `gone` moves to Unassigned supporting evidence, by explicit moves (the server's `_move_to_unassigned`). */
+function moveOffLines(gone: Set<string>): { changed: Record<string, DocumentDecision>; moved: number } {
+  const model = buildModel();
+  const knownAfter = new Set(model.lines.map((l) => l.key).filter((k) => !gone.has(k)));
+  const changed: Record<string, DocumentDecision> = {};
+  let moved = 0;
+  for (const r of model.records) {
+    let chain = (demoDecisions().get(r.documentId)?.placements ?? []) as Placement[];
+    let touched = false;
+    for (const key of [...gone].sort()) {
+      if (!applyMoves([{ target: r.defaultTarget, flags: [] }], chain, new Set(model.lines.map((l) => l.key))).some((s) => s.target === key)) continue;
+      chain = chainFrom(chain, { from: key, to: SUPPORTING_UNASSIGNED }, r.defaultTarget, knownAfter);
+      touched = true;
+    }
+    if (!touched) continue;
+    changed[r.documentId] = saveChain(r.documentId, chain);
+    moved += 1;
+  }
+  // A set-aside document that was moved to a line keeps a move out, as on the server.
+  const shown = new Set(model.records.map((r) => r.documentId));
+  for (const [documentId, decision] of demoDecisions()) {
+    let chain = (decision.placements ?? []) as Placement[];
+    if (shown.has(documentId) || chain.length >= MAX_MOVES) continue;
+    const onGone = [...gone].filter((key) => chain.some((m) => m.to === key));
+    for (const key of onGone.sort()) chain = [...chain, { from: key, to: SUPPORTING_UNASSIGNED }];
+    if (onGone.length) changed[documentId] = saveChain(documentId, chain);
+  }
+  return { changed, moved };
+}
+
 export const evidenceActionRoutes: DemoRoute[] = [
   {
     method: "POST",
     path: /^\/engagements\/(?<id>[^/]+)\/evidence-lines$/,
     handle: ({ body }) => {
-      const entry = (body ?? {}) as EvidenceLineSetting;
+      let entry = (body ?? {}) as EvidenceLineSetting;
+      if (!entry.level2 && entry.level2_label) {
+        // A name a reviewer gave a fuel is that fuel, whatever it was called before (the server's lookup).
+        const wanted = nameKey(entry.level2_label.trim());
+        for (const [id, renamed] of Object.entries(level2Names())) {
+          const [category, level2] = [id.slice(0, id.indexOf(":")), id.slice(id.indexOf(":") + 1)];
+          if (category === entry.category && nameKey(renamed.label) === wanted) entry = { ...entry, level2 };
+        }
+      }
       const stored = storedLines();
       if (!entry.category || !entry.level2_label?.trim() || !entry.label?.trim() || !entry.anchor_kind) demoError(422, "each line needs a category, a name, an anchor and a label");
       if (entry.label.length > 120 || entry.level2_label.length > 120) demoError(422, "labels must be at most 120 characters");
@@ -180,6 +237,44 @@ export const evidenceActionRoutes: DemoRoute[] = [
       saveLines(lines);
       log({ event_type: "evidence_line_deleted", line_key: params.key, label: found.label, documents_moved: on.length });
       return answer(lines, { documents_moved: on.length, documents: changed });
+    },
+  },
+  {
+    // Rename a fuel (Level 2): only the name shown changes; the id stays (the server's `rename_fuel`).
+    method: "PATCH",
+    path: /^\/engagements\/(?<id>[^/]+)\/evidence-fuels\/(?<category>[^/]+)\/(?<level2>[^/]+)$/,
+    handle: ({ params, body }) => {
+      const group = buildModel().lines.filter((l) => l.category === params.category && l.level2 === params.level2);
+      if (!CATEGORY_SCOPE[params.category] || !group.length) demoError(404, "This fuel was already deleted. Reload Evidence to see the current fuels.");
+      const name = cleanLevel2Name((body as { name?: unknown } | null)?.name);
+      const old = group[0].level2_label;
+      const names = level2Names();
+      if (name === old) return { level2: { category: params.category, level2: params.level2, label: old }, evidenceLevel2Names: names };
+      const taken = buildModel().lines.some((l) => l.category === params.category && l.level2 !== params.level2 && nameKey(l.level2_label) === nameKey(name));
+      if (taken) demoError(409, `${name} already exists in this category. Use another name.`, "level2_name_taken");
+      const next = { ...names, [`${params.category}:${params.level2}`]: { label: name, renamed_by: engagementNow().signedInLogin ?? "demo", renamed_at: new Date().toISOString() } };
+      saveLevel2Names(next);
+      log({ event_type: "evidence_level2_renamed", old_label: old, new_label: name });
+      return { level2: { category: params.category, level2: params.level2, label: name }, evidenceLevel2Names: next };
+    },
+  },
+  {
+    // Delete a fuel the reviewers made, with its lines; its documents go to Unassigned supporting evidence (the server's `delete_fuel`).
+    method: "DELETE",
+    path: /^\/engagements\/(?<id>[^/]+)\/evidence-fuels\/(?<category>[^/]+)\/(?<level2>[^/]+)$/,
+    handle: ({ params }) => {
+      const group = buildModel().lines.filter((l) => l.category === params.category && l.level2 === params.level2);
+      if (!CATEGORY_SCOPE[params.category] || !group.length) demoError(404, "This fuel was already deleted. Reload Evidence to see the current fuels.");
+      if (group.some((l) => !l.created_by_user)) demoError(409, "Created by the system from your Setup; can't be deleted.", "level2_system_created");
+      const gone = new Set(group.map((l) => l.key));
+      const { changed, moved } = moveOffLines(gone);
+      const lines = storedLines().filter((l) => !gone.has(keyOf(l)));
+      saveLines(lines);
+      const names = level2Names();
+      delete names[`${params.category}:${params.level2}`];
+      saveLevel2Names(names);
+      log({ event_type: "evidence_level2_deleted", label: group[0].level2_label, lines_deleted: gone.size, documents_moved: moved });
+      return { ...answer(lines, { documents_moved: moved, documents: changed }), evidenceLevel2Names: names };
     },
   },
   {

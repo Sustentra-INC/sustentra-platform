@@ -23,7 +23,7 @@ from functools import lru_cache
 import unicodedata
 import uuid
 from collections.abc import Iterable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date, timedelta
 from typing import Any
 
@@ -511,6 +511,64 @@ def document_folder(decision: dict[str, Any] | None, folder_ids: set[str]) -> st
     return folder if isinstance(folder, str) and folder in folder_ids else None
 
 
+# --- Level 2 (fuel, substance or process) renames: settings["evidenceLevel2Names"] -------------
+# A Level 2 is not a stored thing: it is the lines that share a category and a ``level2`` slug. The slug is its
+# stable id (it is in every line key, so documents, placements and reviewer decisions follow it). A rename
+# therefore changes only the label shown, kept here as ``{"<category>:<level2>": {label, renamed_by, renamed_at}}``.
+LEVEL2_NAMES_KEY = "evidenceLevel2Names"
+MAX_LEVEL2_NAME = 80
+MAX_LEVEL2_NAMES = 400
+
+
+def level2_id(category: str, level2: str) -> str:
+    return f"{category}:{level2}"
+
+
+def clean_level2_name(raw: Any) -> str:
+    """A Level 2 name as stored: Unicode NFC, inner whitespace collapsed, trimmed. ValueError (a message for the
+    user) when it is empty, has control characters or is too long. Any script is fine."""
+
+    if not isinstance(raw, str):
+        raise ValueError("Give the fuel a name.")
+    name = " ".join(unicodedata.normalize("NFC", raw).split())
+    if not name:
+        raise ValueError("Give the fuel a name.")
+    if any(unicodedata.category(ch).startswith("C") for ch in name):
+        raise ValueError("A fuel name can't contain control characters.")
+    if len(name) > MAX_LEVEL2_NAME:
+        raise ValueError(f"A fuel name can be at most {MAX_LEVEL2_NAME} characters.")
+    return name
+
+
+def stored_level2_names(settings: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    """The renames in settings, trusting stored data less than a request: an entry without a text name is skipped."""
+
+    raw = (settings or {}).get(LEVEL2_NAMES_KEY)
+    out: dict[str, dict[str, Any]] = {}
+    for key, entry in list(raw.items())[:MAX_LEVEL2_NAMES] if isinstance(raw, dict) else []:
+        if isinstance(key, str) and isinstance(entry, dict) and isinstance(entry.get("label"), str) and entry["label"].strip():
+            out[key] = entry
+    return out
+
+
+def apply_level2_names(lines: list[CalculationLine], names: dict[str, dict[str, Any]]) -> list[CalculationLine]:
+    """The lines with each renamed Level 2's new label. A line named after its fuel ("Natural gas, Kent") takes the
+    new name in front too; a line the reviewer named in their own words keeps its label."""
+
+    if not names:
+        return lines
+    out: list[CalculationLine] = []
+    for line in lines:
+        entry = names.get(level2_id(line.category, line.level2))
+        if entry is None or entry["label"] == line.level2_label:
+            out.append(line)
+            continue
+        old, new = line.level2_label, entry["label"]
+        label = new + line.label[len(old):] if line.label == old or line.label.startswith(f"{old}, ") else line.label
+        out.append(replace(line, level2_label=new, label=label))
+    return out
+
+
 # --- where a record belongs by default ------------------------------------------------------
 @dataclass(frozen=True)
 class RecordPlacement:
@@ -610,11 +668,13 @@ def default_lines(placements: Iterable[RecordPlacement], facilities: list[dict[s
     return list(lines.values())
 
 
-def merge_lines(system: list[CalculationLine], created: list[CalculationLine]) -> list[CalculationLine]:
+def merge_lines(system: list[CalculationLine], created: list[CalculationLine],
+                names: dict[str, dict[str, Any]] | None = None) -> list[CalculationLine]:
     """System lines plus the reviewers' own, in tree order. A reviewer's line that duplicates
-    a system line is the system line (system lines are not the reviewer's to edit)."""
+    a system line is the system line (system lines are not the reviewer's to edit). ``names``: the
+    fuel renames (``stored_level2_names``), shown instead of the label the line was made with."""
 
-    merged = {line.key: line for line in [*created, *system]}
+    merged = {line.key: line for line in apply_level2_names([*created, *system], names or {})}
     order = {key: i for i, (key, _, _) in enumerate(CATEGORIES)}
     return sorted(merged.values(), key=lambda ln: (order[ln.category], ln.level2_label.lower(), ln.label.lower(),
                                                    ln.key))

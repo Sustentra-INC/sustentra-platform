@@ -82,3 +82,30 @@ def test_the_cache_is_bounded_by_bytes_too() -> None:
     assert cache.size_bytes == 300 + 300 + 100
     cache.clear()
     assert cache.size_bytes == 0
+
+
+def test_the_stamp_changes_with_a_fuel_rename_and_with_a_fuel_delete() -> None:
+    """MVP-145: a Level 2 change lives in the engagement's settings, which the stamp digests, so no stale tree or
+    recalculation is served after a rename or a delete."""
+
+    row = SimpleNamespace(n=0, top="", digest="d")
+
+    class Db:
+        async def execute(self, *_: object, **__: object) -> SimpleNamespace:
+            return SimpleNamespace(one=lambda: row)
+
+    source = SimpleNamespace(documents_stamp=lambda _key: "docs", extraction_stamp=lambda _key: "ext",
+                             engagement_stamp=lambda _key: "rev")
+    line = {"category": "stationary", "level2_label": "Propane", "anchor_kind": "facility", "anchor_id": "F1",
+            "label": "Propane at Kent"}
+    base = {"id": "E1", "settings": {"evidenceLines": [line]}}
+    renamed = {**base, "settings": {**base["settings"], "evidenceLevel2Names": {"stationary:propane": {"label": "LPG"}}}}
+    again = {**base, "settings": {**base["settings"], "evidenceLevel2Names": {"stationary:propane": {"label": "LPG 2"}}}}
+    deleted = {**base, "settings": {"evidenceLines": []}}
+
+    def stamp(engagement: dict) -> str | None:
+        return asyncio.run(evidence_cache.stamp(Db(), engagement, source, source, source))  # type: ignore[arg-type]
+
+    stamps = [stamp(e) for e in (base, renamed, again, deleted)]
+    assert all(stamps) and len(set(stamps)) == 4
+    assert stamp(base) == stamps[0]  # and the same settings give the same stamp

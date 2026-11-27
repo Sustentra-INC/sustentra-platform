@@ -124,7 +124,10 @@ import {
   createEvidenceFolder,
   createEvidenceLine,
   deleteEvidenceFolder,
+  deleteEvidenceFuel,
   deleteEvidenceLine,
+  renameEvidenceFuel,
+  type FuelAnswer,
   getEvidenceActivity,
   getEvidenceTree,
   placementOfDocuments,
@@ -799,6 +802,32 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       if (dataMode === "backend") for (const [docId, decision] of Object.entries(changed)) workpaper.markSaved("document", docId, decision);
       setDocumentDecisions((cur) => ({ ...cur, ...changed }));
     }
+    return answer.documents_moved ?? 0;
+  }
+
+  /** Takes the renamed fuels the server answered with, the same way as the lines (the server owns them). */
+  function adoptFuelNames(engagementId: string, answer: FuelAnswer) {
+    if (!stillOpen(engagementId)) return;
+    const evidenceLevel2Names = answer.evidenceLevel2Names;
+    if (evidenceLevel2Names) {
+      setEngagement((current) => ({ ...current, evidenceLevel2Names }));
+      if (pendingSave.current) pendingSave.current = { ...pendingSave.current, evidenceLevel2Names };
+    }
+    void refreshEvidenceActivity(engagementId);
+  }
+
+  async function renameFuel(category: string, level2: string, name: string) {
+    const id = engagement.engagementId;
+    adoptFuelNames(id, await renameEvidenceFuel(id, category, level2, name));
+  }
+
+  /** Deletes a fuel the reviewers made, with its lines. Resolves with how many documents moved to Unassigned supporting evidence. */
+  async function deleteFuel(category: string, level2: string): Promise<number> {
+    const id = engagement.engagementId;
+    const answer = await deleteEvidenceFuel(id, category, level2);
+    if (answer.evidenceLines) adoptLines(id, { evidenceLines: answer.evidenceLines });
+    adoptFuelNames(id, answer);
+    if (answer.documents) adoptDocuments(id, answer.documents);
     return answer.documents_moved ?? 0;
   }
 
@@ -1784,6 +1813,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                     onCreateLine: createLine,
                     onRenameLine: renameLine,
                     onDeleteLine: deleteLine,
+                    onRenameFuel: renameFuel,
+                    onDeleteFuel: deleteFuel,
                     rereads,
                     onRetryReread: (documentId, typeId, typeName) => {
                       movedRereads.current.add(documentId);

@@ -30,7 +30,7 @@ import { getMethodologyReview } from "../api/methodologyReview";
 import { factsReadByDocument } from "../utils/methodologyFacts";
 import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig } from "../types";
-import { addedByText, formatPeriod } from "../utils/formatPeriod";
+import { addedByText, createdByText, formatPeriod } from "../utils/formatPeriod";
 import { useAssignTask } from "../../tasks/AssignTaskContext";
 import { ActionMenu } from "./ActionMenu";
 import { AiFacilityNote } from "./AiFacilityNote";
@@ -82,6 +82,11 @@ export interface EvidenceTreeProps {
   onRenameLine: (line: CalculationLine, label: string) => Promise<void>;
   /** Resolves with how many documents moved to Unassigned supporting evidence. */
   onDeleteLine: (line: CalculationLine) => Promise<number>;
+  /** Fuel (Level 2) actions, each run by the server with its own audit event; they reject with the reason. A rename keeps
+   *  the fuel's id, so its documents, lines and decisions stay attached. Without them (an older server) a fuel has no menu. */
+  onRenameFuel?: (category: string, level2: string, name: string) => Promise<void>;
+  /** Deletes a fuel the reviewers made, with its lines. Resolves with how many documents moved to Unassigned supporting evidence. */
+  onDeleteFuel?: (category: string, level2: string) => Promise<number>;
   /** Re-reads that moves asked for, by document id. */
   rereads?: Record<string, RereadState>;
   /** Asks again for a re-read that failed (or whose wait was lost): the type to read it as comes from the row. */
@@ -104,6 +109,9 @@ type Dialog =
   | { kind: "newLine"; scope: string; category: string; level2: TreeLevel2 }
   | { kind: "newFuel"; scope: string; category: TreeCategory }
   | { kind: "rename"; line: CalculationLine }
+  | { kind: "renameFuel"; category: TreeCategory; level2: TreeLevel2 }
+  /** `documents` is how many documents are under the fuel in the whole tree; null when that is not known. */
+  | { kind: "deleteFuel"; category: TreeCategory; level2: TreeLevel2; documents: number | null }
   | { kind: "newFolder" }
   | { kind: "renameFolder"; folder: TreeFolder }
   | { kind: "deleteFolder"; folder: TreeFolder }
@@ -499,8 +507,35 @@ export function EvidenceTree(props: EvidenceTreeProps) {
   function level2Node(scope: string, category: TreeCategory, l2: TreeLevel2) {
     const id = `l2:${category.category}:${l2.level2}`;
     if (noneFor(l2.counts)) return null;
+    const manage = props.writesEnabled && !filtered && props.onRenameFuel && props.onDeleteFuel;
     return (
-      <Fold key={id} id={id} depth={3} open={isOpen(id)} onToggle={toggle} title={l2.label} counts={l2.counts}>
+      <Fold
+        key={id}
+        id={id}
+        depth={3}
+        open={isOpen(id)}
+        onToggle={toggle}
+        title={l2.label}
+        tag={l2.created_by_user ? createdByText(l2.created_by_name, l2.created_at) : undefined}
+        counts={l2.counts}
+        actions={
+          manage ? (
+            <ActionMenu
+              label={`Actions for ${l2.label}`}
+              isOpen={menuId === id}
+              onOpenChange={(o) => setMenuId(o ? id : null)}
+              entries={[
+                { label: "Rename", action: () => setDialog({ kind: "renameFuel", category, level2: l2 }) },
+                {
+                  label: "Delete",
+                  action: () => openDeleteFuel(category, l2),
+                  unavailable: l2.created_by_user ? undefined : "Created by the system from your Setup; can't be deleted.",
+                },
+              ]}
+            />
+          ) : undefined
+        }
+      >
         {l2.lines.map((n) => lineNode(n))}
         {props.writesEnabled && !filtered ? (
           <button className="s1-et-add" type="button" onClick={() => setDialog({ kind: "newLine", scope, category: category.category, level2: l2 })}>
@@ -605,6 +640,11 @@ export function EvidenceTree(props: EvidenceTreeProps) {
 
   /** The delete window names how many documents move. With a facility filter on, the tree counts only that
    *  facility's documents, so the count is read from the whole tree. */
+  function openDeleteFuel(category: TreeCategory, level2: TreeLevel2) {
+    // The menu is offered without a facility filter, so the count on show is the count in the whole tree.
+    setDialog({ kind: "deleteFuel", category, level2, documents: level2.counts.documents });
+  }
+
   async function openDelete(line: CalculationLine, shown: number) {
     if (facilityId === null) {
       setDialog({ kind: "delete", line, documents: shown });
@@ -792,6 +832,49 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           onCancel={() => setDialog(null)}
           onSubmit={async (name) => {
             await guard(() => props.onRenameLine(dialog.line, name));
+            done();
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === "renameFuel" ? (
+        <TextDialog
+          title="Rename fuel"
+          label="Fuel name"
+          initial={dialog.level2.label}
+          action="Rename"
+          maxLength={80}
+          check={(name) =>
+            dialog.category.level2s.some((l) => l.level2 !== dialog.level2.level2 && l.label.trim().toLowerCase() === name.toLowerCase())
+              ? `${name} already exists in ${dialog.category.label}.`
+              : null
+          }
+          onError={onError}
+          onCancel={() => setDialog(null)}
+          onSubmit={async (name) => {
+            await guard(() => props.onRenameFuel!(dialog.category.category, dialog.level2.level2, name));
+            done();
+          }}
+        />
+      ) : null}
+
+      {dialog?.kind === "deleteFuel" ? (
+        <ConfirmDialog
+          title={`Delete ${dialog.level2.label}?`}
+          body={
+            dialog.documents === 0
+              ? "It has no documents. Its calculation lines are deleted with it."
+              : dialog.documents === 1
+                ? "Its 1 document moves to Unassigned supporting evidence. Its value stops counting until you place it again."
+                : dialog.documents === null
+                  ? "Its documents move to Unassigned supporting evidence. Their values stop counting until you place them again."
+                  : `Its ${dialog.documents} documents move to Unassigned supporting evidence. Their values stop counting until you place them again.`
+          }
+          action="Delete fuel"
+          onError={onError}
+          onCancel={() => setDialog(null)}
+          onConfirm={async () => {
+            await guard(() => props.onDeleteFuel!(dialog.category.category, dialog.level2.level2));
             done();
           }}
         />
@@ -1429,6 +1512,8 @@ function TextDialog({
   label,
   initial,
   action,
+  maxLength = 120,
+  check,
   onError,
   onCancel,
   onSubmit,
@@ -1437,6 +1522,10 @@ function TextDialog({
   label: string;
   initial: string;
   action: string;
+  /** The longest name the field takes (120 unless the thing named has a shorter limit). */
+  maxLength?: number;
+  /** A sentence for a name that can't be used (shown at once, the action waits); null when it is fine. */
+  check?: (name: string) => string | null;
   onError: OnError;
   onCancel: () => void;
   onSubmit: (value: string) => Promise<void>;
@@ -1444,19 +1533,31 @@ function TextDialog({
   const [value, setValue] = useState(initial);
   const { busy, error, run } = useSubmit(onError);
   const text = value.trim();
+  const problem = text && text !== initial ? (check?.(text) ?? null) : null;
   return (
     <Dialog title={title} onClose={onCancel} busy={busy}>
       <label className="s1-modal__field">
         <span>{label}</span>
-        <input className="s1-inline-input" value={value} maxLength={120} onChange={(e) => setValue(e.target.value)} />
+        <input
+          className="s1-inline-input"
+          value={value}
+          maxLength={maxLength}
+          aria-invalid={problem ? true : undefined}
+          onChange={(e) => setValue(e.target.value)}
+        />
       </label>
+      {problem ? (
+        <p className="s1-modal__note" role="alert">
+          {problem}
+        </p>
+      ) : null}
       {error ? (
         <p className="s1-modal__note" role="alert">
           Not saved. {error}
         </p>
       ) : null}
       <div className="s1-modal__actions">
-        <button className="s1-button s1-button--pri" type="button" disabled={!text || text === initial || busy} onClick={() => void run(() => onSubmit(text))}>
+        <button className="s1-button s1-button--pri" type="button" disabled={!text || text === initial || Boolean(problem) || busy} onClick={() => void run(() => onSubmit(text))}>
           {action}
         </button>
         <button className="s1-linklike" type="button" disabled={busy} onClick={onCancel}>

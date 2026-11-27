@@ -7,6 +7,9 @@ export interface ActionMenuEntry {
   label: string;
   action: () => void;
   disabled?: boolean;
+  /** Why the entry can't be used now. It stays in the menu (reachable by keyboard), reads as unavailable, does nothing
+   *  when chosen, and shows this sentence as its tooltip. */
+  unavailable?: string;
 }
 
 /**
@@ -112,12 +115,14 @@ export function ActionMenu({
               {entries.map((entry) => (
                 <button
                   key={entry.label}
-                  className="s1-menu__item"
+                  className={`s1-menu__item${entry.unavailable ? " is-unavailable" : ""}`}
                   type="button"
                   role="menuitem"
                   disabled={entry.disabled}
+                  aria-disabled={entry.unavailable ? true : undefined}
+                  title={entry.unavailable}
                   onClick={() => {
-                    entry.action();
+                    if (!entry.unavailable) entry.action();
                     onOpenChange(false);
                   }}
                 >
