@@ -183,6 +183,8 @@ export function BackendVerificationResults({
     signedInLogin: engagement.signedInLogin,
     onOpenDocument,
     onOpenEvidence,
+    // A decision on a line's working: fetch the recalculation again (the result stays on screen while it loads).
+    onDecided: () => setAttempt((n) => n + 1),
   };
 
   return (

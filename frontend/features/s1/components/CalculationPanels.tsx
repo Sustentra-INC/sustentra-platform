@@ -756,8 +756,11 @@ function LineDetail({
   onOpenEvidence,
   inputs,
   engagementId,
+  onDecided,
 }: {
   engagementId?: string;
+  /** A reviewer decision was saved: fetch the recalculation again so the totals move. */
+  onDecided?: () => void;
   line: CalculationLine;
   inputs?: CalcLineInputs;
   settings: RecalculationSettings;
@@ -786,6 +789,7 @@ function LineDetail({
         lineKey={line.key}
         version={`${line.results.total_co2e_t}|${line.reported_total_co2e_t}|${line.step1.total.quantity}|${gwpSet}`}
         onOpenDocument={onOpenDocument}
+        onDecided={onDecided}
         fallback={
           <>
             <MethodBlock line={line} />
@@ -911,9 +915,12 @@ export function CalculationPanels({
   engagementId,
   only,
   totals,
+  onDecided,
 }: {
   /** Fetches each opened line's step-by-step trace; without it the summary panel is shown. */
   engagementId?: string;
+  /** Called after a reviewer decision on a line's working is saved, so the recalculation is fetched again. */
+  onDecided?: () => void;
   /**
    * Draws just this panel's lines table, open and without its heading (the drawer a Results row opens).
    * A panel id: "stationary", "mobile" or "purchased_energy:electricity".
@@ -1091,6 +1098,7 @@ export function CalculationPanels({
                                     onOpenEvidence={onOpenEvidence}
                                     inputs={inputs}
                                     engagementId={engagementId}
+                                    onDecided={onDecided}
                                   />
                                 </td>
                               </tr>

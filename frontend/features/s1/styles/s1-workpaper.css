@@ -3984,6 +3984,24 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-cp-pill.is-chosen { font-weight: var(--weight-strong); color: var(--accent); border-color: var(--accent); }
 .s1-cp-pill.is-unavailable { color: var(--ink-3); background: var(--sf-page); cursor: not-allowed; }
 .s1-cp-pill__tag { font-weight: var(--weight-regular); color: var(--ink-3); }
+.s1-cp-pill.is-button { font: inherit; cursor: pointer; }
+.s1-cp-pill.is-button:hover:not(.is-chosen):not(.is-unavailable) { color: var(--accent); border-color: var(--accent); }
+.s1-cp-pill.is-button:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-cp-pill.is-unavailable.is-button { cursor: not-allowed; }
+.s1-cp-suggest, .s1-cp-change { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }
+.s1-cp-suggest .s1-button--compact, .s1-cp-reason .s1-button--compact { margin-top: 0; }
+.s1-cp-actioncell { display: inline-flex; align-items: center; justify-content: flex-end; gap: var(--sp-1); }
+.s1-cp-decided { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--sp-1); }
+.s1-cp-decided .is-rejected { text-decoration: line-through; color: var(--ink-3); }
+.s1-cp-mark { display: inline-flex; align-items: center; color: var(--ink-3); }
+.s1-cp-mark .s1-vw-ico { color: var(--state-resolved-fg); }
+.s1-cp-mark--word { font-size: var(--text-sm); }
+.s1-cp-mark:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-cp-reason { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); font-size: var(--text-sm); text-align: left; white-space: normal; }
+.s1-cp-reason .s1-mr-input { flex: 1 1 12rem; width: auto; min-width: 0; }
+.s1-cp-valuefield { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.s1-cp-valuefield .s1-mr-input { flex: 0 1 8rem; }
+.s1-cp-reason__error { flex: 1 1 100%; color: var(--state-blocking-fg); }
 .s1-cp-note { margin: 0; padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); overflow-wrap: anywhere; color: var(--state-open-fg); background: var(--state-open-bg); border-radius: var(--radius-input); }
 .s1-cp-error { margin: 0; padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); color: var(--state-blocking-fg); background: var(--state-blocking-bg); border-radius: var(--radius-input); }
 .s1-cp-tstep > summary { cursor: pointer; list-style: none; justify-content: flex-start; }

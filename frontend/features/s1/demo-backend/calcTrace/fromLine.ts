@@ -280,7 +280,10 @@ export function traceFromLine(line: CalculationLine): LineTrace {
         .map((gas) => ({
           id: `equation:${gas}`,
           label: `${GAS_LABEL[gas]} equation`,
-          options: [{ id: "eq", label: equation(gas) ?? "", equation: equation(gas), available: true, required_inputs: [] }],
+          options: [
+            { id: "eq", label: equation(gas) ?? "", equation: equation(gas), available: true, required_inputs: [] },
+            { id: "eq2", label: "Eq. 2 · site heating value", available: false, why_unavailable: "Needs an accepted site heating value (HHV).", required_inputs: ["hhv"] },
+          ],
           chosen: "eq",
           chosen_by: "default" as const,
         })),

@@ -257,3 +257,37 @@ export function getLineTrace(engagementId: string, lineKey: string): Promise<Lin
     `/engagements/${encodeURIComponent(engagementId)}/recalculation/lines/${encodeURIComponent(lineKey)}/trace`,
   );
 }
+
+/* ------------------------------------------ reviewer decisions ------------------------------------------ */
+/* backend/app/api/calculation_line_review.py. Who acted and when come from the session, never the body. */
+
+export type ChoiceAction = "accept" | "choose" | "reject" | "revert";
+export type InputAction = "accept" | "edit" | "reject" | "revert";
+
+export interface ChoiceDecisionBody {
+  action: ChoiceAction;
+  option_id?: string;
+  reason?: string;
+}
+
+export interface InputDecisionBody {
+  action: InputAction;
+  value?: number | string;
+  unit?: string;
+  reason?: string;
+  document_id?: string;
+}
+
+const lineBase = (engagementId: string, lineKey: string) =>
+  `/engagements/${encodeURIComponent(engagementId)}/calculation-lines/${encodeURIComponent(lineKey)}`;
+
+/** POST .../choices/{choice_id}. 409: the state changed or the option is unavailable; 422: a reason is missing. */
+export function decideChoice(engagementId: string, lineKey: string, choiceId: string, body: ChoiceDecisionBody): Promise<unknown> {
+  return api(`${lineBase(engagementId, lineKey)}/choices/${encodeURIComponent(choiceId)}`, { method: "POST", body });
+}
+
+/** POST .../inputs/{input_id}/{side}. An input's row is "<input>/<row id>": its slash stays a path separator. */
+export function decideInput(engagementId: string, lineKey: string, inputId: string, side: "company" | "recomputed", body: InputDecisionBody): Promise<unknown> {
+  const id = inputId.split("/").map(encodeURIComponent).join("/");
+  return api(`${lineBase(engagementId, lineKey)}/inputs/${id}/${side}`, { method: "POST", body });
+}

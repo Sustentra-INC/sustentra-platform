@@ -5,7 +5,6 @@ import { ChevronRight } from "lucide-react";
 import type {
   LineTrace,
   TraceBlock,
-  TraceChoice,
   TraceColumn,
   TraceInput,
   TraceInputRow,
@@ -14,13 +13,17 @@ import type {
   TraceStep,
 } from "../../api/calcTrace";
 import { differenceText, operandText, prettyUnit } from "./format";
+import { ChoicePills } from "./ChoicePills";
+export { ChoicePills };
+import { InputActions, isDecidable } from "./InputActions";
+import { SuggestionChip } from "./TraceActions";
 import { TraceSourceNote } from "./TraceSourceNote";
 
 /**
  * The step-by-step calculation of one line, drawn from its trace (api/calcTrace.ts): method pills,
  * Steps 1 to 4 and Results, each block a Company row and a Recomputed row of `a × b × c = result`.
  * It draws what the trace says and calculates nothing: every number, difference and source is the
- * backend's. Read-only; reviewer actions come later.
+ * backend's. Reviewer actions (choose, accept, edit, reject, revert) appear when a TraceActionsProvider wraps it; without one it is read-only.
  */
 
 type Side = "company" | "recomputed";
@@ -79,10 +82,14 @@ function OperandValue({
           ? differenceText(operand.difference, operand.value, column?.display)
           : null
       : null;
+  const value = input ? <TraceSourceNote label={text} source={input[side]?.source} side={side} onOpenDocument={onOpenDocument} /> : text;
+  // A company-side suggestion is shown as the AI's, never as reviewed. A recomputed side's is not drawn here.
+  const chip = side === "company" && input?.company?.suggestion ? <SuggestionChip suggestion={input.company.suggestion} onOpenDocument={onOpenDocument} /> : null;
   return (
     <>
-      {input ? <TraceSourceNote label={text} source={input[side]?.source} side={side} onOpenDocument={onOpenDocument} /> : text}
+      {side === "recomputed" && isDecidable(input) ? <InputActions input={input} onOpenDocument={onOpenDocument}>{value}</InputActions> : value}
       {diff ? <span className="s1-cp-diff"> ({diff})</span> : null}
+      {chip}
     </>
   );
 }
@@ -259,7 +266,7 @@ function BlockView({ block, step, trace, onOpenDocument }: { block: TraceBlock; 
         <div className="s1-cp-block__head">
           <h6>{block.label}</h6>
           {block.tag && TAG_TEXT[block.tag] ? <span className="s1-cp-tag">{TAG_TEXT[block.tag]}</span> : null}
-          {choice ? <ChoicePills choice={choice} compact /> : null}
+          {choice ? <ChoicePills choice={choice} compact onOpenDocument={onOpenDocument} /> : null}
         </div>
       ) : null}
       {summed?.rows?.length ? (
@@ -288,33 +295,6 @@ function StepView({ step, trace, onOpenDocument }: { step: TraceStep; trace: Lin
   );
 }
 
-/* ------------------------------------------ method pills ------------------------------------------ */
-
-/** The options of a choice, the one used marked. Read-only: a choice is changed elsewhere. */
-export function ChoicePills({ choice, compact = false }: { choice: TraceChoice; compact?: boolean }) {
-  return (
-    <div className="s1-cp-pills" role="group" aria-label={choice.label}>
-      {compact ? null : <span className="s1-cp-pills__label">{choice.label}</span>}
-      {choice.options.map((o) => {
-        const chosen = o.id === choice.chosen;
-        const why = o.why_unavailable ?? "not available for this line";
-        return (
-          <span
-            key={o.id}
-            className={`s1-cp-pill${chosen ? " is-chosen" : ""}${o.available ? "" : " is-unavailable"}`}
-            aria-current={chosen ? "true" : undefined}
-            title={o.available ? undefined : why}
-          >
-            {o.label}
-            {o.available ? null : <span className="s1-cp-sr"> (not available: {why})</span>}
-            {o.detection && TAG_TEXT[o.detection] ? <span className="s1-cp-pill__tag"> · {TAG_TEXT[o.detection]}</span> : null}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
 /* ------------------------------------------ the panel ------------------------------------------ */
 
 export function TracePanel({ trace, onOpenDocument }: { trace: LineTrace; onOpenDocument?: OpenDocument }) {
@@ -335,7 +315,7 @@ export function TracePanel({ trace, onOpenDocument }: { trace: LineTrace; onOpen
       {loose.length ? (
         <div className="s1-cp-pillrow">
           {loose.map((c) => (
-            <ChoicePills key={c.id} choice={c} />
+            <ChoicePills key={c.id} choice={c} onOpenDocument={onOpenDocument} />
           ))}
         </div>
       ) : null}
