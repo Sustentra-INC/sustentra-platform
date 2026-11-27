@@ -2,7 +2,8 @@
 
 Every call is recorded, whatever its outcome, so a refused or unreadable reply that was
 billed still counts. Only ids, counts and cost are stored: never a prompt, document text
-or reply. The month is the UTC calendar month.
+or reply. A call about one document carries its ``document_id`` (migration 0030), so the cost of a
+whole-document read is the sum of its parts' rows. The month is the UTC calendar month.
 """
 
 from __future__ import annotations
@@ -47,9 +48,9 @@ _MONTH_BREAKDOWN = text(
 _INSERT = text(
     """
     INSERT INTO ai_usage (org_id, engagement_id, feature, model, provider, request_id, outcome,
-                          input_tokens, output_tokens, cost_microusd, created_by)
+                          input_tokens, output_tokens, cost_microusd, created_by, document_id)
     VALUES (:org_id, :engagement_id, :feature, :model, :provider, :request_id, :outcome,
-            :input_tokens, :output_tokens, :cost_microusd, :created_by)
+            :input_tokens, :output_tokens, :cost_microusd, :created_by, :document_id)
     """
 )
 
@@ -95,17 +96,18 @@ async def record(
     provider: str,
     reply: StructuredReply,
     user_id: uuid.UUID | None,
+    document_id: str | None = None,
 ) -> None:
-    await db.execute(_INSERT, _row(org_id, engagement_id, feature, provider, reply, user_id))
+    await db.execute(_INSERT, _row(org_id, engagement_id, feature, provider, reply, user_id, document_id))
 
 
 def _row(org_id: uuid.UUID, engagement_id: uuid.UUID | None, feature: str, provider: str, reply: StructuredReply,
-         user_id: uuid.UUID | None) -> dict[str, object]:
+         user_id: uuid.UUID | None, document_id: str | None = None) -> dict[str, object]:
     return {
         "org_id": org_id, "engagement_id": engagement_id, "feature": feature, "model": reply.model,
         "provider": provider, "request_id": reply.request_id, "outcome": reply.outcome,
         "input_tokens": reply.usage.prompt_tokens, "output_tokens": reply.usage.output_tokens,
-        "cost_microusd": reply.cost_microusd or 0, "created_by": user_id,
+        "cost_microusd": reply.cost_microusd or 0, "created_by": user_id, "document_id": document_id or None,
     }
 
 
@@ -116,5 +118,18 @@ def month_spend_microusd_sync(conn: Connection, org_id: uuid.UUID) -> int:
 
 
 def record_sync(conn: Connection, *, org_id: uuid.UUID, engagement_id: uuid.UUID | None, feature: str, provider: str,
-                reply: StructuredReply, user_id: uuid.UUID | None) -> None:
-    conn.execute(_INSERT, _row(org_id, engagement_id, feature, provider, reply, user_id))
+                reply: StructuredReply, user_id: uuid.UUID | None, document_id: str | None = None) -> None:
+    conn.execute(_INSERT, _row(org_id, engagement_id, feature, provider, reply, user_id, document_id))
+
+
+_DOCUMENT_SPEND = text(
+    """
+    SELECT COALESCE(SUM(cost_microusd), 0)::bigint FROM ai_usage WHERE org_id = :org_id AND document_id = :document_id
+    """
+)
+
+
+def document_spend_microusd_sync(conn: Connection, org_id: uuid.UUID, document_id: str) -> int:
+    """What Sustentra's AI has cost for one document, all its parts and features together, in micro-USD."""
+
+    return int(conn.execute(_DOCUMENT_SPEND, {"org_id": org_id, "document_id": document_id}).scalar_one())

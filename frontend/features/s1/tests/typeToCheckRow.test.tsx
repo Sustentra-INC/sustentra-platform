@@ -61,7 +61,7 @@ describe("a type to check on the Evidence row", () => {
     const { container } = render(<Harness />);
     open(container);
     expect(screen.getAllByText("Type to check")).toHaveLength(1);
-    expect(screen.getByText(/The rules chose Purchased electricity record, but Sustentra's AI read the first pages as Refrigerant service record/)).toBeInTheDocument();
+    expect(screen.getByText(/The rules chose Purchased electricity record, but Sustentra's AI read the document as Refrigerant service record/)).toBeInTheDocument();
     expect(screen.getByText(/Refrigerant charge log/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirm this type" })).toBeInTheDocument();
     expect(screen.getByLabelText("Set document type")).toBeInTheDocument();

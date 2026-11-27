@@ -107,7 +107,7 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
 4. Double-check (the shadow). It is off until the Parameter Store String `/staging/s1_ai_routing_shadow`
    is `true` and staging is redeployed (a blank or unreadable value leaves it off). Then upload a normal
    fuel bill: its type is unchanged. If Sustentra's AI read another type, the Type cell shows a
-   "Type to check" chip with the words "The rules chose X, but Sustentra's AI read the first pages as Y",
+   "Type to check" chip with the words "The rules chose X, but Sustentra's AI read the document as Y",
    the quote and its page, and the row counts under "Needs you". "Confirm this type" (or choosing a type)
    removes the chip and the count, and a reload or a new read keeps it removed. When the call fails, is
    slow (15 s, no retry) or the monthly cap is reached, the read finishes as without AI and the run only

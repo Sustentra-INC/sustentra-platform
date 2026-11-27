@@ -77,7 +77,7 @@ def ledger_rows() -> list[Any]:
 
 def test_each_window_is_recorded_for_its_organization_with_the_extraction_feature() -> None:
     claude = FakeClaude([read("account_number", "5521-8890", "Account Number 5521-8890", "L2")])
-    outcome = run(claude, ai_window_pages=2)  # pages 1-2 and 2-3
+    outcome = run(claude, ai_window_pages=2)  # pages 1-2 and 3
     assert outcome.suggested == 1
     rows = ledger_rows()
     assert len(rows) == 2
@@ -101,3 +101,19 @@ def test_the_cap_reads_the_organizations_own_spend_across_features() -> None:
                        "VALUES ($1, 'routing', 'm', 'anthropic', 'ok', 1000000)", OTHER))
     run(claude)
     assert len(claude.calls) == 1  # another organization's spend does not count
+
+
+def test_each_part_is_recorded_under_its_document_and_the_document_cost_is_their_sum() -> None:
+    """MVP-237 (migration 0030): the cost of a whole-document read is the sum of its parts' rows."""
+
+    from backend.app.core.db import tenant_transaction
+    from backend.app.core.s1_scope import S1Scope
+    from backend.app.services import ai_usage
+
+    claude = FakeClaude([])
+    run(claude, ai_window_pages=1)  # three pages, three parts
+    rows = asyncio.run(_admin("SELECT document_id, cost_microusd FROM ai_usage"))
+    assert len(rows) == 3 and {r["document_id"] for r in rows} == {"DOC-1"}
+    with tenant_transaction(S1Scope.tenant(ORG), ENGINE) as conn:
+        assert ai_usage.document_spend_microusd_sync(conn, ORG, "DOC-1") == sum(r["cost_microusd"] for r in rows)
+        assert ai_usage.document_spend_microusd_sync(conn, ORG, "DOC-2") == 0

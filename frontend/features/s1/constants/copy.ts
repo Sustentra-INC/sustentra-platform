@@ -18,7 +18,7 @@ export const AI_TYPE = {
   suggested: "Type suggested by Sustentra's AI, please confirm",
   toCheck: "Type to check",
   disagreesOn: (rulesType: string, claudeType: string) =>
-    `The rules chose ${rulesType}, but Sustentra's AI read the first pages as ${claudeType}. The type was not changed.`,
+    `The rules chose ${rulesType}, but Sustentra's AI read the document as ${claudeType}. The type was not changed.`,
 } as const;
 
 /** Claude's facility suggestion for a bill that names none (backend services/ai_facility.py). */

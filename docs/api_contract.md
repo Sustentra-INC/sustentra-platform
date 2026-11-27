@@ -65,9 +65,9 @@ Returns a ProcessingRun (`contracts/processing_run.schema.json`):
 
 Pipeline runs (`contracts/pipeline_run.schema.json`, as read from `/pipeline/evidence/{id}/latest-run`)
 have `canonical_type_source` of `classifier`, `content_check`, `override`, `ai` or `none`.
-`ai` means Claude named the type from pages 1-2 and the reviewer must confirm it. An optional
-`ai_routing` object (`canonical_type_id`, `quote`, `line`, `reason_code`, `page_number`,
-`used`, `disagrees`, `review_required`) is present only when Claude was asked and its quote was
+`ai` means Claude named the type from the document (read whole, in parts) and the reviewer must
+confirm it. An optional `ai_routing` object (`canonical_type_id`, `quote`, `line`, `reason_code`,
+`page_number`, `used`, `disagrees`, `review_required`, `other_types`, `read_in_part`) is present only when Claude was asked and its quote was
 verified on the document; `used: false, disagrees: true` means it only disagreed with the
 rules (the type is unchanged). `warnings` may carry `ai_type_disagrees`, `ai_unavailable` and
 `ai_routing_ignored: <reason>`.
@@ -246,10 +246,13 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   Bodies forbid unknown fields; who acted and when come from the session. Each action writes one
   `methodology_decision` audit event with the field id, action and status only.
 - `POST .../prefill` (s1_writer, open engagement, no body) asks Claude to propose values from the engagement's
-  client-prepared summary documents (latest type in `calculation_lines.SUMMARY_TYPES`; at most 5 documents,
-  1,500 lines and 150,000 characters, taken in document order). One synchronous call. Answers
-  `{suggested, dropped: {reason: count}, kept_reviewer_decision, documents_read: [{document_id, file_name,
-  truncated}], cost_usd, model}`.
+  client-prepared summary documents (latest type in `calculation_lines.SUMMARY_TYPES`; every document, read
+  whole: each is cut into parts of at most 150,000 characters and every part is asked, MVP-237). The monthly
+  limit is checked before every part; a document the limit stopped is `truncated: true` with `not_read`
+  ("pages 8–12") and `note` ("Read in part: pages 8–12 not read because this month's limit on Sustentra's AI and
+  scans is reached."). One `ai_usage` row per document read (the sum of its parts' calls, with `document_id`).
+  Answers `{suggested, dropped: {reason: count}, kept_reviewer_decision, documents_read: [{document_id,
+  file_name, truncated, not_read?, note?}], cost_usd, model}`.
   - Claude only suggests: each kept suggestion is written to the field's record `suggestion` (the shape above;
     `source_reference` is the parser's reference for the quoted line; a quote over 1,000 characters is stored cut
     with `quote_truncated: true`, after it was verified whole) and nothing else changes. Fields the

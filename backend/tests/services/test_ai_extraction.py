@@ -17,6 +17,7 @@ from backend.app.core.config import Settings
 from backend.app.reference.extraction_config_loader import load_default_extraction_configs
 from backend.app.repositories.pipeline_repository import InMemoryPipelineRunRepository
 from backend.app.services import ai_extraction
+from backend.app.services import document_parts as dp
 from backend.app.services.ai_extraction import AiExtraction
 from backend.app.services.ai_locator import document_lines
 from backend.app.services.extraction_target_service import ExtractionTargetService
@@ -280,22 +281,19 @@ def test_a_thousands_separator_difference_on_a_rule_value_says_nothing() -> None
 
 # --- windows: overlap, dedup, conflict, header --------------------------------------------------
 
-def test_windows_overlap_by_one_page_and_are_capped() -> None:
-    units = ai_extraction.page_units(document_lines(parsed([(page, f"text {page}") for page in range(1, 13)])))
-    windows, skipped = ai_extraction.make_windows(units, 5, 10)
-    assert [[u.label for u in w] for w in windows] == [[1, 2, 3, 4, 5], [5, 6, 7, 8, 9], [9, 10, 11, 12]] and skipped == []
-    windows, skipped = ai_extraction.make_windows(units, 5, 2)
-    assert len(windows) == 2 and ai_extraction.describe(skipped) == "pages 10-12"
-    windows, _ = ai_extraction.make_windows(units, 1, 20)  # no overlap possible with one page
-    assert len(windows) == 12
+def test_parts_hold_whole_pages_and_every_page_is_read() -> None:
+    lines = document_lines(parsed([(page, f"text {page}") for page in range(1, 13)]))
+    parts = list(dp.iter_parts(lines, max_chars=100_000, max_pages=5))
+    assert [p.pages for p in parts] == [(1, 2, 3, 4, 5), (6, 7, 8, 9, 10), (11, 12)]
+    assert [p.overlap for p in parts] == [0, 0, 0]  # prose: no table runs over a page break
 
 
-def test_pages_left_out_are_reported_with_their_ranges() -> None:
+def test_every_page_of_a_long_document_is_read_with_no_window_cap() -> None:
     lines = [(page, f"page {page} text") for page in range(1, 13)]
     claude = FakeClaude([])
-    outcome, _ = assist(claude, [candidate("account_number")], lines=lines, ai_max_windows=2)
-    assert len(claude.calls) == 2
-    assert any(w.startswith("ai_pages_skipped") and "pages 10-12" in w for w in outcome.warnings)
+    outcome, ledger = assist(claude, [candidate("account_number")], lines=lines, ai_window_pages=1)
+    assert len(claude.calls) == 12 and len(ledger.rows) == 12 and outcome.not_read is None
+    assert not any(w.startswith(("ai_pages_skipped", "ai_read_in_part")) for w in outcome.warnings)
 
 
 def test_every_window_starts_with_the_document_header() -> None:
@@ -304,14 +302,14 @@ def test_every_window_starts_with_the_document_header() -> None:
              candidate("service_period_start", "2026-03-01"), candidate("service_period_end", "2026-03-31"),
              candidate("activity_quantity")]
     assist(claude, items, ai_window_pages=2)
-    assert len(claude.calls) == 2  # pages 1-2 and 2-3
+    assert len(claude.calls) == 2  # pages 1-2 and 3
     for call in claude.calls:
         head = call["content"].split("\n\n", 1)[0]
         assert call["content"].startswith("Document header\nType: CT-S2-ELEC\nFile name: march-bill.pdf\n")
         assert "account_number = 5521-8890" in head and "service_period_start = 2026-03-01" in head
         assert "service_period_end = 2026-03-31" in head and "supplier_name = Meridian" in head
-    assert "Window 1 of 2: pages 1-2" in claude.calls[0]["content"] and "L4: Meter Number" in claude.calls[0]["content"]
-    assert "L6:" not in claude.calls[0]["content"] and "L6:" in claude.calls[1]["content"]  # windows differ
+    assert "Part 1 of 2: pages 1–2" in claude.calls[0]["content"] and "L4: Meter Number" in claude.calls[0]["content"]
+    assert "L6:" not in claude.calls[0]["content"] and "L6:" in claude.calls[1]["content"]  # parts differ
 
 
 def test_the_overlap_page_read_twice_counts_once() -> None:
@@ -345,15 +343,16 @@ def test_the_run_stops_early_at_eighty_percent_of_the_reader_time() -> None:
     outcome, ledger = assist(claude, [candidate("account_number")], clock=lambda: now[0], started=0.0,
                              s1_reader_max_run_seconds=1000, ai_window_pages=1)
     assert len(claude.calls) == 1 and len(ledger.rows) == 1  # 80% of 1000 s is 800 s
-    stop = next(w for w in outcome.warnings if w.startswith("ai_time_budget"))
-    assert "stopped after 1 of 3 windows" in stop and "pages 2-3 not read" in stop
+    stop = next(w for w in outcome.warnings if w.startswith("ai_read_in_part"))
+    assert stop == ("ai_read_in_part: Read in part: pages 2–3 not read because the time for one read ran out.")
+    assert outcome.not_read == "pages 2–3"
 
 
 def test_the_budget_counts_from_the_start_of_the_run() -> None:
     claude = FakeClaude([])
     outcome, _ = assist(claude, [candidate("account_number")], clock=lambda: 1000.0, started=0.0,
                         s1_reader_max_run_seconds=1200)
-    assert claude.calls == [] and any(w.startswith("ai_time_budget") for w in outcome.warnings)
+    assert claude.calls == [] and any(w.startswith("ai_read_in_part") for w in outcome.warnings)
 
 
 def test_a_window_starts_only_if_a_calls_worst_case_still_ends_in_time() -> None:
@@ -362,23 +361,20 @@ def test_a_window_starts_only_if_a_calls_worst_case_still_ends_in_time() -> None
     claude = FakeClaude([])
     outcome, ledger = assist(claude, [candidate("account_number")], clock=lambda: 10.0, started=0.0,
                              s1_reader_max_run_seconds=100)
-    assert claude.calls == [] and ledger.rows == [] and any(w.startswith("ai_time_budget") for w in outcome.warnings)
+    assert claude.calls == [] and ledger.rows == [] and any(w.startswith("ai_read_in_part") for w in outcome.warnings)
     claude = FakeClaude([])
     assist(claude, [candidate("account_number")], clock=lambda: 10.0, started=0.0, s1_reader_max_run_seconds=900)
     assert len(claude.calls) == 1  # 10 + 180 <= 900
 
 
-def test_inline_mode_reads_at_most_two_windows_inside_sixty_seconds() -> None:
+def test_inline_mode_reads_every_part_but_starts_none_after_sixty_seconds() -> None:
     lines = [(page, f"page {page} text") for page in range(1, 13)]
     claude = FakeClaude([])
     outcome, _ = assist(claude, [candidate("account_number")], lines=lines, s1_processing="inline")
-    assert len(claude.calls) == 2 and any(w.startswith("ai_pages_skipped") for w in outcome.warnings)
+    assert len(claude.calls) == 3 and outcome.not_read is None  # 12 pages, 5 a part: no window cap any more
     claude = FakeClaude([])
     outcome, _ = assist(claude, [candidate("account_number")], s1_processing="inline", clock=lambda: 61.0, started=0.0)
-    assert claude.calls == [] and any(w.startswith("ai_time_budget") for w in outcome.warnings)
-    claude = FakeClaude([])  # queued keeps the brief's ten windows
-    assist(claude, [candidate("account_number")], lines=lines, ai_window_pages=1)
-    assert len(claude.calls) == 10
+    assert claude.calls == [] and any(w.startswith("ai_read_in_part") for w in outcome.warnings)
 
 
 # --- the gate -----------------------------------------------------------------------------------
@@ -413,7 +409,9 @@ def test_the_cap_is_checked_before_each_window_against_what_this_run_spent() -> 
     outcome, ledger = assist(claude, [candidate("account_number")], ledger=FakeLedger(spent=996_500),
                              ai_window_pages=1)
     assert len(claude.calls) == 1 and len(ledger.rows) == 1
-    assert any(w.startswith("ai_cap_reached") for w in outcome.warnings)
+    assert ("ai_read_in_part: Read in part: pages 2–3 not read because this month's limit on Sustentra's AI and "
+            "scans is reached.") in outcome.warnings
+    assert outcome.not_read == "pages 2–3"
 
 
 def test_a_call_that_raises_is_a_warning_has_no_ledger_row_and_keeps_earlier_windows() -> None:
@@ -496,7 +494,7 @@ def test_the_warning_carries_counts_and_cost_never_text() -> None:
     outcome, _ = assist(claude, [candidate("account_number")])
     (summary,) = outcome.warnings
     assert summary == ("ai_extraction: ai_suggested 1, ai_disagrees 0, ai_conflict 0, dropped 0, cost $0.0040, "
-                       "windows 1 of 1.")
+                       "parts 1 of 1.")
     assert "5521" not in summary and "Meridian" not in summary
 
 
@@ -888,9 +886,11 @@ def test_a_window_that_starts_down_the_sheet_still_shows_the_header_row() -> Non
     claude = FakeClaude([])
     _assist_sheet(claude, _sheet(rows))
     assert "L1: Item | Tonnes" in claude.calls[0]["content"]
-    units = ai_extraction.page_units(ai_extraction.row_lines(_sheet(rows)))
-    first_rows = ai_extraction.sheet_first_rows(ai_extraction.row_lines(_sheet(rows)))
-    shown = ai_extraction.with_sheet_headers(list(units[1].lines), first_rows)
+    sheet_lines = ai_extraction.row_lines(_sheet(rows))
+    parts = list(dp.iter_parts(sheet_lines, max_chars=100_000, max_pages=1))  # 100 rows count as one page
+    assert [len(p.own_lines) for p in parts] == [100, 100, 50]
+    first_rows = ai_extraction.sheet_first_rows(sheet_lines)
+    shown = ai_extraction.with_sheet_headers(list(parts[1].lines), first_rows)
     assert shown[0].text == "Item | Tonnes" and shown[1].text.startswith("Row label")
 
 

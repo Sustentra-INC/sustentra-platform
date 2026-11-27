@@ -60,6 +60,7 @@ from backend.app.core.config import Settings, get_settings
 from backend.app.core.db import get_db_session, get_sessionmaker_dependency, set_tenant
 from backend.app.core.s1_scope import S1Scope, scoped
 from backend.app.services import ai_usage, engagement_service
+from backend.app.services import document_parts as dp
 from backend.app.services import methodology_explanation as explanation
 from backend.app.services import methodology_prefill as prefill
 from backend.app.services import methodology_review as rules
@@ -222,26 +223,31 @@ def _log_call_failure(exc: BaseException, part: str = "") -> None:
 
 
 def _combine(results: list[prefill.PartResult]) -> tuple[StructuredReply[prefill.PrefillOutput] | None, list[dict[str, str]]]:
-    """The three calls as one reply (for the ledger and ``verify``), and the sections that gave nothing.
+    """The calls as one reply (for the ledger and ``verify``), and the sections that gave nothing.
 
-    The reply is "ok" when at least one part is; otherwise it carries the first part's outcome. None
-    when every call raised. Usage and cost are the sum of the calls that were answered.
+    The calls are the four questions of every part of every document read (MVP-237), in document and part
+    order. The reply is "ok" when at least one call is; otherwise it carries the first call's outcome. None
+    when every call raised. Usage and cost are the sum of the calls that were answered. A section is listed
+    once, with the first reason, when any of its calls gave nothing.
     """
 
     failed: list[dict[str, str]] = []
     replies: list[StructuredReply[Any]] = []
     for result in results:
         label = prefill.PART_LABELS[result.part]
+        known = any(f["section"] == label for f in failed)
         if result.reply is None:
-            failed.append({"section": label, "reason": _reason(result.error) if result.error else "no answer"})
+            if not known:
+                failed.append({"section": label, "reason": _reason(result.error) if result.error else "no answer"})
         elif result.reply.outcome == "ok" and result.reply.output is not None:
             replies.append(result.reply)
         else:
-            failed.append({"section": label, "reason": result.reply.outcome})
+            if not known:
+                failed.append({"section": label, "reason": result.reply.outcome})
             replies.append(result.reply)
     if not replies:
         return None, failed
-    good = {r.part: r.reply.output for r in results if r.reply and r.reply.outcome == "ok" and r.reply.output is not None}
+    good = [r.reply.output for r in results if r.reply and r.reply.outcome == "ok" and r.reply.output is not None]
     first = next((r for r in replies if r.outcome == "ok"), replies[0])
     costs = [r.cost_microusd for r in replies]
     usage = sum((r.usage for r in replies), TokenUsage())
@@ -946,6 +952,18 @@ async def _reuse_last_read(request: Request | None, user: CurrentUser | _Caller,
             "failed_sections": []}
 
 
+def _document_read(document: prefill.PrefillDocument, not_read: str | None) -> dict[str, Any]:
+    """One document of the read: ``truncated`` (and the "Read in part" sentence) when the monthly limit stopped the
+    read before its end, so a partly read document is never shown as read."""
+
+    out: dict[str, Any] = {"document_id": document.document_id, "file_name": document.file_name,
+                           "truncated": bool(not_read)}
+    if not_read:
+        out["not_read"] = not_read
+        out["note"] = dp.read_in_part(not_read).split(": ", 1)[1]
+    return out
+
+
 async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagement: dict[str, Any],
                    db: AsyncSession, sessions: async_sessionmaker[AsyncSession], settings: Settings) -> Any:
     org_id = engagement["org_id"]
@@ -962,7 +980,8 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
             return reused
     if not await ai_usage.try_lock_org(db, org_id):
         raise _Declined("busy", _BUSY)
-    code, reason = _gate(settings, await ai_usage.month_spend_microusd(db, org_id), candidates)
+    spent = await ai_usage.month_spend_microusd(db, org_id)
+    code, reason = _gate(settings, spent, candidates)
     if code is not None:
         raise _Declined(code, str(reason))
     client = new_client(settings)
@@ -975,7 +994,10 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
         raise HTTPException(status_code=409, detail="The company's summary documents could not be read. "
                                                     "Upload a readable copy of the report or methodology document.")
     started = time.monotonic()
-    results = await asyncio.to_thread(prefill.run_parts, client, documents)
+    # Every part of every document, the monthly limit checked before each part (MVP-237).
+    whole = await asyncio.to_thread(prefill.run_chunks, client, documents, spent_microusd=spent,
+                                    cap_usd=settings.ai_monthly_cap_usd)
+    results = whole.results
     for result in results:
         if result.error is not None:  # no usage to record; type, status and provider message are logged, never content
             _log_call_failure(result.error, result.part)
@@ -991,8 +1013,12 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
     cost_usd = round((reply.cost_microusd or 0) / ai_usage.MICRO, 6)
     ok = reply.outcome == "ok" and reply.output is not None
     async with _short_transaction(sessions, org_id) as ledger:  # committed whatever happens next
-        await ai_usage.record(ledger, org_id=org_id, engagement_id=engagement["id"], feature=prefill.FEATURE,
-                              provider=client.provider, reply=reply, user_id=user.id)
+        for document in documents:  # one row per document: the sum of its parts' calls, so its cost is known
+            document_reply, _ = _combine(whole.for_document(document.document_id))
+            if document_reply is not None:
+                await ai_usage.record(ledger, org_id=org_id, engagement_id=engagement["id"], feature=prefill.FEATURE,
+                                      provider=client.provider, reply=document_reply, user_id=user.id,
+                                      document_id=document.document_id)
         if not ok:
             await _audit_prefill(ledger, request, user, engagement, {
                 "outcome": reply.outcome, "documents": len(documents), "cost_usd": cost_usd})
@@ -1009,18 +1035,21 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
         async with _short_transaction(sessions, org_id) as work:
             failed_parts = {p for p, label in prefill.PART_LABELS.items() if label in {f["section"] for f in failed_sections}}
             read_groups = frozenset(g for g, part in rules.ROW_GROUP_PART.items() if part not in failed_parts)
+            read_ids = frozenset(d.document_id for d in documents if whole.for_document(d.document_id))
             suggested, kept, replaced = await _store(
-                work, engagement, user, verified, dropped, read_groups, frozenset(d.document_id for d in documents))
+                work, engagement, user, verified, dropped, read_groups, read_ids)
             await _update_meta(work, engagement, user, prefill_ran_at=stamp(_now()),
                                covered=[f["field_id"] for f in rules.CATALOG],
-                               # a read with a failed part is not reusable: the next click tries again
-                               fingerprint=None if failed_sections else fingerprint,
+                               # a read with a failed part, or one the limit stopped, is not reusable: the next
+                               # click tries again
+                               fingerprint=None if failed_sections or whole.not_read else fingerprint,
                                auto_read={"state": "done", "file_names": [], "reason": None, "at": stamp(_now())})
             await _audit_prefill(work, request, user, engagement, {
                 "outcome": "ok", "documents": len(documents), "suggested": suggested,
                 "dropped": sum(dropped.values()), "kept_reviewer_decision": kept, "replaced_rows": replaced,
                 "cost_usd": cost_usd,
-                **({"failed_sections": [f["section"] for f in failed_sections]} if failed_sections else {})})
+                **({"failed_sections": [f["section"] for f in failed_sections]} if failed_sections else {}),
+                **({"read_in_part": len(whole.not_read)} if whole.not_read else {})})
     except Exception as exc:  # the call is already recorded; keep nothing and say so
         logger.error("methodology prefill: suggestions not saved (%s)", type(exc).__name__)
         try:
@@ -1030,7 +1059,7 @@ async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagem
         except Exception as audit_exc:  # best effort
             logger.error("methodology prefill: audit not written (%s)", type(audit_exc).__name__)
         return JSONResponse(status_code=502, content={"detail": _NOT_SAVED})
-    read = [{"document_id": d.document_id, "file_name": d.file_name, "truncated": d.truncated} for d in documents]
+    read = [_document_read(d, whole.not_read.get(d.document_id)) for d in documents]
     return {"suggested": suggested, "dropped": dict(dropped), "dropped_detail": dropped.detail,
             "kept_reviewer_decision": kept,
             "documents_read": read, "cost_usd": cost_usd, "model": reply.model, "failed_sections": failed_sections}
