@@ -179,27 +179,39 @@
   outline-offset: var(--hairline-width);
 }
 .s1-dd.is-picking .s1-dd-page, .s1-dd.is-picking .s1-dd-sheet { box-shadow: 0 0 0 0.125rem rgba(61, 131, 199, 0.35), 0 0.5rem 1.5rem rgba(40, 40, 112, 0.08); }
+/* Extract pick popover: shared inputs and labels inside a card popover. */
 .s1-dd-hlform {
-  position: absolute; z-index: 5; width: 18.5rem; display: flex; flex-direction: column; gap: var(--sp-2);
-  padding: var(--sp-3); background: var(--sf-card); border: var(--hairline-width) solid var(--accent-line); border-radius: var(--radius-card);
-  box-shadow: 0 0.75rem 2rem rgba(23, 23, 20, 0.18); font-family: var(--font-sans); font-size: var(--text-sm);
+  position: absolute; z-index: 5; width: var(--dd-hlform-w); box-sizing: border-box;
+  display: flex; flex-direction: column; gap: var(--sp-2-5);
+  padding: var(--sp-3-5); background: var(--sf-card); border-radius: var(--r-card);
+  box-shadow: var(--shadow-pop); font-family: var(--font-sans); font-size: var(--text-md); color: var(--ink);
   transform-origin: top left; transition: opacity 0.16s var(--ease-out), transform 0.16s var(--ease-out);
 }
 @starting-style { .s1-dd-hlform { opacity: 0; transform: scale(0.97); } }
 .s1-dd-hlform__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
-.s1-dd-hlform__x { display: inline-flex; padding: 0.15rem; border: 0; background: none; color: var(--ink-3); cursor: pointer; border-radius: var(--radius-input); }
-.s1-dd-hlform__x:hover { background: var(--sf-sunken); color: var(--ink); }
-.s1-dd-hlform__x svg { width: 0.9rem; height: 0.9rem; }
-.s1-dd-hlform__quote { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-2); padding: var(--sp-1) var(--sp-2); background: var(--sf-sunken); border-radius: var(--radius-input); overflow-wrap: anywhere; }
-.s1-dd-hlform label { display: flex; flex-direction: column; gap: 0.125rem; font-size: var(--text-xs); color: var(--ink-3); }
-.s1-dd-hlform input, .s1-dd-hlform select {
-  box-sizing: border-box; width: 100%; min-width: 0; height: 2rem; padding: 0 var(--sp-2); font: inherit; font-size: var(--text-sm); color: var(--ink);
-  background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input);
+.s1-dd-hlform__title { font-size: var(--text-md); font-weight: var(--weight-strong); color: var(--ink); }
+.s1-dd-hlform__x {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: var(--button-h-sm); height: var(--button-h-sm); padding: 0; border: 0; border-radius: var(--r-sm);
+  background: none; color: var(--ink-3); cursor: pointer;
 }
-.s1-dd-hlform input:focus, .s1-dd-hlform select:focus { outline: var(--focus-ring); outline-offset: 0; border-color: var(--accent-solid); }
-.s1-dd-hlform__pair { display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--sp-2); }
-.s1-dd-hlform__actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-.s1-dd-hlform__actions span { font-size: var(--text-xs); color: var(--ink-3); }
+.s1-dd-hlform__x:hover { background: var(--sf-inset); color: var(--ink); }
+.s1-dd-hlform__x svg { width: var(--sp-3-5); height: var(--sp-3-5); }
+.s1-dd-hlform__quote {
+  font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums;
+  padding: var(--sp-1-5) var(--sp-2-5); background: var(--sf-inset); border-radius: var(--r-sm); overflow-wrap: anywhere;
+}
+/* .s1-app aliases --border-strong to a bare colour, so restate the shared field border here. */
+.s1-dd-hlform .s1-input { border: var(--hairline-width) solid var(--line-strong); }
+.s1-dd-hlform .s1-input:focus { border-color: var(--accent); }
+.s1-dd-hlform label { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.s1-dd-hlform__pair { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--sp-2); }
+.s1-dd-hlform__actions { display: flex; align-items: center; gap: var(--sp-2-5); flex-wrap: wrap; }
+.s1-dd-hlform__actions .s1-button--pri { height: var(--button-h); padding: 0 var(--sp-3-5); font-size: var(--text-base); border-radius: var(--r-md); }
+.s1-dd-hlform__actions span { font-size: var(--text-sm); color: var(--ink-3); }
+.s1-dd-hlform input[list] { appearance: none; }
+.s1-dd-hlform input[list]::-webkit-calendar-picker-indicator,
+.s1-dd-hlform input[list]::-webkit-list-button { display: none !important; }
 @media (prefers-reduced-motion: reduce) { .s1-dd-pick, .s1-dd-pickhint, .s1-dd-fig, .s1-dd-hlform { transition: none; } }
 .s1-dd-key--requested::before { background: rgba(160, 170, 185, 0.6); }
 /* While highlighting, the hint stays in view at the top of the document. */

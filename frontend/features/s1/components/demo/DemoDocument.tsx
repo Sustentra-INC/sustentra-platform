@@ -951,7 +951,7 @@ function HighlightForm({
       }}
     >
       <div className="s1-dd-hlform__head">
-        <strong>{fills ? "Fill in a value the reading missed" : "Add this figure as a value"}</strong>
+        <strong className="s1-dd-hlform__title">{fills ? "Fill in a value the reading missed" : "Add this figure as a value"}</strong>
         <button type="button" className="s1-dd-hlform__x" aria-label="Cancel" onClick={onCancel}>
           <X aria-hidden />
         </button>
@@ -960,8 +960,8 @@ function HighlightForm({
         “{target.text.trim()}” · page {target.page}
       </div>
       <label>
-        <span>What it is</span>
-        <input list={listId} value={whatItIs} autoFocus onChange={(e) => setWhatItIs(e.target.value)} />
+        <span className="s1-field-label">What it is</span>
+        <input className="s1-input" list={listId} value={whatItIs} autoFocus onChange={(e) => setWhatItIs(e.target.value)} />
         <datalist id={listId}>
           {suggestions.map((s) => (
             <option key={s} value={s} />
@@ -970,17 +970,17 @@ function HighlightForm({
       </label>
       <div className="s1-dd-hlform__pair">
         <label>
-          <span>Value</span>
-          <input value={value} onChange={(e) => setValue(e.target.value)} />
+          <span className="s1-field-label">Value</span>
+          <input className="s1-input" value={value} onChange={(e) => setValue(e.target.value)} />
         </label>
         <label>
-          <span>Unit</span>
-          <input value={unit} onChange={(e) => setUnit(e.target.value)} />
+          <span className="s1-field-label">Unit</span>
+          <input className="s1-input" value={unit} onChange={(e) => setUnit(e.target.value)} />
         </label>
       </div>
       <label>
-        <span>Scope</span>
-        <select value={scope} onChange={(e) => setScope(e.target.value as ScopePlacement)}>
+        <span className="s1-field-label">Scope</span>
+        <select className="s1-input" value={scope} onChange={(e) => setScope(e.target.value as ScopePlacement)}>
           {SCOPES.map((s) => (
             <option key={s.value} value={s.value}>
               {s.label}

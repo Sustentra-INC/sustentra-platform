@@ -283,6 +283,7 @@
   --xr-addform-page-col: 70px;   /* page-number field width in the add-value form */
   --xr-nav-min:     200px;   /* navigator minimum (flex clamp lower bound) */
   --xr-panel-w:     380px;   /* review panel width */
+  --dd-hlform-w:    296px;   /* extract pick popover width */
   --xr-panel-min:   320px;   /* review panel minimum (flex clamp lower bound) */
   --cv-sheet-max-w: 760px;   /* spreadsheet card max width */
   --cv-doc-max-w:   620px;   /* PDF / drawn document card max width */
