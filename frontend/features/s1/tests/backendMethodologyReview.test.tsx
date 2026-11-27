@@ -119,8 +119,8 @@ describe("Methodology review on real data", () => {
   it("words activity actions and adds Claude's suggestion", async () => {
     const { onActivity } = await open();
     const whats = (onActivity.mock.calls[0][0] as { what: string }[]).map((e) => e.what);
-    expect(whats).toContain("Edited on methodology: Reporting period");
-    expect(whats).toContain("Suggested by Sustentra's AI on methodology: Consolidation approach");
+    expect(whats).toContain("on methodology: Reporting period");
+    expect(whats).toContain("suggested on methodology: Consolidation approach");
   });
 
   it("does not send a non-numeric percent", async () => {
@@ -1291,11 +1291,11 @@ describe("the summary of the read and the tables", () => {
     await open(vi.fn(), summaryFixture());
     const gases = screen.getByRole("heading", { name: "Gases covered" }).closest(".s1-mr-group") as HTMLElement;
     const table = within(gases).getByRole("table");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Gas", "Value", "Source", "Actions"]  /* no Status column while no row has a status */);
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Gas", "Value", "Source", "Status", "Actions"]);
     expect(within(table).getByRole("rowheader", { name: "CO₂" })).toBeTruthy();
     expect(within(table).getByRole("rowheader", { name: "N₂O" })).toBeTruthy();
     const scope1 = screen.getByRole("heading", { name: "Scope 1 emission categories" }).closest(".s1-mr-group") as HTMLElement;
-    expect(within(within(scope1).getByRole("table")).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Category", "Included", "Source", "Actions"]);
+    expect(within(within(scope1).getByRole("table")).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Category", "Included", "Source", "Status", "Actions"]);
   });
 });
 

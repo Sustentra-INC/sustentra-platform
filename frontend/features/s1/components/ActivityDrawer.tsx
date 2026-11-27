@@ -1,5 +1,6 @@
 "use client";
 
+import { ProvenanceLabel } from "./ProvenanceLabel";
 import { ClipboardList, FileUp, History, ListChecks, Scale, Search, Send, PenLine, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -24,6 +25,12 @@ const ICON: Record<ActivityEntry["kind"], ReactNode> = {
   finding: <Scale />,
   methodology: <ClipboardList />,
 };
+
+/** A label is drawn only when the producer said who did it; a person's entry also needs what they did. Nothing is inferred from the words. */
+export function hasLabel(entry: ActivityEntry): boolean {
+  if (entry.source === "ai" || entry.source === "system") return true;
+  return entry.source === "human" && Boolean(entry.action);
+}
 
 /** The engagement's activity log: who did what, and when, newest first. */
 export function ActivityDrawer({
@@ -122,7 +129,18 @@ export function ActivityDrawer({
                         {ICON[entry.kind]}
                       </span>
                       <span className="s1-actlog__what">
-                        <strong>{entry.who}</strong> {entry.what}
+                        {hasLabel(entry) ? (
+                          // The label names who; the time stays in the column on the right.
+                          <>
+                            <ProvenanceLabel source={entry.source!} action={entry.action} by={entry.who} read={entry.source === "system"} />
+                            {" · "}
+                          </>
+                        ) : (
+                          <>
+                            <strong>{entry.who}</strong>{" "}
+                          </>
+                        )}
+                        {entry.what}
                       </span>
                       <time className="s1-actlog__when" dateTime={entry.at}>
                         {timeLabel(entry.at)}

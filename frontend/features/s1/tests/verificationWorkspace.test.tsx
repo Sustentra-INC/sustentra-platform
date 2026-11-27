@@ -248,12 +248,12 @@ describe("the Verification results page", () => {
     fireEvent.change(within(box).getByRole("textbox"), { target: { value: "Traced to the March bill." } });
     fireEvent.click(within(box).getByRole("button", { name: "Save" }));
     expect(within(gasRow).getByText("1 of 3")).toBeTruthy();
-    expect(within(calc).getByText("Examined by M. Osei")).toBeTruthy();
+    expect(within(calc).getByText(/^Examined by M\. Osei/)).toBeTruthy();
 
     // Re-opening shows what was stored, with Clear.
     fireEvent.click(within(calc).getByRole("button", { name: "Record examination" }));
     const again = within(calc).getByRole("group", { name: /Record examination/ });
-    expect(within(again).getByText(/Examined by M\. Osei,/)).toBeTruthy();
+    expect(within(again).getByText(/Examined by M\. Osei/)).toBeTruthy();
     expect((within(again).getByRole("textbox") as HTMLTextAreaElement).value).toBe("Traced to the March bill.");
     fireEvent.click(within(again).getByRole("button", { name: "Clear examination" }));
     expect(within(gasRow).getByText("0 of 3")).toBeTruthy();

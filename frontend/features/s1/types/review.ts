@@ -1,3 +1,4 @@
+import type { ProvenanceAction } from "../components/ProvenanceLabel";
 import type { SourceAnchor } from "../utils/sourceAnchor";
 import type { RequestType } from "./requests";
 
@@ -14,6 +15,8 @@ export interface ValueRecordEntry {
   actor: string;
   at: string;
   action: string;
+  /** What the person did, as a code (never read from `action`'s words). Without one, no provenance label is drawn for it. */
+  code?: ProvenanceAction;
   reason?: string;
   /** The ask this entry added the value to, so the card can say whether it was sent. */
   askId?: string;

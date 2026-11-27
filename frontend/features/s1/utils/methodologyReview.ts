@@ -1,3 +1,4 @@
+import type { ProvenanceAction } from "../components/ProvenanceLabel";
 import type {
   BoundaryApproach,
   FactorRow,
@@ -21,8 +22,9 @@ interface Who {
   at: string;
 }
 
-function logged(state: MethodologyState, who: Who, what: string): MethodologyState {
-  return { ...state, log: [...state.log, { at: who.at, who: who.by, what }] };
+/** A log line. Only a change a person made carries `action`; a revert carries none, so the drawer draws no label for it. */
+function logged(state: MethodologyState, who: Who, what: string, action?: ProvenanceAction): MethodologyState {
+  return { ...state, log: [...state.log, { at: who.at, who: who.by, what, ...(action ? { source: "human" as const, action } : {}) }] };
 }
 
 function without<T>(record: Record<string, T>, key: string): Record<string, T> {
@@ -41,7 +43,7 @@ export function setApproach(state: MethodologyState, stated: MethodologyStated, 
   const from = currentApproach(stated, state);
   if (value === from) return state;
   const next = { ...state, approach: value === stated.approach ? null : { value, ...who } };
-  return logged(next, who, `changed the boundary approach from ${from} to ${value}`);
+  return logged(next, who, `changed the boundary approach from ${from} to ${value}`, "adjusted");
 }
 
 export function revertApproach(state: MethodologyState, stated: MethodologyStated, who: Who): MethodologyState {
@@ -110,7 +112,7 @@ export function acceptEntity(state: MethodologyState, entity: StatedEntity, view
     view.value === view.original
       ? `accepted ${entity.name} (${inclusionLabel(approach)}: ${shown})`
       : `corrected ${entity.name} from ${view.originalLabel} to ${shown}`;
-  return logged({ ...state, entityReviews: { ...state.entityReviews, [view.key]: true } }, who, what);
+  return logged({ ...state, entityReviews: { ...state.entityReviews, [view.key]: true } }, who, what, view.value === view.original ? "accepted" : "corrected");
 }
 
 /* --------------------------------- text fields --------------------------------- */
@@ -123,7 +125,7 @@ export function saveText(state: MethodologyState, field: StatedText, draft: stri
   const value = draft.trim();
   if (value === currentText(field, state)) return state;
   if (value === field.value) return logged({ ...state, texts: without(state.texts, field.id) }, who, `reverted ${field.label}`);
-  return logged({ ...state, texts: { ...state.texts, [field.id]: { value, ...who } } }, who, `edited ${field.label}`);
+  return logged({ ...state, texts: { ...state.texts, [field.id]: { value, ...who } } }, who, `edited ${field.label}`, "adjusted");
 }
 
 export function revertText(state: MethodologyState, field: StatedText, who: Who): MethodologyState {
@@ -141,7 +143,7 @@ export function setCategory(
   who: Who
 ): MethodologyState {
   const categories = value === category.value ? without(state.categories, category.id) : { ...state.categories, [category.id]: { value, ...who } };
-  return logged({ ...state, categories }, who, `set ${label} to ${value}`);
+  return logged({ ...state, categories }, who, `set ${label} to ${value}`, "adjusted");
 }
 
 export function revertCategory(state: MethodologyState, category: { id: string; value: Inclusion }, label: string, who: Who): MethodologyState {
@@ -203,7 +205,7 @@ export function saveFactor(
     return row.pair && r.pair === row.pair ? { ...r, hidden: true } : r;
   });
   const resolved = row.flag ? `, resolving the ${row.database} mismatch` : "";
-  return logged(putRows(state, source, scope, next), who, `set the ${SCOPE_LABEL[scope]} emission factor source to ${database} ${edition}${resolved}`.trim());
+  return logged(putRows(state, source, scope, next), who, `set the ${SCOPE_LABEL[scope]} emission factor source to ${database} ${edition}${resolved}`.trim(), "adjusted");
 }
 
 export function addFactor(
@@ -264,7 +266,7 @@ export function saveGwp(state: MethodologyState, stated: MethodologyStated, draf
   if (draft.set === stated.gwp.set && draft.horizon === stated.gwp.horizon) {
     return logged({ ...state, gwp: null }, who, `reverted the GWP set to ${stated.gwp.set}, ${stated.gwp.horizon}`);
   }
-  return logged({ ...state, gwp: { value: draft, ...who } }, who, `set the GWP set to ${draft.set}, ${draft.horizon}`);
+  return logged({ ...state, gwp: { value: draft, ...who } }, who, `set the GWP set to ${draft.set}, ${draft.horizon}`, "adjusted");
 }
 
 export function revertGwp(state: MethodologyState, stated: MethodologyStated, who: Who): MethodologyState {

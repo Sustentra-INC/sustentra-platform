@@ -105,7 +105,7 @@ describe("calculation panels in Verification results", () => {
     const step1 = screen.getByRole("region", { name: "Step 1 · Activity data" });
     expect(within(step1).getByText("2025-01-01 to 2025-01-31")).toBeTruthy();
     expect(within(step1).queryByText(/EV-/)).toBeNull();
-    expect(within(step1).getByText("Edited by reviewer")).toBeTruthy();
+    expect(within(step1).getByText(/^Edited by a reviewer/)).toBeTruthy();
     expect(within(step1).getAllByText("Not available").length).toBe(LINES.find((l) => l.key === STATIONARY)!.step1.rows.length);
     const annual = within(step1).getByText("Annual activity data").closest("tr")!;
     expect(annual.textContent).toContain("650,000 therms");
@@ -250,7 +250,7 @@ describe("calculation panels in Verification results", () => {
     view.rerender(
       <BackendVerificationResults engagement={ENGAGEMENT} store={store.current} onSaveInputs={async () => {}} onError={() => false} />
     );
-    expect(screen.getByText("Examined by Dana")).toBeTruthy();
+    expect(screen.getByText(/^Examined by Dana/)).toBeTruthy();
     // The line's row says so too, and Undo takes it back.
     expect(screen.getByRole("button", { name: "Kent Cannery · MMBtu" }).closest("tr")!.textContent).toContain("Examined");
     expect(screen.queryByRole("button", { name: "Record examination" })).toBeNull();

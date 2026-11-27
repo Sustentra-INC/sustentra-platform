@@ -1,3 +1,4 @@
+import type { ProvenanceAction } from "../components/ProvenanceLabel";
 import type { EvidenceItem, ExtractedField } from "../types";
 import type { ReviewValue, ScopePlacement, SourceKind, ValueRecordEntry } from "../types/review";
 import type { Ask } from "../types/requests";
@@ -84,6 +85,7 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
           ...(accepted || corrected || rejected
             ? [{
                 kind: "human" as const,
+                code: (accepted ? "accepted" : rejected ? "rejected" : field.value === null ? "keyed" : "corrected") as ProvenanceAction,
                 actor: field.reviewedBy ?? "Reviewer",
                 at: field.reviewedAt ?? "",
                 action: accepted
@@ -275,7 +277,7 @@ export function withRequestsFromAsks(values: ReviewValue[], asks: Ask[]): Review
     const lines: ValueRecordEntry[] = [
       ...linked
         .filter((ask) => !ask.linkedFromAskId && !added.has(ask.id))
-        .map((ask): ValueRecordEntry => ({ kind: "human", actor: ask.raisedByName, at: ask.raisedAt, action: "added to requests", askId: ask.id })),
+        .map((ask): ValueRecordEntry => ({ kind: "human", code: ask.state === "not_yet_sent" ? "queued" : "requested", actor: ask.raisedByName, at: ask.raisedAt, action: "added to requests", askId: ask.id })),
       ...linked.filter((ask) => !settled.has(ask.id)).flatMap(outcomeLine),
     ];
     const open = isOpen(latestOf(linked));
@@ -307,6 +309,7 @@ function outcomeLine(ask: Ask): ValueRecordEntry[] {
   return [
     {
       kind: "human",
+      code: ask.state === "resolved" ? "resolved" : "withdrawn",
       actor: event?.actorName ?? ask.resolution?.by ?? ask.raisedByName,
       at: event?.at ?? ask.resolution?.at ?? ask.raisedAt,
       action: `${name} ${ask.state}`,

@@ -1,5 +1,6 @@
 "use client";
 
+import { ProvenanceLabel } from "./ProvenanceLabel";
 import { Ban, CircleCheck, CircleMinus, CircleAlert, ListChecks, Send } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -37,11 +38,14 @@ const SORT: CoverageView[] = [...ORDER, "method_done"];
 export function CoveragePanel({
   coverage,
   isRequested,
+  requestOf,
   onRequest,
   onReview,
 }: {
   coverage: CoverageState;
   isRequested: (rule: CoverageRule) => boolean;
+  /** Who raised the request for a check, and when, for its provenance label. */
+  requestOf?: (rule: CoverageRule) => { by?: string; at?: string } | null;
   onRequest: (rule: CoverageRule) => void;
   /** Opens the first value waiting on a check that awaits review. Without it such a check offers Request, as before. */
   onReview?: (rule: CoverageRule) => void;
@@ -108,6 +112,13 @@ export function CoveragePanel({
                 </span>
                 <div className="s1-cr-rule__main">
                   <div className="s1-cr-rule__what">{rule.assertion}</div>
+                  <div className="s1-cr-rule__prov">
+                    {requested ? (
+                      <ProvenanceLabel source="human" action="requested" by={requestOf?.(rule)?.by} at={requestOf?.(rule)?.at} />
+                    ) : (
+                      <ProvenanceLabel source="system" />
+                    )}
+                  </div>
                   <div className="s1-cr-rule__points">
                     {rule.appliesTo.map((point) => (
                       <span key={point}>{point}</span>

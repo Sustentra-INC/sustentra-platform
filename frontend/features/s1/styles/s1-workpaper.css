@@ -4033,3 +4033,10 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-cp-lines td:nth-child(2) { min-width: 12rem; }
 .s1-cp--bare .s1-cp-scroll { border-top: var(--border-hairline); }
 .s1-cp-lines td:first-child { white-space: nowrap; }
+
+/* Provenance label (design standard section 7): who read, checked or decided, in words and an icon. */
+.s1-prov { display: inline-flex; align-items: flex-start; gap: var(--sp-1); max-width: 100%; min-width: 0; font-size: var(--text-sm); color: var(--ink-2); }
+.s1-prov--compact { align-items: center; white-space: nowrap; }
+.s1-prov--compact .s1-prov__icon { margin-top: 0; }
+.s1-prov__icon { flex: none; width: 1em; height: 1em; margin-top: 0.15em; }
+.s1-xr-prov { display: flex; }

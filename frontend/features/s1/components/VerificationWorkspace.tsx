@@ -1,5 +1,6 @@
 "use client";
 
+import { ProvenanceLabel } from "./ProvenanceLabel";
 import {
   ArrowDownRight,
   ArrowRight,
@@ -9,7 +10,6 @@ import {
   ChevronRight,
   CircleCheck,
   ClipboardCheck,
-  Cpu,
   FileSpreadsheet,
   FileText,
   Files,
@@ -1135,10 +1135,7 @@ function CalculationCard({
           <span>
             {facility.causeBy === "system" ? (
               <>
-                <span className="s1-vw-by">
-                  <Cpu className="s1-vw-ico" aria-hidden />
-                  Checked by system
-                </span>{" "}
+                <ProvenanceLabel source="system" />{" "}
               </>
             ) : null}
             {facility.cause}
@@ -1172,8 +1169,7 @@ function CalculationCard({
         ) : null}
         {examined && examination?.examinedBy ? (
           <span className="s1-vw-examined-by">
-            <Check className="s1-vw-ico" aria-hidden />
-            Examined by {examination.examinedBy}
+            <ProvenanceLabel source="human" action="examined" by={examination.examinedBy} at={examination.examinedAt} />
           </span>
         ) : null}
       </div>
@@ -1271,9 +1267,7 @@ export function RecordExamination({
       <div className="s1-vw-label">Record examination · {title}</div>
       {examination?.examinedBy ? (
         <p className="s1-vw-stored">
-          <CircleCheck className="s1-vw-ico" aria-hidden />
-          Examined by {examination.examinedBy}
-          {examination.examinedAt ? `, ${formatWhen(examination.examinedAt)}` : ""}.
+          <ProvenanceLabel source="human" action="examined" by={examination.examinedBy} at={examination.examinedAt} />
         </p>
       ) : null}
       <div className="s1-vw-field">

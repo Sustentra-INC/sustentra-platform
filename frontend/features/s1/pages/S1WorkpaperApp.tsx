@@ -1,5 +1,6 @@
 "use client";
 
+import type { MethodologyLogEntry } from "../utils/engagementActivity";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import {
@@ -395,7 +396,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   // Methodology review (demo): the verifier's acceptances and changes to the stated methodology.
   const [methodology, setMethodology] = useState<MethodologyState>(() => persisted?.methodology ?? emptyMethodologyReview());
   // Backend mode: the methodology decisions' history, for the activity log.
-  const [methodologyActivity, setMethodologyActivity] = useState<{ at: string; who: string; what: string }[]>([]);
+  const [methodologyActivity, setMethodologyActivity] = useState<MethodologyLogEntry[]>([]);
 
   // Demo-only: snapshot fixture state to localStorage so a refresh keeps it.
   useEffect(() => {

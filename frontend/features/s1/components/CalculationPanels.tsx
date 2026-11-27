@@ -1,5 +1,6 @@
 "use client";
 
+import { ProvenanceLabel } from "./ProvenanceLabel";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -401,7 +402,9 @@ function Step1Block({
                       onOpen={onOpenDocument ? () => onOpenDocument(r.document_id, r.candidate_id ?? undefined) : undefined}
                     />
                   </td>
-                  <td>{r.review === "edited" ? "Edited by reviewer" : "Accepted"}</td>
+                  <td>
+                    <ProvenanceLabel source="human" action={r.review === "edited" ? "edited" : "accepted"} />
+                  </td>
                   <td className="s1-vw-num">{NOT_AVAILABLE}</td>
                   <td className="s1-vw-num s1-cp-rec">
                     {r.quantity === null ? (
@@ -809,8 +812,7 @@ function LineDetail({
         {examined ? (
           <>
             <span className="s1-vw-examined-by">
-              <Check className="s1-vw-ico" aria-hidden />
-              Examined by {examination?.examinedBy}
+              <ProvenanceLabel source="human" action="examined" by={examination?.examinedBy} at={examination?.examinedAt} />
             </span>
             <button className="s1-button s1-vw-action" type="button" onClick={() => store.clearExamination(key)}>
               Undo

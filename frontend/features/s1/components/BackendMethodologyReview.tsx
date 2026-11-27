@@ -1,5 +1,7 @@
 "use client";
 
+import type { MethodologyLogEntry } from "../utils/engagementActivity";
+import { ProvenanceLabel, type ProvenanceAction } from "./ProvenanceLabel";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ChevronDown, ChevronRight, SquareDashed, TextAlignJustify } from "lucide-react";
@@ -65,6 +67,15 @@ const GROUP_ITEM: Record<string, string> = { gases: "Gas", scope1: "Category", s
 const INCLUDED_GROUPS = ["scope1", "scope2", "biogenic"];
 /** What a GWP row reads when the document gives no horizon: the GHG Protocol default, labelled as assumed. */
 /** Who proposed a value: the AI, or Sustentra's own reading rules (``origin: "rules"``), never a model name. */
+/** The login the server records on a value the client stated in its own report. */
+export const CLIENT_STATED_LOGIN = "company";
+
+/** "report p. 5" when the record's source names a page. */
+function reportPage(record: MethodologyRecord): string | undefined {
+  const page = record.suggestion ? pageOf(record.suggestion.source_reference) : null;
+  return typeof page === "number" ? `report p. ${page}` : undefined;
+}
+
 export function suggestedBy(origin: string | undefined): string {
   return origin === "rules" ? "Sustentra's rules" : "Sustentra's AI";
 }
@@ -169,18 +180,29 @@ function when(iso: string): string {
 }
 
 /** The change-log lines for the activity drawer, from every field's history. */
-export function methodologyActivityFrom(data: MethodologyReviewData): { at: string; who: string; what: string }[] {
+/** What a recorded history action means as a person's act. Reverts and row changes carry no label. */
+const HISTORY_ACTION: Record<string, ProvenanceAction> = { accept: "accepted", edit: "corrected", reject: "rejected" };
+
+export function methodologyActivityFrom(data: MethodologyReviewData): MethodologyLogEntry[] {
   const label = new Map(data.catalog.map((f) => [f.fieldId, f.label]));
   return data.fields.flatMap((record) => {
     const name = label.get(record.fieldId) ?? record.fieldId;
-    const entries = record.history.map((h) => ({
+    const entries: MethodologyLogEntry[] = record.history.map((h) => ({
       at: h.at,
       who: h.by?.name ?? "Reviewer",
-      what: `${ACTION_WORD[h.action] ?? h.action.replaceAll("_", " ")} on methodology: ${name}`,
+      what: HISTORY_ACTION[h.action] ? `on methodology: ${name}` : `${ACTION_WORD[h.action] ?? h.action.replaceAll("_", " ")} on methodology: ${name}`,
+      ...(HISTORY_ACTION[h.action] ? { source: "human" as const, action: HISTORY_ACTION[h.action] } : {}),
     }));
     if (record.suggestion) {
       const who = suggestedBy(record.suggestion.origin);
-      entries.push({ at: record.suggestion.suggested_at, who, what: `Suggested by ${who} on methodology: ${name}` });
+      // The suggestion's origin says who read it: the AI, or the rules. An origin we do not know carries no label.
+      const origin = record.suggestion.origin;
+      entries.push({
+        at: record.suggestion.suggested_at,
+        who,
+        what: origin === "ai" || origin === "rules" ? `suggested on methodology: ${name}` : `Suggested by ${who} on methodology: ${name}`,
+        ...(origin === "ai" ? { source: "ai" as const } : origin === "rules" ? { source: "system" as const } : {}),
+      });
     }
     return entries;
   });
@@ -630,11 +652,28 @@ export function FieldRow({
     />
   ) : null;
   const statusChip = chip ? <span className={`s1-mr-chip s1-mr-chip--${chip}`}>{statusWord(status)}</span> : !pendingStatus ? <span className="s1-chip">{statusWord(status)}</span> : null;
-  const decidedBy = decision && status !== "pending" ? (
-    <span className="s1-mr-muted">
-      {decision.by.name} · {when(decision.at)}
-    </span>
-  ) : null;
+  // A value the client stated in its report was not decided by a person here: it reads "Stated by client".
+  const statedByClient = decision?.by?.login === CLIENT_STATED_LOGIN && status !== "pending";
+  const decidedBy =
+    decision && status !== "pending" ? (
+      statedByClient ? (
+        <ProvenanceLabel source="human" action="stated" detail={reportPage(record)} />
+      ) : (
+        <ProvenanceLabel
+          source="human"
+          action={status === "edited" ? "corrected" : status === "rejected" ? "rejected" : "accepted"}
+          by={decision.by?.name}
+          at={decision.at}
+        />
+      )
+    ) : suggestion ? (
+      // The suggestion's origin says who read it. One we do not know carries no label.
+      suggestion.origin === "ai" ? (
+        <ProvenanceLabel source="ai" />
+      ) : suggestion.origin === "rules" ? (
+        <ProvenanceLabel source="system" read />
+      ) : null
+    ) : null;
   const actions =
     mode === "view" ? (
         <span className="s1-mr-actions s1-mb-actions">
@@ -858,6 +897,7 @@ export function FieldRow({
           {statusChip}
           {link}
         </div>
+        <div className="s1-mb-cellline">{decidedBy}</div>
         <div className="s1-mb-cellline">{actions}</div>
         {mode !== "view" ? <div className="s1-mb-celledit">{editor}</div> : null}
       </td>
@@ -1123,10 +1163,10 @@ export function BackendMethodologyReview({
   );
   const genericTable = (group: string, defs: CatalogField[]) => {
     if (!defs.length) return null;
-    // The Status column appears only when some row in the table has a status to show.
+    // The Status column appears when some row has a status to show or a reading whose source it names.
     const statusCol = defs.some((d) => {
-      const st = records.get(d.fieldId)?.decision?.status ?? "pending";
-      return st !== "pending";
+      const record = records.get(d.fieldId);
+      return (record?.decision?.status ?? "pending") !== "pending" || Boolean(record?.suggestion);
     });
     return tableOf(
       [GROUP_ITEM[group] ?? "Item", INCLUDED_GROUPS.includes(group) ? "Included" : "Value", "Source", ...(statusCol ? ["Status"] : []), "Actions"],

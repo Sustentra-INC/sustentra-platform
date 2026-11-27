@@ -188,8 +188,10 @@ describe("recomputed inputs", () => {
     await waitFor(() => expect(screen.getByRole("table", { name: "Results · Line total" }).textContent).toContain("3,600.25"));
     const row = within(screen.getByRole("table", { name: "Step 3 · Emissions per gas · CO₂" })).getAllByRole("row").find((r) => r.textContent?.startsWith("Recomputed"))!;
     expect(row.textContent).toContain("54.5 kg/MMBtu");
-    const mark = within(row).getByText("Edited");
-    expect(mark.getAttribute("title")).toBe("Edited by Ada Reviewer: Supplier certificate");
+    // In a cell the mark is the icon and one word; the whole label, with the reason, is its tooltip.
+    const mark = within(row).getByRole("img", { name: /^Edited by Ada Reviewer/ });
+    expect(mark.textContent).toBe("Edited");
+    expect(mark.getAttribute("title")).toMatch(/^Edited by Ada Reviewer.*Supplier certificate$/);
     expect(onDecided).toHaveBeenCalledTimes(1);
   });
 
@@ -244,7 +246,7 @@ describe("recomputed inputs", () => {
     t.inputs["ef.CO2"].recomputed = { ...t.inputs["ef.CO2"].recomputed!, decision: decision({ status: "accepted", value: 53.06 }) };
     mount(t);
     await ready();
-    expect(screen.getAllByRole("img", { name: "Accepted by Ada Reviewer" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("img", { name: /^Accepted by Ada Reviewer/ }).length).toBeGreaterThan(0);
   });
 
   it("opens the menu from the keyboard and walks it with the arrow keys", async () => {
@@ -344,7 +346,7 @@ describe("a role that cannot decide", () => {
     server.trace = t;
     render(<TraceSection engagementId="E1" lineKey="k" version="1" canDecide={false} fallback={<p>Summary numbers</p>} />);
     const group = await ready();
-    expect(screen.getAllByText("Edited").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("img", { name: /^Edited by/ }).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole("button", { name: /Actions for/ })).toHaveLength(0);
     expect(within(group).queryAllByRole("button")).toHaveLength(0);
     expect(screen.queryByRole("button", { name: /Revert/ })).toBeNull();

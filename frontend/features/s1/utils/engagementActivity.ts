@@ -1,4 +1,5 @@
 import { METHOD_CHECK_RULE_IDS } from "../api/recalculation";
+import type { ProvenanceAction, ProvenanceSource } from "../components/ProvenanceLabel";
 import type { EvidenceItem, ReviewValue } from "../types";
 import type { Ask } from "../types/requests";
 import type { CoverageRule, Examination, Finding } from "../types/verification";
@@ -13,6 +14,28 @@ export interface ActivityEntry {
   /** The document it concerns, when there is one. */
   documentId?: string;
   kind: "upload" | "review" | "request" | "finding" | "document" | "methodology";
+  /** Who did it, as the producer knows it. Left out when it is not known: the drawer then draws no label. */
+  source?: ProvenanceSource;
+  /** With source "human": what the person did. Never worked out from `what`. */
+  action?: ProvenanceAction;
+}
+
+/** A methodology change, as the Methodology review screen reports it. */
+export interface MethodologyLogEntry {
+  at: string;
+  who: string;
+  what: string;
+  source?: ProvenanceSource;
+  action?: ProvenanceAction;
+}
+
+/** A request event's label: sent reads Requested, a draft reads Added to requests. An edit carries none. */
+function requestEventLabel(kind: string): { source: "human"; action: ProvenanceAction } | Record<string, never> {
+  if (kind === "raised") return { source: "human", action: "queued" };
+  if (kind === "sent") return { source: "human", action: "requested" };
+  if (kind === "resolved") return { source: "human", action: "resolved" };
+  if (kind === "withdrawn") return { source: "human", action: "withdrawn" };
+  return {};
 }
 
 /** The engagement's history, newest first: uploads, reviews, requests, findings and document edits. */
@@ -25,7 +48,7 @@ export function engagementActivity(input: {
   /** Line and placement changes on the Evidence page, as the server recorded them. */
   evidenceEvents?: EvidenceActivityItem[];
   /** Methodology review changes, oldest first. */
-  methodology?: { at: string; who: string; what: string }[];
+  methodology?: MethodologyLogEntry[];
 }): ActivityEntry[] {
   const log: ActivityEntry[] = [];
   const filename = new Map(input.evidence.map((e) => [e.documentId, e.filename]));
@@ -49,9 +72,11 @@ export function engagementActivity(input: {
         log.push({
           at: entry.at,
           who: entry.actor,
-          what: `${entry.action}: ${value.whatItIs} (${value.filename})`,
+          // With a label the verb and the name are the label's; the line says only what it concerns.
+          what: entry.code ? `${value.whatItIs} (${value.filename})` : `${entry.action}: ${value.whatItIs} (${value.filename})`,
           documentId: value.documentId,
           kind: "review",
+          ...(entry.code ? { source: "human" as const, action: entry.code } : {}),
         });
       }
     }
@@ -61,9 +86,10 @@ export function engagementActivity(input: {
       log.push({
         at: event.at,
         who: event.actorName,
-        what: `${event.kind} a request: ${ask.source.itemLabel}`,
+        what: requestEventLabel(event.kind).source ? `a request: ${ask.source.itemLabel}` : `${event.kind} a request: ${ask.source.itemLabel}`,
         documentId: ask.source.documentId ?? undefined,
         kind: "request",
+        ...requestEventLabel(event.kind),
       });
     }
   }
@@ -98,7 +124,7 @@ export function engagementActivity(input: {
     });
   }
   for (const change of input.methodology ?? []) {
-    log.push({ at: change.at, who: change.who, what: change.what, kind: "methodology" });
+    log.push({ at: change.at, who: change.who, what: change.what, kind: "methodology", ...(change.source ? { source: change.source, action: change.action } : {}) });
   }
   return log.sort((a, b) => b.at.localeCompare(a.at));
 }
