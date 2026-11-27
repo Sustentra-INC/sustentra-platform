@@ -332,12 +332,26 @@ export function AssistantWidget({
   page,
   live = false,
   assistant,
+  open: openProp,
+  onOpenChange,
+  panelId,
 }: {
   page?: NavKey;
   live?: boolean;
   assistant?: AssistantConnection;
+  /** Controlled open state; without it the widget keeps its own. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Id of the panel, for the button that opens it (aria-controls). */
+  panelId?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = openProp ?? ownOpen;
+  const setOpen = (next: boolean | ((was: boolean) => boolean)) => {
+    const value = typeof next === "function" ? next(open) : next;
+    if (openProp === undefined) setOwnOpen(value);
+    onOpenChange?.(value);
+  };
   const [messages, setMessages] = useState<Msg[]>([]);
   const [chat, setChat] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
@@ -464,7 +478,7 @@ export function AssistantWidget({
   return (
     <>
       {open ? (
-        <section className="s1-ai" role="dialog" aria-label="Sustentra assistant">
+        <section className="s1-ai" id={panelId} role="dialog" aria-label="Sustentra assistant">
           <header className="s1-ai__head">
             <span className="s1-ai__brand-tile" aria-hidden>
               <IconSparkle />

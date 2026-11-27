@@ -3,7 +3,7 @@
 import { ChevronDown, History } from "lucide-react";
 import { IconTrash } from "./icons";
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
 import { formatReportingPeriod } from "../utils/formatPeriod";
@@ -87,6 +87,8 @@ export function S1Chrome({
 }: S1ChromeProps) {
   const [navExpanded, setNavExpanded] = useState(true);
   const [ctxExpanded, setCtxExpanded] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const assistantPanelId = useId();
   return (
     <div className="s1-shell">
       <Sidebar
@@ -116,7 +118,14 @@ export function S1Chrome({
         {children}
       </section>
       {/* A signed-in user means live data: the assistant explains methods, not demo figures. */}
-      <AssistantWidget page={current} live={Boolean(user)} assistant={assistant} />
+      <AssistantWidget
+        page={current}
+        live={Boolean(user)}
+        assistant={assistant}
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        panelId={assistantPanelId}
+      />
     </div>
   );
 }
