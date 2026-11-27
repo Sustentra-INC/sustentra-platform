@@ -193,7 +193,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
                 <tr>
                   {columns.map((c) => (
                     <Fragment key={c.key}>
-                      <th className={isNumeric(c.key) ? "s1-num" : ""}>{headerLabel(c)}</th>
+                      <th className={c.key === "date" ? "s1-sch-values__period" : isNumeric(c.key) ? "s1-num" : ""}>{headerLabel(c)}</th>
                       {c.key === "date" && showDays ? <th className="s1-sch-values__days">Days</th> : null}
                     </Fragment>
                   ))}

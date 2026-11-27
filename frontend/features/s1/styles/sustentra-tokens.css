@@ -300,6 +300,7 @@
   --sch-table-min-w: 760px;   /* accepted values table minimum width */
   --sch-col-days:     70px;   /* accepted values: days column */
   --sch-col-doc:     150px;   /* accepted values: document column */
+  --sch-col-period-min: 150px; /* accepted values: service period floor */
   --table-row-h-lg:   48px;   /* roomy table row */
   --avatar-sm:        26px;   /* small person avatar in table rows */
   --xr-panel-min:   320px;   /* review panel minimum (flex clamp lower bound) */

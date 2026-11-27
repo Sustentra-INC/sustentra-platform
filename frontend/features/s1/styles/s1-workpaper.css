@@ -4906,7 +4906,9 @@ button.s1-sch-bar:focus-visible { outline: var(--focus-ring); outline-offset: va
 .s1-sch-values .s1-table td.s1-sch-values__days { color: var(--ink-2); }
 .s1-sch-values__doc { width: var(--sch-col-doc); }
 .s1-sch-values__period { font-weight: var(--weight-medium); }
-.s1-sch-values__period > span:first-child { margin-right: var(--sp-2); }
+/* Service period never squeezes: a floor, otherwise its 1.4 share of the flexible columns. */
+.s1-sch-values .s1-table th.s1-sch-values__period { width: max(var(--sch-col-period-min), 24%); }
+.s1-sch-values__period > span:first-child { margin-right: var(--sp-2); white-space: nowrap; }
 .s1-sch-values__period .s1-state { vertical-align: middle; }
 .s1-sch-values__qty { font-size: var(--text-md); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; }
 .s1-sch-values__unit { font-weight: var(--weight-medium); color: var(--ink-3); }
