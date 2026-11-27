@@ -89,6 +89,14 @@ function OperandValue({
 
 /* ------------------------------------------ one block ------------------------------------------ */
 
+/** How many decimals a quantity actually has, 0 to 2. */
+function decimalsPresent(v: unknown): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return 0;
+  const hundredths = Math.round(Math.abs(v) * 100);
+  if (hundredths % 100 === 0) return 0;
+  return hundredths % 10 === 0 ? 1 : 2;
+}
+
 const isSingle = (op: TraceOperation) => op.terms.length === 1 && op.terms[0].operand.column === op.result.column;
 const hasValue = (op: TraceOperation | undefined) => Boolean(op) && op?.result.value !== null && op?.result.value !== undefined;
 
@@ -174,7 +182,15 @@ function OperationTable({ block, name, inputs, onOpenDocument }: { block: TraceB
 
 /** A summed input (months, deliveries, meters): its parts, then the total with both sides. */
 function RowsTable({ block, input, name, onOpenDocument }: { block: TraceBlock; input: TraceInput; name: string; onOpenDocument?: OpenDocument }) {
-  const column = block.columns.find((c) => c.key === block.recomputed?.result.column);
+  const base = block.columns.find((c) => c.key === block.recomputed?.result.column);
+  // Quantities are shown as they are: the most decimals any of this block's values has, at most two.
+  const values = [
+    ...(input.rows ?? []).flatMap((r) => [r.company?.value, r.recomputed?.value]),
+    block.company?.result.value,
+    block.recomputed?.result.value,
+    block.recomputed?.result.difference,
+  ];
+  const column = base ? { ...base, display: { dp: Math.max(0, ...values.map(decimalsPresent)) } } : base;
   const cellText = (side: Side, r: TraceInputRow) => {
     const s = r[side];
     if (!s || s.value === null || s.value === undefined) return null;

@@ -147,12 +147,25 @@ describe("TracePanel", () => {
     const cells = within(total).getAllByRole("cell");
     // Annual total | company under Company-reported | recomputed under Recomputed
     expect(cells[0].textContent).toBe("Activity data");
-    expect(cells[1].textContent).toContain("650,000.00 therm");
-    expect(cells[2].textContent).toContain("600,000.00 therm");
-    expect(cells[2].querySelector(".s1-cp-diff")?.textContent).toBe(" (−50,000.00)");
+    expect(cells[1].textContent).toContain("650,000 therm");
+    expect(cells[2].textContent).toContain("600,000 therm");
+    expect(cells[2].querySelector(".s1-cp-diff")?.textContent).toBe(" (−50,000)");
     // the parts show no difference, and no part sits under the company's figure
     expect(within(rows[1]).getByText("not reported")).toBeTruthy();
     expect(table.querySelectorAll(".s1-cp-diff").length).toBe(1);
+  });
+
+  it("shows Step 1 quantities with the decimals they have, two at most", () => {
+    const t = twelveParts();
+    t.inputs["activity.total"].rows![0].recomputed!.value = 50000.16;
+    const op = block(t, "activity").recomputed!;
+    op.terms[0].operand.value = 50000.16;
+    op.result.value = 600000.16;
+    op.result.difference = -49999.84;
+    render(<TracePanel trace={t} />);
+    const table = screen.getByRole("table", { name: "Step 1 · Activity data · Activity data" });
+    expect(table.textContent).toContain("600,000.16 therm");
+    expect(table.textContent).toContain("650,000.00 therm");
   });
 
   it("shows a long record label wrapped, not breaking the row", () => {
