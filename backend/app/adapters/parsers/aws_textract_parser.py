@@ -18,6 +18,7 @@ from backend.app.adapters.parsers.base import (
     build_warning,
 )
 from backend.app.adapters.parsers.textract_parser import TextractParser
+from backend.app.services.textract_calls import record_textract_call
 
 PARSER_NAME = "aws_textract"
 
@@ -83,12 +84,14 @@ class AwsTextractParser:
     def parse_bytes(self, document_bytes: bytes, document_id: str, processing_run_id: str) -> dict:
         """One synchronous AnalyzeDocument call: an image, or a single-page PDF."""
 
+        features = self._resolved_feature_types()
         try:
             response = self._client().analyze_document(
                 Document={"Bytes": document_bytes},
-                FeatureTypes=self._resolved_feature_types(),
+                FeatureTypes=features,
             )
         except Exception as exc:  # AWS client errors differ by botocore version.
+            record_textract_call(pages=1, ok=False, feature_types=features)
             return build_failed_parser_output(
                 document_id=document_id,
                 processing_run_id=processing_run_id,
@@ -102,6 +105,7 @@ class AwsTextractParser:
                 ],
             )
 
+        record_textract_call(pages=1, ok=True, feature_types=features)
         output = self._normalizer.parse(response, document_id, processing_run_id,
                                         page_aspect=image_aspect(document_bytes))
         output["parser_name"] = self.parser_name

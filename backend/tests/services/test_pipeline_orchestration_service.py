@@ -24,7 +24,7 @@ class FakeParserService:
     def __init__(self, output: dict) -> None:
         self._output = output
 
-    def parse_document(self, file_path: str, document_id: str, processing_run_id: str, mime_type=None) -> dict:
+    def parse_document(self, file_path: str, document_id: str, processing_run_id: str, mime_type=None, org_id=None) -> dict:
         return copy.deepcopy(self._output)
 
 

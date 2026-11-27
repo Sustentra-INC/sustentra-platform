@@ -1441,7 +1441,8 @@ def _parse(document: dict[str, Any], storage: Any, parser: Any) -> list[Document
             return None
         output = parser.parse_document(file_path=str(path), document_id=str(document["document_id"]),
                                        processing_run_id=f"prefill::{document['document_id']}",
-                                       mime_type=document.get("mime_type"))
+                                       mime_type=document.get("mime_type"),
+                                       org_id=str(owner) if owner else None)
     except Exception as exc:  # an unreadable file must not stop the others; log the type only
         logger.warning("methodology prefill: document %s not read (%s)", document.get("document_id"),
                        type(exc).__name__)
