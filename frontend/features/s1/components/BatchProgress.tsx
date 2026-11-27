@@ -78,7 +78,9 @@ export function BatchProgress({
         const pct = chunkPct(item);
         const ext = batchFileExt(item.file_name);
         const canOpen = item.status !== "queued" && item.status !== "reading";
-        const subLine = item.halt_reason ?? type ?? progress;
+        const subLine = [type, progress].filter(Boolean).join(" · ") || null;
+        const isFinished = item.status === "done" || item.status === "partial" || item.status === "failed";
+        const recordsDisplay = isFinished ? String(item.records_found) : "–";
 
         return (
           <div key={item.document_id} className="s1-batch__row" role="row">
@@ -98,12 +100,15 @@ export function BatchProgress({
                 <span className="s1-batch__name">{item.file_name}</span>
               )}
               {subLine ? <span className="s1-batch__sub">{subLine}</span> : null}
+              {item.halt_reason ? (
+                <span className={`s1-batch__halt s1-batch__halt--${item.status === "failed" ? "blocking" : "open"}`}>
+                  {item.halt_reason}
+                </span>
+              ) : null}
             </span>
-            {item.records_found > 0 ? (
-              <span className="s1-batch__records" aria-label={`${item.records_found} records`}>
-                {item.records_found}
-              </span>
-            ) : null}
+            <span className="s1-batch__records" aria-label={`${recordsDisplay} records`}>
+              {recordsDisplay}
+            </span>
             {item.status === "reading" ? (
               <span className="s1-batch__mini" aria-hidden="true">
                 <span className="s1-batch__mini-fill" style={{ width: `${pct ?? 0}%` }} />

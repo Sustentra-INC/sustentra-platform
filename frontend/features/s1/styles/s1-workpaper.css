@@ -1589,6 +1589,10 @@ select:focus-visible,
 .s1-batch__info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .s1-batch__name { font-size: var(--text-base); font-weight: var(--weight-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .s1-batch__sub  { font-size: var(--text-sm); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s1-batch__halt { font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s1-batch__halt--open     { color: var(--state-open-fg); }
+.s1-batch__halt--blocking { color: var(--state-blocking-fg); }
+.s1-batch__records { flex: none; font-size: var(--text-sm); color: var(--ink-3); text-align: right; min-width: var(--sp-5); }
 .s1-batch__mini { flex: none; width: var(--batch-mini-w); height: var(--sp-1-5); border-radius: var(--r-pill); background: var(--sf-inset); overflow: hidden; }
 .s1-batch__mini-fill { height: 100%; background: var(--accent-solid); border-radius: var(--r-pill); transition: width 0.25s ease; }
 @media (prefers-reduced-motion: reduce) { .s1-batch__mini-fill { transition: none; } }
