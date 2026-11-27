@@ -76,7 +76,7 @@ export function TraceSection({
           </p>
         ) : null}
         <TraceActionsProvider value={engagementId ? { ...actions, canAct: actions.canAct && canDecide } : { ...actions, canAct: false }}>
-          <TracePanel trace={state.trace} onOpenDocument={onOpenDocument} />
+          <TracePanel trace={state.trace} decisions={state.decisions} onOpenDocument={onOpenDocument} />
         </TraceActionsProvider>
       </Boundary>
     );

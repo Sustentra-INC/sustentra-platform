@@ -3,8 +3,9 @@
 import { Check } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { decideInput, type InputDecisionBody, type TraceInput } from "../../api/calcTrace";
+import { decideInput, type InputDecisionBody, type TraceInput, type TraceInputRow, type TraceSide } from "../../api/calcTrace";
 import { ActionMenu, type ActionMenuEntry } from "../ActionMenu";
+import { NotAppliedNote, useNotApplied } from "./NotApplied";
 import { ReasonRow, SuggestionChip, useTraceActions } from "./TraceActions";
 import { prettyUnit } from "./format";
 
@@ -14,9 +15,6 @@ import { prettyUnit } from "./format";
  * the server allows from that state (Accept a suggestion, Edit, Reject, Revert). Edit keeps the unit fixed
  * and asks for a reason, as Methodology review's Reject does.
  */
-
-/** Inputs a reviewer can decide on: references and constants, not sums of evidence or methodology settings. */
-const DECIDABLE = new Set(["reference", "reviewer_entered", "constant"]);
 
 type Mode = "edit" | "reject" | "accept" | null;
 
@@ -33,22 +31,20 @@ export function parseEntered(text: string): { value: number } | { error: string 
 }
 
 /** Numeric when any side holds a number or the trace gives a unit: an input with no value yet stays a number. */
-function isNumeric(input: TraceInput): boolean {
-  const sides = [input.recomputed, input.company];
+function isNumeric(sides: (TraceSide | undefined)[]): boolean {
   return sides.some((s) => typeof s?.value === "number" || Boolean(s?.unit));
 }
-const unitOf = (input: TraceInput): string | undefined => input.recomputed?.unit || input.company?.unit || undefined;
-
-export function isDecidable(input: TraceInput | undefined): input is TraceInput {
-  return Boolean(input && input.recomputed && DECIDABLE.has(input.kind));
-}
+const unitOf = (sides: (TraceSide | undefined)[]): string | undefined => sides.find((s) => s?.unit)?.unit || undefined;
 
 export function InputActions({
   input,
+  row,
   children,
   onOpenDocument,
 }: {
   input: TraceInput;
+  /** One record of a summed input: decided on its own, and decidable exactly when its input is. */
+  row?: TraceInputRow;
   /** The cell's value, drawn by the panel. */
   children: ReactNode;
   onOpenDocument?: (documentId: string, valueId?: string) => void;
@@ -57,12 +53,16 @@ export function InputActions({
   const [mode, setMode] = useState<Mode>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [value, setValue] = useState("");
-  const side = input.recomputed;
+  const side = row ? row.recomputed : input.recomputed;
+  const targetId = row ? `${input.id}/${row.id}` : input.id;
+  const label = row ? `${input.label} · ${row.label}` : input.label;
+  const sides = [side, row?.company, input.recomputed, input.company];
+  const notApplied = useNotApplied("input", targetId);
   const decision = side?.decision && side.decision.status !== "pending" ? side.decision : null;
   const status = decision?.status ?? null;
-  const rawUnit = unitOf(input);
+  const rawUnit = unitOf(sides);
   const unit = rawUnit ? prettyUnit(rawUnit) : "";
-  const numeric = isNumeric(input);
+  const numeric = isNumeric(sides);
 
   const mark =
     status === "accepted" ? (
@@ -79,22 +79,25 @@ export function InputActions({
       </span>
     ) : null;
 
+  // Only the trace's own word decides whether a reviewer can act: `decidable` is true. Otherwise the value says why not.
+  const decidable = input.decidable === true;
   const cell = (
-    <span className="s1-cp-decided">
+    <span className="s1-cp-decided" title={!decidable && input.why_not ? `Can't be changed: ${input.why_not}` : undefined}>
       <span className={status === "rejected" ? "is-rejected" : undefined}>{children}</span>
       {mark}
     </span>
   );
-  if (!actions || !side) return cell;
+  const note = <NotAppliedNote entries={notApplied} />;
+  if (!actions || !side || !decidable) return <>{cell}{note}</>;
 
-  const post = (body: InputDecisionBody, entered?: string) => actions.act(() => decideInput(actions.engagementId, actions.lineKey, input.id, "recomputed", body), { inline: true, entered });
+  const post = (body: InputDecisionBody, entered?: string) => actions.act(() => decideInput(actions.engagementId, actions.lineKey, targetId, "recomputed", body), { inline: true, entered });
   const close = () => {
     setMode(null);
     setValue("");
   };
   const direct = async (body: InputDecisionBody) => {
     // Revert has no field to show a refusal in: the panel's notice says it.
-    await actions.act(() => decideInput(actions.engagementId, actions.lineKey, input.id, "recomputed", body));
+    await actions.act(() => decideInput(actions.engagementId, actions.lineKey, targetId, "recomputed", body));
   };
   const suggestion = side.suggestion && !decision ? side.suggestion : null;
   const entries: ActionMenuEntry[] = [
@@ -113,11 +116,12 @@ export function InputActions({
     <>
       <span className="s1-cp-actioncell">
         {cell}
-        <ActionMenu label={`Actions for ${input.label}`} entries={entries} isOpen={menuOpen} onOpenChange={setMenuOpen} />
+        <ActionMenu label={`Actions for ${label}`} entries={entries} isOpen={menuOpen} onOpenChange={setMenuOpen} />
       </span>
+      {note}
       {mode === "edit" ? (
         <ReasonRow
-          label={`Reason: ${input.label}`}
+          label={`Reason: ${label}`}
           placeholder="Why is this value changed?"
           submitLabel="Save"
           validate={() => valueOk}
@@ -131,7 +135,7 @@ export function InputActions({
           <span className="s1-cp-valuefield">
             <input
               className="s1-mr-input"
-              aria-label={`Value: ${input.label}`}
+              aria-label={`Value: ${label}`}
               inputMode={numeric ? "decimal" : undefined}
               value={value}
               onChange={(e) => setValue(e.target.value)}
@@ -148,7 +152,7 @@ export function InputActions({
       ) : null}
       {mode === "reject" ? (
         <ReasonRow
-          label={`Reason: ${input.label}`}
+          label={`Reason: ${label}`}
           placeholder="Why is this wrong?"
           submitLabel="Reject"
           onCancel={close}

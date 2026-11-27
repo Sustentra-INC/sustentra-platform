@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { decideChoice, type TraceChoice, type TraceChoiceOption, type TraceTag } from "../../api/calcTrace";
+import { NotAppliedNote, useNotApplied } from "./NotApplied";
 import { ReasonRow, SuggestionChip, useTraceActions } from "./TraceActions";
 
 const TAG_TEXT: Partial<Record<TraceTag, string>> = { detected_from_evidence: "Detected from the evidence", not_used_for_this_line: "Not used for this line" };
@@ -28,13 +29,15 @@ export function ChoicePills({
   onOpenDocument?: (documentId: string, valueId?: string) => void;
 }) {
   const actions = useTraceActions();
+  const notApplied = useNotApplied("choice", choice.id);
   const [mode, setMode] = useState<Mode>(null);
   const editable = Boolean(actions);
   const decision = choice.decision && choice.decision.status !== "pending" ? choice.decision : null;
   // The option the latest decision picked (a choose or an accepted suggestion), else the one the calculation used.
   const decidedId = decision && decision.status !== "rejected" && decision.value !== null && decision.value !== undefined ? String(decision.value) : null;
-  const shown = decidedId && choice.options.some((o) => o.id === decidedId) ? decidedId : choice.chosen;
-  const notApplied = shown !== choice.chosen;
+  const refused = notApplied.length > 0; // the working did not use the decision: the option it used stays marked
+  const shown = !refused && decidedId && choice.options.some((o) => o.id === decidedId) ? decidedId : choice.chosen;
+  const awaitingApply = shown !== choice.chosen;
   const suggested = !decision && choice.suggestion ? choice.suggestion : null;
   const suggestedOption = suggested ? choice.options.find((o) => o.id === String(suggested.value)) : undefined;
 
@@ -109,7 +112,8 @@ export function ChoicePills({
           ) : null}
         </span>
       ) : null}
-      {notApplied ? <span className="s1-cp-change s1-muted">Recorded. The total updates when the calculation is applied.</span> : null}
+      {awaitingApply ? <span className="s1-cp-change s1-muted">Recorded. The total updates when the calculation is applied.</span> : null}
+      <NotAppliedNote entries={notApplied} choice={choice} />
       {mode?.kind === "choose" ? (
         <ReasonRow
           label={`Reason: ${choice.label}`}

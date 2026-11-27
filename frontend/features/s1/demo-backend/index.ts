@@ -38,6 +38,6 @@ export async function demoApi<T>(path: string, options: ApiOptions = {}): Promis
 }
 
 /** Throws the error a real route would, for example a 409 or a 422 with the server's sentence. */
-export function demoError(status: number, detail: string): never {
-  throw new ApiError(status, detail, { detail }, null);
+export function demoError(status: number, detail: string, code?: string): never {
+  throw new ApiError(status, detail, code ? { detail, code } : { detail }, null);
 }

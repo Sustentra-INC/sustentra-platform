@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-import { getLineTrace, type LineTrace } from "../../api/calcTrace";
+import { getLineTrace, type LineDecisions, type LineTrace } from "../../api/calcTrace";
 
 export type LineTraceState =
   | { status: "idle" | "loading" | "none" | "error" }
-  | { status: "ready"; trace: LineTrace };
+  | { status: "ready"; trace: LineTrace; decisions?: LineDecisions };
 
 /**
  * Fetches one line's trace when the line opens, and again when `version` changes (the line's figures
@@ -25,7 +25,7 @@ export function useLineTrace(engagementId: string | undefined, lineKey: string, 
       .then((res) => {
         const trace = res?.trace;
         if (cancelled) return;
-        setDone({ key, line, state: trace && typeof trace === "object" && Array.isArray(trace.steps) ? { status: "ready", trace } : { status: "none" } });
+        setDone({ key, line, state: trace && typeof trace === "object" && Array.isArray(trace.steps) ? { status: "ready", trace, decisions: res.decisions } : { status: "none" } });
       })
       .catch(() => {
         if (!cancelled) setDone({ key, line, state: { status: "error" } });

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const server = vi.hoisted(() => ({
   trace: null as unknown,
+  decisions: undefined as unknown,
   gets: 0,
   posts: [] as { path: string; body: unknown }[],
   postError: null as unknown,
@@ -23,7 +24,7 @@ vi.mock("../../../lib/api", async (importActual) => {
         return {};
       }
       server.gets += 1;
-      return { line_key: "k", trace: server.trace };
+      return { line_key: "k", trace: server.trace, ...(server.decisions ? { decisions: server.decisions } : {}) };
     }),
   };
 });
@@ -62,6 +63,7 @@ beforeEach(() => {
   server.posts = [];
   server.postError = null;
   server.after = null;
+  server.decisions = undefined;
   onDecided.mockClear();
 });
 afterEach(cleanup);
@@ -417,10 +419,121 @@ describe("typed numbers", () => {
     await user.clear(value);
     await user.type(value, "42.1");
     await user.type(screen.getByRole("textbox", { name: "Reason: CO₂ emission factor" }), "why");
-    server.postError = new ApiError(409, "Someone else decided.", null, null);
+    server.postError = new ApiError(409, "Someone else decided.", {}, null);
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect((await screen.findByRole("status")).textContent).toContain("This value changed since you opened it (you entered 42.1)");
     expect(screen.queryByRole("textbox", { name: "Value: CO₂ emission factor" })).toBeNull();
     await waitFor(() => expect(server.gets).toBeGreaterThan(gets));
+  });
+});
+
+describe("only decidable inputs offer actions", () => {
+  it("offers a menu on the activity total and the factors, none on a GWP, and says why on the value", async () => {
+    mount(base());
+    await ready();
+    expect(screen.getAllByRole("button", { name: /Actions for Activity data/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /Actions for CO₂ emission factor/ }).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole("button", { name: /Actions for CO₂ global warming potential/ })).toHaveLength(0);
+    expect(screen.queryAllByRole("button", { name: /Actions for Unit conversion/ })).toHaveLength(0);
+    const why = document.querySelector('[title^="Can\'t be changed: the GWP is chosen"]');
+    expect(why).toBeTruthy();
+  });
+
+  it("offers nothing when the trace does not say decidable", async () => {
+    const t = base();
+    delete t.inputs["ef.CO2"].decidable;
+    mount(t);
+    await ready();
+    expect(screen.queryAllByRole("button", { name: /Actions for CO₂ emission factor/ })).toHaveLength(0);
+  });
+
+  it("offers nothing on a mixed or blocked line, where every input says not decidable", async () => {
+    const t = base();
+    for (const input of Object.values(t.inputs)) {
+      input.decidable = false;
+      input.why_not = "this line mixes fuels or units: move the other records to their own line first";
+    }
+    mount(t);
+    await ready();
+    expect(screen.queryAllByRole("button", { name: /Actions for/ })).toHaveLength(0);
+  });
+});
+
+describe("coded refusals", () => {
+  const refuse = async (code: string | undefined) => {
+    const user = userEvent.setup();
+    const t = base();
+    t.inputs["ef.CO2"].recomputed = { ...t.inputs["ef.CO2"].recomputed!, decision: decision({ value: 54.5 }) };
+    mount(t);
+    await ready();
+    const gets = server.gets;
+    server.postError = new ApiError(409, "server sentence", code ? { detail: "server sentence", code } : { detail: "server sentence" }, null);
+    await efMenu(user);
+    await user.click(screen.getByRole("menuitem", { name: "Revert" }));
+    const text = (await screen.findByRole("status")).textContent ?? "";
+    return { text, refetched: async () => server.gets > gets };
+  };
+
+  it.each([
+    ["mixed_line", /mixes fuels or units/],
+    ["not_decidable", /set elsewhere/],
+    ["no_working", /no working/],
+    ["not_counted", /not counted/],
+  ] as const)("%s says a plain sentence, not that the value changed", async (code, expected) => {
+    const { text } = await refuse(code);
+    expect(text).toMatch(expected);
+    expect(text).not.toContain("changed since you opened");
+    expect(onDecided).not.toHaveBeenCalled();
+  });
+
+  it("stale says the automatic value moved and refetches", async () => {
+    const { text } = await refuse("stale");
+    expect(text).toContain("automatic value changed");
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1));
+  });
+
+  it("a 409 with no code is a change of state", async () => {
+    const { text } = await refuse(undefined);
+    expect(text).toContain("This value changed since you opened it");
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("decisions the working did not apply", () => {
+  it("says so on the input, with the old and new automatic values for a stale one", async () => {
+    const t = base();
+    t.inputs["ef.CO2"].recomputed = { ...t.inputs["ef.CO2"].recomputed!, decision: decision({ value: 54.5 }) };
+    server.decisions = {
+      applied: [],
+      not_applied: [
+        { target: "input", id: "ef.CO2", side: "recomputed", status: "edited", reason: "stale", automatic_then: { value: 52, unit: "kg/MMBtu" }, automatic_now: { value: 53.06, unit: "kg/MMBtu" } },
+        { target: "input", id: "ef.CH4", side: "recomputed", status: "edited", reason: "invalid_value", message: "Not applied: the value is not a number above 0." },
+      ],
+    };
+    mount(t);
+    await ready();
+    const notes = screen.getAllByRole("status").map((n) => n.textContent);
+    expect(notes).toContain("Your edit was made when the automatic value was 52 kg/MMBtu; it's now 53.06 kg/MMBtu, so it wasn't applied.");
+    expect(notes).toContain("Your edit was not applied: the value is not a number above 0.");
+  });
+
+  it("says a stale choice with option names, and a decision whose target is gone on the line", async () => {
+    const t = withEq2(base());
+    server.decisions = {
+      applied: [],
+      not_applied: [
+        { target: "choice", id: "equation:CO2", side: null, status: "edited", reason: "stale", automatic_then: "eq_1", automatic_now: "eq_2" },
+        { target: "input", id: "gone.input", side: "recomputed", status: "edited", reason: "not_on_this_line", message: "This input is no longer part of the line's working." },
+      ],
+    };
+    mount(t);
+    await ready();
+    const notes = screen.getAllByRole("status").map((n) => n.textContent);
+    expect(notes).toContain("Your edit was made when the automatic value was Eq. 1; it's now Eq. 2, so it wasn't applied.");
+    expect(notes).toContain("Your edit was not applied: This input is no longer part of the line's working.");
+    // the one about a gone input is above the steps, not inside a pill group
+    const line = notes.indexOf("Your edit was not applied: This input is no longer part of the line's working.");
+    expect(within(screen.getByRole("group", { name: "CO2 equation" })).queryByText(/no longer part/)).toBeNull();
+    expect(line).toBeGreaterThanOrEqual(0);
   });
 });

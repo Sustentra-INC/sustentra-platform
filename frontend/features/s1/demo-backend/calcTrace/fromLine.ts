@@ -67,6 +67,21 @@ function period(start: string | null, end: string | null, fallback: string): str
   return start === end ? start : `${start} to ${end}`;
 }
 
+const SET_ELSEWHERE: Record<string, string> = {
+  unit_conversion: "the unit conversion comes from the conversion table",
+  share: "the consolidated share is set under Recalculation inputs",
+  grid_region: "the grid region is set under Recalculation inputs or in Setup",
+};
+
+/** `decidable` and `why_not` on each input, by the backend's rule (calc_trace/decisions.py `not_decidable`). */
+function markDecidable(inputs: Record<string, TraceInput>): void {
+  for (const [id, input] of Object.entries(inputs)) {
+    const why = SET_ELSEWHERE[id] ?? (id.startsWith("gwp.") ? "the GWP is chosen for the whole engagement on the Methodology page" : id === "activity.total" || id === "distance" || id.startsWith("ef.") ? null : "this input cannot be decided for a line");
+    input.decidable = why === null;
+    if (why !== null) input.why_not = why;
+  }
+}
+
 export function traceFromLine(line: CalculationLine): LineTrace {
   const co = line.company;
   const inputs: Record<string, TraceInput> = {};
@@ -266,6 +281,7 @@ export function traceFromLine(line: CalculationLine): LineTrace {
   };
 
   const steps = [step1, step2, { id: "emissions", n: 3, title: "Step 3 · Emissions by gas", note: "One equation per gas", blocks: mass } as TraceStep, { id: "gwp", n: 4, title: "Step 4 · CO₂e", note: "Mass × global warming potential", blocks: gwp } as TraceStep, results];
+  markDecidable(inputs);
   const equation = (gas: CalcGas) => line.method.equations[gas];
   return {
     trace_version: 1,

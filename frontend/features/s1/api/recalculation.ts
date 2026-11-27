@@ -1,5 +1,6 @@
 import { api } from "../../../lib/api";
 import { count } from "../utils/count";
+import type { DecisionEntry, LineDecisions } from "./calcTrace";
 import type {
   CheckOutcome,
   CoverageRule,
@@ -354,6 +355,8 @@ export interface CalculationLine {
   /** The line's category still has open needs_input or awaiting_review items. */
   inputs_incomplete: boolean;
   flags: string[];
+  /** Reviewer decisions on this line's working that were applied or not (only when it has decisions). */
+  decisions?: LineDecisions;
 }
 
 export type CalcUnplacedReason =
@@ -502,6 +505,8 @@ export interface Recalculation {
   uncounted_values?: UncountedValues;
   /** Per-line calculations behind stationary, mobile and electricity. Absent from older results. */
   calculation_lines?: CalculationLine[];
+  /** Decisions across lines: how many lines have them, those not applied (each with its line key), and orphaned ones. */
+  calculation_line_decisions?: { lines_with_decisions: number; not_applied: (DecisionEntry & { line_key: string })[]; orphaned: unknown[] };
   /** Records on no calculation line, with why. */
   calculation_unplaced?: CalcUnplaced[];
   calculation_line_inputs?: CalcLineInputs;

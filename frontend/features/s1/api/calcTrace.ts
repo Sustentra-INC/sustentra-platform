@@ -250,7 +250,34 @@ export interface LineTrace {
 export interface LineTraceResponse {
   line_key: string;
   trace: LineTrace | null;
+  /** Present only when the line has decisions. */
+  decisions?: LineDecisions;
 }
+
+/** What the automatic working gave when a decision was made, or gives now (a choice: the option id). */
+export type AutomaticFigure = string | { value?: number | string | null; unit?: string | null; source?: unknown; grid_region?: string | null };
+
+/** A decision the working used (`applied`) or did not (`not_applied`), with why. */
+export interface DecisionEntry {
+  target: "choice" | "input";
+  id: string;
+  side: "company" | "recomputed" | null;
+  status: string;
+  reason?: string;
+  message?: string;
+  /** Only on a `stale` entry: the automatic value when the decision was made, and now. */
+  automatic_then?: AutomaticFigure;
+  automatic_now?: AutomaticFigure;
+}
+
+/** A line's decisions: on the trace response and on each recalculation `calculation_lines[]` entry. */
+export interface LineDecisions {
+  applied: DecisionEntry[];
+  not_applied: DecisionEntry[];
+}
+
+/** The `code` of a 409 from a decision POST; a 409 without one is a plain change of state. */
+export type DecisionRefusal = "mixed_line" | "stale" | "not_decidable" | "no_working" | "not_counted";
 
 export function getLineTrace(engagementId: string, lineKey: string): Promise<LineTraceResponse> {
   return api<LineTraceResponse>(

@@ -30,6 +30,7 @@ import type { RecalculationSettings } from "../types";
 import type { TeamMember } from "../types/engagement";
 import { differs, examinationKey, formatGasTonnes, formatInputQuantity, formatPercent, formatSignedGasTonnes } from "../utils/verificationTable";
 import type { VerificationStore } from "../verification/verificationStore";
+import { NotAppliedNote } from "./calc-trace/NotApplied";
 import { TraceSection } from "./calc-trace/TraceSection";
 import { InfoTip } from "./InfoTip";
 import { AddNote, RecordExamination, formatWhen } from "./VerificationWorkspace";
@@ -795,6 +796,7 @@ function LineDetail({
         canDecide={canDecide}
         fallback={
           <>
+            <NotAppliedNote entries={line.decisions?.not_applied ?? []} />
             <MethodBlock line={line} />
             <Step1Block line={line} onOpenDocument={onOpenDocument} />
             <Step2Block line={line} />

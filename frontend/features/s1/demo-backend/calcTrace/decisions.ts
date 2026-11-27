@@ -140,6 +140,8 @@ export function decisionRoutes(traceOf: Traced): DemoRoute[] {
         const k = keyOf(params.id, params.key, `input|${params.target}|${side}`);
         const rec = records.get(k) ?? { suggestion: own?.suggestion ?? null, decision: null, history: [] };
         const label = `${input!.label}${row ? ` · ${row.label}` : ""} (${side})`;
+        // Like the backend: accept and edit need a decidable input (409, coded); reject and revert are never refused.
+        if ((b.action === "accept" || b.action === "edit") && input!.decidable === false) demoError(409, `'${label}' can't be changed for one line: ${input!.why_not ?? "this input cannot be decided for a line"}.`, "not_decidable");
         if (b.action === "edit") {
           const known = sides.filter((x) => x && x.value !== null && x.value !== undefined);
           // With no value on any side, a unit still says the input is a number.

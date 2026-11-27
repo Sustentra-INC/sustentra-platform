@@ -3,6 +3,8 @@
 import { ChevronRight } from "lucide-react";
 
 import type {
+  DecisionEntry,
+  LineDecisions,
   LineTrace,
   TraceBlock,
   TraceColumn,
@@ -15,7 +17,8 @@ import type {
 import { differenceText, operandText, prettyUnit } from "./format";
 import { ChoicePills } from "./ChoicePills";
 export { ChoicePills };
-import { InputActions, isDecidable } from "./InputActions";
+import { InputActions } from "./InputActions";
+import { NotAppliedNote, NotAppliedProvider } from "./NotApplied";
 import { SuggestionChip } from "./TraceActions";
 import { TraceSourceNote } from "./TraceSourceNote";
 
@@ -87,7 +90,7 @@ function OperandValue({
   const chip = side === "company" && input?.company?.suggestion ? <SuggestionChip suggestion={input.company.suggestion} onOpenDocument={onOpenDocument} /> : null;
   return (
     <>
-      {side === "recomputed" && isDecidable(input) ? <InputActions input={input} onOpenDocument={onOpenDocument}>{value}</InputActions> : value}
+      {side === "recomputed" && input?.recomputed ? <InputActions input={input} onOpenDocument={onOpenDocument}>{value}</InputActions> : value}
       {diff ? <span className="s1-cp-diff"> ({diff})</span> : null}
       {chip}
     </>
@@ -206,7 +209,9 @@ function RowsTable({ block, input, name, onOpenDocument }: { block: TraceBlock; 
   };
   const total = (side: Side, op: TraceOperation | undefined) => {
     if (!op) return <em className="s1-muted">{side === "company" ? "not reported" : "Awaiting review"}</em>;
-    return <OperandValue operand={op.result} column={column} side={side} inputs={{}} withDifference={side === "recomputed" && hasValue(block.company)} isResult onOpenDocument={onOpenDocument} />;
+    const value = <OperandValue operand={op.result} column={column} side={side} inputs={{}} withDifference={side === "recomputed" && hasValue(block.company)} isResult onOpenDocument={onOpenDocument} />;
+    // The summed total is the line's main decision: it can be accepted or entered outright.
+    return side === "recomputed" && input.recomputed ? <InputActions input={input} onOpenDocument={onOpenDocument}>{value}</InputActions> : value;
   };
   return (
     <div className="s1-vw-scroll">
@@ -232,9 +237,9 @@ function RowsTable({ block, input, name, onOpenDocument }: { block: TraceBlock; 
                   {rc === null ? (
                     <em className="s1-muted">Awaiting review</em>
                   ) : (
-                    <>
+                    <InputActions input={input} row={r} onOpenDocument={onOpenDocument}>
                       <TraceSourceNote label={rc} source={r.recomputed?.source} onOpenDocument={onOpenDocument} />
-                    </>
+                    </InputActions>
                   )}
                 </td>
               </tr>
@@ -297,15 +302,21 @@ function StepView({ step, trace, onOpenDocument }: { step: TraceStep; trace: Lin
 
 /* ------------------------------------------ the panel ------------------------------------------ */
 
-export function TracePanel({ trace, onOpenDocument }: { trace: LineTrace; onOpenDocument?: OpenDocument }) {
+export function TracePanel({ trace, decisions, onOpenDocument }: { trace: LineTrace; decisions?: LineDecisions; onOpenDocument?: OpenDocument }) {
   const choices = trace.choices ?? [];
   const placed = new Set((trace.steps ?? []).flatMap((s) => (s.blocks ?? []).map((b) => b.choice_id)));
   const method = choices.find((c) => c.id === "method");
   const route = method?.options.find((o) => o.id === method.chosen);
   // A choice with one option has nothing to pick: the route line already says it.
   const loose = choices.filter((c) => !placed.has(c.id) && c.options.length > 1);
+  // A not-applied decision is said on its input or choice; one whose target is gone is said on the line.
+  const notApplied = decisions?.not_applied ?? [];
+  const here = (e: DecisionEntry) => (e.target === "choice" ? choices.some((c) => c.id === e.id) : Boolean(trace.inputs?.[e.id.split("/")[0]]));
+  const onLine = notApplied.filter((e) => !here(e) || e.side === "company");
   return (
+    <NotAppliedProvider entries={notApplied}>
     <div className="s1-cp-trace" data-trace-state={trace.state}>
+      <NotAppliedNote entries={onLine} />
       {route ? (
         <p className="s1-cp-route">
           <span className="s1-muted">Route: </span>
@@ -343,5 +354,6 @@ export function TracePanel({ trace, onOpenDocument }: { trace: LineTrace; onOpen
         <StepView key={s.id} step={s} trace={trace} onOpenDocument={onOpenDocument} />
       ))}
     </div>
+    </NotAppliedProvider>
   );
 }

@@ -64,6 +64,22 @@ describe("demo calculation decisions", () => {
     expect((await failure(post("/choices/nope", { action: "revert" })))?.status).toBe(404);
   });
 
+  it("marks decidable like the backend and refuses an edit on a GWP with a coded 409, but never a reject", async () => {
+    const t = await trace();
+    expect(t.inputs["activity.total"].decidable).toBe(true);
+    expect(t.inputs["ef.CO2"].decidable).toBe(true);
+    for (const id of ["gwp.CO2", "unit_conversion", "share"]) {
+      expect(t.inputs[id].decidable).toBe(false);
+      expect(t.inputs[id].why_not).toBeTruthy();
+    }
+    expect(t.inputs["ef.CO2"].why_not).toBeUndefined();
+    const refused = (await failure(post("/inputs/gwp.CO2/recomputed", { action: "edit", value: 30, reason: "x" }))) as unknown as { status: number; body: { code: string } };
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("not_decidable");
+    await post("/inputs/gwp.CO2/recomputed", { action: "reject", reason: "x" });
+    await post("/inputs/gwp.CO2/recomputed", { action: "revert" });
+  });
+
   it("forgets every decision on reset", async () => {
     await post("/inputs/ef.CO2/recomputed", { action: "reject", reason: "Wrong" });
     resetDemoDecisions();
