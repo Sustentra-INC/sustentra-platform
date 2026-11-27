@@ -91,14 +91,18 @@ export function ChoicePills({
           </button>
         </span>
       ) : null}
-      {editable && decision ? (
+      {decision ? (
         <span className="s1-cp-change s1-muted">
           {decision.status === "rejected" ? "Suggestion rejected" : decision.status === "accepted" ? "Accepted" : "Chosen"} by {decision.by}
           {decision.reason ? ` · ${decision.reason}` : ""}
-          {" · "}
-          <button type="button" className="s1-mr-link" aria-label={`Revert: ${choice.label}`} disabled={actions?.busy} onClick={() => void post({ action: "revert" })}>
-            Revert
-          </button>
+          {editable ? (
+            <>
+              {" · "}
+              <button type="button" className="s1-mr-link" aria-label={`Revert: ${choice.label}`} disabled={actions?.busy} onClick={() => void post({ action: "revert" })}>
+                Revert
+              </button>
+            </>
+          ) : null}
         </span>
       ) : null}
       {mode?.kind === "choose" ? (

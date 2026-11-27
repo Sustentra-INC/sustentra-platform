@@ -34,7 +34,10 @@ export function TraceSection({
   fallback,
   onOpenDocument,
   onDecided,
+  canDecide = true,
 }: {
+  /** False for a read-only role (provider_admin): no action is drawn; the 403 handling stays as a fallback. */
+  canDecide?: boolean;
   engagementId?: string;
   lineKey: string;
   /** Changes when the line's figures change, so the trace is fetched again. */
@@ -72,7 +75,7 @@ export function TraceSection({
             </button>
           </p>
         ) : null}
-        <TraceActionsProvider value={engagementId ? actions : { ...actions, canAct: false }}>
+        <TraceActionsProvider value={engagementId ? { ...actions, canAct: actions.canAct && canDecide } : { ...actions, canAct: false }}>
           <TracePanel trace={state.trace} onOpenDocument={onOpenDocument} />
         </TraceActionsProvider>
       </Boundary>

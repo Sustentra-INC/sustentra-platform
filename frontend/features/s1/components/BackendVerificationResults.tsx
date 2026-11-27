@@ -64,7 +64,10 @@ export function BackendVerificationResults({
   focusLineKey,
   onOpenEvidence,
   onOpenEvidenceTree,
+  canDecide = true,
 }: {
+  /** False for a role that cannot write (provider_admin): decision states show, no action does. */
+  canDecide?: boolean;
   engagement: EngagementConfig;
   store: VerificationStore;
   /** Saves settings.recalculation on the engagement; rejects with the API error. */
@@ -185,6 +188,7 @@ export function BackendVerificationResults({
     onOpenEvidence,
     // A decision on a line's working: fetch the recalculation again (the result stays on screen while it loads).
     onDecided: () => setAttempt((n) => n + 1),
+    canDecide,
   };
 
   return (

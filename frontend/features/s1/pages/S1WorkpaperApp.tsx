@@ -1712,6 +1712,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               onError={handleSessionEnded}
               onOpenDocument={openExtraction}
               focusLineKey={activeView.lineKey}
+              canDecide={dataMode !== "backend" || user?.role === "org_admin" || user?.role === "org_member"}
               onOpenEvidence={(key) => setActiveView(scheduleViewForLine(key))}
               onOpenEvidenceTree={() => setActiveView({ name: "evidence" })}
             />

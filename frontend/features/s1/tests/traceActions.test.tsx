@@ -330,3 +330,18 @@ describe("a read-only panel", () => {
     expect(server.posts).toHaveLength(0);
   });
 });
+
+describe("a role that cannot decide", () => {
+  it("renders the decision states but no action menu, pill button or Revert from the start", async () => {
+    const t = withEq2(base());
+    t.inputs["ef.CO2"].recomputed = { ...t.inputs["ef.CO2"].recomputed!, status: "edited", decision: decision({ value: 54.5 }) };
+    t.choices.find((c) => c.id === "equation:CO2")!.decision = decision({ value: "eq_2" });
+    server.trace = t;
+    render(<TraceSection engagementId="E1" lineKey="k" version="1" canDecide={false} fallback={<p>Summary numbers</p>} />);
+    const group = await ready();
+    expect(screen.getAllByText("Edited").length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole("button", { name: /Actions for/ })).toHaveLength(0);
+    expect(within(group).queryAllByRole("button")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /Revert/ })).toBeNull();
+  });
+});
