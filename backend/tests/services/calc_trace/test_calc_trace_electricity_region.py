@@ -12,13 +12,17 @@ import pytest
 
 from backend.app.reference.emission_factor_loader import default_emission_factor_reference
 from backend.app.services import line_totals
+from backend.app.services.calc_trace import decisions
 from backend.app.services.calc_trace import electricity
 from backend.app.services.engagement_recalculation_service import EngagementRecalculationService
 from backend.tests.services.calc_trace.recalc_scenarios import REGIONS, run
 from backend.tests.services.calc_trace.test_calc_trace_decisions import block, event, line_of
 from backend.tests.services.test_calculation_lines import ELEC_KC, KC, STL
 from backend.tests.services.test_calculation_lines import _elec as _elec_record
-from backend.tests.services.test_engagement_recalculation_service import FakeStore, _own
+from backend.tests.services.calc_trace.test_stationary_equations import COAL, COAL_KW, hhv, pick
+from backend.tests.services.test_engagement_recalculation_service import FakeStore, _diesel_purchase, _own
+from backend.tests.services.calc_trace.test_calc_trace_mobile import DIESEL, ECONOMY, GROUP_7MPG
+from backend.tests.services.test_calculation_lines import _gas as _gas_record
 
 SCHEMA = json.loads((Path(__file__).parents[4] / "contracts" / "calculation_trace.schema.json").read_text())
 COMPANY = "input|grid_region|company"
@@ -323,6 +327,78 @@ def test_a_no_evidence_line_with_a_two_subregion_zip_and_no_region_is_blocked_an
     # with evidence the facility is not calculated at all: Recalculation inputs asks, with the same two options
     asked = [n for n in run_at(NJ, store_2747())["needs_input"] if n["kind"] == "grid_region"]
     assert asked[0]["options"] == ["RFCE", "NYUP"]
+
+
+@pytest.mark.parametrize("text", ["NW\u200bPP", "\u202eNWPP", "NWPP\ufeff", "N\u2066WPP", "NWPP\u200d"])
+def test_hidden_and_bidi_characters_never_pass_for_a_region_code(text: str) -> None:
+    assert electricity.code_of(text, REF) is None
+    base = run(store_2747(), grid_regions={**REGIONS, "Kansas City Plant": "CAMX"}, reported_activity=COMPANY_KWH)
+    response = run(store_2747(), grid_regions={**REGIONS, "Kansas City Plant": "CAMX"}, reported_activity=COMPANY_KWH,
+                   line_decisions=[event(ELEC_KC, COMPANY, "edited", text)])
+    line = line_of(response, ELEC_KC)
+    shown = line["trace"]["inputs"]["grid_region"]["company"]["value"]
+    assert "\ufffd" in shown and not electricity._HIDDEN.search(shown)  # each one is marked, not drawn
+    assert "company_grid_region_not_recognised" in line["trace"]["flags"]
+    assert line["results"] == line_of(base, ELEC_KC)["results"]
+
+
+def test_the_pick_uses_the_reference_the_engine_ran_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse() -> None:
+        raise AssertionError("the default reference must not be read")
+
+    monkeypatch.setattr(decisions, "default_emission_factor_reference", refuse)
+    after = run_at(NJ, store_2747(), grid_regions={"Kansas City Plant": "RFCE"},
+                   line_decisions=[event(ELEC_KC, REGION_CHOICE, "edited", "NYUP")])
+    assert line_of(after, ELEC_KC)["decisions"]["not_applied"] == []
+    assert line_of(after, ELEC_KC)["trace"]["inputs"]["grid_region"]["recomputed"]["value"] == "NYUP"
+
+
+def test_the_working_sheet_says_who_chose_the_region_and_why() -> None:
+    pick_ = event(ELEC_KC, REGION_CHOICE, "edited", "NYUP")
+    after = run_at(NJ, store_2747(), grid_regions={"Kansas City Plant": "RFCE"}, line_decisions=[pick_])
+    steps = [st for ln in after["categories"]["purchased_electricity_location_based"]["lines"] for st in ln["steps"]
+             if st["label"].startswith("Decided choice: Grid region")]
+    assert len(steps) == 1
+    source = steps[0]["inputs"]["grid region"]
+    assert source["value"] == "NYUP"
+    assert "decided by Rev Iewer on 2026-11-26T10:00:00Z" in source["source"]
+    assert "Corrected from the invoice" in source["source"]
+
+
+def _all_three_store() -> FakeStore:
+    store = FakeStore()
+    store.add_document("S", "CT-S1-FUELQTY", [{**_gas_record(1000, fuel="coal"), "activity_quantity": (1000, "short_ton"),
+                                               "activity_unit": ("short_ton", None)}])
+    store.add_document("E", "CT-S2-ELEC", [_elec_record(2747, start="2025-01-01", end="2025-12-31")])
+    store.add_document("F", "CT-S1-MOBFUEL", [_diesel_purchase(380000)])
+    return store
+
+
+def test_a_region_pick_applies_fully_beside_the_equation_choices_and_the_fuel_economy() -> None:
+    settings: dict[str, Any] = {"grid_regions": {"Kansas City Plant": "RFCE"}, "vehicle_groups": [GROUP_7MPG], **COAL_KW}
+    region = event(ELEC_KC, REGION_CHOICE, "edited", "NYUP")
+    equation = [hhv(), pick("CO2", "eq_2")]
+    economy = event(DIESEL, ECONOMY, "edited", 6.55, "mi/gal")
+    base = run_at(NJ, _all_three_store(), **settings)
+    only = {name: run_at(NJ, _all_three_store(), line_decisions=d, **settings)
+            for name, d in (("region", [region]), ("equation", equation), ("economy", [economy]))}
+    every = run_at(NJ, _all_three_store(), line_decisions=[region, *equation, economy], **settings)
+    for category in ("purchased_electricity_location_based", "stationary_combustion", "mobile_combustion"):
+        delta = sum(r["categories"][category]["total_co2e"] - base["categories"][category]["total_co2e"]
+                    for r in only.values())
+        assert every["categories"][category]["total_co2e"] - base["categories"][category]["total_co2e"] == \
+            pytest.approx(delta, rel=1e-9)
+    # the region moved its own category only, and the others moved without it
+    assert only["region"]["categories"]["stationary_combustion"] == base["categories"]["stationary_combustion"]
+    assert only["equation"]["categories"]["purchased_electricity_location_based"] == \
+        base["categories"]["purchased_electricity_location_based"]
+    line = line_of(every, ELEC_KC)
+    assert line["decisions"]["not_applied"] == []
+    assert line["trace"]["inputs"]["grid_region"]["recomputed"]["value"] == "NYUP"
+    # the equation routes are C1's alone: the coal line keeps its eq_2 and the electricity line has none
+    coal = line_of(every, COAL)["trace"]
+    assert next(c for c in coal["choices"] if c["id"] == "equation:CO2")["chosen"] == "eq_2"
+    assert line_of(every, DIESEL)["trace"]["inputs"]["fuel_economy"]["recomputed"]["value"] == 6.55
 
 
 # --- the helper: reading a region from text ---------------------------------------------------------------------------

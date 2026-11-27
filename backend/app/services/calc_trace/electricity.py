@@ -34,6 +34,9 @@ GASES = ("CO2", "CH4", "N2O")
 # "NWPP", "NWPP · WECC Northwest", "NWPP - WECC Northwest", "NWPP (WECC Northwest)": a code, then at most its name.
 _CODE_THEN_NAME = re.compile(r"([A-Za-z0-9]{3,8})(?:\s*[-–—·:(]?\s*(.*?)\)?)?")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+# Characters that draw nothing or reorder what is drawn: a text holding one never names a subregion, and is shown
+# with each marked (U+FFFD) so it cannot pass for a region code.
+_HIDDEN = re.compile("[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]")
 DECIDED = ("accepted", "edited")
 
 
@@ -45,7 +48,8 @@ def code_of(text: Any, ref: EmissionFactorReference) -> str | None:
     """The eGRID subregion a text names ("NWPP", "nwpp", "NWPP - WECC Northwest", "WECC Northwest"), as the
     reference spells it; None when it names none (never a guess, never a partial match on a name)."""
 
-    if not isinstance(text, str) or not text.strip() or len(text) > 200 or _CONTROL.search(text):
+    if not isinstance(text, str) or not text.strip() or len(text) > 200 or _CONTROL.search(text) \
+            or _HIDDEN.search(text):
         return None
     normal = unicodedata.normalize("NFKC", text).strip()
     rows = ref.egrid_subregions()
@@ -95,7 +99,7 @@ def company_region_of(records: Mapping[str, Mapping[str, Any]] | None) -> dict[s
     if not isinstance(text, str) or not text.strip():
         return None
     by = decision.get("by")
-    return {"text": text.strip(), "status": str(decision["status"]),
+    return {"text": _HIDDEN.sub("\ufffd", text).strip(), "status": str(decision["status"]),
             "by": str(by.get("name") if isinstance(by, Mapping) else by or ""), "at": str(decision.get("at") or ""),
             "reason": str(decision.get("reason") or "")}
 

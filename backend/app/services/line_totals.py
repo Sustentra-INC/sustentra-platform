@@ -193,6 +193,15 @@ def _decided_inputs(item: DecidedLine) -> list[calc.Step]:
     steps: list[calc.Step] = []
     key = str(item.line["key"])
     for entry in item.decided.applied:
+        if entry.get("target") == "choice" and entry.get("moves_totals") and entry.get("id") == "grid_region":
+            who = f"decided by {entry.get('decided_by') or 'a reviewer'}" + (
+                f" on {entry['decided_at']}" if entry.get("decided_at") else "")
+            why = f": {entry['reason_given']}" if entry.get("reason_given") else ""
+            steps.append(calc.Step(f"Decided choice: Grid region ({key})",
+                                   "line worked on the emission factors of the chosen eGRID subregion",
+                                   {"grid region": {"value": str(entry.get("value")), "unit": "",
+                                                    "source": f"{who}{why}"}}, item.figures.sum_co2e_t, "t CO2e"))
+            continue
         if entry.get("target") != "input" or isinstance(entry.get("value"), bool) or not isinstance(
                 entry.get("value"), (int, float)):
             continue  # a chosen equation is a choice, not an input

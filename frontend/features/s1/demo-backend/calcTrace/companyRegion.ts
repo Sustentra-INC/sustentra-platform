@@ -26,7 +26,7 @@ export const DEMO_REGION_NAMES: Record<string, string> = { NWPP: "WECC Northwest
 /** The demo subregion a reviewer's text names ("NWPP", "nwpp - WECC Northwest", "WECC Northwest"); null when none. */
 export function companyRegionCode(text: string | null | undefined): string | null {
   const t = (text ?? "").normalize("NFKC").trim();
-  if (!t || t.length > 200 || /[\u0000-\u001f\u007f-\u009f]/.test(t)) return null;
+  if (!t || t.length > 200 || /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/.test(t)) return null;
   for (const [code, name] of Object.entries(DEMO_REGION_NAMES)) {
     const found = new RegExp(`^${code}(?:\\s*[-\u2013\u2014\u00b7:(]?\\s*(.*?)\\)?)?$`, "i").exec(t);
     const rest = found ? (found[1] ?? "") : undefined; // an empty optional group does not take part: no name given
