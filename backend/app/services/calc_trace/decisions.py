@@ -175,7 +175,8 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
         found = _find(out, target_id)
         if found is None:
             outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="not_on_this_line",
-                                              message=mobile.NOT_OFFERED if target_id == mobile.FUEL_ECONOMY
+                                              message=(mobile.NOT_OFFERED if panel == "mobile" else mobile.NOT_VEHICLE_LINE)
+                                              if target_id == mobile.FUEL_ECONOMY
                                               else "This input is no longer part of the line's working."))
             continue
         if why is not None:
@@ -314,8 +315,9 @@ def _stale(trace: LineTrace, found: Any, decision: Mapping[str, Any]) -> tuple[d
            "source": (side.source.citation[:200] if side and side.source and side.source.citation else None),
            "grid_region": grid.recomputed.value if grid is not None and grid.recomputed is not None else None}
     # A fuel economy is a rate: its automatic value is the line's distance over its fuel, so a new fuel record moves
-    # the distance (fuel x the decided rate) instead of making the decision stale. Only its unit is checked.
-    keys = ("unit",) if getattr(found, "id", None) == mobile.FUEL_ECONOMY else tuple(now)
+    # the distance (fuel x the decided rate) instead of making the decision stale. What it was decided for is the
+    # vehicle group's type, fuel type and model year (the source citation): a change of any of them makes it stale.
+    keys = ("unit", "source") if getattr(found, "id", None) == mobile.FUEL_ECONOMY else tuple(now)
     if all(_same(then.get(k), now[k]) for k in keys):
         return None
     return {k: then.get(k) for k in keys}, {k: now[k] for k in keys}

@@ -38,6 +38,7 @@ FUEL_ECONOMY = "fuel_economy"
 ECONOMY_UNIT = "mi/gal"
 DISTANCE_BLOCK = "distance"
 STEP2_NOTE = "To the unit the emission factor is in, then fuel × fuel economy = distance"
+NOT_VEHICLE_LINE = "Fuel economy applies only to vehicle lines."
 NOT_OFFERED = "Fuel economy isn't used on this line (non-road, or no distance stated)."
 BAND = 3.0  # a decided fuel economy within 1/3 to 3 times what the line's distance implies
 ABSOLUTE = (0.5, 100.0)  # mi/gal: below or above this is a slip of units, whatever the vehicle
@@ -49,7 +50,7 @@ def build(line: dict[str, Any], context: dict[str, Any] | None = None) -> LineTr
     if trace is None:
         return None
     try:
-        _add_fuel_economy(trace, line)
+        _add_fuel_economy(trace, line, context)
     except (ops.TraceError, KeyError, TypeError, ValueError):
         # The shared trace stands, with the distance as entered: a failed extra never takes the line's working down.
         return trace_for("mobile", line, "epa_hub_fuel_and_vehicle_group", context)
@@ -94,7 +95,7 @@ def _distance_columns() -> list[Column]:
             Column("distance", "Distance", "mi", True, {"dp": 0})]
 
 
-def _add_fuel_economy(trace: LineTrace, line: dict[str, Any]) -> None:
+def _add_fuel_economy(trace: LineTrace, line: dict[str, Any], context: dict[str, Any] | None) -> None:
     step2 = line["step2"]
     distance, implied = step2.get("distance"), step2.get("implied_fuel_economy")
     if not distance or not implied or "mixed_units_or_fuels" in line.get("flags", []) or trace.state != "complete":
@@ -125,9 +126,11 @@ def _add_fuel_economy(trace: LineTrace, line: dict[str, Any]) -> None:
             ops.verify(theirs, c_miles)
             _annotate(mine, theirs)
 
+    group = (context or {}).get("vehicle_group")
     item = TraceInput(
         FUEL_ECONOMY, "Fuel economy", "reviewer_entered", symbol="mpg", required_for=["eq4_distance"],
-        recomputed=Side(economy, ECONOMY_UNIT, "derived", SourceRef("derived", from_=["distance", "activity.total"])),
+        recomputed=Side(economy, ECONOMY_UNIT, "derived", SourceRef(
+            "derived", from_=["distance", "activity.total"], citation=group)),
         company=(Side(company_economy, ECONOMY_UNIT, "derived", SourceRef("derived", from_=["distance", "activity.total"]))
                  if company_economy is not None else None))
     _difference(item)

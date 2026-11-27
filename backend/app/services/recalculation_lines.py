@@ -117,7 +117,7 @@ class DecidedLine:
         if not distance or row is None or row["activity"]["unit"] != "mi":
             return
         miles, fuel = float(row["activity"]["value"]), float(step2["result"]["quantity"])
-        decided = {a.get("id") for a in self.decided.applied}
+        decided = {a.get("id") for a in self.decided.applied if a.get("status") in ("accepted", "edited")}
         if "fuel_economy" in decided:
             source = "Fuel decided for this line x the fuel economy decided for it"
         elif "distance" in decided:
@@ -364,6 +364,10 @@ class _Builder:
         if family == "stationary" and primary is not None:  # the equations a line can be worked on (C1)
             records = self.line_decisions.get(bucket.line.key) if bucket.line is not None else None
             context["fuel"], context["decided"] = primary.sub[0], stationary.site_decided(records)
+        group = bucket.groups.get(primary.sub) if family == "mobile" and primary is not None else None
+        if group is not None and group.on_road:  # what a decided fuel economy is decided for (its stale basis)
+            context["vehicle_group"] = (f"Vehicle group: {group.vehicle_type}, {group.factor_fuel_type}, "
+                                        f"model year {group.model_year}")
         return context
 
     def _trace(self, family: str, out: dict[str, Any], bucket: _Bucket, primary: _Sub | None) -> dict[str, Any] | None:

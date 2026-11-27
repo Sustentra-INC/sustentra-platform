@@ -355,21 +355,56 @@ def test_a_fuel_economy_decision_on_a_line_that_never_offered_one_says_so() -> N
     assert note["message"] == "Fuel economy isn't used on this line (non-road, or no distance stated)."
 
 
-def test_a_new_fuel_record_moves_the_distance_instead_of_making_the_fuel_economy_stale() -> None:
-    basis = json.dumps({"value": 7.0, "unit": "mi/gal", "source": None, "grid_region": None})
-    decision = event(DIESEL, ECONOMY, "edited", 6.55, "mi/gal")
-    decision["record"]["decision"]["basis"] = basis
-    store = FakeStore()
-    store.add_document("F", "CT-S1-MOBFUEL", [_diesel_purchase(380000), _diesel_purchase(20000, "2025-06-01")])
-    response = run(store, vehicle_groups=[GROUP_7MPG], line_decisions=[decision])
-    line = line_of(response, DIESEL)
-    assert line["decisions"]["not_applied"] == []
-    assert block(trace_of(response), "distance")["recomputed"]["result"]["value"] == pytest.approx(400000 * 6.55)
-
-
 def test_the_working_sheet_shows_a_stationary_hhv_decision_too() -> None:
     from backend.tests.services.calc_trace.test_stationary_equations import COAL, COAL_KW, coal_store, hhv, pick, worked
 
     response = worked(coal_store(), COAL, [hhv(), pick("CO2", "eq_2")])
     names = [str(r[2]) for r in _working(response) if r[2] and "Decided input" in str(r[2])]
     assert any("Site heat content (HHV)" in n for n in names), (names, COAL_KW)
+
+
+def _decided_with_basis(group: dict) -> dict:
+    """A fuel-economy decision stored with the basis the decision POST keeps (``calc_line_review.basis_of``)."""
+
+    from backend.app.services import calc_line_review
+
+    default = trace_of(run(diesel_store(), vehicle_groups=[group]))
+    decision = event(DIESEL, ECONOMY, "edited", 6.55, "mi/gal")
+    decision["record"]["decision"]["basis"] = calc_line_review.basis_of(default, default["inputs"]["fuel_economy"])
+    return decision
+
+
+@pytest.mark.parametrize("change", [{"vehicle_type": "Passenger Cars"}, {"model_year": 2019}, {"model_year": 2005},
+                                    {"vehicle_type": "Light-Duty Trucks"}])
+def test_a_changed_vehicle_type_fuel_type_or_model_year_makes_the_fuel_economy_stale(change: dict) -> None:
+    decision = _decided_with_basis(GROUP_7MPG)
+    changed = {**GROUP_7MPG, **change}
+    response = run(diesel_store(), vehicle_groups=[changed], line_decisions=[decision])
+    line = line_of(response, DIESEL)
+    if line["trace"] is None:  # the changed group has no factor row: nothing is counted either way
+        return
+    assert [n["reason"] for n in line["decisions"]["not_applied"]] == ["stale"]
+
+
+def test_the_same_vehicle_group_with_more_fuel_keeps_the_decision() -> None:
+    decision = _decided_with_basis(GROUP_7MPG)
+    store = FakeStore()
+    store.add_document("F", "CT-S1-MOBFUEL", [_diesel_purchase(380000), _diesel_purchase(50000, "2025-07-01")])
+    line = line_of(run(store, vehicle_groups=[GROUP_7MPG], line_decisions=[decision]), DIESEL)
+    assert line["decisions"]["not_applied"] == []
+    assert block(line["trace"], "distance")["recomputed"]["result"]["value"] == pytest.approx(430000 * 6.55)
+    # and a changed distance (the entered one) keeps it as well: the rate is what was decided
+    moved = run(diesel_store(), vehicle_groups=[{**GROUP_7MPG, "distance": 2_000_000}], line_decisions=[decision])
+    assert line_of(moved, DIESEL)["decisions"]["not_applied"] == []
+
+
+def test_a_rejected_decision_does_not_rewrite_the_summary_fields() -> None:
+    for stream in (ECONOMY, "input|distance|recomputed"):
+        response = run(diesel_store(), vehicle_groups=[GROUP_7MPG], line_decisions=[event(DIESEL, stream, "rejected")])
+        assert line_of(response, DIESEL)["step2"]["distance"]["source"].startswith("Vehicle group distance entered")
+
+
+def test_a_fuel_economy_decision_on_a_non_vehicle_line_says_so() -> None:
+    response = run(gas_store(), line_decisions=[event(GAS_KC, ECONOMY, "edited", 7.0, "mi/gal")])
+    assert line_of(response, GAS_KC)["decisions"]["not_applied"][0]["message"] == \
+        "Fuel economy applies only to vehicle lines."

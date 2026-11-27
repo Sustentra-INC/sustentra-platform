@@ -347,6 +347,7 @@
     "status": "derived",
     "source": {
      "kind": "derived",
+     "citation": "Vehicle group: Medium- and Heavy-Duty Vehicles, Diesel, model year 2018",
      "from": [
       "distance",
       "activity.total"
