@@ -1377,6 +1377,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               methodology: dataMode === "fixture" ? methodology.log : methodologyActivity,
             })}
             onClose={() => setActivityOpen(false)}
+            you={engagement.signedInName ?? null}
           />
         ) : null}
       </S1Chrome>

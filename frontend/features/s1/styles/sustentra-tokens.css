@@ -308,6 +308,9 @@
   --sch-col-period-min: 150px; /* accepted values: service period floor */
   --table-row-h-lg:   48px;   /* roomy table row */
   --avatar-sm:        26px;   /* small person avatar in table rows */
+  --avatar-md:        34px;   /* person avatar in activity rows */
+  --actlog-w:        468px;   /* activity log drawer width */
+  --actlog-badge:     18px;   /* kind badge on an activity avatar */
 
   /* Coverage & requests: header review card */
   --cr-review-icon-box: 22px; /* leading icon box */

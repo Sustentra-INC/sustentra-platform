@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState, type CSSProperties } from "react";
 
 import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleRow } from "../api/evidenceTree";
 import { resolveFieldKey } from "../utils/resolveFieldKey";
+import { avatarTone, initials } from "../utils/personAvatar";
 import { userFacingApiError } from "../api/s1Backend";
 import { ContainerStateSurface } from "./ContainerStateSurface";
 import { IconArrowRight, IconChevronDown, IconChevronLeft, IconChevronRight, IconAiSparkle, IconDocument } from "./icons";
@@ -302,20 +303,6 @@ function CellValue({ cell }: { cell: ScheduleCell | undefined }) {
       ) : null}
     </>
   );
-}
-
-const AVATAR_TONES = 4;
-
-/** Same person, same avatar tone: a small hash of the name. */
-function avatarTone(name: string): number {
-  let n = 0;
-  for (const ch of name) n = (n + ch.charCodeAt(0)) % AVATAR_TONES;
-  return n;
-}
-
-function initials(name: string): string {
-  const words = name.replace(/\./g, " ").split(/\s+/).filter(Boolean);
-  return ((words[0]?.[0] ?? "") + (words.length > 1 ? words[words.length - 1][0] : "")).toUpperCase();
 }
 
 /** Who reviewed the value, labelled the way the design standard says (Accepted by / Corrected by) · date. */
