@@ -420,7 +420,7 @@ export function EvidenceWorkspace({
       {tree ? (
         <div className="s1-ws-factabs s1-ws-factabs--page" role="group" aria-label="Group documents">
           <button className={`s1-ws-factab${view === "lines" ? " is-on" : ""}`} type="button" aria-pressed={view === "lines"} onClick={() => setView("lines")}>
-            By calculation line
+            By scope
           </button>
           <button className={`s1-ws-factab${view === "types" ? " is-on" : ""}`} type="button" aria-pressed={view === "types"} onClick={() => setView("types")}>
             By document type
@@ -709,6 +709,7 @@ function CountFilter({
       aria-pressed={on}
       onClick={onClick}
     >
+      <span className="s1-ws-count__dot" aria-hidden="true" />
       <span className="s1-ws-count__n">{n}</span>
       <span className="s1-ws-count__label">{label}</span>
     </button>

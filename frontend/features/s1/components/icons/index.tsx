@@ -528,6 +528,34 @@ export function IconBuilding(props: IconProps) {
   );
 }
 
+export function IconExpandAll(props: IconProps) {
+  return (
+    <Root
+      {...props}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M8 4l4 4 4-4M8 20l4-4 4 4" />
+    </Root>
+  );
+}
+
+export function IconCollapseAll(props: IconProps) {
+  return (
+    <Root
+      {...props}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M8 8l4-4 4 4M8 16l4 4 4-4" />
+    </Root>
+  );
+}
+
 export function IconPin(props: IconProps) {
   const uid = useId();
   const m = `m${uid}`;

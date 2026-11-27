@@ -250,7 +250,10 @@ export function UploadDialog({
                     <p className="s1-muted s1-batch__notice" aria-live="polite">{batchNote}</p>
                   ) : null}
                   {batchProgress && batchProgress.items.length > 0 && onOpenDocument ? (
-                    <BatchProgress batch={batchProgress} onOpenDocument={onOpenDocument} />
+                    <>
+                      <p className="s1-batch__section-title">Reading this batch</p>
+                      <BatchProgress batch={batchProgress} onOpenDocument={onOpenDocument} />
+                    </>
                   ) : null}
                   {added.length > 0 && !script ? (
                     <ul className="s1-updlg__list" aria-live="polite">
@@ -301,6 +304,8 @@ export function UploadDialog({
  *  measurable byte progress. Stage pills show Uploaded → Reading for each file. */
 function UploadProgress({ tasks, items }: { tasks: UploadTask[]; items: EvidenceItem[] }) {
   const byId = new Map(items.map((item) => [item.documentId, item]));
+  const doneCount = tasks.filter((t) => t.stage === "done").length;
+  const notUploadedCount = tasks.filter((t) => t.stage === "not_uploaded").length;
   // A file that was not uploaded has no bytes to send, so it is left out of the overall bar.
   const sending = tasks.filter((t) => t.stage !== "not_uploaded");
   const totalBytes = sending.reduce((sum, t) => sum + t.size, 0);
@@ -384,6 +389,10 @@ function UploadProgress({ tasks, items }: { tasks: UploadTask[]; items: Evidence
           );
         })}
       </ul>
+      <div className="s1-upq__summary">
+        <span>{doneCount} of {tasks.length} {tasks.length === 1 ? "file" : "files"} uploaded and read</span>
+        {notUploadedCount > 0 ? <span>{notUploadedCount} not uploaded</span> : null}
+      </div>
     </div>
   );
 }

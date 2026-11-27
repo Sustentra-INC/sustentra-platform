@@ -5,10 +5,20 @@ import { resolveCanonicalTypeDisplayName } from "../adapters/evidenceAdapter";
 export const BATCH_STATUS: Record<BatchDocumentStatus, { label: string; role: string }> = {
   queued: { label: "Waiting", role: "active" },
   reading: { label: "Reading", role: "active" },
-  done: { label: "Recognized", role: "resolved" },
+  done: { label: "Done", role: "resolved" },
   partial: { label: "Partly read", role: "open" },
   failed: { label: "Couldn't read", role: "blocking" },
   not_started: { label: "Not started", role: "open" },
+};
+
+const TOTAL_ORDER: BatchDocumentStatus[] = ["queued", "reading", "done", "partial", "failed", "not_started"];
+const TOTAL_LABELS: Record<BatchDocumentStatus, string> = {
+  queued: "waiting",
+  reading: "reading",
+  done: "done",
+  partial: "partly read",
+  failed: "couldn't read",
+  not_started: "not started",
 };
 
 /** What a large PDF's reading has got through; nothing for a document read whole. */
@@ -46,8 +56,19 @@ export function BatchProgress({
   batch: BatchView;
   onOpenDocument: (documentId: string) => void;
 }) {
+  const totals = TOTAL_ORDER
+    .filter((k) => batch.totals[k] > 0)
+    .map((k) => `${batch.totals[k]} ${TOTAL_LABELS[k]}`)
+    .join(" · ");
+
   return (
-    <div className="s1-batch" aria-live="polite">
+    <div className="s1-batch" aria-live="polite" role="table">
+      <div role="row" className="s1-sr-only">
+        <span role="columnheader">File</span>
+        <span role="columnheader">Status</span>
+        <span role="columnheader">Type</span>
+        <span role="columnheader">Records</span>
+      </div>
       {batch.items.map((item) => {
         const status = BATCH_STATUS[item.status];
         const type = item.canonical_type_id
@@ -56,11 +77,11 @@ export function BatchProgress({
         const progress = progressText(item);
         const pct = chunkPct(item);
         const ext = batchFileExt(item.file_name);
-        const canOpen = item.status !== "queued" && item.status !== "reading" && item.status !== "not_started";
-        const subLine = type ?? item.halt_reason ?? progress;
+        const canOpen = item.status !== "queued" && item.status !== "reading";
+        const subLine = item.halt_reason ?? type ?? progress;
 
         return (
-          <div key={item.document_id} className="s1-batch__row">
+          <div key={item.document_id} className="s1-batch__row" role="row">
             <span aria-hidden="true" className={`s1-batch__tag s1-batch__tag--${ext}`}>
               {ext.toUpperCase()}
             </span>
@@ -78,6 +99,11 @@ export function BatchProgress({
               )}
               {subLine ? <span className="s1-batch__sub">{subLine}</span> : null}
             </span>
+            {item.records_found > 0 ? (
+              <span className="s1-batch__records" aria-label={`${item.records_found} records`}>
+                {item.records_found}
+              </span>
+            ) : null}
             {item.status === "reading" ? (
               <span className="s1-batch__mini" aria-hidden="true">
                 <span className="s1-batch__mini-fill" style={{ width: `${pct ?? 0}%` }} />
@@ -87,6 +113,7 @@ export function BatchProgress({
           </div>
         );
       })}
+      {totals ? <div className="s1-batch__totals">{totals}</div> : null}
     </div>
   );
 }

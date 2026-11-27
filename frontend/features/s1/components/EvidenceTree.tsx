@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronRight, PanelsTopLeft, Plus } from "lucide-react";
+import { IconBuilding, IconExpandAll, IconCollapseAll } from "./icons";
 
 import { Dropdown } from "./Dropdown";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -275,8 +276,9 @@ export function EvidenceTree(props: EvidenceTreeProps) {
   return (
     <div className="s1-et">
       <div className="s1-et-bar">
-        <div className="s1-et-facility">
-          <span id="et-facility-label">Facility</span>
+        <div className="s1-et-facility s1-et-facility--pill">
+          <span id="et-facility-label" className="s1-sr-only">Facility</span>
+          <IconBuilding size={16} aria-hidden />
           <Dropdown
             value={facilityId ?? ""}
             onChange={(v) => changeFacility(v || null)}
@@ -288,11 +290,11 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           />
         </div>
         <span className="s1-et-bar__fold">
-          <button className="s1-linklike" type="button" onClick={() => setOpen(collectIds(tree))}>
-            Expand all
+          <button className="s1-et-fold-btn" type="button" aria-label="Expand all" onClick={() => setOpen(collectIds(tree))}>
+            <IconExpandAll size={16} aria-hidden />
           </button>
-          <button className="s1-linklike" type="button" onClick={() => setOpen([])}>
-            Collapse all
+          <button className="s1-et-fold-btn" type="button" aria-label="Collapse all" onClick={() => setOpen([])}>
+            <IconCollapseAll size={16} aria-hidden />
           </button>
         </span>
       </div>
