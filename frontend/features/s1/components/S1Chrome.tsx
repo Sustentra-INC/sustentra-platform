@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, History } from "lucide-react";
+import { IconTrash } from "./icons";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 
@@ -303,6 +304,7 @@ function TopRow({ onReset }: { onReset?: () => void }) {
     entries.push({
       label: "Reset",
       danger: true,
+      icon: <IconTrash size={16} />,
       action: () => {
         if (window.confirm("Reset the workspace to the start? This clears the current session.")) {
           onReset();

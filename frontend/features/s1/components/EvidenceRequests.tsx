@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, ListChecks, Send } from "lucide-react";
+import { IconActivity, IconSend, IconTrash } from "./icons";
 import { Fragment, useMemo, useState } from "react";
 
 import { andThen, NOT_SAVED_TITLE, problemText, settle, useStillOpen, type MaybePromise } from "../requests/maybePromise";
@@ -492,9 +493,11 @@ function StateCell({
   onExpand: () => void;
 }) {
   const entries: ActionMenuEntry[] = [
-    ...(ask.state === "not_yet_sent" || ask.state === "requested" ? [{ label: "Withdraw", action: onWithdrawOpen }] : []),
-    ...(ask.state === "resolved" ? [{ label: "Raise follow-up", action: onFollowUp }] : []),
-    { label: recordOpen ? "Hide history" : "History", action: onExpand },
+    ...(ask.state === "not_yet_sent" || ask.state === "requested"
+      ? [{ label: "Withdraw", action: onWithdrawOpen, icon: <IconTrash size={16} />, danger: true }]
+      : []),
+    ...(ask.state === "resolved" ? [{ label: "Raise follow-up", action: onFollowUp, icon: <IconSend size={16} /> }] : []),
+    { label: recordOpen ? "Hide history" : "History", action: onExpand, icon: <IconActivity size={16} /> },
   ];
   const acted = serverRecordsActor ? whoActed(ask) : null;
   return (

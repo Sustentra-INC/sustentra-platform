@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { IconMore } from "./icons";
@@ -10,6 +10,10 @@ export interface ActionMenuEntry {
   action: () => void;
   disabled?: boolean;
   danger?: boolean;
+  /** Optional 16px icon shown to the left of the label. */
+  icon?: ReactNode;
+  /** Show a separator line before this item. */
+  separator?: boolean;
 }
 
 /**
@@ -32,6 +36,7 @@ export function ActionMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   // Where the floating menu opens: under the button, or above it near the bottom of the window.
   const [place, setPlace] = useState<{ top: number; left: number; up: boolean } | null>(null);
+
   useLayoutEffect(() => {
     if (!isOpen || !triggerRef.current) {
       setPlace(null);
@@ -41,7 +46,7 @@ export function ActionMenu({
       const box = triggerRef.current?.getBoundingClientRect();
       if (!box) return;
       const height = menuRef.current?.offsetHeight ?? 320;
-      const width = menuRef.current?.offsetWidth ?? 208;
+      const width = menuRef.current?.offsetWidth ?? 250;
       const up = box.bottom + height + 8 > window.innerHeight && box.top - height - 8 > 0;
       setPlace({ top: up ? box.top - height - 4 : box.bottom + 4, left: Math.max(8, box.right - width), up });
     };
@@ -56,6 +61,7 @@ export function ActionMenu({
     };
   }, [isOpen]);
 
+  // Close on outside click
   useEffect(() => {
     if (!isOpen) return;
     function onDown(e: PointerEvent) {
@@ -66,6 +72,49 @@ export function ActionMenu({
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [isOpen, onOpenChange]);
+
+  // Focus first enabled item when menu opens
+  useEffect(() => {
+    if (!isOpen || !menuRef.current) return;
+    const frame = requestAnimationFrame(() => {
+      const first = menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)');
+      first?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isOpen]);
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const menu = e.currentTarget;
+    const items = Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'));
+    const idx = items.indexOf(document.activeElement as HTMLButtonElement);
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        items[(idx + 1) % items.length]?.focus();
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        items[(idx - 1 + items.length) % items.length]?.focus();
+        break;
+      case "Home":
+        e.preventDefault();
+        items[0]?.focus();
+        break;
+      case "End":
+        e.preventDefault();
+        items[items.length - 1]?.focus();
+        break;
+      case "Escape":
+        e.preventDefault();
+        onOpenChange(false);
+        triggerRef.current?.focus();
+        break;
+      case "Tab":
+        onOpenChange(false);
+        break;
+    }
+  }
 
   return (
     <div className="s1-menu">
@@ -86,27 +135,41 @@ export function ActionMenu({
               className="s1-menu__panel s1-menu__panel--float"
               role="menu"
               ref={menuRef}
+              onKeyDown={handleKeyDown}
               style={{ top: place.top, left: place.left, transformOrigin: place.up ? "bottom right" : "top right" }}
             >
               {entries.map((entry) => (
-                <button
+                <MenuEntry
                   key={entry.label}
-                  className={`s1-menu__item${entry.danger ? " s1-menu__item--danger" : ""}`}
-                  type="button"
-                  role="menuitem"
-                  disabled={entry.disabled}
-                  onClick={() => {
+                  entry={entry}
+                  onActivate={() => {
                     entry.action();
                     onOpenChange(false);
                   }}
-                >
-                  {entry.label}
-                </button>
+                />
               ))}
             </div>,
             document.querySelector(".s1-app") ?? document.body
           )
         : null}
     </div>
+  );
+}
+
+function MenuEntry({ entry, onActivate }: { entry: ActionMenuEntry; onActivate: () => void }) {
+  return (
+    <>
+      {entry.separator ? <hr className="s1-menu__sep" aria-hidden /> : null}
+      <button
+        className={`s1-menu__item${entry.danger ? " s1-menu__item--danger" : ""}`}
+        type="button"
+        role="menuitem"
+        disabled={entry.disabled}
+        onClick={onActivate}
+      >
+        {entry.icon ? <span className="s1-menu__item-icon" aria-hidden>{entry.icon}</span> : null}
+        {entry.label}
+      </button>
+    </>
   );
 }

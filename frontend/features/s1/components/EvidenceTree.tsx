@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight, PanelsTopLeft, Plus } from "lucide-react";
-import { IconBuilding, IconDocument, IconExpandAll, IconCollapseAll, IconTag } from "./icons";
+import { IconBuilding, IconDocument, IconExpandAll, IconCollapseAll, IconTag, IconTrash } from "./icons";
 
 import { Dropdown } from "./Dropdown";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -170,7 +170,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         isOpen={menuId === id}
         onOpenChange={(o) => setMenuId(o ? id : null)}
         entries={[
-          { label: "Open document", action: () => props.onOpenExtraction(doc.document_id) },
+          { label: "Open document", action: () => props.onOpenExtraction(doc.document_id), icon: <IconDocument size={16} /> },
           { label: "Move to…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "move", doc, from, section }) },
         ]}
       />
@@ -251,7 +251,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
                 onOpenChange={(o) => setMenuId(o ? id : null)}
                 entries={[
                   { label: "Rename", action: () => setDialog({ kind: "rename", line }) },
-                  { label: "Delete", action: () => setDialog({ kind: "delete", line }) },
+                  { label: "Delete", action: () => setDialog({ kind: "delete", line }), danger: true, icon: <IconTrash size={16} />, separator: true },
                 ]}
               />
             ) : null}
@@ -399,7 +399,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
                   isOpen={menuId === id}
                   onOpenChange={(o) => setMenuId(o ? id : null)}
                   entries={[
-                    { label: "Open document", action: () => props.onOpenExtraction(doc.document_id) },
+                    { label: "Open document", action: () => props.onOpenExtraction(doc.document_id), icon: <IconDocument size={16} /> },
                     { label: "Move to…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "move", doc, from: doc.placement_from ?? BLOCK_UNASSIGNED, section: BLOCK_UNASSIGNED }) },
                   ]}
                 />

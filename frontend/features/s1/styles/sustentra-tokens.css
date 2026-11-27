@@ -268,6 +268,9 @@
   --provisional-marker-padding-block: 1px;
   --underline-offset: 2px;
   --menu-min-width: 190px;
+  --menu-w:         250px;   /* floating action menu panel width */
+  --menu-item-h:     34px;   /* action menu item row height */
+  --menu-sep-my:      5px;   /* separator vertical margin */
   --empty-content-max-width: 720px;
   --queue-width: 190px;
   --source-pane-width: 300px;

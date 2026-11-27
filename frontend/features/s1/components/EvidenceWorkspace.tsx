@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronRight, Send, StickyNote, Upload } from "lucide-react";
+import { IconActivity, IconBuilding, IconCheckCircle, IconCopy, IconDocument, IconLayoutSplit, IconNote, IconSend, IconTag, IconTrash } from "./icons";
 import { Fragment, useMemo, useRef, useState } from "react";
 
 import { createAuditIntent, type AuditIntentAction, type SessionAuditEntry } from "../utils/auditIntent";
@@ -1051,21 +1052,23 @@ function RowMenu({
   const withdrawn = item.disposition === "withdrawn";
   const entries: ActionMenuEntry[] = withdrawn
     ? [
-        { label: "Open", action: onOpen },
-        { label: "History", action: onHistory },
+        { label: "Open", action: onOpen, icon: <IconDocument size={16} /> },
+        { label: "History", action: onHistory, icon: <IconActivity size={16} />, separator: true },
         { label: "Reinstate document", action: onReinstate },
       ]
     : [
-        { label: "Open extraction", action: onOpen },
-        hasAsk ? { label: "View in requests", action: onOpenRequests } : { label: "Add to requests", action: onAddToRequests },
-        { label: "Set type", action: onSetType },
-        { label: "Set facility", action: onSetFacility },
-        { label: "Add note", action: onAddNote },
-        { label: "Mark duplicate of…", action: onMarkDuplicate },
-        { label: "Mark supersedes…", action: onMarkSupersedes },
-        { label: "Answers request", action: onAnswersRequest },
-        { label: "History", action: onHistory },
-        { label: "Withdraw", action: onWithdraw },
+        { label: "Open extraction", action: onOpen, icon: <IconDocument size={16} /> },
+        hasAsk
+          ? { label: "View in requests", action: onOpenRequests, icon: <IconSend size={16} /> }
+          : { label: "Add to requests", action: onAddToRequests, icon: <IconSend size={16} /> },
+        { label: "Set type", action: onSetType, icon: <IconTag size={16} />, separator: true },
+        { label: "Set facility", action: onSetFacility, icon: <IconBuilding size={16} /> },
+        { label: "Add note", action: onAddNote, icon: <IconNote size={16} /> },
+        { label: "Mark duplicate of…", action: onMarkDuplicate, icon: <IconCopy size={16} />, separator: true },
+        { label: "Mark supersedes…", action: onMarkSupersedes, icon: <IconLayoutSplit size={16} /> },
+        { label: "Answers request", action: onAnswersRequest, icon: <IconCheckCircle size={16} /> },
+        { label: "History", action: onHistory, icon: <IconActivity size={16} />, separator: true },
+        { label: "Withdraw", action: onWithdraw, icon: <IconTrash size={16} />, danger: true, separator: true },
       ];
 
   return <ActionMenu label={`Actions for ${item.filename}`} entries={entries} isOpen={isOpen} onOpenChange={onOpenChange} />;
