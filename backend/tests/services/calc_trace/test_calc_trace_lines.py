@@ -228,3 +228,21 @@ def test_the_frontend_fixture_is_the_backends_current_trace() -> None:
     live = _line(run(store, reported_activity={GAS_KC: {"quantity": 650000, "unit": "therms"}}), GAS_KC)["trace"]
     path = Path(__file__).parents[4] / "frontend" / "features" / "s1" / "api" / "__fixtures__" / "calcTraceStationary.json"
     assert json.loads(path.read_text()) == live
+
+
+def test_gases_added_pairs_each_co2e_term_with_its_own_company_twin() -> None:
+    """The sum block repeats the ``co2e`` column once per gas. Each recomputed term's difference must be
+    against the same gas on the company side, not the last company term (which gave wrong, huge diffs)."""
+
+    trace = _line(scenarios()["company"], ELEC_KC)["trace"]
+    block = _block(trace, "results", "results.sum")
+    mine, theirs = block["recomputed"]["terms"], block["company"]["terms"]
+    assert len(mine) == len(theirs) == 3
+    for ours, company in zip(mine, theirs):
+        expected = ours["operand"]["value"] - company["operand"]["value"]
+        assert ours["operand"]["difference"] == pytest.approx(expected, abs=1e-9)
+        assert ours["operand"]["differs"] is True  # 1,200 MWh against 1,000 MWh moves every gas
+    assert block["recomputed"]["result"]["difference"] == pytest.approx(
+        block["recomputed"]["result"]["value"] - block["company"]["result"]["value"])
+    # A pair that matches shows no difference, and the sum of the term differences is the result's.
+    assert sum(t["operand"]["difference"] for t in mine) == pytest.approx(block["recomputed"]["result"]["difference"])
