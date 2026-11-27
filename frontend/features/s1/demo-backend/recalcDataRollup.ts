@@ -28,16 +28,22 @@ export function defaultReported(c: Calculated): Record<string, number> {
   const sum = (keep: (l: (typeof verificationLines)[number]) => boolean) =>
     verificationLines.filter(keep).reduce((s, l) => s + (l.facilities ?? []).reduce((a, f) => a + (f.reported ?? 0), 0), 0);
   const refrigerant = c.model.records.filter((r) => r.kind === "refrigerant" && r.quantity !== null).reduce((s, r) => s + (r.quantity ?? 0), 0);
+  // Steam: what the company reports for its steam lines (calcTrace/steam.ts: 15,800 Mlb at 1,000 Btu/lb), in place of
+  // the older workbook figure, so the reported side describes the steam the evidence holds.
+  const steamLines = c.lines.filter((l) => l.line.counts_toward === "steam");
+  const steamReported = steamLines.reduce((s, l) => s + (l.line.results.company_total_co2e_t ?? 0), 0);
+  const oldSteam = (box: string) => sum((l) => l.box === box && l.activity === "Steam");
+  const steam = (box: string) => (steamLines.length ? steamReported - oldSteam(box) : 0);
   return {
     scope1_total: sum((l) => l.box === "scope1"),
     stationary_combustion_total: sum((l) => l.category === "Stationary combustion"),
     mobile_combustion_total: sum((l) => l.category === "Mobile combustion"),
     fugitive_total: (refrigerant / 1000) * gwpOf(c.inputs.gwp_set).r404a,
-    scope2_location_total: sum((l) => l.box === "scope2_location"),
+    scope2_location_total: sum((l) => l.box === "scope2_location") + steam("scope2_location"),
     purchased_electricity_total: sum((l) => l.box === "scope2_location" && l.activity === "Electricity"),
-    purchased_steam_total: sum((l) => l.box === "scope2_location" && l.activity === "Steam"),
+    purchased_steam_total: steamLines.length ? steamReported : oldSteam("scope2_location"),
     purchased_heating_total: sum((l) => l.box === "scope2_location" && l.activity === "Heating"),
-    scope2_market_total: sum((l) => l.box === "scope2_market"),
+    scope2_market_total: sum((l) => l.box === "scope2_market") + steam("scope2_market"),
   };
 }
 
