@@ -875,6 +875,7 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
                   <button
                     aria-expanded="false"
                     class="s1-req-state__go"
+                    data-resolve-for="ASK-SEED-1"
                     type="button"
                   >
                     Resolve

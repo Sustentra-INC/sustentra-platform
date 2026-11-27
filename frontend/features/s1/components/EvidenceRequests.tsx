@@ -345,11 +345,17 @@ export function EvidenceRequests({
                     </tr>
 
                     {resolveFor === ask.id ? (
-                      <tr className="s1-req-subrow">
+                      <tr className="s1-req-subrow s1-req-subrow--resolve">
                         <td colSpan={5}>
                           <ResolveBox
                             pending={pendingIds.includes(ask.id)}
-                            onCancel={() => setResolveFor(null)}
+                            onCancel={() => {
+                              setResolveFor(null);
+                              // Back to the row's Resolve button once the panel has closed.
+                              requestAnimationFrame(() =>
+                                document.querySelector<HTMLButtonElement>(`[data-resolve-for="${CSS.escape(ask.id)}"]`)?.focus()
+                              );
+                            }}
                             onResolve={(link, note) =>
                               changeRequest(
                                 ask.id,
@@ -551,7 +557,13 @@ function RowActions({
   return (
     <span className="s1-req-state__actions">
       {ask.state === "requested" ? (
-        <button className={`s1-req-state__go${resolveOpen ? " is-on" : ""}`} type="button" aria-expanded={resolveOpen} onClick={onResolveOpen}>
+        <button
+          className={`s1-req-state__go${resolveOpen ? " is-on" : ""}`}
+          type="button"
+          aria-expanded={resolveOpen}
+          data-resolve-for={ask.id}
+          onClick={onResolveOpen}
+        >
           Resolve
         </button>
       ) : null}
@@ -572,22 +584,34 @@ function ResolveBox({
   const [link, setLink] = useState("");
   const [note, setNote] = useState("");
   return (
-    <div className="s1-req-box">
-      <strong>Resolve</strong>
-      <label className="s1-setup-field">
-        <span>Link to the document or value that answered it (optional)</span>
-        <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="e.g. the re-sent file, or the client's reply" />
+    <div
+      className="s1-req-box s1-req-box--resolve"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
+      <strong className="s1-req-box__title">Resolve</strong>
+      <label className="s1-req-box__field">
+        <span className="s1-field-label">
+          Link to the document or value that answered it <span className="s1-optional">(optional)</span>
+        </span>
+        <input className="s1-input" value={link} autoFocus onChange={(e) => setLink(e.target.value)} placeholder="e.g. the re-sent file, or the client's reply" />
       </label>
-      <label className="s1-setup-field">
-        <span>Note (optional)</span>
-        <input value={note} onChange={(e) => setNote(e.target.value)} />
+      <label className="s1-req-box__field">
+        <span className="s1-field-label">
+          Note <span className="s1-optional">(optional)</span>
+        </span>
+        <input className="s1-input" value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
-      <div className="s1-modal__actions">
-        <button className="s1-button" type="button" disabled={pending} onClick={() => onResolve(link.trim() || null, note.trim() || null)}>
-          Resolve
-        </button>
-        <button className="s1-button" type="button" onClick={onCancel}>
+      <div className="s1-req-box__actions">
+        <button className="s1-button s1-req-box__cancel" type="button" onClick={onCancel}>
           Cancel
+        </button>
+        <button className="s1-button s1-button--pri" type="button" disabled={pending} onClick={() => onResolve(link.trim() || null, note.trim() || null)}>
+          Resolve
         </button>
       </div>
     </div>

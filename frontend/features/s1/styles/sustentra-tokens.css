@@ -313,6 +313,7 @@
   --cr-req-col-state:  124px; /* requests: state pill column (fits "Requested · #NN") */
   --cr-req-col-actions: 112px; /* requests: Resolve + row menu */
   --sch-row-action-h:   30px; /* small row action buttons */
+  --cr-resolve-field-basis: 260px; /* resolve panel field flex basis */
   --xr-panel-min:   320px;   /* review panel minimum (flex clamp lower bound) */
   --cv-sheet-max-w: 760px;   /* spreadsheet card max width */
   --cv-doc-max-w:   620px;   /* PDF / drawn document card max width */
