@@ -4058,33 +4058,49 @@ html, body { margin: 0; padding: 0; }
 .s1-cr-request.s1-button { height: var(--chip-action-h); gap: var(--sp-1-5); padding: 0 var(--sp-3); font-size: var(--text-base); font-weight: var(--weight-strong); }
 @media (prefers-reduced-motion: reduce) { .s1-cr-rule { transition: none; } }
 
-.s1-cr-search {
-  margin-left: auto; height: 2.25rem; min-width: 12rem; padding: 0 var(--sp-3); font: inherit; font-size: var(--text-sm);
-  border: var(--border-hairline); border-radius: var(--radius-input); background: var(--sf-card); color: var(--ink);
+/* Requests: one card; header (title, count, state filter, search, Send), then a tight table (MVP-229). */
+.s1-cr-reqs.s1-cr-reqs { gap: 0; min-width: 0; border-radius: var(--r-lg); background: var(--sf-card); box-shadow: var(--shadow-card-soft); overflow: hidden; }
+.s1-cr-reqs > .s1-cr-sectionhead { gap: var(--sp-3); padding: var(--sp-3-5) var(--sp-4-5); }
+.s1-cr-reqs > .s1-cr-sectionhead h2 { margin: 0; font-size: var(--text-title); font-weight: var(--weight-strong); }
+.s1-cr-count { font-weight: var(--weight-medium); color: var(--ink-3); }
+.s1-cr-reqs__tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-left: auto; }
+.s1-search.s1-cr-search { width: var(--cr-search-w); max-width: 100%; height: var(--button-h); box-sizing: border-box; }
+.s1-cr-send.s1-button { height: var(--button-h); gap: var(--sp-1-5); }
+.s1-cr-reqs > .s1-cr-note { margin: 0; padding: var(--sp-4) var(--sp-4-5); border: 0; border-top: var(--hairline-width) solid var(--line); border-radius: 0; background: none; font-size: var(--text-base); color: var(--ink-3); }
+/* The table scrolls sideways inside the card when it must; the page never does. */
+.s1-cr-reqs__scroll { overflow-x: auto; }
+.s1-cr-reqs .s1-req-table { min-width: var(--cr-req-table-min-w); table-layout: fixed; border-collapse: collapse; }
+.s1-req-col--check { width: calc(var(--checkbox-size) + var(--sp-4-5) + var(--sp-3)); }
+.s1-req-col--item { width: 34%; }
+.s1-req-col--state { width: calc(var(--cr-req-col-state) + var(--sp-3)); }
+.s1-req-col--actions { width: calc(var(--cr-req-col-actions) + var(--sp-4-5)); }
+.s1-cr-reqs .s1-req-table th:nth-child(n) { width: auto; }
+.s1-cr-reqs .s1-req-table th {
+  position: static; height: auto; padding: var(--sp-1-5) var(--sp-3) var(--sp-1-5) 0; background: none;
+  border-top: var(--hairline-width) solid var(--line); border-bottom: 0;
+  font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink-3); text-transform: none; letter-spacing: 0;
 }
-.s1-cr-search:focus { outline: var(--focus-ring); outline-offset: 0; border-color: var(--accent-solid); }
-.s1-cr-send { display: inline-flex; align-items: center; gap: var(--sp-2); }
-.s1-cr-send svg { width: 0.95rem; height: 0.95rem; }
-.s1-cr .s1-req-table td { vertical-align: top; }
-.s1-cr .s1-req-table .s1-inline-input { width: 100%; box-sizing: border-box; }
+.s1-cr-reqs .s1-req-table td { padding: var(--sp-2) var(--sp-3) var(--sp-2) 0; vertical-align: middle; border-top: var(--hairline-width) solid var(--line); border-bottom: 0; font-size: var(--text-base); }
+.s1-cr-reqs .s1-req-table :is(th, td):first-child { padding-left: var(--sp-4-5); }
+.s1-cr-reqs .s1-req-table :is(th, td):last-child { padding-right: var(--sp-4-5); }
+.s1-cr-reqs .s1-req-table tbody tr:hover { background: var(--accent-softer); }
+.s1-cr-reqs .s1-req-row.is-resolving td { background: var(--accent-softer); }
+.s1-req-item.s1-doc-link { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base); font-weight: var(--weight-strong); color: var(--ink); text-align: left; }
+.s1-req-meta { margin-top: var(--sp-half); font-size: var(--text-sm); color: var(--ink-3); }
+.s1-cr-reqs .s1-req-table td > span { color: var(--ink-2); }
+.s1-input.s1-req-need { height: var(--chip-action-h); padding: 0 var(--sp-2-5); font-size: var(--text-base); }
 textarea.s1-req-message { width: 100%; box-sizing: border-box; font-variant-numeric: tabular-nums; font-size: var(--text-md); line-height: var(--leading-body); padding: var(--sp-2-5) var(--sp-3); min-height: calc(var(--input-h) + var(--sp-7)); border: var(--border-strong); border-radius: var(--r-md); background: var(--sf-card); resize: vertical; }
 
+/* Narrow screens: a check's Request button drops under its text. */
 @media (max-width: 64rem) {
-  .s1-cr-rule { grid-template-columns: 2rem 1fr; }
-  .s1-cr-rule__why, .s1-cr-rule__act { grid-column: 2; justify-self: start; }
-  .s1-cr-search { margin-left: 0; }
+  .s1-cr-rule { grid-template-columns: var(--cr-rule-icon-col) minmax(0, 1fr); }
+  .s1-cr-rule__act { grid-column: 2; justify-self: start; }
+  .s1-cr-reqs__tools { margin-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .s1-cr-rule, .s1-cr-review, .s1-cr-filter, .s1-cr-review__go svg { transition: none; }
 }
 .s1-cr .s1-req-row td { background: none; }
-.s1-cr .s1-req-state__label {
-  display: inline-flex; align-items: center; padding: 0.05rem var(--sp-2); border-radius: var(--state-chip-radius);
-  font-size: var(--text-sm); border: var(--hairline-width) solid var(--line); background: var(--sf-sunken); color: var(--ink-2);
-}
-.s1-cr .s1-req-row--not_yet_sent .s1-req-state__label { background: var(--state-open-bg); border-color: var(--state-open-line); color: var(--state-open-fg); }
-.s1-cr .s1-req-row--requested .s1-req-state__label { background: var(--state-active-bg); border-color: var(--state-active-line); color: var(--state-active-fg); }
-.s1-cr .s1-req-row--resolved .s1-req-state__label { background: var(--state-resolved-bg); border-color: var(--state-resolved-line); color: var(--state-resolved-fg); }
 
 /* ===================================================================
    Extraction review: add a value the reading missed; values and pages of a
@@ -4298,23 +4314,23 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-ai__sug:disabled, .s1-ai__send:disabled { opacity: 0.5; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .s1-ai__dots { animation: none; } }
 
-/* Coverage & requests: the State cell on one line (Vivian, 21 Oct). The chip fits its
-   words; Resolve and the row menu sit at the right, and rows centre their content. */
-.s1-cr .s1-req-table td { vertical-align: middle; }
-.s1-req-state { display: flex; flex-direction: column; align-items: stretch; gap: 0.125rem; }
-.s1-req-state__row { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
-.s1-cr .s1-req-state__label { flex: none; white-space: nowrap; font-size: var(--text-sm); font-weight: var(--weight-strong); line-height: 1.6; }
-.s1-req-state__actions { display: flex; align-items: center; gap: var(--sp-1); margin-left: auto; }
+/* Coverage & requests: one state pill per row (shared chip), with who acted under it;
+   Resolve and the row menu have their own column at the right. */
+.s1-req-state { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-half); min-width: 0; }
+.s1-req-state__label { max-width: 100%; }
+.s1-req-state__actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-1); }
 .s1-req-state__go {
-  padding: 0.125rem var(--sp-2); font: inherit; font-size: var(--text-sm); color: var(--accent); white-space: nowrap; cursor: pointer;
-  background: var(--sf-card); border: var(--hairline-width) solid var(--accent-line); border-radius: var(--radius-input);
-  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s var(--ease-out);
+  height: var(--sch-row-action-h); padding: 0 var(--sp-2-5); font: inherit; font-size: var(--text-sm); font-weight: var(--weight-strong); white-space: nowrap; cursor: pointer;
+  color: var(--brand-dark); background: var(--accent-softer); border: 0; border-radius: var(--r-seg);
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s var(--ease-out);
 }
-.s1-req-state__go:hover { background: var(--accent-softer); border-color: var(--accent-solid); }
+.s1-req-state__go:hover { background: var(--accent-soft); }
+.s1-req-state__go.is-on { background: var(--accent-solid); color: var(--on-brand); }
 .s1-req-state__go:active { transform: scale(0.97); }
-.s1-req-state__go:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-.s1-req-state .s1-button--icon { width: 1.75rem; height: 1.75rem; }
-.s1-req-state__note { font-size: var(--text-sm); overflow-wrap: anywhere; }
+.s1-req-state__go:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.s1-req-state__actions .s1-button--icon { width: var(--sch-row-action-h); height: var(--sch-row-action-h); border-radius: var(--r-seg); background: transparent; color: var(--ink-2); }
+.s1-req-state__actions .s1-button--icon:hover { background: var(--sf-inset); color: var(--ink); }
+.s1-req-state__note { font-size: var(--text-sm); color: var(--ink-3); overflow-wrap: anywhere; }
 
 /* ===================================================================
    Extraction review: compact value cards (Vivian, 21 Oct). Three short lines

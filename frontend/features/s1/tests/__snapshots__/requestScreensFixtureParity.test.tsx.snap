@@ -551,23 +551,32 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
       <div
         class="s1-cr-sectionhead"
       >
-        <h2
-          id="s1-cr-reqs-title"
+        <span
+          class="s1-cr-sectionhead__title"
         >
-          Requests
-        </h2>
+          <h2
+            id="s1-cr-reqs-title"
+          >
+            Requests 
+            <span
+              class="s1-cr-count"
+            >
+              2
+            </span>
+          </h2>
+        </span>
         <div
           aria-label="Show requests"
-          class="s1-cr-filters"
+          class="s1-ws-factabs s1-ws-factabs--seg s1-cr-checkfilter"
           role="group"
         >
           <button
             aria-pressed="false"
-            class="s1-cr-filter s1-cr-filter--not_yet_sent"
+            class="s1-ws-factab"
             type="button"
           >
             <span
-              class="s1-cr-filter__n"
+              class="s1-cr-checkfilter__n"
             >
               1
             </span>
@@ -575,11 +584,11 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           </button>
           <button
             aria-pressed="false"
-            class="s1-cr-filter s1-cr-filter--requested"
+            class="s1-ws-factab"
             type="button"
           >
             <span
-              class="s1-cr-filter__n"
+              class="s1-cr-checkfilter__n"
             >
               1
             </span>
@@ -587,68 +596,121 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           </button>
           <button
             aria-pressed="false"
-            class="s1-cr-filter s1-cr-filter--resolved"
+            class="s1-ws-factab"
             type="button"
           >
             <span
-              class="s1-cr-filter__n"
+              class="s1-cr-checkfilter__n"
             >
               0
             </span>
             Resolved
           </button>
         </div>
-        <input
-          aria-label="Search requests"
-          class="s1-cr-search"
-          placeholder="Search requests"
-          type="search"
-          value=""
-        />
-        <button
-          class="s1-button s1-button--pri s1-cr-send"
-          disabled=""
-          type="button"
+        <div
+          class="s1-cr-reqs__tools"
         >
-          <svg
-            aria-hidden="true"
-            class="lucide lucide-send"
-            fill="none"
-            height="24"
-            stroke="currentColor"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            viewBox="0 0 24 24"
-            width="24"
-            xmlns="http://www.w3.org/2000/svg"
+          <label
+            class="s1-search s1-cr-search"
           >
-            <path
-              d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"
+            <svg
+              aria-hidden="true"
+              fill="none"
+              height="15"
+              viewBox="0 0 24 24"
+              width="15"
+            >
+              <path
+                d="M10.5 3a7.5 7.5 0 1 1 0 15 7.5 7.5 0 0 1 0-15zm0 3a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"
+                fill="currentColor"
+                fill-opacity=".38"
+                fill-rule="evenodd"
+              />
+              <rect
+                fill="currentColor"
+                height="8"
+                rx="1.6"
+                transform="rotate(-45 17.6 18.2)"
+                width="3.2"
+                x="16"
+                y="14.2"
+              />
+            </svg>
+            <input
+              aria-label="Search requests"
+              placeholder="Search requests"
+              type="search"
+              value=""
             />
-            <path
-              d="m21.854 2.147-10.94 10.939"
-            />
-          </svg>
-          Send
-        </button>
+          </label>
+          <button
+            class="s1-button s1-button--pri s1-cr-send"
+            disabled=""
+            type="button"
+          >
+            <svg
+              aria-hidden="true"
+              fill="none"
+              height="14"
+              viewBox="0 0 24 24"
+              width="14"
+            >
+              <defs>
+                <mask
+                  height="24"
+                  id="m_r_8_"
+                  maskUnits="userSpaceOnUse"
+                  width="24"
+                  x="0"
+                  y="0"
+                >
+                  <rect
+                    fill="#fff"
+                    height="24"
+                    width="24"
+                  />
+                  <path
+                    d="M10.6 13.4L16 8"
+                    fill="none"
+                    stroke="#000"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2.3"
+                  />
+                </mask>
+              </defs>
+              <g
+                mask="url(#m_r_8_)"
+              >
+                <path
+                  d="M20.6 2.4c.9-.3 1.4.4 1.1 1.2l-6.4 17.2c-.4 1-1.7 1-2.1.1l-2.6-6-6-2.6c-.9-.4-.9-1.7.1-2.1z"
+                  fill="currentColor"
+                />
+              </g>
+            </svg>
+            Send
+          </button>
+        </div>
       </div>
       <div
-        class="s1-table-wrap"
+        class="s1-cr-reqs__scroll"
       >
         <table
           class="s1-table s1-req-table"
         >
           <colgroup>
             <col
-              style="width: 3rem;"
+              class="s1-req-col--check"
             />
             <col
-              style="width: 30%;"
+              class="s1-req-col--item"
             />
             <col />
             <col
-              style="width: 22%;"
+              class="s1-req-col--state"
+            />
+            <col
+              class="s1-req-col--actions"
             />
           </colgroup>
           <thead>
@@ -656,6 +718,7 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
               <th>
                 <input
                   aria-label="Select all not yet sent"
+                  class="s1-checkbox"
                   type="checkbox"
                 />
               </th>
@@ -668,6 +731,13 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
               <th>
                 State
               </th>
+              <th>
+                <span
+                  class="s1-sr-only"
+                >
+                  Actions
+                </span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -677,32 +747,28 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
               <td>
                 <input
                   aria-label="Select kent_gas_sep_2025.pdf"
+                  class="s1-checkbox"
                   type="checkbox"
                 />
               </td>
               <td>
                 <button
-                  class="s1-doc-link"
+                  class="s1-doc-link s1-req-item"
+                  title="kent_gas_sep_2025.pdf"
                   type="button"
                 >
                   kent_gas_sep_2025.pdf
                 </button>
                 <div
-                  class="s1-ws-docmeta"
+                  class="s1-req-meta"
                 >
-                  <span>
-                    Replace document
-                  </span>
-                  <span>
-                    Kent Cannery
-                     · Sep 2025
-                  </span>
+                  Replace document · Kent Cannery · Sep 2025
                 </div>
               </td>
               <td>
                 <input
                   aria-label="What is needed"
-                  class="s1-inline-input"
+                  class="s1-input s1-req-need"
                   value="kent_gas_sep_2025.pdf · Kent Cannery · Sep 2025: the service period end date was not found · please confirm it."
                 />
               </td>
@@ -710,55 +776,53 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
                 <div
                   class="s1-req-state"
                 >
-                  <div
-                    class="s1-req-state__row"
+                  <span
+                    class="s1-state s1-state--open s1-req-state__label"
                   >
-                    <span
-                      class="s1-req-state__label"
-                    >
-                      Not yet sent
-                    </span>
-                    <span
-                      class="s1-req-state__actions"
-                    >
-                      <div
-                        class="s1-menu"
-                      >
-                        <button
-                          aria-expanded="false"
-                          aria-haspopup="menu"
-                          aria-label="Actions for kent_gas_sep_2025.pdf"
-                          class="s1-button s1-button--icon"
-                          type="button"
-                        >
-                          <svg
-                            aria-hidden="true"
-                            fill="currentColor"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            width="18"
-                          >
-                            <circle
-                              cx="5.5"
-                              cy="12"
-                              r="1.7"
-                            />
-                            <circle
-                              cx="12"
-                              cy="12"
-                              r="1.7"
-                            />
-                            <circle
-                              cx="18.5"
-                              cy="12"
-                              r="1.7"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    </span>
-                  </div>
+                    Not yet sent
+                  </span>
                 </div>
+              </td>
+              <td>
+                <span
+                  class="s1-req-state__actions"
+                >
+                  <div
+                    class="s1-menu"
+                  >
+                    <button
+                      aria-expanded="false"
+                      aria-haspopup="menu"
+                      aria-label="Actions for kent_gas_sep_2025.pdf"
+                      class="s1-button s1-button--icon"
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        fill="currentColor"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        width="18"
+                      >
+                        <circle
+                          cx="5.5"
+                          cy="12"
+                          r="1.7"
+                        />
+                        <circle
+                          cx="12"
+                          cy="12"
+                          r="1.7"
+                        />
+                        <circle
+                          cx="18.5"
+                          cy="12"
+                          r="1.7"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </span>
               </td>
             </tr>
             <tr
@@ -767,27 +831,23 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
               <td>
                 <input
                   aria-label="Select scan_0417.pdf"
+                  class="s1-checkbox"
                   disabled=""
                   type="checkbox"
                 />
               </td>
               <td>
                 <button
-                  class="s1-doc-link"
+                  class="s1-doc-link s1-req-item"
+                  title="scan_0417.pdf"
                   type="button"
                 >
                   scan_0417.pdf
                 </button>
                 <div
-                  class="s1-ws-docmeta"
+                  class="s1-req-meta"
                 >
-                  <span>
-                    Replace document
-                  </span>
-                  <span>
-                    Modesto Bottling
-                     · Aug 2025
-                  </span>
+                  Replace document · Modesto Bottling · Aug 2025
                 </div>
               </td>
               <td>
@@ -799,63 +859,62 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
                 <div
                   class="s1-req-state"
                 >
-                  <div
-                    class="s1-req-state__row"
+                  <span
+                    class="s1-state s1-state--active s1-req-state__label"
+                    title="Request 1"
                   >
-                    <span
-                      class="s1-req-state__label"
-                      title="Request 1"
-                    >
-                      Requested
-                       · #1
-                    </span>
-                    <span
-                      class="s1-req-state__actions"
-                    >
-                      <button
-                        class="s1-req-state__go"
-                        type="button"
-                      >
-                        Resolve
-                      </button>
-                      <div
-                        class="s1-menu"
-                      >
-                        <button
-                          aria-expanded="false"
-                          aria-haspopup="menu"
-                          aria-label="Actions for scan_0417.pdf"
-                          class="s1-button s1-button--icon"
-                          type="button"
-                        >
-                          <svg
-                            aria-hidden="true"
-                            fill="currentColor"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            width="18"
-                          >
-                            <circle
-                              cx="5.5"
-                              cy="12"
-                              r="1.7"
-                            />
-                            <circle
-                              cx="12"
-                              cy="12"
-                              r="1.7"
-                            />
-                            <circle
-                              cx="18.5"
-                              cy="12"
-                              r="1.7"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    </span>
-                  </div>
+                    Requested
+                     · #1
+                  </span>
                 </div>
+              </td>
+              <td>
+                <span
+                  class="s1-req-state__actions"
+                >
+                  <button
+                    aria-expanded="false"
+                    class="s1-req-state__go"
+                    type="button"
+                  >
+                    Resolve
+                  </button>
+                  <div
+                    class="s1-menu"
+                  >
+                    <button
+                      aria-expanded="false"
+                      aria-haspopup="menu"
+                      aria-label="Actions for scan_0417.pdf"
+                      class="s1-button s1-button--icon"
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        fill="currentColor"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        width="18"
+                      >
+                        <circle
+                          cx="5.5"
+                          cy="12"
+                          r="1.7"
+                        />
+                        <circle
+                          cx="12"
+                          cy="12"
+                          r="1.7"
+                        />
+                        <circle
+                          cx="18.5"
+                          cy="12"
+                          r="1.7"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </span>
               </td>
             </tr>
           </tbody>
@@ -948,7 +1007,7 @@ exports[`request screens: fixture parity > draws the Add to requests window for 
               class="s1-dd"
             >
               <button
-                aria-controls="_r_8_-panel"
+                aria-controls="_r_9_-panel"
                 aria-expanded="false"
                 aria-haspopup="listbox"
                 aria-labelledby="atr-type-label"
@@ -995,7 +1054,7 @@ exports[`request screens: fixture parity > draws the Add to requests window for 
               class="s1-dd"
             >
               <button
-                aria-controls="_r_9_-panel"
+                aria-controls="_r_a_-panel"
                 aria-expanded="false"
                 aria-haspopup="listbox"
                 aria-labelledby="atr-raisedby-label"

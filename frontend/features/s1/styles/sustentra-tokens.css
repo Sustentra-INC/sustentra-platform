@@ -308,6 +308,11 @@
   --cr-review-icon-box: 22px; /* leading icon box */
   --chip-action-h:      34px; /* action chip inside a card link */
   --cr-rule-icon-col:   22px; /* checks list: icon column */
+  --cr-search-w:       200px; /* requests search field */
+  --cr-req-table-min-w: 720px; /* requests table: scrolls inside its card below this */
+  --cr-req-col-state:  124px; /* requests: state pill column (fits "Requested · #NN") */
+  --cr-req-col-actions: 112px; /* requests: Resolve + row menu */
+  --sch-row-action-h:   30px; /* small row action buttons */
   --xr-panel-min:   320px;   /* review panel minimum (flex clamp lower bound) */
   --cv-sheet-max-w: 760px;   /* spreadsheet card max width */
   --cv-doc-max-w:   620px;   /* PDF / drawn document card max width */
