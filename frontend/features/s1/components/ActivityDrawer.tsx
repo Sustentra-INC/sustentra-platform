@@ -68,12 +68,12 @@ export function ActivityDrawer({
       clearTimeout(restoreTimer.current);
       restoreTimer.current = null;
     }
+    const openedFrom = opener.current;
     search.current?.focus();
     return () => {
       restoreTimer.current = setTimeout(() => {
         restoreTimer.current = null;
-        const el = opener.current;
-        if (el instanceof HTMLElement && el.isConnected) el.focus();
+        if (openedFrom instanceof HTMLElement && openedFrom.isConnected) openedFrom.focus();
       });
     };
   }, []);
