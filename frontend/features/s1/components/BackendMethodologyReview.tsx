@@ -190,7 +190,7 @@ export function methodologyActivityFrom(data: MethodologyReviewData): Methodolog
     const entries: MethodologyLogEntry[] = record.history.map((h) => ({
       at: h.at,
       who: h.by?.name ?? "Reviewer",
-      what: `${ACTION_WORD[h.action] ?? h.action.replaceAll("_", " ")} on methodology: ${name}`,
+      what: HISTORY_ACTION[h.action] ? `on methodology: ${name}` : `${ACTION_WORD[h.action] ?? h.action.replaceAll("_", " ")} on methodology: ${name}`,
       ...(HISTORY_ACTION[h.action] ? { source: "human" as const, action: HISTORY_ACTION[h.action] } : {}),
     }));
     if (record.suggestion) {
@@ -200,7 +200,7 @@ export function methodologyActivityFrom(data: MethodologyReviewData): Methodolog
       entries.push({
         at: record.suggestion.suggested_at,
         who,
-        what: `Suggested by ${who} on methodology: ${name}`,
+        what: origin === "ai" || origin === "rules" ? `suggested on methodology: ${name}` : `Suggested by ${who} on methodology: ${name}`,
         ...(origin === "ai" ? { source: "ai" as const } : origin === "rules" ? { source: "system" as const } : {}),
       });
     }

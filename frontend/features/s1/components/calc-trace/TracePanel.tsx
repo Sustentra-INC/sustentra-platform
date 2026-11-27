@@ -17,6 +17,7 @@ import type {
 import { differenceText, operandText, prettyUnit } from "./format";
 import { ChoicePills } from "./ChoicePills";
 export { ChoicePills };
+import { ProvenanceLabel } from "../ProvenanceLabel";
 import { InputActions } from "./InputActions";
 import { NotAppliedNote, NotAppliedProvider } from "./NotApplied";
 import { SuggestionChip } from "./TraceActions";
@@ -231,7 +232,21 @@ function RowsTable({ block, input, name, onOpenDocument }: { block: TraceBlock; 
             return (
               <tr key={r.id}>
                 <td className="s1-cp-wrap">{r.label}</td>
-                <td>{r.recomputed ? (REVIEW_TEXT[r.recomputed.status] ?? "") : ""}</td>
+                <td>
+                  {r.recomputed?.status === "accepted" || r.recomputed?.status === "edited" ? (
+                    // Who accepted or edited it, from the decision when the trace carries one.
+                    <ProvenanceLabel
+                      source="human"
+                      action={r.recomputed.status === "edited" ? "edited" : "accepted"}
+                      by={r.recomputed.decision?.by}
+                      at={r.recomputed.decision?.at}
+                    />
+                  ) : r.recomputed ? (
+                    (REVIEW_TEXT[r.recomputed.status] ?? "")
+                  ) : (
+                    ""
+                  )}
+                </td>
                 <td className="s1-vw-num">{co ?? <em className="s1-muted">not reported</em>}</td>
                 <td className="s1-vw-num s1-cp-rec">
                   {rc === null ? (

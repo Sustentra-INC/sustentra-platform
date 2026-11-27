@@ -154,12 +154,11 @@ describe("Activity entries: every producer carries who and what, and nothing is 
       values: [],
       asks: [ask([{ kind: "raised" }, { kind: "edited" }, { kind: "sent" }, { kind: "resolved" }, { kind: "withdrawn" }])],
     });
-    const byWhat = (kind: string) => log.find((e) => e.what.startsWith(kind))!;
-    expect(byWhat("raised").action).toBe("queued");
-    expect(byWhat("edited").source).toBeUndefined();
-    expect(byWhat("sent").action).toBe("requested");
-    expect(byWhat("resolved").action).toBe("resolved");
-    expect(byWhat("withdrawn").action).toBe("withdrawn");
+    expect(log.map((e) => e.action)).toEqual(expect.arrayContaining(["queued", "requested", "resolved", "withdrawn"]));
+    // The edit has no label, and the verb stays in its line.
+    const edit = log.find((e) => e.what.startsWith("edited"))!;
+    expect(edit.source).toBeUndefined();
+    expect(log.filter((e) => e.source === "human")).toHaveLength(4);
   });
 
   it("uploads, findings and document edits carry no label", () => {

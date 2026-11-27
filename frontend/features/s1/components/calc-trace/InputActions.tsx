@@ -64,7 +64,8 @@ export function InputActions({
   const unit = rawUnit ? prettyUnit(rawUnit) : "";
   const numeric = isNumeric(sides);
 
-  const mark = decision ? (
+  // A summed row says who in its Review column, so its cell carries no second mark.
+  const mark = decision && !row ? (
     <span className="s1-cp-mark s1-cp-mark--word" tabIndex={0}>
       <ProvenanceLabel
         compact

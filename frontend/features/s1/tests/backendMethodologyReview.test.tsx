@@ -119,8 +119,8 @@ describe("Methodology review on real data", () => {
   it("words activity actions and adds Claude's suggestion", async () => {
     const { onActivity } = await open();
     const whats = (onActivity.mock.calls[0][0] as { what: string }[]).map((e) => e.what);
-    expect(whats).toContain("Edited on methodology: Reporting period");
-    expect(whats).toContain("Suggested by Sustentra's AI on methodology: Consolidation approach");
+    expect(whats).toContain("on methodology: Reporting period");
+    expect(whats).toContain("suggested on methodology: Consolidation approach");
   });
 
   it("does not send a non-numeric percent", async () => {

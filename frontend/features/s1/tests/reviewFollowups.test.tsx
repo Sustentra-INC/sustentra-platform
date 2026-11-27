@@ -58,7 +58,7 @@ describe("the activity log: a request's outcome on a card", () => {
       expect(values.map((v) => v.record.filter((r) => r.outcomeOf === ask.id).length)).toEqual([1, 1]);
       const log = engagementActivity({ evidence: [], values, asks: [ask], findings: [] });
       // ... and the log has it once, from the request's history.
-      expect(log.filter((e) => e.what.startsWith(`${state} a request`))).toHaveLength(1);
+      expect(log.filter((e) => e.action === state)).toHaveLength(1);
       expect(log.filter((e) => e.kind === "review" && /Request( \d+)? (resolved|withdrawn)/.test(e.what))).toEqual([]);
       // Adding the card to requests is still the reviewer's own line, once per value as before.
       expect(log.filter((e) => e.kind === "review" && e.what.startsWith("added to requests"))).toHaveLength(2);

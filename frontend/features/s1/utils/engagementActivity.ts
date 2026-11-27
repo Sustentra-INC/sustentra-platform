@@ -72,7 +72,8 @@ export function engagementActivity(input: {
         log.push({
           at: entry.at,
           who: entry.actor,
-          what: `${entry.action}: ${value.whatItIs} (${value.filename})`,
+          // With a label the verb and the name are the label's; the line says only what it concerns.
+          what: entry.code ? `${value.whatItIs} (${value.filename})` : `${entry.action}: ${value.whatItIs} (${value.filename})`,
           documentId: value.documentId,
           kind: "review",
           ...(entry.code ? { source: "human" as const, action: entry.code } : {}),
@@ -85,7 +86,7 @@ export function engagementActivity(input: {
       log.push({
         at: event.at,
         who: event.actorName,
-        what: `${event.kind} a request: ${ask.source.itemLabel}`,
+        what: requestEventLabel(event.kind).source ? `a request: ${ask.source.itemLabel}` : `${event.kind} a request: ${ask.source.itemLabel}`,
         documentId: ask.source.documentId ?? undefined,
         kind: "request",
         ...requestEventLabel(event.kind),

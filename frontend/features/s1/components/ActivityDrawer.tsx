@@ -132,7 +132,8 @@ export function ActivityDrawer({
                         {hasLabel(entry) ? (
                           // The label names who; the time stays in the column on the right.
                           <>
-                            <ProvenanceLabel source={entry.source!} action={entry.action} by={entry.who} read={entry.source === "system"} />{" "}
+                            <ProvenanceLabel source={entry.source!} action={entry.action} by={entry.who} read={entry.source === "system"} />
+                            {" · "}
                           </>
                         ) : (
                           <>
