@@ -9,6 +9,7 @@ import { applyDecisions, decisionRoutes } from "./decisions";
 import { ZIP_SUBREGION, calculate, regionOf } from "../recalcDataCalc";
 import { demoCompanyRegion } from "./companyRegion";
 import { traceFromLine, type DemoElectricity } from "./fromLine";
+import { fugitiveTrace } from "./fugitive";
 import { withFuelEconomy } from "./mobile";
 
 /** The grid region of an electricity line as the demo's calculation resolved it, with its facility's ZIP. */
@@ -24,6 +25,7 @@ function electricityOf(engagementId: string, lineKey: string): DemoElectricity |
 
 function traceOf(engagementId: string, lineKey: string) {
   const line = buildRecalculation(engagementId).calculation_lines?.find((l) => l.key === lineKey);
+  if (line?.counts_toward === "fugitive") return fugitiveTrace(line);
   return line ? withFuelEconomy(traceFromLine(line, line.category === "purchased_energy" ? electricityOf(engagementId, line.key) : null), line) : null;
 }
 

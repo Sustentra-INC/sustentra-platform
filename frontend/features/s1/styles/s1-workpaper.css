@@ -4027,6 +4027,9 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-cp-ops td:first-child { width: 6.5rem; white-space: nowrap; }
 .s1-cp-ops td.s1-vw-num { min-width: 9rem; }
 .s1-cp-ops td.s1-cp-out { min-width: 10rem; }
+/* An operation of five or more terms (the fugitive balance, P_N to R_D) keeps its result in view. */
+.s1-cp-ops--long td.s1-vw-num { min-width: 5rem; }
+.s1-cp-ops--long td.s1-cp-out { min-width: 7rem; }
 .s1-cp-diffcell { display: inline-flex; flex-direction: column; align-items: flex-end; gap: var(--sp-1); }
 .s1-cp-diffnote { font-size: var(--text-sm); white-space: normal; text-align: right; }
 .s1-cp-scroll.is-expanded { max-height: none; }

@@ -81,7 +81,10 @@ function OperandValue({
   const companyRegion = side === "company" && input?.id === "grid_region" && input.company ? input : null;
   if (text === null) {
     const empty = <em className="s1-muted">{side === "company" ? "not reported" : "Awaiting review"}</em>;
-    return companyRegion ? <InputActions input={companyRegion} forSide="company" onOpenDocument={onOpenDocument}>{empty}</InputActions> : empty;
+    if (companyRegion) return <InputActions input={companyRegion} forSide="company" onOpenDocument={onOpenDocument}>{empty}</InputActions>;
+    // A value a reviewer must enter (a blend component's GWP the reference data lacks) is entered where it is awaited.
+    if (side === "recomputed" && input?.recomputed && input.decidable === true && operand.value === null) return <InputActions input={input} onOpenDocument={onOpenDocument}>{empty}</InputActions>;
+    return empty;
   }
   const diff =
     side === "recomputed" && withDifference
@@ -174,7 +177,7 @@ function OperationTable({ block, name, inputs, onOpenDocument }: { block: TraceB
 
   return (
     <div className="s1-vw-scroll">
-      <table className="s1-vw-steps s1-cp-grid s1-cp-ops" aria-label={name}>
+      <table className={`s1-vw-steps s1-cp-grid s1-cp-ops${shape.terms.length > 4 ? " s1-cp-ops--long" : ""}`} aria-label={name}>
         <thead>
           <tr>
             <th />
@@ -369,6 +372,11 @@ export function TracePanel({ trace, decisions, onOpenDocument }: { trace: LineTr
       {(trace.flags ?? []).includes("company_total_is_reported_figure") ? (
         <p className="s1-cp-note" role="status">
           The company&apos;s total is the figure entered for this line, not the sum of its gases.
+        </p>
+      ) : null}
+      {(trace.flags ?? []).includes("negative_refrigerant_emissions") ? (
+        <p className="s1-cp-note" role="status">
+          Negative balance: check the service records. The negative value is kept.
         </p>
       ) : null}
       {trace.method_mismatch ? (

@@ -273,12 +273,21 @@ def test_lines_and_rows_carry_the_calculation_family() -> None:
 def test_a_line_no_calculation_reads_has_no_family() -> None:
     from backend.app.services import calculation_lines as cl
 
-    fugitive = cl.make_line("fugitive", "r-404a", "R-404A", "facility", "fac-kc01", "Kansas City Plant",
-                            created_by_user=True)
     steam = cl.make_line("purchased_energy", "steam", "Steam", "facility", "fac-kc01", "Kansas City Plant",
                          created_by_user=True)
-    assert fugitive.family is None and steam.family is None
-    assert fugitive.to_dict()["family"] is None
+    process = cl.make_line("process", "cement", "Cement", "facility", "fac-kc01", "Kansas City Plant",
+                           created_by_user=True)
+    assert steam.family is None and process.family is None
+    assert steam.to_dict()["family"] is None
+
+
+def test_a_fugitive_line_and_a_refrigerant_record_feed_the_fugitive_calculation() -> None:
+    from backend.app.services import calculation_lines as cl
+
+    fugitive = cl.make_line("fugitive", "r-404a", "R-404A", "facility", "fac-kc01", "Kansas City Plant",
+                            created_by_user=True)
+    assert fugitive.family == "fugitive" and fugitive.to_dict()["family"] == "fugitive"
+    assert cl.record_family("CT-S1-REFRSVC") == "fugitive"
 
 
 def test_a_document_on_several_lines_reports_each_placements_own_family_and_a_block_has_none() -> None:

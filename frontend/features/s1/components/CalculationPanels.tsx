@@ -59,6 +59,7 @@ interface PanelDef {
 const FIXED_PANELS: PanelDef[] = [
   { id: "stationary", title: "Scope 1 › Stationary combustion", comparisonKey: "stationary_combustion_total", category: "stationary", anchor: "Facility", firstColumn: "Fuel" },
   { id: "mobile", title: "Scope 1 › Mobile combustion", comparisonKey: "mobile_combustion_total", category: "mobile", anchor: "Vehicle group", firstColumn: "Fuel" },
+  { id: "fugitive", title: "Scope 1 › Fugitive › Refrigerants", comparisonKey: "fugitive_total", category: "fugitive", anchor: "Facility", firstColumn: "Refrigerant" },
 ];
 
 /** One Scope 2 panel per energy type present, named from the line's level 2. */
@@ -108,6 +109,9 @@ const FLAG_TEXT: Record<string, string> = {
   company_ch4_n2o_use_vehicle_group: "On the company side, CH₄ and N₂O still come from the vehicle group.",
   no_evidence: "The company gave figures for this line, but no reviewed record is on it.",
   calculation_failed: "A calculation for this line failed. It shows what could be calculated.",
+  negative_refrigerant_emissions: "Negative balance: check the service records. The negative value is kept.",
+  refrigerant_gwp_needed: "This refrigerant has no GWP yet, so the line counts nothing until one is entered.",
+  mixed_refrigerants: "This line mixes refrigerants: move each refrigerant's records to its own line. The category still counts each one.",
 };
 
 /** Why a record sits on no calculation line, in plain words. */
@@ -639,6 +643,52 @@ function ResultsBlock({ line }: { line: CalculationLine }) {
   );
 }
 
+/** A fugitive line's summary while its trace loads: the refrigerant emitted, in metric tons, and its CO₂e. */
+function FugitiveResultsBlock({ line }: { line: CalculationLine }) {
+  const smb = line.smb;
+  if (!smb) return null;
+  if (smb.mixed) {
+    return (
+      <p className="s1-cp-note" role="status">
+        This line mixes refrigerants ({(smb.gases ?? []).join(", ")}): move each refrigerant&apos;s records to its own line. It has no total of its own until then.
+      </p>
+    );
+  }
+  const company = line.company;
+  const companyCo2e = line.results.company_total_co2e_t;
+  const gwp = smb.gwp ?? smb.decided_gwp ?? null;
+  return (
+    <StepBlock title="Results" note={gwp ? `Emitted × ${smb.gas} GWP × consolidated share` : `Awaiting ${smb.awaiting ?? "a GWP"}: nothing counts yet`}>
+      <div className="s1-vw-scroll">
+        <table className="s1-vw-steps s1-cp-grid">
+          <thead>
+            <tr>
+              <th>Refrigerant</th>
+              <th className="s1-vw-num">Company-reported</th>
+              <th className="s1-vw-num s1-cp-rec">Recomputed</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Emitted ({smb.unit})</td>
+              <td className="s1-vw-num">{company ? `${qty(company.activity.quantity)} ${company.activity.unit}` : <em className="s1-muted">not reported</em>}</td>
+              <td className="s1-vw-num s1-cp-rec">{qty(smb.emitted)}</td>
+            </tr>
+            <tr className="s1-vw-steps__total">
+              <td>Total CO₂e (t)</td>
+              <td className="s1-vw-num">{companyCo2e === null || companyCo2e === undefined ? <em className="s1-muted">not reported</em> : formatGasTonnes(companyCo2e)}</td>
+              <td className="s1-vw-num s1-cp-rec">
+                {gwp ? formatGasTonnes(line.results.total_co2e_t) : <em className="s1-muted">Awaiting review</em>}
+                <Paren value={line.results.difference_to_company_t} />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </StepBlock>
+  );
+}
+
 /** An unplaced item's flag sentences. A fuel shared by vehicle groups says so already, so the no-group flag is left out. */
 function unplacedFlags(u: CalcUnplaced): string[] {
   return u.flags
@@ -798,14 +848,22 @@ function LineDetail({
         onDecided={onDecided}
         canDecide={canDecide}
         fallback={
-          <>
-            <NotAppliedNote entries={line.decisions?.not_applied ?? []} />
-            <MethodBlock line={line} />
-            <Step1Block line={line} onOpenDocument={onOpenDocument} />
-            <Step2Block line={line} />
-            <Step3Block line={line} gwpLabel={gwpSet} />
-            <ResultsBlock line={line} />
-          </>
+          line.smb ? (
+            <>
+              <NotAppliedNote entries={line.decisions?.not_applied ?? []} />
+              <Step1Block line={line} onOpenDocument={onOpenDocument} />
+              <FugitiveResultsBlock line={line} />
+            </>
+          ) : (
+            <>
+              <NotAppliedNote entries={line.decisions?.not_applied ?? []} />
+              <MethodBlock line={line} />
+              <Step1Block line={line} onOpenDocument={onOpenDocument} />
+              <Step2Block line={line} />
+              <Step3Block line={line} gwpLabel={gwpSet} />
+              <ResultsBlock line={line} />
+            </>
+          )
         }
       />
       <div className="s1-vw-actions">
@@ -1078,7 +1136,9 @@ export function CalculationPanels({
                               <td className="s1-vw-num">
                                 {line.reported_total_co2e_t === null ? <span className="s1-muted">Not entered</span> : formatGasTonnes(line.reported_total_co2e_t)}
                               </td>
-                              <td className="s1-vw-num">{formatGasTonnes(line.results.total_co2e_t)}</td>
+                              <td className="s1-vw-num">
+                                {line.smb?.mixed ? <span className="s1-muted">Mixed refrigerants</span> : formatGasTonnes(line.results.total_co2e_t)}
+                              </td>
                               <td className="s1-vw-num">
                                 <DiffChip value={line.difference_t} status={line.status} pct={line.difference_pct_of_base} incomplete={line.inputs_incomplete} />
                               </td>

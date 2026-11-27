@@ -120,7 +120,9 @@ describe("demo backend: evidence tree, schedule and recalculation", () => {
       const onTree = new Set(treeLine.documents.map((d) => d.document_id));
       for (const row of line.step1.rows) expect(onTree.has(row.document_id)).toBe(true);
       // The line's gases sum to its total, and the facility result is the sum of its gases.
-      expect(line.results.sum_co2e_t).toBeCloseTo(line.step3.gases.reduce((s, g) => s + g.co2e_t, 0), 6);
+      // (A fugitive line has one refrigerant, not three gases: its CO₂e is by refrigerant.)
+      const gases = line.smb ? Object.values(line.results.gas_co2e_t as Record<string, number>) : line.step3.gases.map((g) => g.co2e_t);
+      expect(line.results.sum_co2e_t).toBeCloseTo(gases.reduce((s, v) => s + v, 0), 6);
     }
     // Quality checks and awaiting-review items point at real documents.
     const real = new Set(manufacturerEvidence.map((d) => d.documentId));

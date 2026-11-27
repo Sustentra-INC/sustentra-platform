@@ -1,0 +1,13 @@
+{
+  "dataset": "ASHRAE refrigerant designations (ANSI/ASHRAE Standard 34)",
+  "source_url": "https://www.ashrae.org/technical-resources/standards-and-guidelines/ashrae-refrigerant-designations",
+  "note": "Blends EPA GHG Emission Factors Hub 2025 Table 12 does not list. Composition by mass, as ASHRAE designates it. No GWP is given here: a component that Hub Table 11 lacks (an HFO) needs a GWP a reviewer enters, with its source.",
+  "blends": [
+    {
+      "ashrae": "R-448A",
+      "trade_names": ["Solstice N40"],
+      "composition": "26% HFC-32 , 26% HFC-125 , 20% HFO-1234yf , 21% HFC-134a , 7% HFO-1234ze(E)",
+      "designation": "R-32/125/1234yf/134a/1234ze(E) (26.0/26.0/20.0/21.0/7.0)"
+    }
+  ]
+}

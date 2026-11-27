@@ -429,3 +429,40 @@ def test_a_double_click_lands_twice_and_a_move_that_no_longer_fits_is_state_chan
         assert late.status_code == 409 and late.json()["code"] == "state_changed", late.text
         assert "already pending" in late.json()["detail"]
     assert [e["seq"] for e in rows.events] == [1, 2, 3]
+
+
+def test_a_blend_the_hub_lacks_is_counted_once_its_component_gwps_are_entered_through_the_api(  # noqa: ANN001
+        act_as, rows: Rows, wired: FakeStore) -> None:  # noqa: F811
+    """C4: R-448A is blocked on its HFO components; each GWP entered (with its source) is saved even while the line still
+    waits, the last one makes the line count, and what a line cannot decide is refused up front."""
+
+    wired.add_document("R448", "CT-S1-REFRSVC", [{
+        "refrigerant_type": ("R-448A", None), "service_date": ("2025-04-01", None), "service_type": ("service", None),
+        "refrigerant_added": (10, "lb"), "facility_name": ("Facility A", None)}], org_id=str(ORG_A))
+    act_as("org_member", ORG_A)
+    with TestClient(app) as client:
+        lines = client.get("/v1/engagements/ENG-1/recalculation").json()["calculation_lines"]
+        key = next(ln["key"] for ln in lines if ln["counts_toward"] == "fugitive")
+        trace = client.get(f"/v1/engagements/ENG-1/recalculation/lines/{key}/trace").json()["trace"]
+        assert trace["state"] == "blocked" and trace["inputs"]["component_gwp.HFO-1234yf"]["decidable"] is True
+        share = client.post(f"{BASE}/{key}/inputs/share.HFC-32/recomputed",
+                            json={"action": "edit", "value": 0.3, "reason": "r"})
+        assert share.status_code == 409 and share.json()["code"] == "not_decidable", share.text
+        zero = client.post(f"{BASE}/{key}/inputs/component_gwp.HFO-1234yf/recomputed",
+                           json={"action": "edit", "value": 0, "unit": "t CO2e/t", "reason": "SDS"})
+        assert zero.status_code == 422
+        for name, value in (("HFO-1234yf", 4), ("HFO-1234ze(E)", 6)):
+            saved = client.post(f"{BASE}/{key}/inputs/component_gwp.{name}/recomputed",
+                                json={"action": "edit", "value": value, "unit": "t CO2e/t",
+                                      "reason": "Safety data sheet, section 12"})
+            assert saved.status_code == 200, saved.text
+        after = client.get("/v1/engagements/ENG-1/recalculation").json()
+        blend = 0.26 * 677 + 0.26 * 3170 + 0.20 * 4 + 0.21 * 1300 + 0.07 * 6
+        assert after["categories"]["fugitive_refrigerants"]["total_co2e"] == pytest.approx(
+            10 * 0.45359237 / 1000 * blend, rel=1e-12)
+        assert not any(n["kind"] == "refrigerant_gwp" for n in after["needs_input"])
+        shown = client.get(f"/v1/engagements/ENG-1/recalculation/lines/{key}/trace").json()["trace"]
+        assert shown["state"] == "complete"
+        assert shown["inputs"]["component_gwp.HFO-1234yf"]["recomputed"]["decision"]["reason"] == \
+            "Safety data sheet, section 12"
+    assert len(rows.events) == 2

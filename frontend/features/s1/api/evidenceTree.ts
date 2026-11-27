@@ -27,7 +27,7 @@ export interface CalculationLine {
   created_at?: string | null;
   /** The creator's name (their login when they have none); null when the user is unknown. */
   created_by_name?: string | null;
-  /** The calculation this line feeds; null when none reads it (fugitive, process, steam…). */
+  /** The calculation this line feeds; null when none reads it (process, steam…). */
   family?: CalculationFamily | null;
   /** The document type this line holds (id and display name): a document of another type moved here is read again
    *  as this one. Null when no extractor feeds the line (process, contractual). Absent on an older server. */
@@ -35,7 +35,7 @@ export interface CalculationLine {
   read_as?: string | null;
 }
 
-export type CalculationFamily = "stationary" | "mobile" | "electricity";
+export type CalculationFamily = "stationary" | "mobile" | "electricity" | "fugitive";
 
 export interface TreeCounts {
   documents: number;

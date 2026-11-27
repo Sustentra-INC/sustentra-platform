@@ -27,9 +27,9 @@ BASE_UNIT = {
 class Contribution:
     """One reviewed record's part in a recalculated number, as the category counted it."""
 
-    family: str  # "stationary" | "mobile" | "electricity"
+    family: str  # "stationary" | "mobile" | "electricity" | "fugitive"
     record: ReviewedRecord
-    sub: tuple[str, ...]  # (fuel, base unit) for fuels; (facility,) for electricity
+    sub: tuple[str, ...]  # (fuel, base unit) for fuels; (facility,) for electricity; (refrigerant,) for fugitive
     quantity: float  # reviewed quantity, before the reporting-period share
     counted: float  # quantity x share, in ``unit``
     unit: str
@@ -37,6 +37,8 @@ class Contribution:
     start: Any
     end: Any
     flags: list[str]
+    # fugitive only: the record's simplified material balance terms (P_N, C_N, P_S, C_D, R_D), in ``unit``
+    terms: dict[str, float] | None = None
 
 
 @dataclass
@@ -45,3 +47,6 @@ class Ledger:
     # (fuel, base unit) -> [(index into settings vehicle_groups, the group the category used)]
     mobile_groups: dict[tuple[str, str], list[tuple[int, calc.VehicleGroup]]] = field(default_factory=dict)
     regions: dict[str, str] = field(default_factory=dict)  # electricity facility -> eGRID subregion
+    # refrigerant -> the GWP the fugitive category counted it with ({value, source}). A refrigerant with records but no
+    # GWP (the category asked for one) is not here, and its lines count nothing.
+    refrigerant_gwp: dict[str, dict[str, Any]] = field(default_factory=dict)

@@ -160,9 +160,11 @@ class CalculationLine:
 
     @property
     def family(self) -> str | None:
-        """The calculation this line feeds: "stationary", "mobile" or "electricity"; None for a line
-        no calculation reads (fugitive, process, steam and the like). Same rule as the recalculation."""
+        """The calculation this line feeds: "stationary", "mobile", "electricity" or "fugitive"; None for a line
+        no calculation reads (process, steam and the like). Same rule as the recalculation."""
 
+        if self.category == "fugitive":
+            return "fugitive"
         if self.category == "purchased_energy":
             return "electricity" if self.level2 == "electricity" else None
         if self.category == "mobile" or self.anchor_kind == "vehicle_group":
@@ -178,7 +180,8 @@ class CalculationLine:
 def record_family(canonical_type_id: str | None) -> str | None:
     """The calculation a record's value belongs to, from its document type; None when none reads it."""
 
-    return {STATIONARY: "stationary", MOBILE: "mobile", ELECTRICITY: "electricity"}.get(canonical_type_id or "")
+    return {STATIONARY: "stationary", MOBILE: "mobile", ELECTRICITY: "electricity",
+            REFRIGERANT: "fugitive"}.get(canonical_type_id or "")
 
 
 def make_line(category: str, level2: str, level2_label: str, anchor_kind: str, anchor_id: str, label: str,
