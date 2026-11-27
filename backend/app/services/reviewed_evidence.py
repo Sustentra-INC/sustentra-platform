@@ -9,6 +9,7 @@ EPA fuel name for an extracted fuel code.
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 import re
 import unicodedata
 from collections import Counter
@@ -79,7 +80,12 @@ def _norm_text(value: Any) -> str:
     """Case, punctuation (dashes included), accents' form and whitespace removed, so only the words and numbers
     are compared. Letters of any script are kept."""
 
-    text = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    return _norm_str(str(value or ""))
+
+
+@lru_cache(maxsize=32768)
+def _norm_str(value: str) -> str:
+    text = unicodedata.normalize("NFKC", value).casefold()
     return " ".join(re.sub(r"[\W_]+", " ", text).split())
 
 
@@ -473,14 +479,19 @@ def record_key_of(container: Any) -> str | None:
     return str(key) if key else None
 
 
+@lru_cache(maxsize=65536)
+def _identity_of(record_key: str) -> str | None:
+    rest = _RECORD_INDEX_SEGMENT.sub("", record_key, count=1).strip()
+    return rest or None
+
+
 def record_identity(record_key: str | None) -> str | None:
     """A record key without its leading ``r{index}`` segment: the hint and the service period,
     which stay the same when a re-read renumbers the records. None when nothing is left."""
 
     if not record_key:
         return None
-    rest = _RECORD_INDEX_SEGMENT.sub("", str(record_key), count=1).strip()
-    return rest or None
+    return _identity_of(str(record_key))  # the same keys come round for every item and decision: worked out once
 
 
 def _index_of(decision: dict[str, Any]) -> int | None:
@@ -694,12 +705,15 @@ def resolve_decisions(items: list[dict[str, Any]], reviews: Iterable[dict[str, A
         applying: list[tuple[int, EffectiveDecision]] = []
         history: list[dict] = []
         for i in considered:
-            if i not in decided_periods:
+            # The period a decision was made on matters only when a record key is missing on either side
+            # (effective_decision compares keys first); finding it reads every decision of the document,
+            # so it is not worked out for the common case.
+            if not (read_id and record_identity(decided_keys[i])) and i not in decided_periods:
                 decided_periods[i] = decision_period(decisions, i)
             verdict = effective_decision(
                 item, decisions[i], item_key=item_key, decided_key=decided_keys[i],
                 item_period=periods.get((_doc_of(item), item.get("record_index"))),
-                decided_period=decided_periods[i], twin=twin)
+                decided_period=decided_periods.get(i, (None, None)), twin=twin)
             if verdict.applies:
                 applying.append((i, verdict))
                 history.append(decisions[i])

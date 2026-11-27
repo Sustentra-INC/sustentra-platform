@@ -34,6 +34,22 @@ class _BaseExtractionResultRepository:
     def list_by_evidence(self, evidence_id: str) -> list[dict[str, Any]]:
         return [r for r in self._records() if r.get("evidence_id") == evidence_id]
 
+    def list_by_documents(self, document_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+        """The results of many documents in one read, oldest first, by document id (every id is a key)."""
+
+        wanted = set(document_ids)
+        grouped: dict[str, list[dict[str, Any]]] = {document_id: [] for document_id in document_ids}
+        for record in self._records():
+            if record.get("document_id") in wanted:
+                grouped[record["document_id"]].append(record)
+        return grouped
+
+    def engagement_stamp(self, engagement_id: str) -> str:
+        """Changes whenever a result is added (the store is append-only). The file stores do not index by
+        engagement, so this counts every result: a change elsewhere only costs a recalculation."""
+
+        return str(len(self._records()))
+
 
 class InMemoryExtractionResultRepository(_BaseExtractionResultRepository):
     def __init__(self) -> None:
@@ -89,3 +105,9 @@ class PostgresExtractionResultRepository(_BaseExtractionResultRepository):
 
     def list_by_evidence(self, evidence_id: str) -> list[dict[str, Any]]:
         return self._table.select(evidence_id=evidence_id)
+
+    def list_by_documents(self, document_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+        return self._table.select_grouped("document_id", document_ids)
+
+    def engagement_stamp(self, engagement_id: str) -> str:
+        return self._table.engagement_stamp(engagement_id)

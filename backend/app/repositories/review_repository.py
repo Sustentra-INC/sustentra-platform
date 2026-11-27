@@ -60,6 +60,22 @@ class _BaseReviewDecisionRepository:
     def list_by_candidate(self, candidate_id: str) -> list[dict]:
         return [r for r in self._records() if r.get("candidate_id") == candidate_id]
 
+    def list_by_documents(self, document_ids: list[str]) -> dict[str, list[dict]]:
+        """The decisions of many documents in one read, oldest first, by document id (every id is a key)."""
+
+        wanted = set(document_ids)
+        grouped: dict[str, list[dict]] = {document_id: [] for document_id in document_ids}
+        for record in self._records():
+            if record.get("document_id") in wanted:
+                grouped[record["document_id"]].append(record)
+        return grouped
+
+    def engagement_stamp(self, engagement_id: str) -> str:
+        """Changes whenever a decision is added (decisions are only ever added). The file stores do not index by
+        engagement, so this counts every decision: a change elsewhere only costs a recalculation."""
+
+        return str(len(self._records()))
+
     def get_latest_by_candidate(self, candidate_id: str) -> dict | None:
         matches = self.list_by_candidate(candidate_id)
         return matches[-1] if matches else None
@@ -145,6 +161,12 @@ class PostgresReviewDecisionRepository(_BaseReviewDecisionRepository):
 
     def list_by_candidate(self, candidate_id: str) -> list[dict]:
         return self._table.select(candidate_id=candidate_id)
+
+    def list_by_documents(self, document_ids: list[str]) -> dict[str, list[dict]]:
+        return self._table.select_grouped("document_id", document_ids)
+
+    def engagement_stamp(self, engagement_id: str) -> str:
+        return self._table.engagement_stamp(engagement_id)
 
     def get_latest_by_candidate(self, candidate_id: str) -> dict | None:
         return self._table.latest(candidate_id=candidate_id)

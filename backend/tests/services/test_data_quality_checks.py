@@ -32,6 +32,28 @@ def triggers(findings: list[dict]) -> list[tuple[str, str]]:
     return [(f["check"], f["trigger"]) for f in findings]
 
 
+def test_the_overlap_search_finds_exactly_the_pairs_of_the_all_pairs_loop_in_the_same_order() -> None:
+    import random
+
+    from backend.app.services import data_quality_checks as dq
+
+    rng = random.Random(160)
+    for _ in range(300):
+        records = []
+        for n in range(rng.randint(0, 40)):
+            start = date(2025, 1, 1).toordinal() + rng.randint(0, 120)
+            length = rng.choice([0, 0, 1, 2, 5, 30, 31, 90, 200])
+            first, last = date.fromordinal(start), date.fromordinal(start + length)
+            records.append(bill(f"D{n % 7}", first.isoformat(), last.isoformat(), 100.0 + n, record=n))
+        spans = [(r, s) for r in records if (s := dq._span(r)) is not None]
+        brute = [(a.label, b.label) for i, (a, sa) in enumerate(spans) for b, sb in spans[i + 1:]
+                 if dq._overlap_days(sa, sb) >= dq.OVERLAP_MIN_DAYS]
+        fast = [(a.label, b.label) for _, (a, sa), later in dq._later_candidates(spans) for b, sb in later
+                if dq._overlap_days(sa, sb) >= dq.OVERLAP_MIN_DAYS]
+        assert fast == brute
+    assert list(dq._later_candidates([])) == []
+
+
 def test_a_full_year_of_bills_raises_nothing() -> None:
     assert run_checks(monthly("BILLS", list(range(1, 13))), YEAR) == []
     # Two half-year bills sharing the meter-read day, and a bill a few days short at year end.

@@ -1,7 +1,9 @@
 "use client";
 
 import { ChevronDown, ChevronRight, FileText } from "lucide-react";
-import { useEffect, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+
+import { useWindowedRows } from "../hooks/useWindowedRows";
 
 import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleHistoryEntry, type ScheduleRow, type ValueSource } from "../api/evidenceTree";
 import { resolveFieldKey } from "../utils/resolveFieldKey";
@@ -311,8 +313,8 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
                   <th>Document</th>
                 </tr>
               </thead>
-              <tbody>
-                {rows.map((r) => (
+              <WindowedBody rows={rows} columns={columns.length + 2} render={(r) => (
+
                   <tr key={r.record_key}>
                     {columns.map((c) => (
                       <td key={c.key} className={isNumeric(c.key) ? "s1-num" : ""}>
@@ -339,8 +341,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
                       </button>
                     </td>
                   </tr>
-                ))}
-              </tbody>
+              )} />
             </table>
           </div>
         ) : (
@@ -596,4 +597,52 @@ function IdentifierItem({ group, onOpenDocument }: { group: IdentifierGroup; onO
       ) : null}
     </li>
   );
+}
+
+/** The table body: every row when there are 100 or fewer, else a window of the rows near the screen (an empty row
+ *  stands in for the rest). A windowed table keeps the column widths its first rows gave it (as shares of the table),
+ *  so they do not shift as the window moves; below 100 rows the table lays itself out as it always did. */
+function WindowedBody({ rows, columns, render }: { rows: ScheduleRow[]; columns: number; render: (row: ScheduleRow) => ReactNode }) {
+  const { host, ...win } = useWindowedRows(rows.length);
+  const body = useRef<HTMLTableSectionElement | null>(null);
+  const frozen = useRef(false);
+  const hostRef = (el: HTMLTableSectionElement | null) => {
+    body.current = el;
+    host(el);
+  };
+  useLayoutEffect(() => {
+    const table = body.current?.closest("table");
+    if (!win.enabled || frozen.current || !table) return;
+    const heads = [...table.querySelectorAll<HTMLElement>("thead th")];
+    const whole = table.getBoundingClientRect().width;
+    if (!heads.length || whole <= 0) return;
+    heads.forEach((th) => (th.style.width = `${(th.getBoundingClientRect().width / whole) * 100}%`));
+    table.style.tableLayout = "fixed";
+    frozen.current = true;
+  });
+  const spacer = (key: string, height: number) => (
+    <tr aria-hidden key={`spacer-${key}`}>
+      <td colSpan={columns} style={{ height, padding: 0, border: 0 }} />
+    </tr>
+  );
+  return (
+    <tbody ref={hostRef} onKeyDown={win.onKeyDown}>
+      {win.enabled
+        ? win.parts.map((p) =>
+            p.type === "spacer" ? (
+              spacer(p.key, p.height)
+            ) : (
+              <WindowRow key={rows[p.index].record_key} props={win.rowProps(p.index)}>
+                {render(rows[p.index])}
+              </WindowRow>
+            ),
+          )
+        : rows.map((r) => <WindowRow key={r.record_key} props={{}}>{render(r)}</WindowRow>)}
+    </tbody>
+  );
+}
+
+/** The caller's `<tr>` given the window's marker, so the row can be measured and found. */
+function WindowRow({ children, props }: { children: ReactNode; props: { "data-win-index"?: number } }) {
+  return isValidElement(children) ? cloneElement(children as ReactElement<Record<string, unknown>>, props) : children;
 }

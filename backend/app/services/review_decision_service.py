@@ -184,6 +184,14 @@ class ReviewDecisionService:
     def list_by_document(self, document_id: str) -> list[dict]:
         return self._repository.list_by_document(document_id)
 
+    def list_by_documents(self, document_ids: list[str]) -> dict[str, list[dict]]:
+        """The decisions of many documents in one read: oldest first, by document id (every id is a key)."""
+        return self._repository.list_by_documents(document_ids)
+
+    def engagement_stamp(self, engagement_id: str) -> str:
+        """Changes whenever a review decision on the engagement's documents is added."""
+        return self._repository.engagement_stamp(engagement_id)
+
     def list_by_candidate(self, candidate_id: str) -> list[dict]:
         return self._repository.list_by_candidate(candidate_id)
 

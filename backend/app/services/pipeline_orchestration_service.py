@@ -1003,6 +1003,14 @@ class PipelineOrchestrationService:
         """Every persisted extraction result for a document, oldest first."""
         return self._extraction_result_repository.list_by_document(document_id)
 
+    def list_extraction_results_by_documents(self, document_ids: list[str]) -> dict[str, list[dict]]:
+        """The same, for many documents in one read: oldest first, by document id (every id is a key)."""
+        return self._extraction_result_repository.list_by_documents(document_ids)
+
+    def extraction_stamp(self, engagement_id: str) -> str:
+        """Changes whenever an extraction result of the engagement's documents is added."""
+        return self._extraction_result_repository.engagement_stamp(engagement_id)
+
     def list_extraction_results_by_evidence(self, evidence_id: str) -> list[dict]:
         """Every persisted extraction result for an evidence id, oldest first."""
         return self._extraction_result_repository.list_by_evidence(evidence_id)

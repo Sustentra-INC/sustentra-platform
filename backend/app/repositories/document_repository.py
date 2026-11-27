@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from collections.abc import Iterable
 from pathlib import Path
@@ -54,6 +55,12 @@ class _BaseDocumentRepository:
 
     def list_by_batch(self, batch_id: str) -> list[dict]:
         return _latest_versions(r for r in self._records() if r.get("batch_id") == batch_id)
+
+    def engagement_stamp(self, engagement_id: str) -> str:
+        """Changes whenever a document of the engagement is added or replaced (a new status, a new file name)."""
+
+        rows = self.list_by_engagement(engagement_id)
+        return hashlib.md5(json.dumps(rows, sort_keys=True, default=str).encode("utf-8"), usedforsecurity=False).hexdigest()
 
     def get_by_id(self, document_id: str) -> dict | None:
         for record in reversed(self._records()):
@@ -141,6 +148,9 @@ class PostgresDocumentRepository(_BaseDocumentRepository):
 
     def list_by_engagement(self, engagement_id: str) -> list[dict]:
         return self._table.select(engagement_id=engagement_id)
+
+    def engagement_stamp(self, engagement_id: str) -> str:
+        return self._table.engagement_stamp(engagement_id)
 
     def list_by_evidence(self, evidence_id: str) -> list[dict]:
         return self._table.select(evidence_id=evidence_id)

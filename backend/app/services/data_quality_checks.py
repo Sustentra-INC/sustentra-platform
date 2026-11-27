@@ -28,6 +28,8 @@ superseded decisions) and passes them in.
 from __future__ import annotations
 
 import re
+from bisect import bisect_left, bisect_right
+from collections.abc import Iterator
 from backend.app.services.facility_identifiers import same_number
 from collections import defaultdict
 from dataclasses import dataclass
@@ -313,13 +315,33 @@ def _printed(revised: EvidenceRecord) -> str:
     return f"the earlier bill number {revised.revises}"
 
 
+def _later_candidates(spans: list[tuple[EvidenceRecord, tuple[date, date]]]
+                      ) -> Iterator[tuple[int, tuple[EvidenceRecord, tuple[date, date]],
+                                          list[tuple[EvidenceRecord, tuple[date, date]]]]]:
+    """For each span in order, the spans after it (in order) that could overlap it: those that start no later than
+    it ends and no earlier than its start less the longest span. Every pair the plain all-pairs loop would find an
+    overlap in is here, in the same order; only pairs that cannot overlap are left out, so a group of hundreds of
+    records of different periods costs near-linear time, not a comparison of every pair."""
+
+    if not spans:
+        return
+    order = sorted(range(len(spans)), key=lambda k: spans[k][1][0])
+    starts = [spans[k][1][0] for k in order]
+    longest = max((end - start for _, (start, end) in spans), default=timedelta(0))
+    for i, entry in enumerate(spans):
+        first, last = entry[1]
+        low = bisect_left(starts, first - longest)
+        high = bisect_right(starts, last)
+        yield i, entry, [spans[j] for j in sorted(k for k in order[low:high] if k > i)]
+
+
 def _overlaps(groups: dict[tuple[str, str, str | None], list[EvidenceRecord]],
               duplicate_pairs: set[frozenset[str]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for records in groups.values():
         spans = [(r, s) for r in records if (s := _span(r)) is not None]
-        for i, (a, span_a) in enumerate(spans):
-            for b, span_b in spans[i + 1:]:
+        for i, (a, span_a), later in _later_candidates(spans):
+            for b, span_b in later:
                 days = _overlap_days(span_a, span_b)
                 if days < OVERLAP_MIN_DAYS:
                     continue

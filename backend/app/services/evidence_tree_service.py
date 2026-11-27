@@ -17,6 +17,8 @@ from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorReference, default_emission_factor_reference
 from backend.app.services import ai_facility
 from backend.app.services import calculation_lines as cl
+from backend.app.services import evidence_cache
+from backend.app.services.document_reads import DocumentReads, gc_paused
 from backend.app.services.engagement_recalculation_service import (
     EngagementRecalculationService,
     parse_inputs,
@@ -124,12 +126,22 @@ class EvidenceTreeService:
             self._reference = default_emission_factor_reference()
         return self._reference
 
+    async def cache_stamp(self, db: Any, engagement: dict[str, Any], *, fresh: bool = False) -> str | None:
+        """The digest the Evidence cache keeps this engagement's results under (None: do not cache)."""
+
+        return await evidence_cache.stamp(db, engagement, self._upload, self._pipeline, self._reviews, fresh=fresh)
+
     # ------------------------------------------------------------------------------------
     def load(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
              decisions: dict[str, dict[str, Any]] | None = None) -> Loaded:
         """Every visible document with its records, its default and moved placements, and the
         engagement's lines (system and reviewer-made)."""
 
+        with gc_paused():
+            return self._load(engagement, can_see, decisions)
+
+    def _load(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
+              decisions: dict[str, dict[str, Any]] | None) -> Loaded:
         decisions = decisions or {}
         settings = engagement.get("settings") or {}
         facilities = setup_facilities(settings)
@@ -139,16 +151,14 @@ class EvidenceTreeService:
         set_aside: list[dict[str, Any]] = []
         aside: list[DocState] = []
         superseded = superseded_ids(decisions)
-        for document in self._upload.list_documents(engagement_id):
-            if not can_see(document):
-                continue
+        # one bulk read of every document's results and decisions: the queries do not grow with the documents
+        for read in DocumentReads(self._upload, self._pipeline, self._reviews, engagement_id, can_see):
+            document, results = read.document, read.results
             document_id = str(document.get("document_id"))
             reason = set_aside_reason(decisions, document_id, superseded)
-            results = [r for r in self._pipeline.list_extraction_results_by_document(document_id) if can_see(r)]
             latest = results[-1] if results else {}
             canonical = str(latest.get("canonical_type_id") or "") or None
-            reviews = reviews_for_latest_type(
-                results, [d for d in self._reviews.list_by_document(document_id) if can_see(d)])
+            reviews = reviews_for_latest_type(results, read.reviews)
             records = group_reviewed_records(document, canonical or "", latest.get("items") or [], reviews,
                                              with_history=True)
             state = DocState(document, document_id, canonical, _iso(latest.get("created_at")), records,
@@ -194,11 +204,12 @@ class EvidenceTreeService:
     # ------------------------------------------------------------------------------------
     def tree(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
              decisions: dict[str, dict[str, Any]] | None = None, facility_id: str | None = None,
-             creator_names: dict[str, str] | None = None) -> dict[str, Any]:
+             creator_names: dict[str, str] | None = None, loaded: Loaded | None = None) -> dict[str, Any]:
         """The tree. With ``facility_id`` every level shows only placements at that Setup facility
         (rows whose ``facility_id`` and lines whose ``facility_id`` match) and every count is
         recomputed for that view. ``creator_names`` maps a user id to the name shown on a reviewer's line
-        ("created_by_name"; absent when the user is unknown)."""
+        ("created_by_name"; absent when the user is unknown). ``loaded``: the result of ``load`` for these same
+        inputs, when the caller kept it (it is only read here)."""
 
         def line_dict(line: cl.CalculationLine) -> dict[str, Any]:
             out = line.to_dict()
@@ -208,7 +219,7 @@ class EvidenceTreeService:
                 out["created_by_name"] = (creator_names or {}).get(str(line.created_by)) if line.created_by else None
             return out
 
-        loaded = self.load(engagement, can_see, decisions)
+        loaded = loaded or self.load(engagement, can_see, decisions)
         by_key = {line.key: line for line in loaded.lines}
         shown_lines = [ln for ln in loaded.lines if facility_id is None or ln.facility_id == facility_id]
         facility_names = {cl.facility_anchor_id(f): str(f.get("name")) for f in loaded.facilities}
@@ -369,19 +380,23 @@ class EvidenceTreeService:
     def schedule(self, engagement: dict[str, Any], can_see: Callable[[dict], bool], key: str,
                  decisions: dict[str, dict[str, Any]] | None = None,
                  name_of: Callable[[str], str] = lambda login: login,
-                 line_decisions: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
+                 line_decisions: list[dict[str, Any]] | None = None, loaded: Loaded | None = None,
+                 recalculation: dict[str, Any] | None = None) -> dict[str, Any] | None:
         """The line's schedule, or None when the engagement has no such line. ``line_decisions``: the reviewer's
-        decisions on the calculation lines, so its recalculation is the very one Results runs."""
+        decisions on the calculation lines, so its recalculation is the very one Results runs. ``loaded`` and
+        ``recalculation``: the results of ``load`` and of that recalculation for these same inputs, when the caller
+        kept them (they are only read here); otherwise both are worked out."""
 
-        loaded = self.load(engagement, can_see, decisions)
+        loaded = loaded or self.load(engagement, can_see, decisions)
         line = next((ln for ln in loaded.lines if ln.key == key), None)
         if line is None:
             return None
         # The recalculation decides what counts: a record it lists as awaiting review does not, and
         # the line is calculated only when the recalculation has it.
-        recalculation = EngagementRecalculationService(
-            self._upload, self._pipeline, self._reviews, self._reference).recalculate(
-                engagement, can_see, decisions, line_decisions=line_decisions)
+        if recalculation is None:
+            recalculation = EngagementRecalculationService(
+                self._upload, self._pipeline, self._reviews, self._reference).recalculate(
+                    engagement, can_see, decisions, line_decisions=line_decisions)
         waiting_by_record = {(str(a["document_id"]), str(a["record"])): list(a["fields"])
                              for a in recalculation["awaiting_review"]}
         calculated = key in {str(ln["key"]) for ln in recalculation["calculation_lines"]}
