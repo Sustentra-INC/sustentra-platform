@@ -38,24 +38,38 @@ export function Dialog({
   const close = useRef(onClose);
   const locked = useRef(closeDisabled);
   const returnTo = useRef(returnFocusTo);
+  // Taken at first render, before any field inside can take focus.
+  const opener = useRef(typeof document === "undefined" ? null : document.activeElement);
   const titleId = useId();
   useEffect(() => {
     close.current = onClose;
     locked.current = closeDisabled;
     returnTo.current = returnFocusTo;
   });
+  const restoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    box.current?.querySelector<HTMLElement>("input, select, textarea, button:not([disabled]):not(.s1-modal__close)")?.focus();
+    // A remount of the same dialog (React's dev double-run) cancels the focus hand-back of its cleanup.
+    if (restoreTimer.current !== null) {
+      clearTimeout(restoreTimer.current);
+      restoreTimer.current = null;
+    }
+    const openedFrom = opener.current instanceof HTMLElement ? opener.current : null;
+    // A field that asked for focus itself (autoFocus) keeps it; otherwise the first field gets it.
+    if (!box.current?.contains(document.activeElement)) {
+      box.current?.querySelector<HTMLElement>("input, select, textarea, button:not([disabled]):not(.s1-modal__close)")?.focus();
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !locked.current) close.current();
     };
-    document.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("keydown", onKey);
-      const target = returnTo.current;
-      const el = target && "current" in target ? target.current : (target ?? opener);
-      if (el?.isConnected) el.focus();
+      window.removeEventListener("keydown", onKey);
+      restoreTimer.current = setTimeout(() => {
+        restoreTimer.current = null;
+        const target = returnTo.current;
+        const el = target && "current" in target ? target.current : (target ?? openedFrom);
+        if (el?.isConnected) el.focus();
+      });
     };
   }, []);
   return (

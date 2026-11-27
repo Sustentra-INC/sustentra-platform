@@ -278,6 +278,8 @@
   --menu-sep-my:      5px;   /* separator vertical margin */
   --modal-sm-w:     460px;   /* small dialog panel width */
   --modal-md-w:     520px;   /* medium dialog panel width (two-column forms) */
+  --req-add-fact-min:  136px; /* Add to requests: narrowest fact column (3 fit at 520px, 1 on a phone) */
+  --req-add-field-min: 190px; /* Add to requests: narrowest field column before it stacks */
   --button-h-md:     40px;   /* dialog footer button height */
   --dlg-icon-box:    22px;   /* small dialog leading icon box */
   --rail-min-w:      72px;   /* collapsed icon rail (document view) */

@@ -930,37 +930,103 @@ exports[`request screens: fixture parity > draws the Add to requests window for 
 <div>
   <div
     class="s1-modal-scrim"
-    role="presentation"
   >
     <div
-      aria-labelledby="s1-atr-title"
+      aria-labelledby="_r_9_"
       aria-modal="true"
-      class="s1-modal s1-atr"
+      class="s1-modal s1-modal--md"
       role="dialog"
     >
       <div
-        class="s1-atr__head"
+        class="s1-modal__head"
       >
-        <h2
-          class="s1-atr__title"
-          id="s1-atr-title"
+        <span
+          aria-hidden="true"
+          class="s1-modal__head-icon"
         >
-          Add to requests
-        </h2>
+          <svg
+            aria-hidden="true"
+            fill="none"
+            height="18"
+            viewBox="0 0 24 24"
+            width="18"
+          >
+            <defs>
+              <mask
+                height="24"
+                id="m_r_a_"
+                maskUnits="userSpaceOnUse"
+                width="24"
+                x="0"
+                y="0"
+              >
+                <rect
+                  fill="#fff"
+                  height="24"
+                  width="24"
+                />
+                <path
+                  d="M10.6 13.4L16 8"
+                  fill="none"
+                  stroke="#000"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2.3"
+                />
+              </mask>
+            </defs>
+            <g
+              mask="url(#m_r_a_)"
+            >
+              <path
+                d="M20.6 2.4c.9-.3 1.4.4 1.1 1.2l-6.4 17.2c-.4 1-1.7 1-2.1.1l-2.6-6-6-2.6c-.9-.4-.9-1.7.1-2.1z"
+                fill="currentColor"
+              />
+            </g>
+          </svg>
+        </span>
+        <div
+          class="s1-modal__head-text"
+        >
+          <h2
+            class="s1-modal__title"
+            id="_r_9_"
+          >
+            Add to requests
+          </h2>
+          <span
+            class="s1-modal__context"
+          >
+            Saved to Evidence requests as not yet sent. Nothing is emailed from here.
+          </span>
+        </div>
         <button
           aria-label="Close"
-          class="s1-atr__close"
+          class="s1-button s1-button--icon s1-modal__close"
           type="button"
         >
-          ×
+          <svg
+            aria-hidden="true"
+            fill="none"
+            height="15"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            width="15"
+          >
+            <path
+              d="M6 6l12 12M18 6L6 18"
+            />
+          </svg>
         </button>
       </div>
       <dl
-        class="s1-atr__about"
+        class="s1-req-add__facts"
         title="kent_gas_sep_2025.pdf · Kent Cannery · Sep 2025 · Uploaded"
       >
         <div
-          class="s1-atr__fact"
+          class="s1-req-add__fact"
         >
           <dt>
             Item
@@ -970,7 +1036,7 @@ exports[`request screens: fixture parity > draws the Add to requests window for 
           </dd>
         </div>
         <div
-          class="s1-atr__fact"
+          class="s1-req-add__fact"
         >
           <dt>
             Facility
@@ -980,7 +1046,7 @@ exports[`request screens: fixture parity > draws the Add to requests window for 
           </dd>
         </div>
         <div
-          class="s1-atr__fact"
+          class="s1-req-add__fact"
         >
           <dt>
             Period
@@ -991,15 +1057,16 @@ exports[`request screens: fixture parity > draws the Add to requests window for 
         </div>
       </dl>
       <form
-        class="s1-atr__form"
+        class="s1-req-add__form"
       >
         <div
-          class="s1-atr__row"
+          class="s1-req-add__row"
         >
           <div
-            class="s1-modal__field"
+            class="s1-req-add__field"
           >
             <span
+              class="s1-field-label"
               id="atr-type-label"
             >
               Request type
@@ -1008,7 +1075,7 @@ exports[`request screens: fixture parity > draws the Add to requests window for 
               class="s1-dd"
             >
               <button
-                aria-controls="_r_9_-panel"
+                aria-controls="_r_b_-panel"
                 aria-expanded="false"
                 aria-haspopup="listbox"
                 aria-labelledby="atr-type-label"
@@ -1044,9 +1111,10 @@ exports[`request screens: fixture parity > draws the Add to requests window for 
             </div>
           </div>
           <div
-            class="s1-modal__field"
+            class="s1-req-add__field"
           >
             <span
+              class="s1-field-label"
               id="atr-raisedby-label"
             >
               Raised by
@@ -1055,7 +1123,7 @@ exports[`request screens: fixture parity > draws the Add to requests window for 
               class="s1-dd"
             >
               <button
-                aria-controls="_r_a_-panel"
+                aria-controls="_r_c_-panel"
                 aria-expanded="false"
                 aria-haspopup="listbox"
                 aria-labelledby="atr-raisedby-label"
@@ -1092,41 +1160,35 @@ exports[`request screens: fixture parity > draws the Add to requests window for 
           </div>
         </div>
         <label
-          class="s1-modal__field"
+          class="s1-req-add__field"
         >
-          <span>
+          <span
+            class="s1-field-label"
+          >
             What is needed
           </span>
           <textarea
-            rows="4"
+            class="s1-textarea s1-req-add__need"
+            rows="3"
           >
             kent_gas_sep_2025.pdf · Kent Cannery · Sep 2025: 
           </textarea>
         </label>
         <div
-          class="s1-atr__foot"
+          class="s1-modal__actions"
         >
-          <p
-            class="s1-muted s1-modal__note"
+          <button
+            class="s1-button"
+            type="button"
           >
-            Saved to Evidence requests as not yet sent. Nothing is emailed from here.
-          </p>
-          <div
-            class="s1-modal__actions"
+            Cancel
+          </button>
+          <button
+            class="s1-button s1-button--pri"
+            type="submit"
           >
-            <button
-              class="s1-button"
-              type="button"
-            >
-              Cancel
-            </button>
-            <button
-              class="s1-button s1-button--pri"
-              type="submit"
-            >
-              Add to requests
-            </button>
-          </div>
+            Add to requests
+          </button>
         </div>
       </form>
     </div>

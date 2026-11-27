@@ -1449,7 +1449,7 @@ select:focus-visible,
   padding: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-4-5);
   max-height: 86vh; overflow-y: auto;
 }
-.s1-modal.s1-modal--md { width: min(var(--modal-md-w), 90vw); }
+.s1-modal.s1-modal--md { box-sizing: border-box; width: min(var(--modal-md-w), 90vw); }
 .s1-modal__head { display: flex; align-items: flex-start; gap: var(--sp-3); }
 .s1-modal__head-icon {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
@@ -2391,24 +2391,21 @@ html { font-size: 82%; }
 .s1-table th { overflow-wrap: normal; word-break: normal; }
 
 /* #4 Modal: real dimmed backdrop + lift (shadow, max-height and overflow now set in base). */
-/* Add to requests: a proper dialog over a dimmed page, centred, with a title bar. */
-.s1-modal-scrim:has(.s1-atr) { align-items: center; padding: var(--sp-4); backdrop-filter: blur(0.125rem); }
-.s1-atr { gap: var(--sp-4); padding: 0; overflow: hidden; }
-.s1-atr__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5); border-bottom: var(--border-hairline); }
-.s1-atr__title { margin: 0; font-size: var(--text-md); }
-.s1-atr__close { font: inherit; font-size: var(--text-lg); line-height: 1; width: 2rem; height: 2rem; border-radius: var(--radius-input); border: 0; background: none; color: var(--ink-2); cursor: pointer; }
-.s1-atr__close:hover { background: var(--sf-sunken); color: var(--ink); }
-.s1-atr__about { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: var(--sp-2) var(--sp-4); margin: 0 var(--sp-5); padding: var(--sp-3) var(--sp-4); background: var(--sf-sunken); border-radius: var(--radius-input); }
-.s1-atr__fact { min-width: 0; }
-.s1-atr__fact:first-child { grid-column: 1 / -1; }
-.s1-atr__fact dt { font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
-.s1-atr__fact dd { margin: 0.1rem 0 0; font-size: var(--text-sm); color: var(--ink); overflow-wrap: anywhere; }
-.s1-atr__form { display: flex; flex-direction: column; gap: var(--sp-3); padding: 0 var(--sp-5) var(--sp-5); }
-.s1-atr__row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
-.s1-atr__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); padding-top: var(--sp-3); border-top: var(--border-hairline); }
-.s1-atr__foot .s1-modal__note { flex: 1 1 14rem; }
-.s1-atr .s1-modal__field textarea { resize: vertical; min-height: 5.5rem; }
-@media (max-width: 36rem) { .s1-atr__row { grid-template-columns: 1fr; } }
+/* Add to requests (shared Dialog, size md): facts strip, two fields side by side, what is needed.
+   Both grids fill a column at a time, so a narrow dialog stacks them on its own. */
+.s1-req-add__facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--req-add-fact-min)), 1fr)); gap: var(--sp-2-5); margin: 0;
+  padding: var(--sp-3) var(--sp-3-5); border-radius: var(--r-card); background: var(--sf-sunken);
+}
+.s1-req-add__fact { display: flex; flex-direction: column; gap: var(--sp-half); min-width: 0; }
+.s1-req-add__fact dt { font-size: var(--text-xs); color: var(--ink-3); }
+.s1-req-add__fact dd { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink); overflow-wrap: anywhere; }
+.s1-req-add__form { display: flex; flex-direction: column; gap: var(--sp-4); }
+.s1-req-add__row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--req-add-field-min)), 1fr)); gap: var(--sp-3); }
+.s1-req-add__field { display: flex; flex-direction: column; gap: var(--sp-1-5); min-width: 0; }
+.s1-req-add__field .s1-field-label { color: var(--ink-2); }
+.s1-textarea.s1-req-add__need { min-height: 0; font-size: var(--text-md); resize: vertical; }
+.s1-textarea.s1-req-add__need:focus { box-shadow: inset 0 0 0 var(--hairline-width) var(--accent), var(--shadow-focus); }
 
 /* #1 Collapsible engagement rail */
 .s1-rail { position: relative; }

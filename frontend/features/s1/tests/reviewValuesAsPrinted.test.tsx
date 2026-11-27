@@ -186,7 +186,7 @@ describe("a backend card as printed", () => {
     const message = (screen.getByRole("textbox") as HTMLTextAreaElement).value;
     expect(message).toContain(" · 182,400 kWh · ");
     expect(message).toContain(" · Feb 2025: ");
-    expect(document.querySelector(".s1-atr__about")?.textContent).toContain("Feb 2025");
+    expect(document.querySelector(".s1-req-add__facts")?.textContent).toContain("Feb 2025");
     fireEvent.click(screen.getByRole("button", { name: "Add to requests" }));
     // The request's own period is the ISO range it always was.
     expect(onSaveAsk).toHaveBeenCalledWith(expect.objectContaining({ period: "2025-02-01 to 2025-02-28", fieldKey: bill()[0].id }));
