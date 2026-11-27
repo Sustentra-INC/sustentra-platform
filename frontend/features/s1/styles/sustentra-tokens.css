@@ -326,6 +326,26 @@
   --key-pad-x:           7px;
   --r-key:               6px;
 
+  /* Dashboard: exact design px (the general --sp-4 to --sp-7 render larger, see audit 00) */
+  --dash-stack-gap:      20px; /* between header, stage cards and the focus / queue row */
+  --dash-gap:            16px; /* between cards; button side padding */
+  --dash-gap-lg:         24px; /* details card: column gap and side padding */
+  --dash-chip-h:         26px; /* Details toggle height */
+  --dash-detail-col-min: 170px; /* details card: narrowest column */
+  --dash-ring:           64px; /* review progress ring */
+  --dash-stripe:          5px; /* opinion bar stripe width */
+  --dash-focus-basis:   340px; /* focus card flex basis */
+  --dash-queue-basis:   420px; /* queue card flex basis */
+  --dash-focus-pad:      22px; /* focus card padding and row gap */
+  --dash-tag-h:          28px; /* focus card tag height */
+  --dash-doc-w:          96px; /* focus card document thumbnail */
+  --dash-doc-h:         120px;
+  --dash-doc-gap:         7px; /* thumbnail: gap between lines */
+  --dash-doc-line:        5px; /* thumbnail: line height */
+  --dash-doc-badge:      34px; /* thumbnail: round mark */
+  --dash-tile:           40px; /* queue count tile */
+  --dash-row-min-h:      56px; /* queue row */
+
   /* Coverage & requests: header review card */
   --cr-review-icon-box: 22px; /* leading icon box */
   --chip-action-h:      34px; /* action chip inside a card link */

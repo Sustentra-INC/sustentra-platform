@@ -2,8 +2,6 @@
 
 import {
   CalendarRange,
-  Check,
-  ChevronRight,
   CircleAlert,
   FileQuestion,
   Hourglass,
@@ -19,7 +17,20 @@ import type { EngagementConfig } from "../types";
 import type { DashboardFigures } from "../utils/engagementActivity";
 import { formatReportingPeriod } from "../utils/formatPeriod";
 import type { NavKey } from "./S1Chrome";
-import { IconArrowRight, IconCheckCircle, IconChevronDown, IconClose, IconTag, IconWarning } from "./icons";
+import {
+  IconArrowRight,
+  IconCheck,
+  IconCheckCircle,
+  IconChecklist,
+  IconChevronDown,
+  IconChevronRight,
+  IconClose,
+  IconDocument,
+  IconLock,
+  IconTag,
+  IconVerification,
+  IconWarning,
+} from "./icons";
 
 /**
  * Dashboard: progress only, at a glance. The engagement timeline, how much of the
@@ -154,7 +165,7 @@ export function DashboardScreen({
               ? <span className="s1-state s1-state--resolved">Done</span>
               : intakeStage === "active"
                 ? <span className="s1-state s1-state--active">In progress</span>
-                : <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>}
+                : <span className="s1-stage-card__icon-slot" aria-hidden><IconDocument size={20} /></span>}
           </span>
           <span className="s1-stage-card__big">{evidencePct}%</span>
           <span className="s1-stage-card__bar-track" aria-hidden>
@@ -186,7 +197,7 @@ export function DashboardScreen({
               ? <span className="s1-state s1-state--resolved">Done</span>
               : reviewStage === "active"
                 ? <span className="s1-state s1-state--active">In progress</span>
-                : <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>}
+                : <span className="s1-stage-card__icon-slot" aria-hidden><IconChecklist size={20} /></span>}
           </span>
           <span className="s1-stage-card__ring-wrap">
             <span className="s1-stage-card__ring">
@@ -220,7 +231,7 @@ export function DashboardScreen({
               ? <span className="s1-state s1-state--resolved">Done</span>
               : assessStage === "active"
                 ? <span className="s1-state s1-state--active">In progress</span>
-                : <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>}
+                : <span className="s1-stage-card__icon-slot" aria-hidden><IconVerification size={20} /></span>}
           </span>
           <span className="s1-stage-card__big">
             {assessDone}
@@ -255,7 +266,7 @@ export function DashboardScreen({
               ? <span className="s1-state s1-state--resolved">Done</span>
               : opinionStage === "active"
                 ? <span className="s1-state s1-state--active">In progress</span>
-                : <span className="s1-stage-card__icon-slot" aria-hidden><IconArrowRight size={16} /></span>}
+                : <span className="s1-stage-card__icon-slot" aria-hidden><IconLock size={20} /></span>}
           </span>
           <span className="s1-stage-card__state">Not issued</span>
           <span className="s1-stage-card__bar-striped" aria-hidden />
@@ -265,7 +276,12 @@ export function DashboardScreen({
 
       <div className="s1-focus-wrap">
         {focusItem && (
-          <FocusCard item={focusItem} isBlocking={isFocusBlocking} onNavigate={onNavigate} />
+          <FocusCard
+            item={focusItem}
+            isBlocking={isFocusBlocking}
+            detail={focusItem.key === "blocked" ? figures.blockedDocumentName : undefined}
+            onNavigate={onNavigate}
+          />
         )}
         <QueueSection items={queueItems} onNavigate={onNavigate} />
       </div>
@@ -395,10 +411,13 @@ const FOCUS_BUTTON_LABELS: Record<string, string> = {
 function FocusCard({
   item,
   isBlocking,
+  detail,
   onNavigate,
 }: {
   item: Attention;
   isBlocking: boolean;
+  /** A second line under the title, such as the blocked document's file name. */
+  detail?: string;
   onNavigate?: (key: NavKey) => void;
 }) {
   const go = (key: NavKey) => () => onNavigate?.(key);
@@ -451,12 +470,13 @@ function FocusCard({
         )}
         <div className="s1-focus__text">
           <h2 id={`s1-focus-${tone}`} className="s1-focus__title">{title}</h2>
+          {detail ? <span className="s1-focus__detail">{detail}</span> : null}
+          <div className="s1-focus__actions">
+            <button type="button" className={`s1-button ${isBlocking ? "s1-button--ink" : "s1-button--pri"}`} onClick={go(item.nav)}>
+              {primaryLabel}
+            </button>
+          </div>
         </div>
-      </div>
-      <div className="s1-focus__actions">
-        <button type="button" className="s1-button s1-button--ink" onClick={go(item.nav)}>
-          {primaryLabel}
-        </button>
       </div>
     </section>
   );
@@ -511,7 +531,7 @@ function QueueSection({
                     {isWaiting ? "Waiting" : "To do"}
                   </span>
                   <span className="s1-queue__chevron" aria-hidden>
-                    <ChevronRight />
+                    <IconChevronRight size={16} />
                   </span>
                 </button>
               </li>
@@ -520,7 +540,7 @@ function QueueSection({
         </ul>
       ) : (
         <p className="s1-queue__empty">
-          <Check aria-hidden /> Nothing needs you right now.
+          <IconCheck size={16} aria-hidden /> Nothing needs you right now.
         </p>
       )}
     </section>

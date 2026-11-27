@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, History } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { IconSearch, IconSparkle, IconTrash } from "./icons";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
@@ -181,8 +181,6 @@ export function S1Chrome({
           engagement={engagement}
           expanded={ctxExpanded}
           onToggle={() => setCtxExpanded((v) => !v)}
-          onOpenGlossary={onOpenGlossary}
-          onOpenActivity={onOpenActivity}
           user={user}
           onSignOut={onSignOut}
         />
@@ -485,16 +483,12 @@ function ContextBar({
   engagement,
   expanded,
   onToggle,
-  onOpenGlossary,
-  onOpenActivity,
   user,
   onSignOut,
 }: {
   engagement: EngagementConfig;
   expanded: boolean;
   onToggle: () => void;
-  onOpenGlossary?: () => void;
-  onOpenActivity?: () => void;
   user?: WorkpaperUser;
   onSignOut?: () => void;
 }) {
@@ -512,16 +506,9 @@ function ContextBar({
             </span>
           </span>
         </button>
-        <div className="s1-ctx__actions">
-          {onOpenActivity ? (
-            <button className="s1-ctx__activity" type="button" onClick={onOpenActivity}>
-              <History aria-hidden /> Activity log
-            </button>
-          ) : null}
-          <button className="s1-linklike" type="button" onClick={onOpenGlossary}>
-            Glossary
-          </button>
-          {user ? (
+        {/* Activity log and Glossary live in the sidebar only. */}
+        {user ? (
+          <div className="s1-ctx__actions">
             <div className="s1-ctx__user" aria-label="Signed in">
               <span className="s1-ctx__user-name" title={user.email}>
                 {user.firstName || user.email}
@@ -543,8 +530,8 @@ function ContextBar({
                 </button>
               ) : null}
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
       {expanded ? (
         <div className="s1-ctx__details">
