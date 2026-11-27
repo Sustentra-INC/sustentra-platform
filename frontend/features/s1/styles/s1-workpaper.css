@@ -367,6 +367,14 @@
   color: var(--state-blocking-fg);
 }
 
+/* Quiet tertiary text button (Back and similar): grey, no underline until hover, optional leading icon. */
+.s1-linklike--quiet {
+  display: inline-flex; align-items: center; gap: var(--sp-1);
+  width: fit-content; color: var(--ink-2); font-size: var(--text-sm); font-weight: var(--weight-medium); text-decoration: none;
+}
+.s1-linklike--quiet:hover:not(:disabled) { color: var(--ink); text-decoration: underline; }
+.s1-linklike--quiet:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); border-radius: var(--r-xs); }
+
 .s1-linklike--danger:hover:not(:disabled) {
   color: var(--state-blocking-fg);
   opacity: 0.8;
@@ -1258,6 +1266,38 @@ button.s1-state:focus-visible { outline: none; box-shadow: var(--shadow-focus); 
   color: var(--text-secondary);
   font-size: var(--text-sm);
   text-transform: uppercase;
+}
+
+/* Glossary: Back, title with intro and tabs, then one panel at a time (term cards or the states table). */
+.s1-glossary-page { display: flex; flex-direction: column; gap: var(--sp-4); }
+.s1-glossary__head.s1-ws-header { flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3-5); margin: 0; padding: 0 var(--sp-1); }
+.s1-glossary__titles { flex: 1 1 var(--glossary-title-basis); display: flex; flex-direction: column; gap: var(--sp-1-5); min-width: 0; }
+.s1-glossary__head .s1-ws-header__id h1 { line-height: var(--leading-tight); }
+.s1-glossary__intro { margin: 0; max-width: var(--measure-prose); font-size: var(--text-sm); line-height: var(--leading-body); color: var(--ink-2); }
+.s1-glossary__tabs { flex: none; }
+.s1-glossary__tabs .s1-ws-factab { gap: var(--sp-2); }
+.s1-glossary__print-title { display: none; }
+.s1-glossary__cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(var(--glossary-card-min), 100%), 1fr)); gap: var(--sp-3-5); }
+.s1-glossary__card {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-4-5); border-radius: var(--r-lg); background: var(--sf-card); box-shadow: var(--shadow-card-soft);
+}
+.s1-glossary__card-head { display: flex; align-items: center; gap: var(--sp-2); }
+.s1-glossary__card h2 { margin: 0; font-size: var(--text-title); font-weight: var(--weight-bold); letter-spacing: var(--tracking-tight); color: var(--ink); }
+.s1-glossary__card p { margin: 0; font-size: var(--text-md); line-height: var(--leading-prose); color: var(--ink-2); text-wrap: pretty; }
+.s1-glossary__dot { flex: none; width: var(--glossary-dot); height: var(--glossary-dot); border-radius: var(--r-xs); }
+.s1-glossary__dot--typing { background: var(--accent); }
+.s1-glossary__dot--attention { background: var(--dot-warning); }
+.s1-glossary__dot--evidence { background: var(--dot-success); }
+.s1-glossary__dot--measure { background: var(--dot-neutral); }
+@media print {
+  .s1-glossary__back, .s1-glossary__tabs { display: none; }
+  /* Print the whole glossary, both panels, as a plain list. */
+  .s1-glossary__panel[hidden] { display: block; }
+  .s1-glossary__print-title { display: block; margin: var(--sp-4) 0 var(--sp-2); font-size: var(--text-title); }
+  .s1-glossary__cards { display: block; }
+  .s1-glossary__card { padding: var(--sp-2) 0; border-radius: 0; box-shadow: none; border-bottom: var(--hairline-width) solid var(--line); break-inside: avoid; }
+  .s1-glossary__dot { print-color-adjust: exact; }
 }
 
 button:focus-visible,

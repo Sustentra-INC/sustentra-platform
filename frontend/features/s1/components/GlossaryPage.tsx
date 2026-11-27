@@ -1,39 +1,116 @@
 "use client";
 
+import { useId, useRef, useState, type KeyboardEvent } from "react";
+
 import { EXACT_COPY } from "../constants/copy";
 import type { StateDimension } from "../types";
+import { CountBadge } from "./CountBadge";
+import { IconChevronLeft } from "./icons";
 import { StateIndicator } from "./StateIndicator";
 
+type GlossaryTab = "vocabulary" | "states";
+const TABS: { key: GlossaryTab; label: string }[] = [
+  { key: "vocabulary", label: "Vocabulary" },
+  { key: "states", label: "States" },
+];
+
+/** A term's anchor on the page, so a card can be linked to. */
+function slug(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
 export function GlossaryPage({ onBack }: { onBack: () => void }) {
+  const [tab, setTab] = useState<GlossaryTab>("vocabulary");
+  const tabRefs = useRef<Record<GlossaryTab, HTMLButtonElement | null>>({ vocabulary: null, states: null });
+  const id = useId();
+  const counts: Record<GlossaryTab, number> = { vocabulary: VOCABULARY_ROWS.length, states: STATE_ENUMERATION_ROWS.length };
+
+  const onTabKey = (e: KeyboardEvent<HTMLButtonElement>) => {
+    const keys = TABS.map((t) => t.key);
+    const at = keys.indexOf(tab);
+    const next =
+      e.key === "ArrowRight" ? keys[(at + 1) % keys.length]
+      : e.key === "ArrowLeft" ? keys[(at - 1 + keys.length) % keys.length]
+      : e.key === "Home" ? keys[0]
+      : e.key === "End" ? keys[keys.length - 1]
+      : null;
+    if (!next) return;
+    e.preventDefault();
+    setTab(next);
+    tabRefs.current[next]?.focus();
+  };
+
   return (
     <section className="s1-content s1-glossary-page">
-      <button className="s1-linklike" type="button" onClick={onBack}>
+      <button className="s1-linklike s1-linklike--quiet s1-glossary__back" type="button" onClick={onBack}>
+        <IconChevronLeft size={14} aria-hidden />
         Back
       </button>
-      <div className="s1-glossary">
-        <h2>Glossary</h2>
-        <p>{EXACT_COPY.glossaryIntro}</p>
-        <section>
-          <h3>Vocabulary</h3>
-          <table className="s1-printable-table s1-glossary-table">
-            <thead>
-              <tr>
-                <th>Term</th>
-                <th>Means</th>
-              </tr>
-            </thead>
-            <tbody>
-              {VOCABULARY_ROWS.map((row) => (
-                <tr key={row.term}>
-                  <th>{row.term}</th>
-                  <td>{row.means}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-        <section>
-          <h3>State enumerations</h3>
+      <header className="s1-ws-header s1-ws-top s1-glossary__head">
+        <div className="s1-glossary__titles">
+          <div className="s1-ws-header__id">
+            <h1>Glossary</h1>
+          </div>
+          <p className="s1-glossary__intro">{EXACT_COPY.glossaryIntro}</p>
+        </div>
+        <div role="tablist" aria-label="Glossary section" className="s1-ws-factabs s1-ws-factabs--page s1-glossary__tabs">
+          {TABS.map((t) => {
+            const on = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                ref={(el) => {
+                  tabRefs.current[t.key] = el;
+                }}
+                id={`${id}-tab-${t.key}`}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                aria-controls={`${id}-panel-${t.key}`}
+                tabIndex={on ? 0 : -1}
+                className={`s1-ws-factab${on ? " is-on" : ""}`}
+                onClick={() => setTab(t.key)}
+                onKeyDown={onTabKey}
+              >
+                {t.label}
+                <CountBadge variant={on ? "indigo" : "neutral"}>{counts[t.key]}</CountBadge>
+              </button>
+            );
+          })}
+        </div>
+      </header>
+
+      {/* Both panels stay in the page so printing gives the whole glossary; only the chosen one shows on screen. */}
+      <div
+        className="s1-glossary__panel"
+        role="tabpanel"
+        id={`${id}-panel-vocabulary`}
+        aria-labelledby={`${id}-tab-vocabulary`}
+        hidden={tab !== "vocabulary"}
+      >
+        <h2 className="s1-glossary__print-title">Vocabulary</h2>
+        <div className="s1-glossary__cards">
+          {VOCABULARY_ROWS.map((row) => (
+            <article key={row.term} id={slug(row.term)} className="s1-glossary__card">
+              <div className="s1-glossary__card-head">
+                <span className={`s1-glossary__dot s1-glossary__dot--${row.group}`} aria-hidden />
+                <h2>{row.term}</h2>
+              </div>
+              <p>{row.means}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div
+        className="s1-glossary__panel"
+        role="tabpanel"
+        id={`${id}-panel-states`}
+        aria-labelledby={`${id}-tab-states`}
+        hidden={tab !== "states"}
+      >
+        <section className="s1-glossary">
+          <h3 className="s1-glossary__print-title">State enumerations</h3>
           <table className="s1-printable-table s1-glossary-table">
             <thead>
               <tr>
@@ -69,29 +146,36 @@ export function GlossaryPage({ onBack }: { onBack: () => void }) {
   );
 }
 
-const VOCABULARY_ROWS = [
+/** UI-only grouping for the card dot: what kind of term it is. */
+type TermGroup = "typing" | "attention" | "evidence" | "measure";
+
+const VOCABULARY_ROWS: ReadonlyArray<{ term: string; means: string; group: TermGroup }> = [
   {
     term: "Document typing",
     means: "Detecting what a file is · utility bill, contractual instrument, workbook",
+    group: "typing",
   },
   {
     term: "Classification",
     means: "Reserved for scope classification: Scope 1/2/3, and within Scope 2, location- vs market-based",
+    group: "typing",
   },
-  { term: "Gap", means: "User-facing label for an open finding. Not a separate object" },
-  { term: "Finding", means: "The object carrying review state, failure cause, impact, disposition" },
+  { term: "Gap", means: "User-facing label for an open finding. Not a separate object", group: "attention" },
+  { term: "Finding", means: "The object carrying review state, failure cause, impact, disposition", group: "attention" },
   {
     term: "Request",
     means: "Engagement-level client ask. Many-to-many with findings · one request bundles gaps across several review items",
+    group: "attention",
   },
-  { term: "Main evidence", means: "Extractable, system-verifiable, links to specific Field_IDs" },
+  { term: "Main evidence", means: "Extractable, system-verifiable, links to specific Field_IDs", group: "evidence" },
   {
     term: "Supportive evidence",
     means: "Enters the workpaper, no extraction expected, links to a coarse review area",
+    group: "evidence",
   },
-  { term: "Type review", means: "The classifier's confidence against the vocabulary threshold" },
-  { term: "Fields extracted", means: "How many required fields were found inside a typed document" },
-] as const;
+  { term: "Type review", means: "The classifier's confidence against the vocabulary threshold", group: "measure" },
+  { term: "Fields extracted", means: "How many required fields were found inside a typed document", group: "measure" },
+];
 
 const STATE_ENUMERATION_ROWS: Array<{
   dimension: StateDimension;

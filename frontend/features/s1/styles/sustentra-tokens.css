@@ -205,6 +205,8 @@
 
   --leading-tight: 1.35;   /* table rows, chips */
   --leading-body:  1.6;    /* prose, explanations, statute text */
+  --leading-prose: 1.5;    /* short definitions in cards */
+  --measure-prose: 72ch;   /* comfortable line length for intro paragraphs */
 
   --tracking-tight: -0.01em;   /* tight tracking for large value figures */
   --tracking-title: -0.02em;   /* tight tracking for page-level titles */
@@ -329,6 +331,9 @@
   --source-pane-max-width: 380px;
   --csv-preview-min-width: 520px;
   --glossary-table-max-width: 900px;
+  --glossary-card-min:   300px; /* glossary term card minimum width */
+  --glossary-title-basis: 420px; /* glossary title block before the tabs wrap under it */
+  --glossary-dot:          8px; /* glossary term group dot */
   --field-value-max-height: 8rem;
   --source-snippet-max-height: 7.5rem;
   --selected-source-max-height: 8rem;
