@@ -30,6 +30,7 @@ import type { RecalculationSettings } from "../types";
 import type { TeamMember } from "../types/engagement";
 import { differs, examinationKey, formatGasTonnes, formatInputQuantity, formatPercent, formatSignedGasTonnes } from "../utils/verificationTable";
 import type { VerificationStore } from "../verification/verificationStore";
+import { TraceSection } from "./calc-trace/TraceSection";
 import { InfoTip } from "./InfoTip";
 import { AddNote, RecordExamination, formatWhen } from "./VerificationWorkspace";
 
@@ -750,7 +751,9 @@ function LineDetail({
   onOpenDocument,
   onOpenEvidence,
   inputs,
+  engagementId,
 }: {
+  engagementId?: string;
   line: CalculationLine;
   inputs?: CalcLineInputs;
   settings: RecalculationSettings;
@@ -774,11 +777,21 @@ function LineDetail({
     <div className="s1-cp-detail">
       <h4 className="s1-cp-line-title">{title}</h4>
       {flags.length ? <p className="s1-muted s1-cp-flags">{flags.join(" ")}</p> : null}
-      <MethodBlock line={line} />
-      <Step1Block line={line} onOpenDocument={onOpenDocument} />
-      <Step2Block line={line} />
-      <Step3Block line={line} gwpLabel={gwpSet} />
-      <ResultsBlock line={line} />
+      <TraceSection
+        engagementId={engagementId}
+        lineKey={line.key}
+        version={`${line.results.total_co2e_t}|${line.reported_total_co2e_t}|${line.step1.total.quantity}|${gwpSet}`}
+        onOpenDocument={onOpenDocument}
+        fallback={
+          <>
+            <MethodBlock line={line} />
+            <Step1Block line={line} onOpenDocument={onOpenDocument} />
+            <Step2Block line={line} />
+            <Step3Block line={line} gwpLabel={gwpSet} />
+            <ResultsBlock line={line} />
+          </>
+        }
+      />
       <div className="s1-vw-actions">
         {examined ? (
           <>
@@ -884,7 +897,10 @@ export function CalculationPanels({
   onOpenEvidence,
   unplaced = [],
   inputs,
+  engagementId,
 }: {
+  /** Fetches each opened line's step-by-step trace; without it the summary panel is shown. */
+  engagementId?: string;
   lines: CalculationLine[];
   /** Records on no line, per panel as "Not on a calculation line". */
   unplaced?: CalcUnplaced[];
@@ -1045,6 +1061,7 @@ export function CalculationPanels({
                                     onOpenDocument={onOpenDocument}
                                     onOpenEvidence={onOpenEvidence}
                                     inputs={inputs}
+                                    engagementId={engagementId}
                                   />
                                 </td>
                               </tr>

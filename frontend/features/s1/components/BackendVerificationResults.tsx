@@ -191,6 +191,7 @@ export function BackendVerificationResults({
       panels={
         result.calculation_lines?.length ? (
           <CalculationPanels
+            engagementId={result.engagement_id}
             lines={result.calculation_lines}
             unplaced={result.calculation_unplaced}
             inputs={result.calculation_line_inputs}
