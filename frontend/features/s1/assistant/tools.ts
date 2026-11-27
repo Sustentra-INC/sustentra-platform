@@ -272,8 +272,8 @@ const REFERENCE: Record<string, string> = {
     "equipment minus its capacity, plus refrigerant added in service, plus the capacity of retired equipment minus what was " +
     "recovered from it, times the refrigerant's GWP (R-404A: 3,943 under AR5). CFCs and HCFCs are reported separately.",
   coverage:
-    "Coverage shows what can and cannot be checked with the evidence held. Inputs present: the evidence and reviewed values " +
-    "a check needs are in. Inputs missing: something is missing, and a request to the client can be raised. Not applicable " +
+    "Coverage shows what can and cannot be checked with the evidence held. Present: the evidence and reviewed values " +
+    "a check needs are in. Missing: something is missing, and a request to the client can be raised. Not applicable " +
     "or out of scope: the check does not apply. It states input readiness, not a pass or fail.",
   review_states:
     "Each value read from a document is to review until the auditor acts: accepted (as read), corrected (changed, with the " +
