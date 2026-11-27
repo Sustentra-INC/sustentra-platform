@@ -1439,19 +1439,32 @@ select:focus-visible,
   display: flex; align-items: flex-start; justify-content: center; padding-top: 10vh;
 }
 .s1-modal {
-  width: min(var(--modal-width), 92vw); background: var(--sf-card);
-  border: var(--border-strong); border-radius: var(--radius-card);
-  padding: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3);
+  width: min(var(--modal-sm-w), 90vw); background: var(--sf-card);
+  border-radius: var(--r-lg); box-shadow: var(--shadow-modal);
+  padding: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-4-5);
+  max-height: 86vh; overflow-y: auto;
 }
-.s1-modal__head { display: flex; flex-direction: column; gap: var(--sp-1); }
-.s1-modal__field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); }
+.s1-modal__head { display: flex; align-items: flex-start; gap: var(--sp-3); }
+.s1-modal__head-icon {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: var(--dlg-icon-box); color: var(--brand-dark);
+}
+.s1-modal__head-text { flex: 1; display: flex; flex-direction: column; gap: var(--sp-half); }
+.s1-modal__title { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-bold); line-height: 1.2; }
+.s1-modal__context { font-size: var(--text-base); color: var(--ink-3); }
+.s1-modal__field { display: flex; flex-direction: column; gap: var(--sp-1-5); }
+.s1-modal__field > span { font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink-2); }
 .s1-modal__field select, .s1-modal__field textarea {
   font: inherit; font-size: var(--text-sm); color: var(--ink);
   background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input);
   padding: var(--sp-2);
 }
+.s1-modal__field .s1-inline-input {
+  height: var(--input-h-md); border-radius: var(--r-card-sm); padding: 0 var(--sp-3-5);
+}
 .s1-modal__note { font-size: var(--text-sm); margin: 0; }
-.s1-modal__actions { display: flex; gap: var(--sp-2); }
+.s1-modal .s1-modal__actions { display: flex; justify-content: flex-end; gap: var(--sp-2); }
+.s1-modal .s1-modal__actions .s1-button { height: var(--button-h-md); }
 
 /* ===================================================================
    Extraction Review — revised spec (09/16). Three panes. Structural only;
@@ -2371,8 +2384,7 @@ html { font-size: 82%; }
 /* #2 Table headers wrap on whole words only (were breaking mid-word). */
 .s1-table th { overflow-wrap: normal; word-break: normal; }
 
-/* #4 Modal: real dimmed backdrop + lift (tokens were undefined; now set). */
-.s1-modal { box-shadow: 0 1rem 3rem rgba(23, 23, 20, 0.24); max-height: 86vh; overflow-y: auto; }
+/* #4 Modal: real dimmed backdrop + lift (shadow, max-height and overflow now set in base). */
 /* Add to requests: a proper dialog over a dimmed page, centred, with a title bar. */
 .s1-modal-scrim:has(.s1-atr) { align-items: center; padding: var(--sp-4); backdrop-filter: blur(0.125rem); }
 .s1-atr { gap: var(--sp-4); padding: 0; overflow: hidden; }

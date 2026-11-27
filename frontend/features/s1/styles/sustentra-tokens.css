@@ -271,6 +271,9 @@
   --menu-w:         250px;   /* floating action menu panel width */
   --menu-item-h:     34px;   /* action menu item row height */
   --menu-sep-my:      5px;   /* separator vertical margin */
+  --modal-sm-w:     460px;   /* small dialog panel width */
+  --button-h-md:     40px;   /* dialog footer button height */
+  --dlg-icon-box:    22px;   /* small dialog leading icon box */
   --empty-content-max-width: 720px;
   --queue-width: 190px;
   --source-pane-width: 300px;

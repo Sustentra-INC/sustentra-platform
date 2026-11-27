@@ -1,10 +1,10 @@
 "use client";
 
 import { ChevronRight, PanelsTopLeft, Plus } from "lucide-react";
-import { IconBuilding, IconDocument, IconExpandAll, IconCollapseAll, IconTag, IconTrash } from "./icons";
+import { IconBuilding, IconClose, IconDocument, IconExpandAll, IconCollapseAll, IconPlus, IconTag, IconTrash } from "./icons";
 
 import { Dropdown } from "./Dropdown";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
   BLOCK_SUMMARY,
@@ -64,7 +64,7 @@ export interface EvidenceTreeProps {
 type Dialog =
   | { kind: "move"; doc: TreeDocRow; from: string; section: string }
   | { kind: "newLine"; scope: string; category: string; level2: TreeLevel2 }
-  | { kind: "newFuel"; scope: string; category: TreeCategory }
+  | { kind: "newFuel"; scope: string; scopeLabel: string; category: TreeCategory }
   | { kind: "rename"; line: CalculationLine }
   | { kind: "delete"; line: CalculationLine };
 
@@ -285,7 +285,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
       <Fold key={id} id={id} depth={2} open={isOpen(id)} onToggle={toggle} title={category.label} counts={category.counts}>
         {category.level2s.map((l2) => level2Node(scope.scope, category, l2))}
         {props.writesEnabled && !filtered ? (
-          <button className="s1-et-add" type="button" onClick={() => setDialog({ kind: "newFuel", scope: scope.scope, category })}>
+          <button className="s1-et-add" type="button" onClick={() => setDialog({ kind: "newFuel", scope: scope.scope, scopeLabel: scope.label, category })}>
             <Plus aria-hidden /> New fuel
           </button>
         ) : null}
@@ -666,14 +666,27 @@ function Fold({
 /* =============================== dialogs =============================== */
 
 /** A window that closes on Escape and puts the cursor in its first field. */
-function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+function Dialog({
+  title,
+  context,
+  icon,
+  onClose,
+  children,
+}: {
+  title: string;
+  context?: string;
+  icon?: ReactNode;
+  onClose: () => void;
+  children: ReactNode;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
+  const titleId = useId();
   useEffect(() => {
     close.current = onClose;
   });
   useEffect(() => {
-    box.current?.querySelector<HTMLElement>("input, select, textarea, button:not([disabled])")?.focus();
+    box.current?.querySelector<HTMLElement>("input, select, textarea, button:not([disabled]):not(.s1-modal__close)")?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close.current();
     };
@@ -682,9 +695,16 @@ function Dialog({ title, onClose, children }: { title: string; onClose: () => vo
   }, []);
   return (
     <div className="s1-modal-scrim">
-      <div className="s1-modal" role="dialog" aria-modal="true" aria-label={title} ref={box}>
+      <div className="s1-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={box}>
         <div className="s1-modal__head">
-          <h2>{title}</h2>
+          {icon ? <span className="s1-modal__head-icon" aria-hidden>{icon}</span> : null}
+          <div className="s1-modal__head-text">
+            <h2 id={titleId} className="s1-modal__title">{title}</h2>
+            {context ? <span className="s1-modal__context">{context}</span> : null}
+          </div>
+          <button className="s1-button s1-button--icon s1-modal__close" type="button" onClick={onClose} aria-label="Close">
+            <IconClose size={15} aria-hidden />
+          </button>
         </div>
         {children}
       </div>
@@ -805,7 +825,7 @@ function MoveDialog({
         >
           {confirming ? "Confirm move" : "Move"}
         </button>
-        <button className="s1-linklike" type="button" onClick={confirming ? () => setConfirming(false) : onCancel}>
+        <button className="s1-button" type="button" onClick={confirming ? () => setConfirming(false) : onCancel}>
           {confirming ? "Back" : "Cancel"}
         </button>
       </div>
@@ -851,11 +871,14 @@ function NewLineDialog({
   // A line this fuel already has at that anchor (a new fuel is checked by the server).
   const exists =
     ready && !isFuel && tree.lines.some((l) => l.category === category && l.level2 === dialog.level2.level2 && l.anchor_id === chosen!.id);
-  const title = isFuel ? `New fuel in ${dialog.category.label}` : `New calculation line in ${dialog.level2.label}`;
+  const title = isFuel ? "New fuel" : `New calculation line in ${dialog.level2.label}`;
+
+  const dialogIcon = isFuel ? <IconPlus size={18} /> : undefined;
+  const dialogContext = isFuel ? `${dialog.scopeLabel} · ${dialog.category.label}` : undefined;
 
   if (anchors.length === 0) {
     return (
-      <Dialog title={title} onClose={onCancel}>
+      <Dialog title={title} icon={dialogIcon} context={dialogContext} onClose={onCancel}>
         <p className="s1-modal__note">
           {mobile ? "Add a vehicle group in Setup first. A line needs a vehicle group to sit on." : "Add a facility in Setup first. A line needs a facility to sit on."}
         </p>
@@ -865,7 +888,7 @@ function NewLineDialog({
               Open Setup
             </button>
           ) : null}
-          <button className="s1-linklike" type="button" onClick={onCancel}>
+          <button className="s1-button" type="button" onClick={onCancel}>
             Cancel
           </button>
         </div>
@@ -874,11 +897,11 @@ function NewLineDialog({
   }
 
   return (
-    <Dialog title={title} onClose={onCancel}>
+    <Dialog title={title} icon={dialogIcon} context={dialogContext} onClose={onCancel}>
       {isFuel ? (
         <label className="s1-modal__field">
           <span>Fuel name</span>
-          <input className="s1-inline-input" value={fuel} onChange={(e) => setFuel(e.target.value)} />
+          <input className="s1-inline-input" value={fuel} placeholder="e.g. Fuel oil" onChange={(e) => setFuel(e.target.value)} />
         </label>
       ) : null}
       {company ? null : (
@@ -895,7 +918,7 @@ function NewLineDialog({
         </label>
       )}
       <label className="s1-modal__field">
-        <span>Line name (optional)</span>
+        <span>Line name <span className="s1-optional">Optional</span></span>
         <input className="s1-inline-input" value={name} placeholder={chosen?.label ?? ""} onChange={(e) => setName(e.target.value)} />
       </label>
       {exists ? (
@@ -931,7 +954,7 @@ function NewLineDialog({
         >
           {isFuel ? "Add fuel" : "Add line"}
         </button>
-        <button className="s1-linklike" type="button" onClick={onCancel}>
+        <button className="s1-button" type="button" onClick={onCancel}>
           Cancel
         </button>
       </div>
@@ -974,7 +997,7 @@ function TextDialog({
         <button className="s1-button s1-button--pri" type="button" disabled={!text || text === initial || busy} onClick={() => void run(() => onSubmit(text))}>
           {action}
         </button>
-        <button className="s1-linklike" type="button" onClick={onCancel}>
+        <button className="s1-button" type="button" onClick={onCancel}>
           Cancel
         </button>
       </div>
@@ -1010,7 +1033,7 @@ function ConfirmDialog({
         <button className="s1-button s1-button--pri" type="button" disabled={busy} onClick={() => void run(onConfirm)}>
           {action}
         </button>
-        <button className="s1-linklike" type="button" onClick={onCancel}>
+        <button className="s1-button" type="button" onClick={onCancel}>
           Cancel
         </button>
       </div>

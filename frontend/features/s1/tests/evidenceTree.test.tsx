@@ -377,7 +377,7 @@ describe("the Evidence tree", () => {
     render(<Harness onSaveLines={onSaveLines} />);
     await expandAll();
     fireEvent.click(screen.getByRole("button", { name: "New fuel" }));
-    const dialog = screen.getByRole("dialog", { name: "New fuel in Mobile combustion" });
+    const dialog = screen.getByRole("dialog", { name: "New fuel" });
     fireEvent.change(within(dialog).getByLabelText("Fuel name"), { target: { value: "Biodiesel" } });
     fireEvent.change(within(dialog).getByLabelText("Vehicle group"), { target: { value: "vg-fleet-a" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Add fuel" }));
