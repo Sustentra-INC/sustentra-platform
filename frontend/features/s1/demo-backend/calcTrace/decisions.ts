@@ -8,6 +8,7 @@ import type { LineTrace, TraceDecision, TraceSide, TraceSuggestion } from "../..
 import { demoError } from "..";
 import { engagementNow } from "../linesModel";
 import type { DemoRoute } from "../types";
+import { resetDemoCompanyRegions, setDemoCompanyRegion } from "./companyRegion";
 
 interface Record_ {
   suggestion: TraceSuggestion | null;
@@ -21,6 +22,7 @@ const records = new Map<string, Record_>();
 /** Forget every decision (the demo's Reset). */
 export function resetDemoDecisions(): void {
   records.clear();
+  resetDemoCompanyRegions();
 }
 const keyOf = (engagement: string, line: string, stream: string) => `${engagement}|${line}|${stream}`;
 const MAX_TEXT = 200;
@@ -141,7 +143,7 @@ export function decisionRoutes(traceOf: Traced): DemoRoute[] {
         const rec = records.get(k) ?? { suggestion: own?.suggestion ?? null, decision: null, history: [] };
         const label = `${input!.label}${row ? ` · ${row.label}` : ""} (${side})`;
         // Like the backend: accept and edit need a decidable input (409, coded); reject and revert are never refused.
-        if ((b.action === "accept" || b.action === "edit") && input!.decidable === false) demoError(409, `'${label}' can't be changed for one line: ${input!.why_not ?? "this input cannot be decided for a line"}.`, "not_decidable");
+        if ((b.action === "accept" || b.action === "edit") && side === "recomputed" && input!.decidable === false) demoError(409, `'${label}' can't be changed for one line: ${input!.why_not ?? "this input cannot be decided for a line"}.`, "not_decidable");
         if (b.action === "edit") {
           const known = sides.filter((x) => x && x.value !== null && x.value !== undefined);
           // With no value on any side, a unit still says the input is a number.
@@ -170,6 +172,10 @@ export function decisionRoutes(traceOf: Traced): DemoRoute[] {
         } else if (b.action === "revert") revert(rec, label);
         else demoError(422, `'${String(b.action)}' is not an action on an input.`);
         records.set(k, rec);
+        if (params.target === "grid_region" && side === "company") {
+          const d = rec.decision;
+          setDemoCompanyRegion(params.id, params.key, d && (d.status === "edited" || d.status === "accepted") && typeof d.value === "string" ? d.value : null);
+        }
         return { line_key: params.key, target: "input", id: params.target, side, decision: rec.decision, suggestion: rec.suggestion, history: [], value_history: rec.history };
       },
     },

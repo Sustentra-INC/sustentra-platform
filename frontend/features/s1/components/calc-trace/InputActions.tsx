@@ -41,8 +41,11 @@ export function InputActions({
   row,
   children,
   onOpenDocument,
+  forSide = "recomputed",
 }: {
   input: TraceInput;
+  /** "company": the company's own value (only its grid region), entered by a reviewer. It is never an operand, so no Accept, Reject or decidable check. */
+  forSide?: "company" | "recomputed";
   /** One record of a summed input: decided on its own, and decidable exactly when its input is. */
   row?: TraceInputRow;
   /** The cell's value, drawn by the panel. */
@@ -53,9 +56,10 @@ export function InputActions({
   const [mode, setMode] = useState<Mode>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [value, setValue] = useState("");
-  const side = row ? row.recomputed : input.recomputed;
+  const company = forSide === "company";
+  const side = company ? input.company : row ? row.recomputed : input.recomputed;
   const targetId = row ? `${input.id}/${row.id}` : input.id;
-  const label = row ? `${input.label} · ${row.label}` : input.label;
+  const label = company ? `${input.label} (company)` : row ? `${input.label} · ${row.label}` : input.label;
   const sides = [side, row?.company, input.recomputed, input.company];
   const notApplied = useNotApplied("input", targetId);
   const decision = side?.decision && side.decision.status !== "pending" ? side.decision : null;
@@ -88,22 +92,22 @@ export function InputActions({
     </span>
   );
   const note = <NotAppliedNote entries={notApplied} />;
-  if (!actions || !side || !decidable) return <>{cell}{note}</>;
+  if (!actions || !side || (!company && !decidable)) return <>{cell}{note}</>;
 
-  const post = (body: InputDecisionBody, entered?: string) => actions.act(() => decideInput(actions.engagementId, actions.lineKey, targetId, "recomputed", body), { inline: true, entered });
+  const post = (body: InputDecisionBody, entered?: string) => actions.act(() => decideInput(actions.engagementId, actions.lineKey, targetId, forSide, body), { inline: true, entered });
   const close = () => {
     setMode(null);
     setValue("");
   };
   const direct = async (body: InputDecisionBody) => {
     // Revert has no field to show a refusal in: the panel's notice says it.
-    await actions.act(() => decideInput(actions.engagementId, actions.lineKey, targetId, "recomputed", body));
+    await actions.act(() => decideInput(actions.engagementId, actions.lineKey, targetId, forSide, body));
   };
   const suggestion = side.suggestion && !decision ? side.suggestion : null;
   const entries: ActionMenuEntry[] = [
     ...(suggestion ? [{ label: "Accept suggestion", disabled: actions.busy, action: () => setMode("accept") }] : []),
     { label: "Edit", disabled: actions.busy, action: () => { setValue(side.value === null || side.value === undefined ? "" : String(side.value)); setMode("edit"); } },
-    ...(!decision ? [{ label: "Reject", disabled: actions.busy, action: () => setMode("reject") }] : []),
+    ...(!decision && !company ? [{ label: "Reject", disabled: actions.busy, action: () => setMode("reject") }] : []),
     ...(decision ? [{ label: "Revert", disabled: actions.busy, action: () => void direct({ action: "revert" }) }] : []),
   ];
 
@@ -122,7 +126,7 @@ export function InputActions({
       {mode === "edit" ? (
         <ReasonRow
           label={`Reason: ${label}`}
-          placeholder="Why is this value changed?"
+          placeholder={company ? "Where does the company state this?" : "Why is this value changed?"}
           submitLabel="Save"
           validate={() => valueOk}
           onCancel={close}

@@ -75,8 +75,13 @@ function OperandValue({
   onOpenDocument?: OpenDocument;
 }) {
   const text = isPending(operand, inputs, side) ? null : operandText(operand, column);
-  if (text === null) return <em className="s1-muted">{side === "company" ? "not reported" : "Awaiting review"}</em>;
   const input = operand.input_id ? inputs[operand.input_id] : undefined;
+  // The company's grid region is the one company-side value a reviewer enters here (it is never an operand).
+  const companyRegion = side === "company" && input?.id === "grid_region" && input.company ? input : null;
+  if (text === null) {
+    const empty = <em className="s1-muted">{side === "company" ? "not reported" : "Awaiting review"}</em>;
+    return companyRegion ? <InputActions input={companyRegion} forSide="company" onOpenDocument={onOpenDocument}>{empty}</InputActions> : empty;
+  }
   const diff =
     side === "recomputed" && withDifference
       ? operand.differs === true && typeof operand.value === "string"
@@ -90,7 +95,13 @@ function OperandValue({
   const chip = side === "company" && input?.company?.suggestion ? <SuggestionChip suggestion={input.company.suggestion} onOpenDocument={onOpenDocument} /> : null;
   return (
     <>
-      {side === "recomputed" && input?.recomputed ? <InputActions input={input} onOpenDocument={onOpenDocument}>{value}</InputActions> : value}
+      {side === "recomputed" && input?.recomputed ? (
+        <InputActions input={input} onOpenDocument={onOpenDocument}>{value}</InputActions>
+      ) : companyRegion ? (
+        <InputActions input={companyRegion} forSide="company" onOpenDocument={onOpenDocument}>{value}</InputActions>
+      ) : (
+        value
+      )}
       {diff ? <span className="s1-cp-diff"> ({diff})</span> : null}
       {chip}
     </>

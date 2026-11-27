@@ -89,7 +89,8 @@ def refuse(line: dict[str, Any], default_trace: Callable[[dict[str, Any]], dict[
     report = line.setdefault("decisions", {"applied": [], "not_applied": []})
     kept: list[dict[str, Any]] = []
     for entry in report["applied"]:
-        if entry.get("status") in ("accepted", "edited") and entry.get("target") == "input":
+        if entry.get("status") in ("accepted", "edited") and (entry.get("target") == "input"
+                                                              or entry.get("moves_totals")):
             report["not_applied"].append({**{k: v for k, v in entry.items() if k != "value"}, "reason": reason,
                                           "message": message})
         else:
