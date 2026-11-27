@@ -2406,7 +2406,7 @@ html, body { margin: 0; padding: 0; }
 .s1-vw { --vw-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); display: flex; flex-direction: column; gap: var(--sp-4); }
 .s1-vw-ico { width: 1em; height: 1em; flex: none; }
 .s1-vw-pane__title, .s1-vw-label { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-strong); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
-.s1-vw-scroll { overflow-x: auto; }
+.s1-vw-scroll { position: relative; overflow-x: auto; } /* position: so absolutely placed screen-reader text inside is clipped here, not by the page */
 .s1-vw-red { color: var(--state-blocking-fg); }
 
 /* Difference badge */
@@ -2503,6 +2503,9 @@ html, body { margin: 0; padding: 0; }
   .s1-vw-pane--source { position: sticky; top: 0; max-height: calc(100vh - 2 * var(--sp-4)); overflow-y: auto; }
 }
 @media (max-width: 48rem) { .s1-vw-panel { width: 100vw; } }
+/* The panel is border-box so its padding never pushes it past the viewport, and on a tablet it sits beside the icon rail. */
+.s1-vw-panel { box-sizing: border-box; max-width: 100vw; }
+@media (min-width: 48rem) and (max-width: 64rem) { .s1-vw-panel { width: calc(100vw - 4.25rem); } }
 .s1-vw-pane { min-width: 0; display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); }
 .s1-vw-calc { display: flex; flex-direction: column; gap: var(--sp-3); }
 .s1-vw-calc__head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--sp-3); padding-bottom: var(--sp-3); border-bottom: var(--border-hairline); }
