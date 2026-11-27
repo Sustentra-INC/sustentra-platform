@@ -382,7 +382,7 @@
   --modal-upload-w: 1120px;        /* large upload modal max width */
   --modal-upload-h: 800px;         /* large upload modal max height */
   --shadow-modal: 0 32px 80px rgba(10, 12, 40, 0.35);   /* large modal drop shadow */
-  --shadow-dz-icon: 0 6px 18px rgba(46, 50, 153, 0.14); /* drop zone icon tile shadow */
+  --shadow-dz-icon: 0 6px 18px rgba(40, 40, 112, 0.14); /* drop zone icon tile shadow */
   --r-drop: 20px;                  /* drop zone and right panel corner radius */
   --eml-chip-bg: #F3E5F7;          /* EML file type chip background (purple tint) */
   --eml-chip-fg: #6B2A80;          /* EML file type chip text (purple) */
