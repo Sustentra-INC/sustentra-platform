@@ -274,6 +274,10 @@
   --modal-sm-w:     460px;   /* small dialog panel width */
   --button-h-md:     40px;   /* dialog footer button height */
   --dlg-icon-box:    22px;   /* small dialog leading icon box */
+  --rail-min-w:      72px;   /* collapsed icon rail (document view) */
+  --xr-nav-w:       240px;   /* document navigator width */
+  --xr-panel-w:     380px;   /* review panel width */
+  --icon-btn-lg:     44px;   /* large icon button: rail items + expand toggle */
   --empty-content-max-width: 720px;
   --queue-width: 190px;
   --source-pane-width: 300px;

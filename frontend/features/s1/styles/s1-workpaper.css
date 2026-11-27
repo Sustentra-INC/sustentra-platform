@@ -4975,3 +4975,74 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-drp__footer-label { font-size: var(--text-sm); color: var(--ink-3); }
 .s1-drp__footer-range { font-weight: var(--weight-strong); color: var(--ink); }
 .s1-drp__footer-btns { display: flex; gap: var(--sp-2); }
+
+/* ===================================================================
+   Document view — frame, icon rail, navigator (Ticket 7, sections 2–5)
+   ========================================================================== */
+
+/* Step 2 — Page frame: extraction takes the full shell main area, no page scroll */
+.s1-shell > .s1-main:has(.s1-xr) { padding: 0; display: flex; flex-direction: column; overflow: hidden; height: 100vh; }
+.s1-xr { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.s1-xr-grid {
+  flex: 1; min-width: 0; display: grid;
+  grid-template-columns: var(--xr-nav-w) minmax(0, 1fr) var(--xr-panel-w);
+  column-gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) 0;
+  min-height: 0;
+  border: none; border-radius: 0; background: transparent; overflow: hidden;
+}
+
+/* Step 3 — Collapsed icon rail: 72 px, centered 44 px items */
+.s1-side--min { width: var(--rail-min-w); padding: var(--sp-5) 0 var(--sp-4); align-items: center; gap: var(--sp-1-5); }
+.s1-side--min .s1-side__top { padding: 0; justify-content: center; }
+.s1-side--min .s1-side__logo { display: block; height: auto; width: var(--sp-6); }
+.s1-side--min .s1-side__item { width: var(--icon-btn-lg); height: var(--icon-btn-lg); border-radius: var(--r-card-sm); padding: 0; }
+.s1-side--min .s1-side__toggle {
+  justify-content: center; border-top: 0;
+  width: var(--icon-btn-lg); height: var(--icon-btn-lg);
+  padding: 0; border-radius: var(--r-card-sm); margin: 0 auto;
+}
+
+/* Step 4 — Document navigator: 240 px card panel */
+.s1-xr-nav {
+  border-right: none; overflow-y: auto;
+  background: var(--sf-card); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card-soft);
+}
+.s1-xr-back {
+  display: inline-flex; align-items: center; gap: var(--sp-1-5);
+  height: var(--button-h-sm); padding: 0 var(--sp-2-5) 0 var(--sp-1-5);
+  border-radius: var(--r-seg); background: var(--sf-page);
+  color: var(--ink-2); font-size: var(--text-base); font-weight: var(--weight-strong);
+  margin: var(--sp-3) var(--sp-3) var(--sp-2);
+  text-decoration: none; border: 0; cursor: pointer;
+}
+.s1-xr-back:hover { background: var(--accent-softer); color: var(--ink); }
+.s1-xr-node {
+  min-height: var(--row-height-compact);
+  padding: var(--sp-1-5) var(--sp-2-5);
+  border-radius: var(--r-seg);
+  font-size: var(--text-base);
+}
+.s1-xr-node--child { padding-left: var(--sp-5); }
+.s1-xr-node__count { font-size: var(--text-sm); font-weight: var(--weight-strong); }
+
+/* Step 5 — Document viewer shell */
+.s1-xr-source {
+  border-left: none; border-right: none;
+  background: var(--sf-track); border-radius: var(--r-lg); overflow: hidden;
+}
+
+/* Step 5 — Review panel shell */
+.s1-xr-values {
+  overflow-y: auto;
+  background: var(--sf-card); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card-soft);
+}
+
+/* Mobile: flatten extraction when shell stacks to vertical */
+@media (max-width: 48rem) {
+  .s1-shell > .s1-main:has(.s1-xr) { height: auto; overflow: visible; }
+  .s1-xr { flex-direction: column; overflow: visible; }
+  .s1-xr-grid { grid-template-columns: 1fr; min-height: 0; overflow: visible; padding: var(--sp-3); row-gap: var(--sp-3); column-gap: 0; }
+}
