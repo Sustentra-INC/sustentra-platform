@@ -623,11 +623,13 @@ describe("the supporting schedule", () => {
     renderSchedule();
     await screen.findByRole("heading", { name: "Kent · Natural gas" });
     const table = screen.getByRole("table");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Date", "Activity quantity", "Heat content (HHV)", "Saved by", "Document"]);
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Date", "Days", "Activity quantity", "Heat content (HHV)", "Saved by", "Document"]);
     const [, jan, feb, mar] = within(table).getAllByRole("row");
-    expect(jan).toHaveTextContent("01/01/25 – 01/31/25 · 31 days");
+    expect(within(jan).getAllByRole("cell")[0]).toHaveTextContent("01/01/25 – 01/31/25");
+    expect(within(jan).getAllByRole("cell")[1]).toHaveTextContent("31 days");
     expect(jan).toHaveTextContent("120 therm");
-    expect(jan).toHaveTextContent("Saved by M. Osei · 03/02/25");
+    // Who reviewed it, labelled as the design standard says (section 7).
+    expect(jan).toHaveTextContent("Accepted by M. Osei · 03/02/25");
     expect(jan).not.toHaveTextContent("Not reviewed");
     expect(feb).toHaveTextContent("Not reviewed");
     expect(feb).toHaveTextContent("1.03 MMBtu/Mcf");
@@ -666,6 +668,7 @@ describe("the supporting schedule", () => {
     expect(row).not.toHaveTextContent("2,019");
     expect(row).toHaveTextContent("1.0312345 MMBtu/Mcf");
     expect(row).toHaveTextContent("Edited");
+    expect(row).toHaveTextContent("Corrected by M. Osei · 03/02/25");
     expect(row).not.toHaveClass("s1-sch-row--pending");
     expect(within(table).getByRole("columnheader", { name: "Vehicle type" })).not.toHaveClass("s1-num");
     expect(within(table).getByRole("columnheader", { name: "Model year" })).toHaveClass("s1-num");

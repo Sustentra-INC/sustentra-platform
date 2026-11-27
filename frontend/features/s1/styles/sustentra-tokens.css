@@ -297,6 +297,11 @@
   --sch-col-max:     120px;   /* bar column cap when there are few periods */
   --sch-stripe:        6px;   /* diagonal stripe width on bars */
   --sch-agree-bar-h:   5px;   /* identifier agreement bar height */
+  --sch-table-min-w: 760px;   /* accepted values table minimum width */
+  --sch-col-days:     70px;   /* accepted values: days column */
+  --sch-col-doc:     150px;   /* accepted values: document column */
+  --table-row-h-lg:   48px;   /* roomy table row */
+  --avatar-sm:        26px;   /* small person avatar in table rows */
   --xr-panel-min:   320px;   /* review panel minimum (flex clamp lower bound) */
   --cv-sheet-max-w: 760px;   /* spreadsheet card max width */
   --cv-doc-max-w:   620px;   /* PDF / drawn document card max width */

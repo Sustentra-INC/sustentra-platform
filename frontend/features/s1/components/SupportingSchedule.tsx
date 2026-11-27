@@ -1,13 +1,12 @@
 "use client";
 
-import { FileText } from "lucide-react";
 import { Fragment, useEffect, useState, type CSSProperties } from "react";
 
 import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleRow } from "../api/evidenceTree";
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { userFacingApiError } from "../api/s1Backend";
 import { ContainerStateSurface } from "./ContainerStateSurface";
-import { IconArrowRight, IconChevronDown, IconChevronLeft, IconChevronRight } from "./icons";
+import { IconArrowRight, IconChevronDown, IconChevronLeft, IconChevronRight, IconDocument } from "./icons";
 
 /**
  * One calculation line's supporting schedule: what covers each month of the year, which
@@ -120,6 +119,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
   const dateLabels = new Set(rows.map((r) => r.date.label).filter(Boolean));
   const headerLabel = (c: { key: string; label: string }) => (c.key === "date" && dateLabels.size === 1 ? [...dateLabels][0] : c.label);
   const fileNames = new Map<string, string>([...schedule.values, ...rows].map((v) => [v.document_id, v.file_name]));
+  const showDays = columns.some((c) => c.key === "date") && rows.some((r) => formatDays(r.date));
   const crumbs = [SCOPE_LABELS[line.scope] ?? line.scope, CATEGORY_LABELS[line.category] ?? line.category, line.level2_label, line.label];
 
   return (
@@ -181,57 +181,67 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
         </section>
       </div>
 
-      <section className="s1-panel" aria-label="Accepted values">
-        <h2>Accepted values</h2>
-        {schedule.activity_quantity_note ? <p className="s1-muted">{schedule.activity_quantity_note}</p> : null}
+      <section className="s1-sch-vals" aria-labelledby="s1-sch-vals-title">
+        <div className="s1-sch-vals__head">
+          <h2 id="s1-sch-vals-title">Accepted values</h2>
+          {schedule.activity_quantity_note ? <p className="s1-sch-vals__note">{schedule.activity_quantity_note}</p> : null}
+        </div>
         {rows.length ? (
-          <div className="s1-table-wrap s1-sch-values">
+          <div className="s1-sch-values">
             <table className="s1-table">
               <thead>
                 <tr>
                   {columns.map((c) => (
-                    <th key={c.key} className={isNumeric(c.key) ? "s1-num" : ""}>
-                      {headerLabel(c)}
-                    </th>
+                    <Fragment key={c.key}>
+                      <th className={isNumeric(c.key) ? "s1-num" : ""}>{headerLabel(c)}</th>
+                      {c.key === "date" && showDays ? <th className="s1-sch-values__days">Days</th> : null}
+                    </Fragment>
                   ))}
                   <th>Saved by</th>
-                  <th>Document</th>
+                  <th className="s1-sch-values__doc">Document</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
-                  <tr key={r.record_key} className={isPending(r) ? "s1-sch-row--pending" : ""}>
-                    {columns.map((c) => (
-                      <td key={c.key} className={isNumeric(c.key) ? "s1-num" : ""}>
-                        {c.key === "date" ? (
-                          <>
-                            {formatSpan(r.date)}
-                            {rowFlag(r) ? <span className="s1-sch-row__flag"> {rowFlag(r)}</span> : null}
-                          </>
-                        ) : (
-                          cellText(c.key, r)
-                        )}
+                {rows.map((r) => {
+                  const flag = rowFlag(r);
+                  return (
+                    <tr key={r.record_key} className={isPending(r) ? "s1-sch-row--pending" : ""}>
+                      {columns.map((c) => (
+                        <Fragment key={c.key}>
+                          {c.key === "date" ? (
+                            <td className="s1-sch-values__period">
+                              <span>{formatPeriod(r.date)}</span>
+                              {flag ? <span className={isPending(r) ? "s1-state s1-state--open" : "s1-sch-row__flag"}>{flag}</span> : null}
+                            </td>
+                          ) : (
+                            <td className={isNumeric(c.key) ? "s1-num" : ""}>
+                              <CellValue cell={c.key === "activity_quantity" ? r.activity_quantity : r.cells[c.key]} />
+                            </td>
+                          )}
+                          {c.key === "date" && showDays ? <td className="s1-sch-values__days">{formatDays(r.date)}</td> : null}
+                        </Fragment>
+                      ))}
+                      <td>{r.saved_by ? <SavedBy row={r} saved={r.saved_by} /> : null}</td>
+                      <td className="s1-sch-values__doc">
+                        <button
+                          className="s1-sch-doclink"
+                          type="button"
+                          aria-label={`Open ${r.file_name}${r.page ? `, page ${r.page}` : ""} at this value`}
+                          title={r.file_name}
+                          onClick={() => onOpenDocument(r.document_id, r.candidate_id ? resolveFieldKey({ candidateId: r.candidate_id, backendFieldId: "" }) : undefined)}
+                        >
+                          <IconDocument size={14} aria-hidden />
+                          <span>{r.file_name}</span>
+                        </button>
                       </td>
-                    ))}
-                    <td className="s1-muted">{savedByText(r)}</td>
-                    <td>
-                      <button
-                        className="s1-icon-button"
-                        type="button"
-                        aria-label={`Open ${r.file_name}${r.page ? `, page ${r.page}` : ""} at this value`}
-                        title={r.file_name}
-                        onClick={() => onOpenDocument(r.document_id, r.candidate_id ? resolveFieldKey({ candidateId: r.candidate_id, backendFieldId: "" }) : undefined)}
-                      >
-                        <FileText aria-hidden />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         ) : (
-          <p className="s1-muted">No values have been extracted on this line yet.</p>
+          <p className="s1-sch-vals__empty">No values have been extracted on this line yet.</p>
         )}
       </section>
 
@@ -278,24 +288,62 @@ function formatDate(iso: string): string {
   return m ? `${m[2]}/${m[3]}/${m[1].slice(2)}` : iso;
 }
 
-/** "start – end · N days" (N from the server), or one date when the record has no span. */
-function formatSpan(d: ScheduleRow["date"]): string {
+/** "start – end", or one date when the record has no span. */
+function formatPeriod(d: ScheduleRow["date"]): string {
   const from = d.start ?? d.end;
   if (!from) return "";
-  const range = d.end && d.start && d.end !== d.start ? `${formatDate(d.start)} – ${formatDate(d.end)}` : formatDate(from);
-  return d.days && range.includes(" – ") ? `${range} · ${d.days} ${d.days === 1 ? "day" : "days"}` : range;
+  return d.end && d.start && d.end !== d.start ? `${formatDate(d.start)} – ${formatDate(d.end)}` : formatDate(from);
 }
 
-function formatValue(c: ScheduleCell): string {
-  if (c.value === null || c.value === undefined || c.value === "") return "";
-  // Shown as the server sent it: the page never rounds or regroups a number.
-  const v = String(c.value);
-  return c.unit ? `${v} ${c.unit}` : v;
+/** "N days" from the server, only for a record with a span. */
+function formatDays(d: ScheduleRow["date"]): string {
+  const spans = Boolean(d.start && d.end && d.start !== d.end);
+  return d.days && spans ? `${d.days} ${d.days === 1 ? "day" : "days"}` : "";
 }
 
-function cellText(key: string, r: ScheduleRow): string {
-  const cell: ScheduleCell | undefined = key === "activity_quantity" ? r.activity_quantity : r.cells[key];
-  return cell ? formatValue(cell) : "";
+/** A cell's value as the server sent it (the page never rounds or regroups a number), with its unit after. */
+function CellValue({ cell }: { cell: ScheduleCell | undefined }) {
+  if (!cell || cell.value === null || cell.value === undefined || cell.value === "") return null;
+  return (
+    <>
+      <span className="s1-sch-values__qty">{String(cell.value)}</span>
+      {cell.unit ? (
+        <>
+          {" "}
+          <span className="s1-sch-values__unit">{cell.unit}</span>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+const AVATAR_TONES = 4;
+
+/** Same person, same avatar tone: a small hash of the name. */
+function avatarTone(name: string): number {
+  let n = 0;
+  for (const ch of name) n = (n + ch.charCodeAt(0)) % AVATAR_TONES;
+  return n;
+}
+
+function initials(name: string): string {
+  const words = name.replace(/\./g, " ").split(/\s+/).filter(Boolean);
+  return ((words[0]?.[0] ?? "") + (words.length > 1 ? words[words.length - 1][0] : "")).toUpperCase();
+}
+
+/** Who reviewed the value, labelled the way the design standard says (Accepted by / Corrected by) · date. */
+function SavedBy({ row, saved }: { row: ScheduleRow; saved: NonNullable<ScheduleRow["saved_by"]> }) {
+  return (
+    <span className="s1-sch-who">
+      <span className={`s1-team-avatar s1-team-avatar--sm s1-team-avatar--${avatarTone(saved.name)}`} aria-hidden>
+        {initials(saved.name)}
+      </span>
+      <span>
+        {row.decision === "edited" ? "Corrected" : "Accepted"} by {saved.name}
+        {saved.at ? <span className="s1-sch-who__at"> · {formatDate(saved.at)}</span> : null}
+      </span>
+    </span>
+  );
 }
 
 /** A row that is not counted: greyed, with a word. */
@@ -326,11 +374,6 @@ function rowFlag(r: ScheduleRow): string | null {
     default:
       return r.accepted ? null : "Not reviewed";
   }
-}
-
-function savedByText(r: ScheduleRow): string {
-  if (!r.saved_by) return "";
-  return `Saved by ${r.saved_by.name}${r.saved_by.at ? ` · ${formatDate(r.saved_by.at)}` : ""}`;
 }
 
 function formatDateTime(iso: string): string {
