@@ -24,9 +24,9 @@ vi.mock("../api/s1Backend", async (importOriginal) => ({
 // Status cell of manufacturerEvidence, in screen order (every type group opened), then each
 // group's status mix. Fixture mode must keep showing exactly this.
 const MANUFACTURER_STATUS_CELLS = [
-  "Extracting", "Extracting", "Outside period", "Extracted", "Extracted", "Extracted",
+  "Extracting", "Extracting", "ExtractedOutside period", "Extracted", "Extracted", "Extracted",
   "Extracted", "BlockedScan is unreadable · no extractable text on any page.",
-  "Outside period", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
+  "ExtractedOutside period", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "ExtractedDuplicate of tualatin_electric_july_copy.pdf",

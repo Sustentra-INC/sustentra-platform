@@ -796,9 +796,9 @@ function WorkspaceRow(props: {
   const withdrawn = item.disposition === "withdrawn";
   const proc = processingDisplay(item);
   const isOutsidePeriod = periodOutsideYear(item, engagement);
-  const showOutsidePeriod = isOutsidePeriod && proc.role === "resolved";
+  const addOutsidePeriodPill = isOutsidePeriod && proc.role === "resolved";
   const issues = [
-    ...issueLines(item, items, engagement).filter((line) => line !== proc.sub && line !== "Period outside reporting year"),
+    ...issueLines(item, items, engagement).filter((line) => line !== proc.sub && (addOutsidePeriodPill ? line !== "Period outside reporting year" : true)),
     ...(withdrawn
       ? []
       : qualityIssueLines(props.qualityChecks, item.documentId, (id) => items.find((d) => d.documentId === id)?.filename ?? id)),
@@ -896,13 +896,10 @@ function WorkspaceRow(props: {
         <AiTypeNote item={item} />
       </td>
 
-      {/* Status: processing state (or "Outside period" amber chip when extracted but outside year) */}
+      {/* Status: processing state, plus amber "Outside period" pill when extracted but dated outside year */}
       <td>
-        {showOutsidePeriod ? (
-          <span className="s1-state s1-state--open">Outside period</span>
-        ) : (
-          <span className={`s1-state s1-state--${proc.role}`}>{proc.label}</span>
-        )}
+        <span className={`s1-state s1-state--${proc.role}`}>{proc.label}</span>
+        {addOutsidePeriodPill ? <span className="s1-state s1-state--open">Outside period</span> : null}
         {(proc.sub || issues.length) ? (
           <div className="s1-ws-issues">
             {[proc.sub, ...issues].filter(Boolean).map((line) => (
