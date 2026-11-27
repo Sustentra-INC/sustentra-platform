@@ -13,7 +13,7 @@ What counts, per stream:
   so far, so a chosen option is the default one; an option no route exists for is never applied.
 * the **company** side: shown on the trace (``calc_line_review.with_decisions``), never an operand.
 
-Only the activity (the total, or a document's row), the emission factors and a vehicle group's distance can be decided
+Only the activity (the total, or a document's row), the emission factors and a vehicle group's distance or fuel economy can be decided
 for a line. The GWP, the consolidated share, the unit conversion and the grid region are set for the whole engagement
 (Methodology, Recalculation inputs, the conversion table): a decision on one of them is reported, not applied.
 
@@ -30,14 +30,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from backend.app.services.calc_trace import ops, stationary
+from backend.app.services.calc_trace import mobile, ops, stationary
 from backend.app.services.calc_trace._line import _annotate, normalise_unit
 from backend.app.services.calc_trace.model import (
     Choice, LineTrace, Operand, Operation, Side, SourceRef, Term, TraceBlock, TraceResult,
 )
 
 MAX_NUMBER = 1e15
-DECIDABLE = ("activity.total", "distance", *stationary.SITE_INPUTS)  # and every "ef.<gas>"
+DECIDABLE = ("activity.total", "distance", "fuel_economy", *stationary.SITE_INPUTS)  # and every "ef.<gas>"
 SET_ELSEWHERE = {
     "unit_conversion": "the unit conversion comes from the conversion table",
     "share": "the consolidated share is set under Recalculation inputs",
@@ -253,6 +253,10 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
                     outcome.not_applied.append({**item, "reason": "total_decided",
                                                 "message": "Not applied: the line's activity total is decided."})
                     break
+    if "fuel_economy" in values and "distance" in values:  # the fuel economy gives the distance (calc_trace/mobile.py)
+        values.pop("distance")
+        _move_to_not_applied(outcome, "distance", "fuel_economy_decided",
+                             "Not applied: the fuel economy is decided, and the distance follows from it.")
     if (not values and not outcome.routes) or out.state == "blocked" or not out.steps:
         if values:
             for input_id in values:
@@ -465,7 +469,9 @@ def _rework(trace: LineTrace, values: Mapping[str, tuple[float, Mapping[str, Any
     converted = _f(conversion.result.value)
 
     distance = values.get("distance")
-    if distance is not None and "distance" in trace.inputs:
+    if panel == "mobile":  # a decided fuel economy gives the distance, and Step 2's distance block follows
+        distance = mobile.work_distance(trace, values, converted, _decided_side)
+    elif distance is not None and "distance" in trace.inputs:
         trace.inputs["distance"].recomputed = _decided_side(trace.inputs["distance"].recomputed, *distance)
 
     # Steps 3 and 4: per gas

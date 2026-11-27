@@ -1,0 +1,1433 @@
+{
+ "line_key": "s1:mobile:diesel-fuel:vg-heavy-trucks",
+ "panel": "mobile",
+ "state": "complete",
+ "result": {
+  "unit": "t CO2e",
+  "company": 3910.8887500000005,
+  "recomputed": 3910.8887500000005,
+  "difference": 0.0
+ },
+ "trace_version": 1,
+ "blocking": [],
+ "choices": [
+  {
+   "id": "method",
+   "label": "Calculation method",
+   "options": [
+    {
+     "id": "epa_hub_fuel_and_vehicle_group",
+     "label": "Fuel × CO₂ factor (Eq. 1); distance × CH₄ and N₂O factors (Eq. 4, on-road)",
+     "available": true,
+     "required_inputs": [],
+     "citation": {
+      "kind": "reference",
+      "dataset": "EPA GHG Emission Factors Hub",
+      "edition": "2025",
+      "citation": "EPA GHG Emission Factors Hub 2025"
+     }
+    }
+   ],
+   "chosen": "epa_hub_fuel_and_vehicle_group",
+   "chosen_by": "default"
+  },
+  {
+   "id": "equation:CO2",
+   "label": "CO2 equation",
+   "options": [
+    {
+     "id": "eq_1",
+     "label": "Eq. 1",
+     "available": true,
+     "equation": "Eq. 1",
+     "required_inputs": [],
+     "citation": {
+      "kind": "reference",
+      "dataset": "EPA GHG Emission Factors Hub",
+      "edition": "2025",
+      "citation": "EPA GHG Emission Factors Hub 2025"
+     }
+    }
+   ],
+   "chosen": "eq_1",
+   "chosen_by": "default"
+  },
+  {
+   "id": "equation:CH4",
+   "label": "CH4 equation",
+   "options": [
+    {
+     "id": "eq_4",
+     "label": "Eq. 4",
+     "available": true,
+     "equation": "Eq. 4",
+     "required_inputs": [],
+     "citation": {
+      "kind": "reference",
+      "dataset": "EPA GHG Emission Factors Hub",
+      "edition": "2025",
+      "citation": "EPA GHG Emission Factors Hub 2025"
+     }
+    }
+   ],
+   "chosen": "eq_4",
+   "chosen_by": "default"
+  },
+  {
+   "id": "equation:N2O",
+   "label": "N2O equation",
+   "options": [
+    {
+     "id": "eq_4",
+     "label": "Eq. 4",
+     "available": true,
+     "equation": "Eq. 4",
+     "required_inputs": [],
+     "citation": {
+      "kind": "reference",
+      "dataset": "EPA GHG Emission Factors Hub",
+      "edition": "2025",
+      "citation": "EPA GHG Emission Factors Hub 2025"
+     }
+    }
+   ],
+   "chosen": "eq_4",
+   "chosen_by": "default"
+  }
+ ],
+ "inputs": {
+  "activity.total": {
+   "id": "activity.total",
+   "label": "Activity data",
+   "kind": "evidence_sum",
+   "required_for": [
+    "epa_hub_fuel_and_vehicle_group"
+   ],
+   "company": {
+    "value": 380000.0,
+    "unit": "gal",
+    "status": "accepted"
+   },
+   "recomputed": {
+    "value": 380000.0,
+    "unit": "gal",
+    "status": "accepted",
+    "source": {
+     "kind": "derived",
+     "from": [
+      "F/F:1:activity_quantity"
+     ]
+    }
+   },
+   "differs": false,
+   "difference": 0.0,
+   "rows": [
+    {
+     "id": "F/F:1:activity_quantity",
+     "label": "F.pdf",
+     "recomputed": {
+      "value": 380000.0,
+      "unit": "gal",
+      "status": "accepted",
+      "source": {
+       "kind": "document",
+       "document_id": "F",
+       "candidate_id": "F:1:activity_quantity",
+       "file_name": "F.pdf"
+      }
+     }
+    }
+   ],
+   "decidable": true
+  },
+  "unit_conversion": {
+   "id": "unit_conversion",
+   "label": "Unit conversion",
+   "kind": "constant",
+   "required_for": [],
+   "recomputed": {
+    "value": 1.0,
+    "unit": "gal/gal",
+    "status": "reference"
+   },
+   "decidable": false,
+   "why_not": "the unit conversion comes from the conversion table"
+  },
+  "distance": {
+   "id": "distance",
+   "label": "Distance driven",
+   "kind": "reviewer_entered",
+   "required_for": [
+    "eq4_distance"
+   ],
+   "recomputed": {
+    "value": 2660000.0,
+    "unit": "mi",
+    "status": "accepted",
+    "source": {
+     "kind": "derived",
+     "from": [
+      "Vehicle group distance entered under Recalculation inputs"
+     ]
+    }
+   },
+   "decidable": true
+  },
+  "ef.CO2": {
+   "id": "ef.CO2",
+   "label": "CO₂ emission factor",
+   "kind": "reference",
+   "symbol": "EF CO2",
+   "required_for": [],
+   "recomputed": {
+    "value": 10.21,
+    "unit": "kg/gal",
+    "status": "reference",
+    "source": {
+     "kind": "reference",
+     "dataset": "EPA GHG Emission Factors Hub 2025",
+     "table": "Table 2",
+     "row": 107,
+     "edition": "2025",
+     "citation": "EPA GHG Emission Factors Hub 2025, Table 2, row 107"
+    }
+   },
+   "decidable": true
+  },
+  "gwp.CO2": {
+   "id": "gwp.CO2",
+   "label": "CO₂ global warming potential",
+   "kind": "reference",
+   "symbol": "GWP CO2",
+   "required_for": [],
+   "recomputed": {
+    "value": 1.0,
+    "unit": "t CO2e/t",
+    "status": "reference",
+    "source": {
+     "kind": "reference",
+     "dataset": "EPA GHG Emission Factors Hub 2025",
+     "table": "Table 11",
+     "row": 524,
+     "edition": "2025",
+     "citation": "EPA GHG Emission Factors Hub 2025, Table 11, row 524 (IPCC AR5)"
+    }
+   },
+   "decidable": false,
+   "why_not": "the GWP is chosen for the whole engagement on the Methodology page"
+  },
+  "ef.CH4": {
+   "id": "ef.CH4",
+   "label": "CH₄ emission factor",
+   "kind": "reference",
+   "symbol": "EF CH4",
+   "required_for": [],
+   "recomputed": {
+    "value": 0.0095,
+    "unit": "g/mi",
+    "status": "reference",
+    "source": {
+     "kind": "reference",
+     "dataset": "EPA GHG Emission Factors Hub 2025",
+     "table": "Table 4",
+     "row": 256,
+     "edition": "2025",
+     "citation": "EPA GHG Emission Factors Hub 2025, Table 4, row 256"
+    }
+   },
+   "decidable": true
+  },
+  "gwp.CH4": {
+   "id": "gwp.CH4",
+   "label": "CH₄ global warming potential",
+   "kind": "reference",
+   "symbol": "GWP CH4",
+   "required_for": [],
+   "recomputed": {
+    "value": 28.0,
+    "unit": "t CO2e/t",
+    "status": "reference",
+    "source": {
+     "kind": "reference",
+     "dataset": "EPA GHG Emission Factors Hub 2025",
+     "table": "Table 11",
+     "row": 525,
+     "edition": "2025",
+     "citation": "EPA GHG Emission Factors Hub 2025, Table 11, row 525 (IPCC AR5)"
+    }
+   },
+   "decidable": false,
+   "why_not": "the GWP is chosen for the whole engagement on the Methodology page"
+  },
+  "ef.N2O": {
+   "id": "ef.N2O",
+   "label": "N₂O emission factor",
+   "kind": "reference",
+   "symbol": "EF N2O",
+   "required_for": [],
+   "recomputed": {
+    "value": 0.0431,
+    "unit": "g/mi",
+    "status": "reference",
+    "source": {
+     "kind": "reference",
+     "dataset": "EPA GHG Emission Factors Hub 2025",
+     "table": "Table 4",
+     "row": 256,
+     "edition": "2025",
+     "citation": "EPA GHG Emission Factors Hub 2025, Table 4, row 256"
+    }
+   },
+   "decidable": true
+  },
+  "gwp.N2O": {
+   "id": "gwp.N2O",
+   "label": "N₂O global warming potential",
+   "kind": "reference",
+   "symbol": "GWP N2O",
+   "required_for": [],
+   "recomputed": {
+    "value": 265.0,
+    "unit": "t CO2e/t",
+    "status": "reference",
+    "source": {
+     "kind": "reference",
+     "dataset": "EPA GHG Emission Factors Hub 2025",
+     "table": "Table 11",
+     "row": 526,
+     "edition": "2025",
+     "citation": "EPA GHG Emission Factors Hub 2025, Table 11, row 526 (IPCC AR5)"
+    }
+   },
+   "decidable": false,
+   "why_not": "the GWP is chosen for the whole engagement on the Methodology page"
+  },
+  "share": {
+   "id": "share",
+   "label": "Consolidated share",
+   "kind": "methodology",
+   "symbol": "share",
+   "required_for": [],
+   "recomputed": {
+    "value": 100.0,
+    "unit": "%",
+    "status": "derived",
+    "source": {
+     "kind": "methodology",
+     "field": "consolidated_share",
+     "label": "Consolidated share"
+    }
+   },
+   "decidable": false,
+   "why_not": "the consolidated share is set under Recalculation inputs"
+  },
+  "fuel_economy": {
+   "id": "fuel_economy",
+   "label": "Fuel economy",
+   "kind": "reviewer_entered",
+   "symbol": "mpg",
+   "required_for": [
+    "eq4_distance"
+   ],
+   "company": {
+    "value": 7.0,
+    "unit": "mi/gal",
+    "status": "derived",
+    "source": {
+     "kind": "derived",
+     "from": [
+      "distance",
+      "activity.total"
+     ]
+    }
+   },
+   "recomputed": {
+    "value": 7.0,
+    "unit": "mi/gal",
+    "status": "derived",
+    "source": {
+     "kind": "derived",
+     "from": [
+      "distance",
+      "activity.total"
+     ]
+    }
+   },
+   "differs": false,
+   "difference": 0.0,
+   "decidable": true
+  }
+ },
+ "steps": [
+  {
+   "id": "activity",
+   "n": 1,
+   "title": "Step 1 · Activity data",
+   "blocks": [
+    {
+     "id": "activity",
+     "label": "Activity data",
+     "columns": [
+      {
+       "key": "activity",
+       "label": "Activity",
+       "unit": "gal",
+       "is_result": true,
+       "display": {
+        "dp": 2
+       }
+      }
+     ],
+     "company": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "activity",
+         "value": 380000.0,
+         "unit": "gal",
+         "input_id": "activity.total"
+        }
+       }
+      ],
+      "result": {
+       "column": "activity",
+       "value": 380000.0,
+       "unit": "gal",
+       "input_id": "activity.total"
+      }
+     },
+     "recomputed": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "activity",
+         "value": 380000.0,
+         "unit": "gal",
+         "input_id": "activity.total",
+         "difference": 0.0,
+         "differs": false
+        }
+       }
+      ],
+      "result": {
+       "column": "activity",
+       "value": 380000.0,
+       "unit": "gal",
+       "input_id": "activity.total",
+       "difference": 0.0,
+       "differs": false
+      }
+     }
+    }
+   ],
+   "note": "The reviewed evidence, summed"
+  },
+  {
+   "id": "conversion",
+   "n": 2,
+   "title": "Step 2 · Conversion",
+   "blocks": [
+    {
+     "id": "conversion",
+     "label": "Conversion",
+     "columns": [
+      {
+       "key": "activity",
+       "label": "Activity",
+       "unit": "gal",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "factor",
+       "label": "Factor",
+       "unit": "gal/gal",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "converted",
+       "label": "Converted",
+       "unit": "gal",
+       "is_result": true,
+       "display": {
+        "dp": 2
+       }
+      }
+     ],
+     "company": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "activity",
+         "value": 380000.0,
+         "unit": "gal",
+         "input_id": "activity.total",
+         "step_ref": "activity"
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "factor",
+         "value": 1.0,
+         "unit": "gal/gal",
+         "input_id": "unit_conversion"
+        }
+       }
+      ],
+      "result": {
+       "column": "converted",
+       "value": 380000.0,
+       "unit": "gal"
+      }
+     },
+     "recomputed": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "activity",
+         "value": 380000.0,
+         "unit": "gal",
+         "input_id": "activity.total",
+         "step_ref": "activity",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "factor",
+         "value": 1.0,
+         "unit": "gal/gal",
+         "input_id": "unit_conversion",
+         "difference": 0.0,
+         "differs": false
+        }
+       }
+      ],
+      "result": {
+       "column": "converted",
+       "value": 380000.0,
+       "unit": "gal",
+       "difference": 0.0,
+       "differs": false
+      }
+     }
+    },
+    {
+     "id": "distance",
+     "label": "Distance driven",
+     "columns": [
+      {
+       "key": "fuel",
+       "label": "Fuel",
+       "unit": "gal",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "economy",
+       "label": "Fuel economy",
+       "unit": "mi/gal",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "distance",
+       "label": "Distance",
+       "unit": "mi",
+       "is_result": true,
+       "display": {
+        "dp": 0
+       }
+      }
+     ],
+     "company": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "fuel",
+         "value": 380000.0,
+         "unit": "gal",
+         "step_ref": "conversion"
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "economy",
+         "value": 7.0,
+         "unit": "mi/gal",
+         "input_id": "fuel_economy"
+        }
+       }
+      ],
+      "result": {
+       "column": "distance",
+       "value": 2660000.0,
+       "unit": "mi"
+      }
+     },
+     "recomputed": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "fuel",
+         "value": 380000.0,
+         "unit": "gal",
+         "step_ref": "conversion",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "economy",
+         "value": 7.0,
+         "unit": "mi/gal",
+         "input_id": "fuel_economy",
+         "difference": 0.0,
+         "differs": false
+        }
+       }
+      ],
+      "result": {
+       "column": "distance",
+       "value": 2660000.0,
+       "unit": "mi",
+       "difference": 0.0,
+       "differs": false
+      }
+     }
+    }
+   ],
+   "note": "To the unit the emission factor is in, then fuel × fuel economy = distance"
+  },
+  {
+   "id": "emissions",
+   "n": 3,
+   "title": "Step 3 · Emissions per gas",
+   "blocks": [
+    {
+     "id": "emissions.CO2",
+     "label": "CO₂",
+     "columns": [
+      {
+       "key": "activity",
+       "label": "Activity",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "ef",
+       "label": "Emission factor",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "conversion",
+       "label": "To metric tons",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "mass",
+       "label": "Mass",
+       "unit": "t",
+       "is_result": true,
+       "display": {
+        "sig": 6
+       }
+      }
+     ],
+     "company": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "activity",
+         "value": 380000.0,
+         "unit": "gal",
+         "step_ref": "conversion"
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "ef",
+         "value": 10.21,
+         "unit": "kg/gal",
+         "input_id": "ef.CO2"
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "conversion",
+         "value": 0.001,
+         "unit": "t/kg"
+        }
+       }
+      ],
+      "result": {
+       "column": "mass",
+       "value": 3879.8000000000006,
+       "unit": "t"
+      }
+     },
+     "recomputed": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "activity",
+         "value": 380000.0,
+         "unit": "gal",
+         "step_ref": "conversion",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "ef",
+         "value": 10.21,
+         "unit": "kg/gal",
+         "input_id": "ef.CO2",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "conversion",
+         "value": 0.001,
+         "unit": "t/kg",
+         "difference": 0.0,
+         "differs": false
+        }
+       }
+      ],
+      "result": {
+       "column": "mass",
+       "value": 3879.8000000000006,
+       "unit": "t",
+       "difference": 0.0,
+       "differs": false
+      }
+     },
+     "choice_id": "equation:CO2"
+    },
+    {
+     "id": "emissions.CH4",
+     "label": "CH₄",
+     "columns": [
+      {
+       "key": "activity",
+       "label": "Activity",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "ef",
+       "label": "Emission factor",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "conversion",
+       "label": "To metric tons",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "mass",
+       "label": "Mass",
+       "unit": "t",
+       "is_result": true,
+       "display": {
+        "sig": 6
+       }
+      }
+     ],
+     "company": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "activity",
+         "value": 2660000.0,
+         "unit": "mi",
+         "input_id": "distance"
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "ef",
+         "value": 0.0095,
+         "unit": "g/mi",
+         "input_id": "ef.CH4"
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "conversion",
+         "value": 1e-06,
+         "unit": "t/g"
+        }
+       }
+      ],
+      "result": {
+       "column": "mass",
+       "value": 0.025269999999999997,
+       "unit": "t"
+      }
+     },
+     "recomputed": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "activity",
+         "value": 2660000.0,
+         "unit": "mi",
+         "input_id": "distance",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "ef",
+         "value": 0.0095,
+         "unit": "g/mi",
+         "input_id": "ef.CH4",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "conversion",
+         "value": 1e-06,
+         "unit": "t/g",
+         "difference": 0.0,
+         "differs": false
+        }
+       }
+      ],
+      "result": {
+       "column": "mass",
+       "value": 0.025269999999999997,
+       "unit": "t",
+       "difference": 0.0,
+       "differs": false
+      }
+     },
+     "choice_id": "equation:CH4"
+    },
+    {
+     "id": "emissions.N2O",
+     "label": "N₂O",
+     "columns": [
+      {
+       "key": "activity",
+       "label": "Activity",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "ef",
+       "label": "Emission factor",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "conversion",
+       "label": "To metric tons",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "mass",
+       "label": "Mass",
+       "unit": "t",
+       "is_result": true,
+       "display": {
+        "sig": 6
+       }
+      }
+     ],
+     "company": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "activity",
+         "value": 2660000.0,
+         "unit": "mi",
+         "input_id": "distance"
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "ef",
+         "value": 0.0431,
+         "unit": "g/mi",
+         "input_id": "ef.N2O"
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "conversion",
+         "value": 1e-06,
+         "unit": "t/g"
+        }
+       }
+      ],
+      "result": {
+       "column": "mass",
+       "value": 0.114646,
+       "unit": "t"
+      }
+     },
+     "recomputed": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "activity",
+         "value": 2660000.0,
+         "unit": "mi",
+         "input_id": "distance",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "ef",
+         "value": 0.0431,
+         "unit": "g/mi",
+         "input_id": "ef.N2O",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "conversion",
+         "value": 1e-06,
+         "unit": "t/g",
+         "difference": 0.0,
+         "differs": false
+        }
+       }
+      ],
+      "result": {
+       "column": "mass",
+       "value": 0.114646,
+       "unit": "t",
+       "difference": 0.0,
+       "differs": false
+      }
+     },
+     "choice_id": "equation:N2O"
+    }
+   ],
+   "note": "Activity × emission factor × unit conversion"
+  },
+  {
+   "id": "gwp",
+   "n": 4,
+   "title": "Step 4 · CO₂e",
+   "blocks": [
+    {
+     "id": "gwp.CO2",
+     "label": "CO₂",
+     "columns": [
+      {
+       "key": "mass",
+       "label": "Mass",
+       "unit": "t",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "gwp",
+       "label": "GWP",
+       "unit": "t CO2e/t",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "co2e",
+       "label": "CO₂e",
+       "unit": "t CO2e",
+       "is_result": true,
+       "display": {
+        "dp": 2
+       }
+      }
+     ],
+     "company": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "mass",
+         "value": 3879.8000000000006,
+         "unit": "t",
+         "step_ref": "emissions"
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "gwp",
+         "value": 1.0,
+         "unit": "t CO2e/t",
+         "input_id": "gwp.CO2"
+        }
+       }
+      ],
+      "result": {
+       "column": "co2e",
+       "value": 3879.8000000000006,
+       "unit": "t CO2e"
+      }
+     },
+     "recomputed": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "mass",
+         "value": 3879.8000000000006,
+         "unit": "t",
+         "step_ref": "emissions",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "gwp",
+         "value": 1.0,
+         "unit": "t CO2e/t",
+         "input_id": "gwp.CO2",
+         "difference": 0.0,
+         "differs": false
+        }
+       }
+      ],
+      "result": {
+       "column": "co2e",
+       "value": 3879.8000000000006,
+       "unit": "t CO2e",
+       "difference": 0.0,
+       "differs": false
+      }
+     }
+    },
+    {
+     "id": "gwp.CH4",
+     "label": "CH₄",
+     "columns": [
+      {
+       "key": "mass",
+       "label": "Mass",
+       "unit": "t",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "gwp",
+       "label": "GWP",
+       "unit": "t CO2e/t",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "co2e",
+       "label": "CO₂e",
+       "unit": "t CO2e",
+       "is_result": true,
+       "display": {
+        "dp": 2
+       }
+      }
+     ],
+     "company": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "mass",
+         "value": 0.025269999999999997,
+         "unit": "t",
+         "step_ref": "emissions"
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "gwp",
+         "value": 28.0,
+         "unit": "t CO2e/t",
+         "input_id": "gwp.CH4"
+        }
+       }
+      ],
+      "result": {
+       "column": "co2e",
+       "value": 0.70756,
+       "unit": "t CO2e"
+      }
+     },
+     "recomputed": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "mass",
+         "value": 0.025269999999999997,
+         "unit": "t",
+         "step_ref": "emissions",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "gwp",
+         "value": 28.0,
+         "unit": "t CO2e/t",
+         "input_id": "gwp.CH4",
+         "difference": 0.0,
+         "differs": false
+        }
+       }
+      ],
+      "result": {
+       "column": "co2e",
+       "value": 0.70756,
+       "unit": "t CO2e",
+       "difference": 0.0,
+       "differs": false
+      }
+     }
+    },
+    {
+     "id": "gwp.N2O",
+     "label": "N₂O",
+     "columns": [
+      {
+       "key": "mass",
+       "label": "Mass",
+       "unit": "t",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "gwp",
+       "label": "GWP",
+       "unit": "t CO2e/t",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "co2e",
+       "label": "CO₂e",
+       "unit": "t CO2e",
+       "is_result": true,
+       "display": {
+        "dp": 2
+       }
+      }
+     ],
+     "company": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "mass",
+         "value": 0.114646,
+         "unit": "t",
+         "step_ref": "emissions"
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "gwp",
+         "value": 265.0,
+         "unit": "t CO2e/t",
+         "input_id": "gwp.N2O"
+        }
+       }
+      ],
+      "result": {
+       "column": "co2e",
+       "value": 30.38119,
+       "unit": "t CO2e"
+      }
+     },
+     "recomputed": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "mass",
+         "value": 0.114646,
+         "unit": "t",
+         "step_ref": "emissions",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "gwp",
+         "value": 265.0,
+         "unit": "t CO2e/t",
+         "input_id": "gwp.N2O",
+         "difference": 0.0,
+         "differs": false
+        }
+       }
+      ],
+      "result": {
+       "column": "co2e",
+       "value": 30.38119,
+       "unit": "t CO2e",
+       "difference": 0.0,
+       "differs": false
+      }
+     }
+    }
+   ],
+   "note": "Mass × global warming potential"
+  },
+  {
+   "id": "results",
+   "n": null,
+   "title": "Results",
+   "blocks": [
+    {
+     "id": "results.sum",
+     "label": "Gases added",
+     "columns": [
+      {
+       "key": "co2e",
+       "label": "CO₂e",
+       "unit": "t CO2e",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "sum",
+       "label": "Sum",
+       "unit": "t CO2e",
+       "is_result": true,
+       "display": {}
+      }
+     ],
+     "company": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "co2e",
+         "value": 3879.8000000000006,
+         "unit": "t CO2e",
+         "step_ref": "gwp.CO2"
+        }
+       },
+       {
+        "op": "+",
+        "operand": {
+         "column": "co2e",
+         "value": 0.70756,
+         "unit": "t CO2e",
+         "step_ref": "gwp.CH4"
+        }
+       },
+       {
+        "op": "+",
+        "operand": {
+         "column": "co2e",
+         "value": 30.38119,
+         "unit": "t CO2e",
+         "step_ref": "gwp.N2O"
+        }
+       }
+      ],
+      "result": {
+       "column": "sum",
+       "value": 3910.8887500000005,
+       "unit": "t CO2e"
+      }
+     },
+     "recomputed": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "co2e",
+         "value": 3879.8000000000006,
+         "unit": "t CO2e",
+         "step_ref": "gwp.CO2",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "+",
+        "operand": {
+         "column": "co2e",
+         "value": 0.70756,
+         "unit": "t CO2e",
+         "step_ref": "gwp.CH4",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "+",
+        "operand": {
+         "column": "co2e",
+         "value": 30.38119,
+         "unit": "t CO2e",
+         "step_ref": "gwp.N2O",
+         "difference": 0.0,
+         "differs": false
+        }
+       }
+      ],
+      "result": {
+       "column": "sum",
+       "value": 3910.8887500000005,
+       "unit": "t CO2e",
+       "difference": 0.0,
+       "differs": false
+      }
+     }
+    },
+    {
+     "id": "results.total",
+     "label": "Line total",
+     "columns": [
+      {
+       "key": "sum",
+       "label": "Sum",
+       "unit": "t CO2e",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "share",
+       "label": "Share",
+       "is_result": false,
+       "display": {}
+      },
+      {
+       "key": "total",
+       "label": "Total",
+       "unit": "t CO2e",
+       "is_result": true,
+       "display": {
+        "dp": 2
+       }
+      }
+     ],
+     "company": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "sum",
+         "value": 3910.8887500000005,
+         "unit": "t CO2e",
+         "step_ref": "sum"
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "share",
+         "value": 1.0,
+         "input_id": "share"
+        }
+       }
+      ],
+      "result": {
+       "column": "total",
+       "value": 3910.8887500000005,
+       "unit": "t CO2e"
+      }
+     },
+     "recomputed": {
+      "terms": [
+       {
+        "op": null,
+        "operand": {
+         "column": "sum",
+         "value": 3910.8887500000005,
+         "unit": "t CO2e",
+         "step_ref": "sum",
+         "difference": 0.0,
+         "differs": false
+        }
+       },
+       {
+        "op": "×",
+        "operand": {
+         "column": "share",
+         "value": 1.0,
+         "input_id": "share",
+         "difference": 0.0,
+         "differs": false
+        }
+       }
+      ],
+      "result": {
+       "column": "total",
+       "value": 3910.8887500000005,
+       "unit": "t CO2e",
+       "difference": 0.0,
+       "differs": false
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "method_mismatch": false,
+ "flags": [
+  "company_ch4_n2o_use_vehicle_group",
+  "fuel_auto_matched"
+ ]
+}
