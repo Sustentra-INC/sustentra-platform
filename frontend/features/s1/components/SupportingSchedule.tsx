@@ -1,12 +1,13 @@
 "use client";
 
 import { ChevronDown, ChevronRight, FileText } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type CSSProperties } from "react";
 
 import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleRow } from "../api/evidenceTree";
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { userFacingApiError } from "../api/s1Backend";
 import { ContainerStateSurface } from "./ContainerStateSurface";
+import { IconArrowRight, IconChevronLeft } from "./icons";
 
 /**
  * One calculation line's supporting schedule: what covers each month of the year, which
@@ -44,12 +45,14 @@ const STATUS_TEXT: Record<CoverageStatus, string> = {
   not_reviewed: "Not reviewed",
   no_document: "No document",
 };
-const STATUS_ROLE: Record<CoverageStatus, string> = {
-  counted: "resolved",
-  counted_in_part: "active",
-  not_reviewed: "open",
-  no_document: "na",
+/** Count pill per state: shared state chip variant and the words after the number. */
+const STATUS_COUNT: Record<CoverageStatus, { chip: string; text: string }> = {
+  counted: { chip: "active", text: "counted" },
+  counted_in_part: { chip: "partial", text: "in part" },
+  not_reviewed: { chip: "open", text: "not reviewed" },
+  no_document: { chip: "blocking", text: "no document" },
 };
+const STATUS_ORDER: CoverageStatus[] = ["counted", "counted_in_part", "not_reviewed", "no_document"];
 
 export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocument, onOpenCalculationLine, onError }: SupportingScheduleProps) {
   const [schedule, setSchedule] = useState<LineSchedule | null>(null);
@@ -124,24 +127,27 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
       <header className="s1-sch-head">
         <div className="s1-sch-head__id">
           <nav className="s1-sch-crumbs" aria-label="Breadcrumb">
-            <button className="s1-linklike" type="button" onClick={onBack}>
+            <button className="s1-linklike s1-sch-crumbs__root" type="button" onClick={onBack}>
               Evidence
             </button>
             {crumbs.map((c, i) => (
-              <span key={`${i}:${c}`}>
-                <span aria-hidden> › </span>
-                {c}
-              </span>
+              <Fragment key={`${i}:${c}`}>
+                <span aria-hidden>/</span>
+                <span className={i === crumbs.length - 1 ? "s1-sch-crumbs__here" : undefined}>{c}</span>
+              </Fragment>
             ))}
           </nav>
-          <p className="s1-sch-eyebrow">Supporting schedule</p>
           {/* "<Line> · <Level 2>", unless the server's label already names the fuel. */}
           <h1>{line.label.toLowerCase().includes(line.level2_label.toLowerCase()) ? line.label : `${line.label} · ${line.level2_label}`}</h1>
-          {year ? <p className="s1-muted">Reporting year {year}</p> : null}
+          <p className="s1-sch-meta">
+            <span className="s1-state s1-state--active">Supporting schedule</span>
+            {year ? <span>Reporting year {year}</span> : null}
+          </p>
         </div>
         <div className="s1-sch-head__actions">
-          <button className="s1-linklike" type="button" onClick={onBack}>
-            ‹ Back to Evidence
+          <button className="s1-button s1-sch-head__back" type="button" onClick={onBack}>
+            <IconChevronLeft size={15} aria-hidden />
+            Back to Evidence
           </button>
           {schedule.calculated === false ? (
             <p className="s1-muted s1-sch-notcalc">
@@ -150,83 +156,16 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
                 : "No calculation for this line yet."}
             </p>
           ) : (
-            <button className="s1-button s1-button--pri" type="button" onClick={() => onOpenCalculationLine(line.key)}>
-              Open calculation line ›
+            <button className="s1-button s1-button--pri s1-sch-head__open" type="button" onClick={() => onOpenCalculationLine(line.key)}>
+              Open calculation line
+              <IconArrowRight size={15} aria-hidden />
             </button>
           )}
         </div>
       </header>
 
       <div className="s1-sch-top">
-        <section className="s1-panel s1-sch-cov" aria-label="Coverage by month">
-          <h2>Coverage by month</h2>
-          {schedule.coverage.length ? (
-            <ul className="s1-sch-months">
-              {schedule.coverage.map((m) => {
-                const doc = m.document_ids[0];
-                const body = (
-                  <>
-                    <span className="s1-sch-month__name">{monthName(m.month)}</span>
-                    <span className="s1-sch-month__status">
-                      {STATUS_TEXT[m.status]}
-                      {m.flags?.includes("unconverted") ? " · units differ" : ""}
-                    </span>
-                    {m.waiting_on?.length ? <span className="s1-sch-month__waiting">Waiting on: {m.waiting_on.join(", ")}</span> : null}
-                    {m.quantity !== null ? (
-                      <span className="s1-sch-month__qty">
-                        {formatQuantity(m.quantity)} {m.unit ?? ""}
-                      </span>
-                    ) : null}
-                  </>
-                );
-                const cls = `s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`;
-                return (
-                  <li key={m.month}>
-                    {m.document_ids.length > 1 ? (
-                      // Several documents cover the month: each one opens from a short list.
-                      <div className={cls}>
-                        {body}
-                        <span className="s1-sch-month__docs">
-                          {m.document_ids.map((id, i) => (
-                            <button
-                              key={id}
-                              className="s1-linklike"
-                              type="button"
-                              aria-label={`${monthName(m.month)}: open ${fileNames.get(id) ?? `document ${i + 1}`}`}
-                              onClick={() => onOpenDocument(id)}
-                            >
-                              {fileNames.get(id) ?? `Document ${i + 1}`}
-                            </button>
-                          ))}
-                        </span>
-                      </div>
-                    ) : doc ? (
-                      <button
-                        className={`s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`}
-                        type="button"
-                        aria-label={`${monthName(m.month)}: ${STATUS_TEXT[m.status]}. Open ${m.document_ids.length === 1 ? "the document" : "the first document"}`}
-                        onClick={() => onOpenDocument(doc)}
-                      >
-                        {body}
-                      </button>
-                    ) : (
-                      <span className={`s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`}>{body}</span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="s1-muted">No months to show yet.</p>
-          )}
-          <ul className="s1-sch-legend" aria-label="Legend">
-            {(Object.keys(STATUS_TEXT) as CoverageStatus[]).map((s) => (
-              <li key={s}>
-                <span className={`s1-sch-swatch s1-sch-swatch--${STATUS_ROLE[s]}`} aria-hidden /> {STATUS_TEXT[s]}
-              </li>
-            ))}
-          </ul>
-        </section>
+        <CoverageChart coverage={schedule.coverage} fileNames={fileNames} onOpenDocument={onOpenDocument} />
 
         <section className="s1-panel s1-sch-ids" aria-label="Source identifiers">
           <h2>Source identifiers</h2>
@@ -328,6 +267,11 @@ function monthName(month: string): string {
   return Number.isNaN(d.getTime()) ? month : d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }
 
+function shortMonth(month: string): string {
+  const d = new Date(`${month}-01T00:00:00`);
+  return Number.isNaN(d.getTime()) ? month : d.toLocaleDateString(undefined, { month: "short" });
+}
+
 /** MM/DD/YY from an ISO date or timestamp, without a timezone shift. */
 function formatDate(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
@@ -399,6 +343,138 @@ function formatDateTime(iso: string): string {
 /** A month's counted quantity, a computed share of its bills: whole units once it is in the hundreds. */
 function formatQuantity(n: number): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 3 });
+}
+
+type CoverageMonth = LineSchedule["coverage"][number];
+
+/** Bar height as a share of the tallest bar: a month with no figure gets a stand-in height, a month with no document a full one. */
+function barShare(m: CoverageMonth, max: number): number {
+  if (m.status === "no_document") return 1;
+  if (m.quantity === null || max <= 0) return 0.4;
+  return m.quantity / max;
+}
+
+function barValue(m: CoverageMonth): string {
+  if (m.quantity !== null) return formatQuantity(m.quantity);
+  return m.status === "no_document" ? "None" : "?";
+}
+
+/** Coverage as one bar per month, coloured and patterned by state; a month with one document opens it. */
+function CoverageChart({
+  coverage,
+  fileNames,
+  onOpenDocument,
+}: {
+  coverage: CoverageMonth[];
+  fileNames: Map<string, string>;
+  onOpenDocument: (documentId: string) => void;
+}) {
+  const max = Math.max(0, ...coverage.map((m) => m.quantity ?? 0));
+  const units = [...new Set(coverage.map((m) => m.unit).filter((u): u is string => Boolean(u)))];
+  const years = new Set(coverage.map((m) => m.month.slice(0, 4)));
+  const label = (m: CoverageMonth) => (years.size > 1 ? monthName(m.month) : shortMonth(m.month));
+  const first = coverage[0];
+  const last = coverage[coverage.length - 1];
+  const range = !first
+    ? ""
+    : years.size > 1
+      ? `${monthName(first.month)} to ${monthName(last.month)}`
+      : first === last
+        ? monthName(first.month)
+        : `${shortMonth(first.month)} to ${shortMonth(last.month)} ${first.month.slice(0, 4)}`;
+  const counts = STATUS_ORDER.map((s) => ({ s, n: coverage.filter((m) => m.status === s).length })).filter((c) => c.n > 0);
+  const notes = coverage.filter((m) => m.document_ids.length > 1 || m.waiting_on?.length || m.flags?.includes("unconverted"));
+  const summary = coverage
+    .map((m) => `${monthName(m.month)}: ${STATUS_TEXT[m.status]}${m.quantity !== null ? `, ${formatQuantity(m.quantity)}${m.unit ? ` ${m.unit}` : ""}` : ""}`)
+    .join("; ");
+
+  return (
+    <section className="s1-sch-cov" aria-labelledby="s1-sch-cov-title">
+      <div className="s1-sch-cov__head">
+        <h2 id="s1-sch-cov-title">
+          Coverage{" "}
+          {coverage.length ? <span className="s1-sch-cov__period">Monthly</span> : null}
+        </h2>
+        {counts.length ? (
+          <ul className="s1-sch-cov__counts" aria-label="Coverage counts">
+            {counts.map(({ s, n }) => (
+              <li key={s} className={`s1-state s1-state--${STATUS_COUNT[s].chip}`}>
+                {n} {STATUS_COUNT[s].text}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+      {coverage.length ? (
+        <>
+          <div className="s1-sch-cov__axis">
+            <span>{units.join(" / ")}</span>
+            <span>{range}</span>
+          </div>
+          <div
+            className={`s1-sch-chart${coverage.length < 6 ? " s1-sch-chart--few" : ""}`}
+            role="group"
+            aria-label={`Coverage by month, ${range}. ${summary}.`}
+            style={{ "--cols": coverage.length } as CSSProperties}
+          >
+            {coverage.map((m) => {
+              const body = (
+                <>
+                  <span className="s1-sch-bar__plot">
+                    <span className="s1-sch-bar__val">{barValue(m)}</span>
+                    <span className="s1-sch-bar__fill" style={{ "--bar": barShare(m, max) } as CSSProperties} />
+                  </span>
+                  <span className="s1-sch-bar__label">{label(m)}</span>
+                </>
+              );
+              const cls = `s1-sch-bar s1-sch-bar--${m.status}`;
+              return m.document_ids.length === 1 ? (
+                <button
+                  key={m.month}
+                  className={cls}
+                  type="button"
+                  aria-label={`${monthName(m.month)}: ${STATUS_TEXT[m.status]}. Open the document`}
+                  onClick={() => onOpenDocument(m.document_ids[0])}
+                >
+                  {body}
+                </button>
+              ) : (
+                <div key={m.month} className={cls}>
+                  {body}
+                </div>
+              );
+            })}
+          </div>
+          {notes.length ? (
+            <ul className="s1-sch-cov__notes">
+              {notes.map((m) => (
+                <li key={m.month}>
+                  <span className="s1-sch-cov__note-month">{monthName(m.month)}</span>
+                  {m.flags?.includes("unconverted") ? <span>units differ</span> : null}
+                  {m.waiting_on?.length ? <span>Waiting on: {m.waiting_on.join(", ")}</span> : null}
+                  {m.document_ids.length > 1
+                    ? m.document_ids.map((id, i) => (
+                        <button
+                          key={id}
+                          className="s1-linklike"
+                          type="button"
+                          aria-label={`${monthName(m.month)}: open ${fileNames.get(id) ?? `document ${i + 1}`}`}
+                          onClick={() => onOpenDocument(id)}
+                        >
+                          {fileNames.get(id) ?? `Document ${i + 1}`}
+                        </button>
+                      ))
+                    : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      ) : (
+        <p className="s1-muted">No months to show yet.</p>
+      )}
+    </section>
+  );
 }
 
 /** One identifier: "n of N documents"; opens to group the documents by value, with a Not found group. */

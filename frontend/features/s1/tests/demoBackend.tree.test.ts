@@ -164,9 +164,9 @@ describe("the staging screens over the demo backend", () => {
   it("renders Kent Cannery natural gas on the supporting schedule", async () => {
     render(createElement(SupportingSchedule, { engagementId: ID, lineKey: KENT_GAS, onBack: () => {}, onOpenDocument: () => {}, onOpenCalculationLine: () => {} }));
     expect(await screen.findByRole("heading", { level: 1, name: /Kent Cannery · Natural gas/ })).toBeTruthy();
-    await waitFor(() => expect(document.querySelectorAll(".s1-sch-month--active").length).toBe(2));
-    expect(screen.getAllByText(/Not reviewed/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/No document/).length).toBeGreaterThan(0);
+    await waitFor(() => expect(document.querySelectorAll(".s1-sch-bar--counted_in_part").length).toBe(2));
+    expect(screen.getAllByText(/not reviewed/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/no document/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/M-4471/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/10 of 11|10\/11/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Activity quantity: fuel quantity combusted/).length).toBeGreaterThan(0);

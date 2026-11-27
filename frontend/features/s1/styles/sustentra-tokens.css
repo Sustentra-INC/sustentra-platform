@@ -50,6 +50,7 @@
   --accent-soft:    #E9E9F6;   /* tint: active chip / selected row */
   --accent-softer:  #F4F4FB;   /* tint: row hover */
   --accent-line:    #D4D4EC;   /* border on a tinted surface */
+  --accent-mid:     #8F8FC4;   /* mid indigo: partly counted marks */
 
   /* Motion — one strong ease-out for the whole product. */
   --ease-out:       cubic-bezier(0.23, 1, 0.32, 1);
@@ -284,6 +285,17 @@
   --xr-nav-min:     200px;   /* navigator minimum (flex clamp lower bound) */
   --xr-panel-w:     380px;   /* review panel width */
   --dd-hlform-w:    296px;   /* extract pick popover width */
+
+  /* Supporting schedule: page actions and coverage chart */
+  --page-action-h:    42px;   /* page header action buttons */
+  --card-pad-lg:      20px;   /* large card padding */
+  --sch-cov-basis:   520px;   /* coverage card flex basis */
+  --sch-ids-basis:   320px;   /* source identifiers card flex basis */
+  --sch-chart-h:     236px;   /* coverage bar plot height */
+  --sch-bar-max-h:   190px;   /* tallest bar */
+  --sch-bar-min-h:    10px;   /* shortest visible bar */
+  --sch-col-max:     120px;   /* bar column cap when there are few periods */
+  --sch-stripe:        6px;   /* diagonal stripe width on bars */
   --xr-panel-min:   320px;   /* review panel minimum (flex clamp lower bound) */
   --cv-sheet-max-w: 760px;   /* spreadsheet card max width */
   --cv-doc-max-w:   620px;   /* PDF / drawn document card max width */

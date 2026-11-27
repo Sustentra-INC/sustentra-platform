@@ -604,10 +604,14 @@ describe("the supporting schedule", () => {
     expect(screen.getByText("Supporting schedule")).toBeInTheDocument();
     expect(screen.getByText("Reporting year 2025")).toBeInTheDocument();
     const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
-    expect(crumbs).toHaveTextContent("Evidence › Scope 1 › Stationary combustion › Natural gas › Kent");
-    // Every status has a word, not only a colour.
-    const legend = screen.getByRole("list", { name: "Legend" });
-    for (const word of ["Counted", "Counted in part", "Not reviewed", "No document"]) expect(within(legend).getByText(word)).toBeInTheDocument();
+    expect(crumbs).toHaveTextContent("Evidence/Scope 1/Stationary combustion/Natural gas/Kent");
+    // Every status has a word, not only a colour: a count pill per state present, and the period type.
+    const counts = screen.getByRole("list", { name: "Coverage counts" });
+    for (const word of ["1 counted", "1 in part", "1 not reviewed", "1 no document"]) expect(within(counts).getByText(word)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Coverage Monthly" })).toBeInTheDocument();
+    const chart = screen.getByRole("group", { name: /^Coverage by month, Jan to Apr 2025\./ });
+    expect(chart).toHaveAccessibleName(expect.stringContaining("Jan 2025: Counted, 120 therm"));
+    expect(chart).toHaveAccessibleName(expect.stringContaining("Apr 2025: No document"));
     expect(screen.getByText("11 of 11 documents")).toBeInTheDocument();
     expect(screen.getByText("2 of 3 documents")).toBeInTheDocument();
     expect(screen.getByText("Activity quantity: fuel quantity combusted")).toBeInTheDocument();
@@ -716,7 +720,7 @@ describe("the supporting schedule", () => {
 
   it("goes back to Evidence and to the calculation line through its callbacks", async () => {
     const props = renderSchedule();
-    fireEvent.click(await screen.findByRole("button", { name: "Open calculation line ›" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open calculation line" }));
     expect(props.onOpenCalculationLine).toHaveBeenCalledWith(KENT.key);
     fireEvent.click(screen.getAllByRole("button", { name: /Back to Evidence|^Evidence$/ })[0]);
     expect(props.onBack).toHaveBeenCalled();
@@ -742,7 +746,7 @@ describe("the supporting schedule", () => {
     await screen.findByRole("heading", { name: "Kent · Natural gas" });
     expect(screen.getAllByText("Waiting on: Fuel type")).toHaveLength(2); // the month and the row
     expect(screen.getByText("Not calculated yet: values on this line are waiting for review.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Open calculation line ›" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open calculation line" })).toBeNull();
     expect(props.onOpenCalculationLine).not.toHaveBeenCalled();
   });
 
