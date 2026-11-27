@@ -205,6 +205,10 @@ export interface TraceBlock {
   tag?: TraceTag;
   /** The choice whose pills are shown above the block. */
   choice_id?: string;
+  /** A default the working uses that no reviewer has confirmed, shown as a muted tag: "Default: 10% (EPA Table 1, …) · not confirmed". */
+  assumption?: string;
+  /** Something a reviewer should check about this block's input, shown as a warning: "Capacities differ between records (…)". */
+  warning?: string;
   columns: TraceColumn[];
   /** Absent: the company did not report this block ("not reported" row). */
   company?: TraceOperation;
@@ -265,6 +269,9 @@ export interface DecisionEntry {
   status: string;
   reason?: string;
   message?: string;
+  /** On an applied entry the working does not use as it stands: what counts instead ("held: …", or a fugitive line's
+   * blocked screening, "Screening is chosen but blocked (…). Counting the simplified material balance (54.11 t) until then."). */
+  uses?: string;
   /** Only on a `stale` entry: the automatic value when the decision was made, and now. */
   automatic_then?: AutomaticFigure;
   automatic_now?: AutomaticFigure;

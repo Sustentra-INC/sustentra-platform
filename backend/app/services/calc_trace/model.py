@@ -176,6 +176,10 @@ class TraceBlock:
     recomputed: Operation | None = None
     tag: str | None = None  # Tag
     choice_id: str | None = None
+    # a default the working uses that no reviewer has confirmed: "Default: 10% (EPA Table 1, …) · not confirmed"
+    assumption: str | None = None
+    # something a reviewer should check about this block's input: "Capacities differ between records (…)"
+    warning: str | None = None
 
 
 @dataclass

@@ -4018,6 +4018,10 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-cp-block__head h6 { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-strong); }
 .s1-cp-block.is-unused, .s1-cp-block.is-unused td { color: var(--ink-3); }
 .s1-cp-tag { padding: 0 var(--sp-2); font-size: var(--text-sm); color: var(--ink-2); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--state-chip-radius); }
+/* A default no reviewer has confirmed: quieter than a tag, and italic so it reads as provisional. */
+.s1-cp-tag--assumed { font-style: italic; color: var(--ink-3); background: transparent; border-style: dashed; }
+/* Something to check on the block's input ("to review": amber). */
+.s1-cp-tag--warn { color: var(--state-open-fg); background: var(--state-open-bg); border-color: var(--state-open-line); }
 .s1-cp-ops tr.s1-cp-rec td { background: var(--sf-page); }
 .s1-cp-diff { font-weight: var(--weight-regular); color: var(--state-blocking-fg); }
 .s1-cp-wrap { overflow-wrap: anywhere; }

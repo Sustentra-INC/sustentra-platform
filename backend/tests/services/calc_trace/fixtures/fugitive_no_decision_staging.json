@@ -1,0 +1,498 @@
+{
+ "recorded_on": "origin/staging e9cb98bd2d47b295d24ef7da3227951cbc5553f6",
+ "stores": {
+  "fm200": {
+   "categories": {
+    "fugitive_refrigerants": {
+     "biogenic_co2_t": 0.0,
+     "category": "fugitive_refrigerants",
+     "details": {
+      "inputs": [
+       {
+        "documents": [
+         {
+          "document_id": "FS-LOG",
+          "quantity": 3.0,
+          "record": "FS-LOG.pdf",
+          "service_type": "service",
+          "unit": "lb"
+         }
+        ],
+        "fuel": "HFC-227ea",
+        "quantity": 3.0,
+        "unit": "lb"
+       }
+      ]
+     },
+     "flags": [],
+     "gwp": {
+      "HFC-227ea": {
+       "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 538 (IPCC AR5)",
+       "value": 3350.0
+      }
+     },
+     "gwp_set": "AR5",
+     "lines": [
+      {
+       "biogenic_co2_t": 0.0,
+       "equations": {
+        "HFC-227ea": "(P_N - C_N) + P_S + (C_D - R_D)"
+       },
+       "flags": [],
+       "key": "HFC-227ea",
+       "mass_t": {
+        "HFC-227ea": 0.00136077711
+       },
+       "steps": [
+        {
+         "formula": "(P_N - C_N) + P_S + (C_D - R_D)",
+         "inputs": {
+          "P_S (added when servicing)": {
+           "source": "1 reviewed record",
+           "unit": "lb",
+           "value": 3.0
+          }
+         },
+         "label": "HFC-227ea emitted",
+         "result": 3.0,
+         "result_unit": "lb"
+        },
+        {
+         "formula": "lb to metric tons",
+         "inputs": {
+          "mass": {
+           "source": null,
+           "unit": "lb",
+           "value": 3.0
+          }
+         },
+         "label": "HFC-227ea emitted in metric tons",
+         "result": 0.00136077711,
+         "result_unit": "t"
+        },
+        {
+         "formula": "mass x GWP",
+         "inputs": {
+          "GWP": {
+           "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 538 (IPCC AR5)",
+           "unit": "",
+           "value": 3350.0
+          },
+          "mass": {
+           "source": null,
+           "unit": "t",
+           "value": 0.00136077711
+          }
+         },
+         "label": "HFC-227ea in CO2e",
+         "result": 4.5586033185,
+         "result_unit": "t CO2e"
+        }
+       ]
+      }
+     ],
+     "steps": [
+      {
+       "formula": "sum of each refrigerant's emissions in CO2e",
+       "inputs": {
+        "HFC-227ea": {
+         "source": null,
+         "unit": "t CO2e",
+         "value": 4.5586033185
+        }
+       },
+       "label": "Total refrigerant emissions in CO2e",
+       "result": 4.5586033185,
+       "result_unit": "t CO2e"
+      }
+     ],
+     "total_co2e": 4.5586033185,
+     "total_co2e_t": {
+      "HFC-227ea": 4.5586033185
+     },
+     "total_mass_t": {
+      "HFC-227ea": 0.00136077711
+     }
+    },
+    "mobile_combustion": null,
+    "purchased_electricity_location_based": null,
+    "purchased_electricity_market_based": null,
+    "stationary_combustion": null
+   },
+   "lines": {
+    "s1:fugitive:hfc-227ea:fac-kc01": {
+     "biogenic_co2_t": 0.0,
+     "gas_co2e_t": {
+      "HFC-227ea": 4.5586033185
+     },
+     "mass_t": {
+      "HFC-227ea": 0.00136077711
+     },
+     "sum_co2e_t": 4.5586033185,
+     "total_co2e_t": 4.5586033185
+    }
+   }
+  },
+  "office": {
+   "categories": {
+    "fugitive_refrigerants": {
+     "biogenic_co2_t": 0.0,
+     "category": "fugitive_refrigerants",
+     "details": {
+      "inputs": [
+       {
+        "documents": [
+         {
+          "document_id": "RTU-LOG",
+          "quantity": 4.0,
+          "record": "RTU-LOG.pdf (record 1)",
+          "service_type": "service",
+          "unit": "lb"
+         },
+         {
+          "document_id": "RTU-LOG",
+          "quantity": 2.0,
+          "record": "RTU-LOG.pdf (record 2)",
+          "service_type": "service",
+          "unit": "lb"
+         },
+         {
+          "document_id": "RTU-LOG",
+          "quantity": 6.0,
+          "record": "RTU-LOG.pdf (record 3)",
+          "service_type": "disposal",
+          "unit": "lb"
+         }
+        ],
+        "fuel": "R-410A",
+        "quantity": 8.0,
+        "unit": "lb"
+       }
+      ]
+     },
+     "flags": [],
+     "gwp": {
+      "R-410A": {
+       "source": "EPA GHG Emission Factors Hub 2025, Table 12, row 575 (IPCC AR5)",
+       "value": 1924.0
+      }
+     },
+     "gwp_set": "AR5",
+     "lines": [
+      {
+       "biogenic_co2_t": 0.0,
+       "equations": {
+        "R-410A": "(P_N - C_N) + P_S + (C_D - R_D)"
+       },
+       "flags": [],
+       "key": "R-410A",
+       "mass_t": {
+        "R-410A": 0.00362873896
+       },
+       "steps": [
+        {
+         "formula": "(P_N - C_N) + P_S + (C_D - R_D)",
+         "inputs": {
+          "C_D (full charge of retired equipment)": {
+           "source": "3 reviewed records",
+           "unit": "lb",
+           "value": 8.0
+          },
+          "P_S (added when servicing)": {
+           "source": "3 reviewed records",
+           "unit": "lb",
+           "value": 6.0
+          },
+          "R_D (recovered from retired equipment)": {
+           "source": "3 reviewed records",
+           "unit": "lb",
+           "value": 6.0
+          }
+         },
+         "label": "R-410A emitted",
+         "result": 8.0,
+         "result_unit": "lb"
+        },
+        {
+         "formula": "lb to metric tons",
+         "inputs": {
+          "mass": {
+           "source": null,
+           "unit": "lb",
+           "value": 8.0
+          }
+         },
+         "label": "R-410A emitted in metric tons",
+         "result": 0.00362873896,
+         "result_unit": "t"
+        },
+        {
+         "formula": "mass x GWP",
+         "inputs": {
+          "GWP": {
+           "source": "EPA GHG Emission Factors Hub 2025, Table 12, row 575 (IPCC AR5)",
+           "unit": "",
+           "value": 1924.0
+          },
+          "mass": {
+           "source": null,
+           "unit": "t",
+           "value": 0.00362873896
+          }
+         },
+         "label": "R-410A in CO2e",
+         "result": 6.98169375904,
+         "result_unit": "t CO2e"
+        }
+       ]
+      }
+     ],
+     "steps": [
+      {
+       "formula": "sum of each refrigerant's emissions in CO2e",
+       "inputs": {
+        "R-410A": {
+         "source": null,
+         "unit": "t CO2e",
+         "value": 6.98169375904
+        }
+       },
+       "label": "Total refrigerant emissions in CO2e",
+       "result": 6.98169375904,
+       "result_unit": "t CO2e"
+      }
+     ],
+     "total_co2e": 6.98169375904,
+     "total_co2e_t": {
+      "R-410A": 6.98169375904
+     },
+     "total_mass_t": {
+      "R-410A": 0.00362873896
+     }
+    },
+    "mobile_combustion": null,
+    "purchased_electricity_location_based": null,
+    "purchased_electricity_market_based": null,
+    "stationary_combustion": null
+   },
+   "lines": {
+    "s1:fugitive:r-410a:fac-kc01": {
+     "biogenic_co2_t": 0.0,
+     "gas_co2e_t": {
+      "R-410A": 6.98169375904
+     },
+     "mass_t": {
+      "R-410A": 0.00362873896
+     },
+     "sum_co2e_t": 6.98169375904,
+     "total_co2e_t": 6.98169375904
+    }
+   }
+  },
+  "r404a": {
+   "categories": {
+    "fugitive_refrigerants": {
+     "biogenic_co2_t": 0.0,
+     "category": "fugitive_refrigerants",
+     "details": {
+      "inputs": [
+       {
+        "documents": [
+         {
+          "document_id": "LOG",
+          "quantity": 42.0,
+          "record": "LOG.pdf (record 1)",
+          "service_type": "installation",
+          "unit": "lb"
+         },
+         {
+          "document_id": "LOG",
+          "quantity": 18.0,
+          "record": "LOG.pdf (record 2)",
+          "service_type": "service",
+          "unit": "lb"
+         },
+         {
+          "document_id": "LOG",
+          "quantity": 22.0,
+          "record": "LOG.pdf (record 3)",
+          "service_type": "service",
+          "unit": "lb"
+         },
+         {
+          "document_id": "LOG",
+          "quantity": 36.0,
+          "record": "LOG.pdf (record 4)",
+          "service_type": "service",
+          "unit": "lb"
+         },
+         {
+          "document_id": "LOG",
+          "quantity": 14.0,
+          "record": "LOG.pdf (record 5)",
+          "service_type": "service",
+          "unit": "lb"
+         },
+         {
+          "document_id": "LOG",
+          "quantity": 48.0,
+          "record": "LOG.pdf (record 6)",
+          "service_type": "disposal",
+          "unit": "lb"
+         }
+        ],
+        "fuel": "R-404A",
+        "quantity": 99.0,
+        "unit": "lb"
+       }
+      ]
+     },
+     "flags": [],
+     "gwp": {
+      "R-404A": {
+       "source": "EPA GHG Emission Factors Hub 2025, Table 12, row 567 (IPCC AR5)",
+       "value": 3943.0
+      }
+     },
+     "gwp_set": "AR5",
+     "lines": [
+      {
+       "biogenic_co2_t": 0.0,
+       "equations": {
+        "R-404A": "(P_N - C_N) + P_S + (C_D - R_D)"
+       },
+       "flags": [],
+       "key": "R-404A",
+       "mass_t": {
+        "R-404A": 0.04490564463
+       },
+       "steps": [
+        {
+         "formula": "(P_N - C_N) + P_S + (C_D - R_D)",
+         "inputs": {
+          "C_D (full charge of retired equipment)": {
+           "source": "6 reviewed records",
+           "unit": "lb",
+           "value": 55.0
+          },
+          "C_N (full charge of new equipment)": {
+           "source": "6 reviewed records",
+           "unit": "lb",
+           "value": 40.0
+          },
+          "P_N (charged into new equipment)": {
+           "source": "6 reviewed records",
+           "unit": "lb",
+           "value": 42.0
+          },
+          "P_S (added when servicing)": {
+           "source": "6 reviewed records",
+           "unit": "lb",
+           "value": 90.0
+          },
+          "R_D (recovered from retired equipment)": {
+           "source": "6 reviewed records",
+           "unit": "lb",
+           "value": 48.0
+          }
+         },
+         "label": "R-404A emitted",
+         "result": 99.0,
+         "result_unit": "lb"
+        },
+        {
+         "formula": "lb to metric tons",
+         "inputs": {
+          "mass": {
+           "source": null,
+           "unit": "lb",
+           "value": 99.0
+          }
+         },
+         "label": "R-404A emitted in metric tons",
+         "result": 0.04490564463,
+         "result_unit": "t"
+        },
+        {
+         "formula": "mass x GWP",
+         "inputs": {
+          "GWP": {
+           "source": "EPA GHG Emission Factors Hub 2025, Table 12, row 567 (IPCC AR5)",
+           "unit": "",
+           "value": 3943.0
+          },
+          "mass": {
+           "source": null,
+           "unit": "t",
+           "value": 0.04490564463
+          }
+         },
+         "label": "R-404A in CO2e",
+         "result": 177.06295677609,
+         "result_unit": "t CO2e"
+        }
+       ]
+      }
+     ],
+     "steps": [
+      {
+       "formula": "sum of each refrigerant's emissions in CO2e",
+       "inputs": {
+        "R-404A": {
+         "source": null,
+         "unit": "t CO2e",
+         "value": 177.06295677609
+        }
+       },
+       "label": "Total refrigerant emissions in CO2e",
+       "result": 177.06295677609,
+       "result_unit": "t CO2e"
+      }
+     ],
+     "total_co2e": 177.06295677609,
+     "total_co2e_t": {
+      "R-404A": 177.06295677609
+     },
+     "total_mass_t": {
+      "R-404A": 0.04490564463
+     }
+    },
+    "mobile_combustion": null,
+    "purchased_electricity_location_based": null,
+    "purchased_electricity_market_based": null,
+    "stationary_combustion": null
+   },
+   "lines": {
+    "s1:fugitive:r-404a:fac-kc01": {
+     "biogenic_co2_t": 0.0,
+     "gas_co2e_t": {
+      "R-404A": 177.06295677609
+     },
+     "mass_t": {
+      "R-404A": 0.04490564463
+     },
+     "sum_co2e_t": 177.06295677609,
+     "total_co2e_t": 177.06295677609
+    }
+   }
+  },
+  "r448a": {
+   "categories": {
+    "fugitive_refrigerants": null,
+    "mobile_combustion": null,
+    "purchased_electricity_location_based": null,
+    "purchased_electricity_market_based": null,
+    "stationary_combustion": null
+   },
+   "lines": {
+    "s1:fugitive:r-448a:fac-kc01": {
+     "biogenic_co2_t": 0.0,
+     "gas_co2e_t": {},
+     "mass_t": {},
+     "sum_co2e_t": 0.0,
+     "total_co2e_t": 0.0
+    }
+   }
+  }
+ }
+}

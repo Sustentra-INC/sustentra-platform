@@ -5,7 +5,7 @@
  */
 import { buildRecalculation } from "../recalcDataRollup";
 import type { DemoRoute } from "../types";
-import { applyDecisions, decisionRoutes } from "./decisions";
+import { applyDecisions, decisionRoutes, demoDecided } from "./decisions";
 import { ZIP_SUBREGION, calculate, regionOf } from "../recalcDataCalc";
 import { demoCompanyRegion } from "./companyRegion";
 import { traceFromLine, type DemoElectricity } from "./fromLine";
@@ -25,7 +25,7 @@ function electricityOf(engagementId: string, lineKey: string): DemoElectricity |
 
 function traceOf(engagementId: string, lineKey: string) {
   const line = buildRecalculation(engagementId).calculation_lines?.find((l) => l.key === lineKey);
-  if (line?.counts_toward === "fugitive") return fugitiveTrace(line);
+  if (line?.counts_toward === "fugitive") return fugitiveTrace(line, demoDecided(engagementId, lineKey));
   return line ? withFuelEconomy(traceFromLine(line, line.category === "purchased_energy" ? electricityOf(engagementId, line.key) : null), line) : null;
 }
 
