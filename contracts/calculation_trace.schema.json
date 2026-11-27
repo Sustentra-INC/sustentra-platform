@@ -319,6 +319,13 @@
           ],
           "description": "Why the recomputed value cannot be decided for this line, when decidable is false."
         },
+        "assumption": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "A default the line uses where nothing is stated yet, shown until a reviewer decides the input: \"Default: <value> (<source>) · not confirmed\"."
+        },
         "company": {
           "oneOf": [
             {

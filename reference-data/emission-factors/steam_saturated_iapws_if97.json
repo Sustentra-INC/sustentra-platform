@@ -1,0 +1,554 @@
+{
+ "dataset": "Saturated steam and water, IAPWS-IF97",
+ "source": "IAPWS R7-97(2012), Revised Release on the IAPWS Industrial Formulation 1997 for the Thermodynamic Properties of Water and Steam",
+ "edition": "IAPWS-IF97, revised release of August 2007, editorial revision 2012",
+ "tables": "Region 1 (Eq. 7, Table 2: liquid), Region 2 (Eq. 15, Tables 10 and 11: vapour), Region 4 (Eqs. 30 and 31, Table 34: the saturation line)",
+ "url": "https://www.iapws.org/relguide/IF97-Rev.html",
+ "computed": "Each row is IAPWS-IF97 evaluated at the row's pressure or temperature and rounded to 0.01. The formulation's own verification values (its Tables 5, 15 and 35) are checked in backend/tests/services/calc_trace/test_calc_trace_steam_table.py, which recomputes every row.",
+ "conversions": {
+  "psi_kpa": 6.894757293168361,
+  "atmosphere_kpa": 101.325,
+  "atmosphere_psia": 14.696,
+  "btu_per_lb_kj_per_kg": 2.326,
+  "fahrenheit": "°F = (K − 273.15) × 1.8 + 32"
+ },
+ "interpolation": "linear between rows; no extrapolation beyond the first or last row",
+ "saturated_steam_by_gauge_pressure": {
+  "note": "Gauge pressure above a standard atmosphere (14.696 psia). h_g is the enthalpy of dry saturated steam, h_f that of saturated water at the same pressure, both in Btu per lb from liquid water at the IF97 reference state (the triple point, 32.018 °F).",
+  "columns": {
+   "psig": "psig",
+   "t_sat_f": "°F",
+   "h_f_btu_lb": "Btu/lb",
+   "h_g_btu_lb": "Btu/lb"
+  },
+  "rows": [
+   {
+    "psig": 0,
+    "t_sat_f": 211.95,
+    "h_f_btu_lb": 180.13,
+    "h_g_btu_lb": 1150.27
+   },
+   {
+    "psig": 5,
+    "t_sat_f": 227.1,
+    "h_f_btu_lb": 195.42,
+    "h_g_btu_lb": 1155.9
+   },
+   {
+    "psig": 10,
+    "t_sat_f": 239.36,
+    "h_f_btu_lb": 207.82,
+    "h_g_btu_lb": 1160.31
+   },
+   {
+    "psig": 15,
+    "t_sat_f": 249.72,
+    "h_f_btu_lb": 218.33,
+    "h_g_btu_lb": 1163.94
+   },
+   {
+    "psig": 20,
+    "t_sat_f": 258.74,
+    "h_f_btu_lb": 227.51,
+    "h_g_btu_lb": 1167.01
+   },
+   {
+    "psig": 25,
+    "t_sat_f": 266.76,
+    "h_f_btu_lb": 235.68,
+    "h_g_btu_lb": 1169.68
+   },
+   {
+    "psig": 30,
+    "t_sat_f": 274.0,
+    "h_f_btu_lb": 243.07,
+    "h_g_btu_lb": 1172.02
+   },
+   {
+    "psig": 35,
+    "t_sat_f": 280.61,
+    "h_f_btu_lb": 249.84,
+    "h_g_btu_lb": 1174.12
+   },
+   {
+    "psig": 40,
+    "t_sat_f": 286.7,
+    "h_f_btu_lb": 256.08,
+    "h_g_btu_lb": 1176.0
+   },
+   {
+    "psig": 45,
+    "t_sat_f": 292.36,
+    "h_f_btu_lb": 261.89,
+    "h_g_btu_lb": 1177.71
+   },
+   {
+    "psig": 50,
+    "t_sat_f": 297.65,
+    "h_f_btu_lb": 267.34,
+    "h_g_btu_lb": 1179.27
+   },
+   {
+    "psig": 55,
+    "t_sat_f": 302.62,
+    "h_f_btu_lb": 272.46,
+    "h_g_btu_lb": 1180.71
+   },
+   {
+    "psig": 60,
+    "t_sat_f": 307.32,
+    "h_f_btu_lb": 277.31,
+    "h_g_btu_lb": 1182.04
+   },
+   {
+    "psig": 65,
+    "t_sat_f": 311.77,
+    "h_f_btu_lb": 281.91,
+    "h_g_btu_lb": 1183.27
+   },
+   {
+    "psig": 70,
+    "t_sat_f": 316.0,
+    "h_f_btu_lb": 286.29,
+    "h_g_btu_lb": 1184.42
+   },
+   {
+    "psig": 75,
+    "t_sat_f": 320.03,
+    "h_f_btu_lb": 290.48,
+    "h_g_btu_lb": 1185.49
+   },
+   {
+    "psig": 80,
+    "t_sat_f": 323.89,
+    "h_f_btu_lb": 294.49,
+    "h_g_btu_lb": 1186.49
+   },
+   {
+    "psig": 85,
+    "t_sat_f": 327.6,
+    "h_f_btu_lb": 298.34,
+    "h_g_btu_lb": 1187.44
+   },
+   {
+    "psig": 90,
+    "t_sat_f": 331.15,
+    "h_f_btu_lb": 302.05,
+    "h_g_btu_lb": 1188.32
+   },
+   {
+    "psig": 95,
+    "t_sat_f": 334.58,
+    "h_f_btu_lb": 305.63,
+    "h_g_btu_lb": 1189.16
+   },
+   {
+    "psig": 100,
+    "t_sat_f": 337.88,
+    "h_f_btu_lb": 309.08,
+    "h_g_btu_lb": 1189.95
+   },
+   {
+    "psig": 105,
+    "t_sat_f": 341.07,
+    "h_f_btu_lb": 312.42,
+    "h_g_btu_lb": 1190.7
+   },
+   {
+    "psig": 110,
+    "t_sat_f": 344.16,
+    "h_f_btu_lb": 315.66,
+    "h_g_btu_lb": 1191.41
+   },
+   {
+    "psig": 115,
+    "t_sat_f": 347.15,
+    "h_f_btu_lb": 318.8,
+    "h_g_btu_lb": 1192.08
+   },
+   {
+    "psig": 120,
+    "t_sat_f": 350.05,
+    "h_f_btu_lb": 321.85,
+    "h_g_btu_lb": 1192.72
+   },
+   {
+    "psig": 125,
+    "t_sat_f": 352.87,
+    "h_f_btu_lb": 324.81,
+    "h_g_btu_lb": 1193.33
+   },
+   {
+    "psig": 130,
+    "t_sat_f": 355.61,
+    "h_f_btu_lb": 327.7,
+    "h_g_btu_lb": 1193.91
+   },
+   {
+    "psig": 135,
+    "t_sat_f": 358.28,
+    "h_f_btu_lb": 330.51,
+    "h_g_btu_lb": 1194.46
+   },
+   {
+    "psig": 140,
+    "t_sat_f": 360.87,
+    "h_f_btu_lb": 333.26,
+    "h_g_btu_lb": 1194.99
+   },
+   {
+    "psig": 145,
+    "t_sat_f": 363.4,
+    "h_f_btu_lb": 335.94,
+    "h_g_btu_lb": 1195.49
+   },
+   {
+    "psig": 150,
+    "t_sat_f": 365.87,
+    "h_f_btu_lb": 338.55,
+    "h_g_btu_lb": 1195.97
+   },
+   {
+    "psig": 155,
+    "t_sat_f": 368.28,
+    "h_f_btu_lb": 341.11,
+    "h_g_btu_lb": 1196.42
+   },
+   {
+    "psig": 160,
+    "t_sat_f": 370.64,
+    "h_f_btu_lb": 343.62,
+    "h_g_btu_lb": 1196.86
+   },
+   {
+    "psig": 165,
+    "t_sat_f": 372.94,
+    "h_f_btu_lb": 346.07,
+    "h_g_btu_lb": 1197.28
+   },
+   {
+    "psig": 170,
+    "t_sat_f": 375.2,
+    "h_f_btu_lb": 348.47,
+    "h_g_btu_lb": 1197.68
+   },
+   {
+    "psig": 175,
+    "t_sat_f": 377.41,
+    "h_f_btu_lb": 350.82,
+    "h_g_btu_lb": 1198.06
+   },
+   {
+    "psig": 180,
+    "t_sat_f": 379.57,
+    "h_f_btu_lb": 353.13,
+    "h_g_btu_lb": 1198.43
+   },
+   {
+    "psig": 185,
+    "t_sat_f": 381.69,
+    "h_f_btu_lb": 355.39,
+    "h_g_btu_lb": 1198.78
+   },
+   {
+    "psig": 190,
+    "t_sat_f": 383.76,
+    "h_f_btu_lb": 357.62,
+    "h_g_btu_lb": 1199.12
+   },
+   {
+    "psig": 195,
+    "t_sat_f": 385.8,
+    "h_f_btu_lb": 359.8,
+    "h_g_btu_lb": 1199.44
+   },
+   {
+    "psig": 200,
+    "t_sat_f": 387.8,
+    "h_f_btu_lb": 361.95,
+    "h_g_btu_lb": 1199.75
+   },
+   {
+    "psig": 205,
+    "t_sat_f": 389.77,
+    "h_f_btu_lb": 364.06,
+    "h_g_btu_lb": 1200.04
+   },
+   {
+    "psig": 210,
+    "t_sat_f": 391.7,
+    "h_f_btu_lb": 366.14,
+    "h_g_btu_lb": 1200.33
+   },
+   {
+    "psig": 215,
+    "t_sat_f": 393.6,
+    "h_f_btu_lb": 368.18,
+    "h_g_btu_lb": 1200.6
+   },
+   {
+    "psig": 220,
+    "t_sat_f": 395.46,
+    "h_f_btu_lb": 370.19,
+    "h_g_btu_lb": 1200.86
+   },
+   {
+    "psig": 225,
+    "t_sat_f": 397.29,
+    "h_f_btu_lb": 372.17,
+    "h_g_btu_lb": 1201.11
+   },
+   {
+    "psig": 230,
+    "t_sat_f": 399.1,
+    "h_f_btu_lb": 374.12,
+    "h_g_btu_lb": 1201.35
+   },
+   {
+    "psig": 235,
+    "t_sat_f": 400.88,
+    "h_f_btu_lb": 376.04,
+    "h_g_btu_lb": 1201.57
+   },
+   {
+    "psig": 240,
+    "t_sat_f": 402.62,
+    "h_f_btu_lb": 377.94,
+    "h_g_btu_lb": 1201.79
+   },
+   {
+    "psig": 245,
+    "t_sat_f": 404.35,
+    "h_f_btu_lb": 379.81,
+    "h_g_btu_lb": 1202.0
+   },
+   {
+    "psig": 250,
+    "t_sat_f": 406.04,
+    "h_f_btu_lb": 381.65,
+    "h_g_btu_lb": 1202.2
+   },
+   {
+    "psig": 255,
+    "t_sat_f": 407.72,
+    "h_f_btu_lb": 383.47,
+    "h_g_btu_lb": 1202.39
+   },
+   {
+    "psig": 260,
+    "t_sat_f": 409.36,
+    "h_f_btu_lb": 385.26,
+    "h_g_btu_lb": 1202.58
+   },
+   {
+    "psig": 265,
+    "t_sat_f": 410.99,
+    "h_f_btu_lb": 387.03,
+    "h_g_btu_lb": 1202.75
+   },
+   {
+    "psig": 270,
+    "t_sat_f": 412.59,
+    "h_f_btu_lb": 388.78,
+    "h_g_btu_lb": 1202.92
+   },
+   {
+    "psig": 275,
+    "t_sat_f": 414.17,
+    "h_f_btu_lb": 390.51,
+    "h_g_btu_lb": 1203.08
+   },
+   {
+    "psig": 280,
+    "t_sat_f": 415.73,
+    "h_f_btu_lb": 392.21,
+    "h_g_btu_lb": 1203.23
+   },
+   {
+    "psig": 285,
+    "t_sat_f": 417.27,
+    "h_f_btu_lb": 393.9,
+    "h_g_btu_lb": 1203.37
+   },
+   {
+    "psig": 290,
+    "t_sat_f": 418.79,
+    "h_f_btu_lb": 395.56,
+    "h_g_btu_lb": 1203.51
+   },
+   {
+    "psig": 295,
+    "t_sat_f": 420.29,
+    "h_f_btu_lb": 397.21,
+    "h_g_btu_lb": 1203.64
+   },
+   {
+    "psig": 300,
+    "t_sat_f": 421.78,
+    "h_f_btu_lb": 398.84,
+    "h_g_btu_lb": 1203.77
+   }
+  ]
+ },
+ "saturated_water_by_temperature": {
+  "note": "Enthalpy of saturated water (the condensate returned) by its temperature, in Btu per lb. The 32 °F row is 0 by the steam-table convention (enthalpy counted from water at 32 °F); IF97 itself gives -0.02 Btu/lb there, 0.018 °F below its triple-point reference.",
+  "columns": {
+   "t_f": "°F",
+   "h_f_btu_lb": "Btu/lb"
+  },
+  "rows": [
+   {
+    "t_f": 32,
+    "h_f_btu_lb": 0.0
+   },
+   {
+    "t_f": 40,
+    "h_f_btu_lb": 8.03
+   },
+   {
+    "t_f": 50,
+    "h_f_btu_lb": 18.07
+   },
+   {
+    "t_f": 60,
+    "h_f_btu_lb": 28.08
+   },
+   {
+    "t_f": 70,
+    "h_f_btu_lb": 38.08
+   },
+   {
+    "t_f": 80,
+    "h_f_btu_lb": 48.07
+   },
+   {
+    "t_f": 90,
+    "h_f_btu_lb": 58.05
+   },
+   {
+    "t_f": 100,
+    "h_f_btu_lb": 68.04
+   },
+   {
+    "t_f": 110,
+    "h_f_btu_lb": 78.02
+   },
+   {
+    "t_f": 120,
+    "h_f_btu_lb": 88.0
+   },
+   {
+    "t_f": 130,
+    "h_f_btu_lb": 97.99
+   },
+   {
+    "t_f": 140,
+    "h_f_btu_lb": 107.98
+   },
+   {
+    "t_f": 150,
+    "h_f_btu_lb": 117.97
+   },
+   {
+    "t_f": 160,
+    "h_f_btu_lb": 127.98
+   },
+   {
+    "t_f": 170,
+    "h_f_btu_lb": 137.99
+   },
+   {
+    "t_f": 180,
+    "h_f_btu_lb": 148.01
+   },
+   {
+    "t_f": 190,
+    "h_f_btu_lb": 158.05
+   },
+   {
+    "t_f": 200,
+    "h_f_btu_lb": 168.1
+   },
+   {
+    "t_f": 210,
+    "h_f_btu_lb": 178.17
+   },
+   {
+    "t_f": 220,
+    "h_f_btu_lb": 188.25
+   },
+   {
+    "t_f": 230,
+    "h_f_btu_lb": 198.35
+   },
+   {
+    "t_f": 240,
+    "h_f_btu_lb": 208.47
+   },
+   {
+    "t_f": 250,
+    "h_f_btu_lb": 218.62
+   },
+   {
+    "t_f": 260,
+    "h_f_btu_lb": 228.79
+   },
+   {
+    "t_f": 270,
+    "h_f_btu_lb": 238.99
+   },
+   {
+    "t_f": 280,
+    "h_f_btu_lb": 249.21
+   },
+   {
+    "t_f": 290,
+    "h_f_btu_lb": 259.47
+   },
+   {
+    "t_f": 300,
+    "h_f_btu_lb": 269.76
+   },
+   {
+    "t_f": 310,
+    "h_f_btu_lb": 280.08
+   },
+   {
+    "t_f": 320,
+    "h_f_btu_lb": 290.44
+   },
+   {
+    "t_f": 330,
+    "h_f_btu_lb": 300.85
+   },
+   {
+    "t_f": 340,
+    "h_f_btu_lb": 311.3
+   },
+   {
+    "t_f": 350,
+    "h_f_btu_lb": 321.79
+   },
+   {
+    "t_f": 360,
+    "h_f_btu_lb": 332.34
+   },
+   {
+    "t_f": 370,
+    "h_f_btu_lb": 342.94
+   },
+   {
+    "t_f": 380,
+    "h_f_btu_lb": 353.59
+   },
+   {
+    "t_f": 390,
+    "h_f_btu_lb": 364.31
+   },
+   {
+    "t_f": 400,
+    "h_f_btu_lb": 375.1
+   }
+  ]
+ }
+}

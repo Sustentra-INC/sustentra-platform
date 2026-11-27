@@ -22,14 +22,14 @@ const CATEGORY_SCOPE = Object.fromEntries(CATEGORIES.map(([k, , s]) => [k, s]));
 /** The calculation a line feeds (the backend's CalculationLine.family): null when none reads it. */
 function familyOfLine(line: ModelLine): CalculationLine["family"] {
   if (line.category === "fugitive") return "fugitive";
-  if (line.category === "purchased_energy") return line.level2 === "electricity" ? "electricity" : null;
+  if (line.category === "purchased_energy") return line.level2 === "electricity" ? "electricity" : line.level2 === "steam" ? "steam" : null;
   if (line.category === "mobile" || line.anchor_kind === "vehicle_group") return "mobile";
   if ((line.category === "stationary" || line.category === "biogenic") && line.anchor_kind === "facility") return "stationary";
   return null;
 }
 
 const FAMILY_OF_KIND: Partial<Record<ModelRecord["kind"], TreeDocRow["value_family"]>> = {
-  gas: "stationary", propane: "stationary", fleet: "mobile", electricity: "electricity", refrigerant: "fugitive",
+  gas: "stationary", propane: "stationary", fleet: "mobile", electricity: "electricity", refrigerant: "fugitive", steam: "steam",
 };
 
 function lineOf(line: ModelLine): CalculationLine {

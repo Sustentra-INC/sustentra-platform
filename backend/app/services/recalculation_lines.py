@@ -16,6 +16,9 @@ category (on ``sum_co2e_t``: a consolidated share below 100% scales ``total_co2e
 Fugitive refrigerants: one line per refrigerant and facility, from each service record's simplified material balance
 terms (``calc_trace/fugitive.line_parts``); its results are by refrigerant, not by gas.
 
+Purchased steam: one line per facility, from its steam bills (``calc_trace/steam.line_parts``): by weight × the
+facility's heat content, or as energy, × EPA Table 7, as the purchased steam category counts them.
+
 Biomass: a biomass fuel's record sits on a ``biogenic`` line. Its CO2 row is marked ``biogenic``
 and carries ``co2e_t`` 0 (the CO2 is reported apart, in ``results.biogenic_co2_t``); its CH4 and N2O
 count as usual. ``counts_toward`` names the category those CH4 and N2O roll into.
@@ -33,7 +36,9 @@ from backend.app.domain.refrigerants import find_refrigerant
 from backend.app.reference.emission_factor_loader import EmissionFactorNotFoundError, EmissionFactorReference
 from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
-from backend.app.services.calc_trace import Decided, build_trace, decided_trace, electricity, fugitive, stationary
+from backend.app.services.calc_trace import (
+    Decided, build_trace, decided_trace, electricity, fugitive, stationary, steam,
+)
 from backend.app.services.calc_trace.decisions import Figures
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
 from backend.app.services.reviewed_evidence import ReviewedRecord, place_on_facility, to_date
@@ -42,12 +47,13 @@ if TYPE_CHECKING:
     from backend.app.services.engagement_recalculation_service import RecalculationInputs
 
 COUNTS_TOWARD = {"stationary": "stationary", "mobile": "mobile", "electricity": "purchased_energy",
-                 "fugitive": "fugitive"}
+                 "fugitive": "fugitive", "steam": "steam"}
 ROLLUP_SOURCE = {"stationary": "stationary_combustion", "mobile": "mobile_combustion",
-                 "electricity": "purchased_electricity", "fugitive": "fugitive_refrigerants"}
+                 "electricity": "purchased_electricity", "fugitive": "fugitive_refrigerants", "steam": "purchased_steam"}
 FAMILY_CATEGORIES = {"stationary": {"stationary", "biogenic"}, "mobile": {"mobile", "biogenic"},
-                     "electricity": {"purchased_energy"}, "fugitive": {"fugitive"}}
+                     "electricity": {"purchased_energy"}, "fugitive": {"fugitive"}, "steam": {"purchased_energy"}}
 ELECTRICITY_LEVEL2 = "Electricity"
+STEAM_LEVEL2 = "Steam"
 UNIT_SOURCE = "fuel_units conversion table"
 DISTANCE_SOURCE = "Vehicle group distance entered under Recalculation inputs"
 BIOGENIC_FLAG = "biogenic_co2_reported_separately"
@@ -113,6 +119,8 @@ class DecidedLine:
             if row.get("company_co2e_t") is not None:
                 row["difference_to_company_t"] = row["co2e_t"] - row["company_co2e_t"]
         self._summary_distance()
+        if self.family == "steam":  # the enthalpy and the option it was worked with (``calc_trace/steam``)
+            steam.write_summary(out, figures.rows.get("steam") or {})
         out["flags"] = sorted({*out["flags"], "reviewer_decisions_applied"})
 
     def _write_fugitive(self, tolerance: float) -> None:
@@ -340,6 +348,9 @@ class _Builder:
         if family == "fugitive":  # the simplified material balance of one refrigerant (``calc_trace/fugitive``)
             made = self._fugitive_line(bucket, share_pct)
             return self._finish(made, family, bucket, None, (str(made["smb"]["gas"]),))
+        if family == "steam":  # one facility's purchased steam (``calc_trace/steam``)
+            made = self._steam_line(bucket, share_pct)
+            return self._finish(made, family, bucket, None, (str(made["steam"]["facility"]),))
         subs_order: list[tuple[str, ...]] = []
         for sub in [c.sub for c in bucket.contribs] + list(bucket.groups):
             if sub not in subs_order:
@@ -484,9 +495,63 @@ class _Builder:
                     out["results"]["company_gas_co2e_t"] = company["results"]["gas_co2e_t"]
         return out
 
+    def _steam_line(self, bucket: _Bucket, share_pct: float) -> dict[str, Any]:
+        """One facility's steam: its bills, as the category counted them, and the company's side."""
+
+        line = bucket.line
+        setup = bucket.facility or self.setup_facilities.get(line.anchor_id if line else "") or {}
+        facility = next((c.sub[0] for c in bucket.contribs), None) or str(setup.get("name") or bucket.anchor or "")
+        parts = steam.line_parts(bucket.contribs, facility=facility,
+                                 heat_content=self.inputs.steam_heat_content.get(facility), ref=self.ref,
+                                 gwp=self.gwp, gwp_set=self.inputs.gwp_set, share_pct=share_pct, iso=_iso)
+        out: dict[str, Any] = {
+            "key": line.key if line else None, "scope": "s2", "category": "purchased_energy", "counts_toward": "steam",
+            "level2": line.level2_label if line else STEAM_LEVEL2, "level2_key": line.level2 if line else "steam",
+            "label": bucket.anchor or (line.label if line else facility),
+            "facility_id": line.facility_id if line else None, "consolidated_share_pct": share_pct,
+            "method": parts["method"], "step1": parts["step1"], "step2": parts["step2"], "step3": parts["step3"],
+            "results": parts["results"], "steam": parts["steam"],
+            "company": None, "reported_total_co2e_t": None, "difference_t": None,
+            "difference_pct_of_base": None, "status": "not_reported",
+            "inputs_incomplete": self.open_sources.get(ROLLUP_SOURCE["steam"], False),
+            "flags": sorted({*parts["flags"], *(["no_evidence"] if bucket.no_evidence else [])}),
+        }
+        if line is None:
+            out["reason"] = bucket.reason or "no_calculation_line"
+            out["target"] = bucket.target
+            return out
+        key = line.key
+        reported = self.inputs.reported_lines.get(key)
+        if reported is not None:
+            recomputed = out["results"]["total_co2e_t"]
+            out["reported_total_co2e_t"], out["difference_t"] = reported, recomputed - reported
+            verdict = calc.compare(key, reported, recomputed, self.tolerance)
+            out["difference_pct_of_base"] = verdict["difference_pct"]
+            out["status"] = "within" if verdict["status"] == "within_tolerance" else "above"
+        given = self.inputs.reported_activity.get(key)
+        if given is not None:
+            company = steam.company_parts(given, out, steam.company_values(self.line_decisions.get(key)), self.ref)
+            if isinstance(company, str):
+                self.needs_input.append({"kind": "company_activity", "key": key,
+                                         "message": f"{out['level2']}, {out['label']}: {company}"})
+            else:
+                out["company"] = company
+                if company["counted"]:
+                    total = company["results"]["total_co2e_t"]
+                    out["results"]["company_total_co2e_t"] = total
+                    out["results"]["difference_to_company_t"] = out["results"]["total_co2e_t"] - total
+                    out["results"]["company_gas_co2e_t"] = company["results"]["gas_co2e_t"]
+                    for row in out["step3"]["gases"]:
+                        row["company_co2e_t"] = company["results"]["gas_co2e_t"][row["gas"]]
+                        row["difference_to_company_t"] = row["co2e_t"] - row["company_co2e_t"]
+        return out
+
     def _context(self, family: str, bucket: _Bucket, primary: _Sub | None,
                  out: dict[str, Any] | None = None) -> dict[str, Any]:
         context: dict[str, Any] = {}
+        if family == "steam":  # the reference (the factors), the company's own values, and the line to rework
+            records = self.line_decisions.get(bucket.line.key) if bucket.line is not None else None
+            return {"ref": self.ref, "company": steam.company_values(records), "line": out}
         if family == "fugitive":  # the reference (a blend's components), the company's terms, and the line to rework
             records = self.line_decisions.get(bucket.line.key) if bucket.line is not None else None
             return {"ref": self.ref, "company_terms": fugitive.company_terms_of(records), "line": out}
@@ -699,10 +764,14 @@ def _resolve_key(key: str, known: dict[str, cl.CalculationLine], facilities: lis
         _, category, level2, anchor = parts
         facility = next((f for f in facilities if cl.slug(cl.facility_anchor_id(f)) == anchor), None)
         group = next(((a, g) for a, g in anchors if cl.slug(a) == anchor), None)
-        if category == "purchased_energy":
+        if category == "purchased_energy" and level2 != "steam":
             if level2 != "electricity" or facility is None:
                 return None
             line = cl.facility_line(category, "electricity", ELECTRICITY_LEVEL2, facility)
+        elif category == "purchased_energy":  # the company's steam figures at a facility, no bill yet
+            if facility is None:
+                return None
+            line = cl.facility_line(category, "steam", STEAM_LEVEL2, facility)
         elif category == "fugitive":  # a refrigerant the company gave figures for at a facility, with no record yet
             gas = find_refrigerant(level2.replace("-", " ")) if facility is not None else None
             if gas is None or gas.montreal or facility is None or cl.slug(gas.name) != level2:  # the exact refrigerant
@@ -723,9 +792,9 @@ def _resolve_key(key: str, known: dict[str, cl.CalculationLine], facilities: lis
         if line.key != key:
             return None
     if line.category == "purchased_energy":
-        if line.level2 != "electricity":
+        if line.level2 not in ("electricity", "steam"):
             return None
-        family = "electricity"
+        family = str(line.level2)
     elif line.category == "mobile" or line.anchor_kind == "vehicle_group":
         family = "mobile"
     elif line.category in ("stationary", "biogenic") and line.anchor_kind == "facility":
@@ -841,14 +910,16 @@ def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRe
     for c in ledger.contributions:
         slot = slot_of.get(id(c.record), cl.Slot(cl.SUPPORTING_UNASSIGNED))
         line = known.get(slot.target)
-        if line is not None and line.category in FAMILY_CATEGORIES[c.family]:
+        # steam only on a steam line, and no electricity on one (an energy line holds one calculation)
+        if line is not None and line.category in FAMILY_CATEGORIES[c.family] and (
+                c.family not in ("steam", "electricity") or (line.level2 == "steam") == (c.family == "steam")):
             bucket = buckets.setdefault(line.key, _Bucket(c.family, line, line.level2_label, anchor_label(line)))
         else:  # no line, or moved out of its family: reported on its own, never dropped
             name = c.sub[0]
             reason = reason_for(c, slot, line)
+            level2 = {"electricity": ELECTRICITY_LEVEL2, "steam": STEAM_LEVEL2}.get(c.family)
             bucket = buckets.setdefault(("unplaced", c.family, name, reason), _Bucket(
-                c.family, None, ELECTRICITY_LEVEL2 if c.family == "electricity" else name,
-                name if c.family == "electricity" else None, slot.target, reason))
+                c.family, None, level2 or name, name if level2 else None, slot.target, reason))
         bucket.contribs.append(c)
     # Each vehicle group carries its own CH4 and N2O, with or without a fuel record placed on it.
     for (fuel, base), indexed in ledger.mobile_groups.items():

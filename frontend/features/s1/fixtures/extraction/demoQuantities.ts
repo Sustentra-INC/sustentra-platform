@@ -25,3 +25,6 @@ export const PROPANE_BY_DOC: Record<string, number> = {
   "kent_propane_may.pdf": 3_000,
   "kent_propane_nov.pdf": 3_000,
 };
+
+/** Kent Cannery's steam from the neighbouring CHP plant, Mlb a month (boards 06 to 08): 15,800 Mlb in the year. */
+export const STEAM_MLB_BY_MONTH = [1450, 1380, 1420, 1300, 1250, 1200, 1180, 1190, 1240, 1330, 1400, 1460];

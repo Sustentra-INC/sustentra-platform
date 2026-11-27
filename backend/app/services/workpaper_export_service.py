@@ -431,7 +431,7 @@ _RECORD_NUMBER = re.compile(r"^(?P<file>.*?)(?: \(record (?P<n>\d+)\))?$", re.DO
 # The category result a calculation line's records are also counted in (its details list the same documents).
 _LINE_FAMILY = {"stationary": "stationary_combustion", "biogenic": "stationary_combustion",
                 "mobile": "mobile_combustion", "purchased_energy": "purchased_electricity_location_based",
-                "fugitive": "fugitive_refrigerants"}
+                "fugitive": "fugitive_refrigerants", "steam": "purchased_steam_location_based"}
 _DETAIL_NAMES = {"stationary_combustion": CATEGORY_LABEL["stationary"], "mobile_combustion": CATEGORY_LABEL["mobile"],
                  "fugitive_refrigerants": CATEGORY_LABEL["fugitive"],
                  "purchased_electricity_location_based": CATEGORY_LABEL["purchased_energy"]}
@@ -519,6 +519,9 @@ def _source_rows(recalculation: Mapping[str, Any], register: Mapping[str, Any]) 
         # a refrigerant line still waiting for a GWP counts nothing: its records show their quantity, marked so
         waiting = (f"not counted: {smb.get('awaiting') or 'a GWP'} awaiting review" if smb is not None
                    and smb.get("gwp") is None and not smb.get("decided_gwp") and not smb.get("mixed") else None)
+        steam = line.get("steam") if isinstance(line.get("steam"), Mapping) else None
+        # steam billed by weight with no enthalpy yet counts nothing: its bills show their quantity, marked so
+        steam_waiting = f"not counted: {steam['awaiting']} awaiting review" if steam and steam.get("awaiting") else None
         for row in (step1.get("rows") if isinstance(step1, Mapping) else None) or []:
             if not isinstance(row, Mapping):
                 continue
@@ -530,7 +533,8 @@ def _source_rows(recalculation: Mapping[str, Any], register: Mapping[str, Any]) 
             labels = {str(m["doc"].get("record")) for m in matches}
             file_name, record = _split_record(next(iter(labels)) if len(labels) == 1 else None)
             rows.append([category, name or None, row.get("file_name") or file_name or _NO_FILE, record,
-                         row.get("quantity"), row.get("unit"), row.get("share_in_period"), waiting or counted,
+                         row.get("quantity"), row.get("unit"), row.get("share_in_period"),
+                         waiting or (steam_waiting if row.get("kind") == "mass" else None) or counted,
                          pages.get((str(row.get("document_id")), str(row.get("candidate_id"))))])
     for entry in entries:
         if entry["used"]:

@@ -3,7 +3,7 @@ import type { SourceRef } from "../../types/verificationResults";
 import { claudeReadings } from "../ai/claudeReadings";
 import { manufacturerEvidence } from "../evidence/manufacturerEvidence";
 import { verificationLines } from "../verification/resultsDataset";
-import { PROPANE_BY_DOC, fleetQuarter } from "./demoQuantities";
+import { PROPANE_BY_DOC, STEAM_MLB_BY_MONTH, fleetQuarter } from "./demoQuantities";
 import { applyReviewDecisions } from "./reviewDecisions";
 
 /**
@@ -379,6 +379,11 @@ for (const doc of manufacturerEvidence) {
     values.push(rv({ ...common, period, whatItIs: "Fuel delivered", scope: "scope1", value: gal, unit: "gal", snippet: `Propane delivered ${gal} gal` }));
     // The August invoice does not print the fuel type: the reviewer still has to fill it in.
     if (doc.filename === "modesto_propane_aug.pdf") values.push(rv({ ...common, period, whatItIs: "Fuel type", scope: "not_placed", value: "not found", unit: "", missing: true, requestPreselect: "missing_data", snippet: "Fuel type (not printed)" }));
+  }
+  if (doc.detectedType === "Purchased steam statement" && code) {
+    const month = Number((doc.periodStart ?? "2025-01").slice(5, 7));
+    const mlb = STEAM_MLB_BY_MONTH[month - 1].toLocaleString();
+    values.push(rv({ ...common, period: `${MONTH_LABEL[month - 1]} 2025`, whatItIs: "Steam consumed", scope: "scope2_location", value: mlb, unit: "Mlb", snippet: `Steam delivered ${mlb} Mlb` }));
   }
   // A December 2024 bill that is in the folder by mistake: the quantity it reads is still a reading.
   if (doc.documentId === "DOC-WRONGYEAR" && !own.length) {

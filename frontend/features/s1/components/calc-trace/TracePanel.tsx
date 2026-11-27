@@ -107,6 +107,7 @@ function OperandValue({
         value
       )}
       {diff ? <span className="s1-cp-diff"> ({diff})</span> : null}
+      {side === "recomputed" && input?.assumption ? <span className="s1-cp-tag s1-cp-assume">{input.assumption}</span> : null}
       {chip}
     </>
   );

@@ -140,6 +140,9 @@ export interface TraceInput {
   decidable?: boolean;
   /** Why not, when `decidable` is false (e.g. "the GWP is chosen for the whole engagement on the Methodology page"). */
   why_not?: string | null;
+  /** A default the line uses where nothing is stated yet, until a reviewer decides the input:
+   *  "Default: <value> (<source>) · not confirmed". */
+  assumption?: string | null;
 }
 
 export interface TraceChoiceOption {

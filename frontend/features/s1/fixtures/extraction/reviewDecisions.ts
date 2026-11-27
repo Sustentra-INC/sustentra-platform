@@ -16,7 +16,7 @@ function reviewedAt(i: number): string {
 }
 
 /** Bills and statements a reviewer has gone through. Everything else is left open. */
-const REVIEWED_TYPES = new Set(["Natural gas bill", "Electricity bill", "Fleet fuel statement", "Other fuel invoice"]);
+const REVIEWED_TYPES = new Set(["Natural gas bill", "Electricity bill", "Fleet fuel statement", "Other fuel invoice", "Purchased steam statement"]);
 /** Documents still waiting for a reviewer, so the demo shows work open. */
 const NOT_YET_REVIEWED = new Set(["kent_gas_sep_2025.pdf", "modesto_electric_nov_2025.pdf", "modesto_refrigerant_service.pdf"]);
 /** The two stress files: reviewed in bulk, the last rows still open. */

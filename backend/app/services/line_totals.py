@@ -15,6 +15,11 @@ location-based mass x (1 - coverage), exactly what the market-based calculator d
 Fugitive refrigerants (``_apply_fugitive``) are by refrigerant, not by gas: a decided line moves its refrigerant's mass,
 and a refrigerant the category could not count (no GWP) is counted from the lines whose component GWPs are decided.
 
+Purchased steam (``_apply_steam``) moves by facility, gas by gas, as electricity does; a facility the category could not
+count (steam by weight, no heat content) is counted from its decided lines. Market-based steam moves with it: it has
+always used the location-based factor (no supplier factor was read), and a supplier's factor decided on a line is now
+the one both use.
+
 With no decision that changes a number nothing here runs, so the categories are the calculators' own, bit for bit.
 When the lines do not add up to their category (a line that could not be calculated, say), its decisions are not
 applied to the totals: the line keeps its calculated figures and the decision is reported, never half applied.
@@ -120,6 +125,9 @@ def apply(categories: dict[str, calc.CategoryResult | None], decided: list[Decid
     refrigerants = [d for d in decided if d.family == "fugitive"]
     if refrigerants:
         applied.extend(_apply_fugitive(categories, refrigerants, every, tolerance))
+    steam = [d for d in decided if d.family == "steam"]
+    if steam:
+        applied.extend(_apply_steam(categories, steam, every, ref, tolerance))
     for family, name in FAMILY_CATEGORY.items():
         mine = [d for d in decided if d.family == family]
         if not mine:
@@ -182,7 +190,9 @@ def _shift(line: calc.LineResult, item: DecidedLine) -> None:
 
 
 _LABELS = {"activity.total": "Activity", "distance": "Distance", "fuel_economy": "Fuel economy",
-           "hhv": "Site heat content (HHV)", "cc": "Carbon content"}
+           "hhv": "Site heat content (HHV)", "cc": "Carbon content", "mass": "Steam by weight",
+           "energy": "Steam as energy", "net_enthalpy": "Net steam enthalpy", "pressure_psig": "Steam pressure",
+           "condensate_f": "Condensate return temperature", "efficiency": "Boiler thermal efficiency"}
 
 
 def _label(input_id: str) -> str:
@@ -412,3 +422,57 @@ def _apply_fugitive(categories: dict[str, calc.CategoryResult | None], mine: lis
     for item in usable:
         item.write(tolerance)
     return usable
+
+
+# --- purchased steam (C9) ---------------------------------------------------------------------------------------------
+STEAM_LOCATION, STEAM_MARKET = "purchased_steam_location_based", "purchased_steam_market_based"
+STEAM_MARKET_FLAG = "no_supplier_factor_market_equals_location"
+
+
+def _apply_steam(categories: dict[str, calc.CategoryResult | None], mine: list[DecidedLine],
+                 every: list[dict[str, Any]], ref: EmissionFactorReference, tolerance: float) -> list[DecidedLine]:
+    """Location- and market-based purchased steam moved by their lines' decisions: each facility's category line takes
+    its decided lines' change of mass, gas by gas; a facility the category did not count is added from its lines."""
+
+    location = categories.get(STEAM_LOCATION)
+    if not adds_up(line_sums(every, "steam"), location):
+        for item in mine:
+            _refuse(item, "category_does_not_add_up", "Not applied: this category's lines do not add up to its "
+                    "total, so a change on one line cannot be counted. Check the lines marked as not calculated.")
+        return []
+    gwp_set = location.gwp_set if location is not None else str(mine[0].line["steam"]["gwp_set"])
+    empty = calc.purchased_thermal(STEAM_LOCATION, [], ref, gwp_set=gwp_set)
+    base = location if location is not None else empty
+    new_lines = [copy.deepcopy(line) for line in base.lines]
+    usable: list[DecidedLine] = []
+    for item in mine:
+        found = [line for line in new_lines if line.key == item.sub[0]]
+        if len(found) > 1:
+            _refuse(item, "no_category_line", "Not applied: the category has no single entry for this line's facility.")
+            continue
+        if not found:  # steam by weight the category could not count: from the line's decided enthalpy
+            found = [calc.LineResult(item.sub[0], {gas: "Emissions = MMBtu x EF" for gas in calc.GASES},
+                                     dict.fromkeys(calc.GASES, 0.0), steps=[])]
+            new_lines.append(found[0])
+        _shift(found[0], item)
+        usable.append(item)
+    if not usable:
+        return []
+    categories[STEAM_LOCATION] = _retotal_steam(base, new_lines, ref, location is None)
+    market = categories.get(STEAM_MARKET)
+    market_base = market if market is not None else calc.purchased_thermal(
+        STEAM_MARKET, [], ref, gwp_set=gwp_set, flags=[STEAM_MARKET_FLAG])
+    categories[STEAM_MARKET] = _retotal_steam(market_base, [copy.deepcopy(line) for line in new_lines], ref,
+                                              market is None)
+    for item in usable:
+        item.write(tolerance)
+    return usable
+
+
+def _retotal_steam(base: calc.CategoryResult, lines: list[calc.LineResult], ref: EmissionFactorReference,
+                   new: bool) -> calc.CategoryResult:
+    result = calc.retotal(base, lines, ref, [FLAG])
+    if new:  # the Working sheet lists what the lines counted
+        result.details = {**result.details, "inputs": []}
+    result.flags = sorted(set(result.flags))
+    return result
