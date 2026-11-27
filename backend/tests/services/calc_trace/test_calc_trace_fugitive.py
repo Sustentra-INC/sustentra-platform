@@ -537,3 +537,33 @@ def test_the_line_decided_first_keeps_the_blend_gwp_whatever_its_key() -> None:
     refused = line_of(response, R448A_KC)["decisions"]["not_applied"]
     assert {r["reason"] for r in refused} == {"gwp_differs_between_lines"}
     assert "St Louis Plant was decided first" in refused[0]["message"]
+
+
+@pytest.mark.parametrize("phantom", ["s1:fugitive:r404a:fac-kc01", "s1:fugitive:r-404a-old:fac-kc01"])
+def test_a_key_that_only_mentions_a_refrigerant_is_never_a_second_line_of_it(phantom: str) -> None:
+    response = run(r404a_store(), reported_lines={phantom: 99.0, R404A_KC: 180.0},
+                   reported_activity={phantom: {"quantity": 1, "unit": "lb"}, R404A_KC: {"quantity": 129, "unit": "lb"}},
+                   line_decisions=[event(phantom, "input|P_S|recomputed", "edited", 500, "lb")])
+    assert not any(ln["key"] == phantom for ln in response["calculation_lines"])
+    unknown = response["calculation_line_inputs"]["unknown_line_keys"]
+    assert {(u["setting"], u["key"]) for u in unknown} >= {("reported_lines", phantom), ("reported_activity", phantom)}
+    real = line_of(response, R404A_KC)  # the real line keeps the company's figures
+    assert real["reported_total_co2e_t"] == 180.0
+    assert real["company"]["activity"] == {"quantity": 129.0, "unit": "lb"}
+    assert category(response)["total_co2e"] == 177.06295677609  # the decision found no line: nothing added
+    assert [o["line_key"] for o in response["calculation_line_decisions"]["orphaned"]] == [phantom]
+
+
+def test_first_decided_is_compared_in_utc() -> None:
+    store = r448a_store("Kansas City Plant", "St Louis Plant")
+    kc = [gwp_event(R448A_KC, n, v) for n, v in zip(HFO, (4, 6), strict=True)]
+    stl = [gwp_event(R448A_STL, n, v) for n, v in zip(HFO, (1, 6), strict=True)]
+    for e in kc:  # 05:00 UTC: the earlier, though it sorts later as text
+        e["record"]["decision"]["at"] = "2026-11-20T10:00:00+05:00"
+    for e in stl:
+        e["record"]["decision"]["at"] = "2026-11-20T06:00:00Z"
+    response = run(store, line_decisions=[*stl, *kc])
+    assert line_of(response, R448A_KC)["results"]["total_co2e_t"] > 0
+    refused = line_of(response, R448A_STL)["decisions"]["not_applied"]
+    assert {r["reason"] for r in refused} == {"gwp_differs_between_lines"}
+    assert "Kansas City Plant was decided first" in refused[0]["message"]

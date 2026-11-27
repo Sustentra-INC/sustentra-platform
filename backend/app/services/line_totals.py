@@ -26,6 +26,7 @@ import copy
 import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.app.reference.emission_factor_loader import EmissionFactorNotFoundError, EmissionFactorReference
@@ -294,11 +295,19 @@ DECIDED_GWP_SOURCE = "Component GWPs decided on the calculation lines"
 NEGATIVE = "negative_refrigerant_emissions"
 
 
-def _first_decided(item: DecidedLine) -> str:
-    """When the line's earliest applied decision was made (ISO 8601 sorts as text); "~" (last) when none says."""
+def _first_decided(item: DecidedLine) -> datetime:
+    """When the line's earliest applied decision was made, in UTC (a time without a zone is taken as UTC); the latest
+    possible time when none says or none can be read, so such a line comes last."""
 
-    times = [str(e.get("decided_at")) for e in item.decided.applied if e.get("decided_at")]
-    return min(times) if times else "~"
+    times: list[datetime] = []
+    for entry in item.decided.applied:
+        text = str(entry.get("decided_at") or "").strip()
+        try:
+            at = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        times.append(at.astimezone(UTC) if at.tzinfo else at.replace(tzinfo=UTC))
+    return min(times) if times else datetime.max.replace(tzinfo=UTC)
 
 
 def fugitive_sums(lines: Iterable[Mapping[str, Any]]) -> dict[str, float]:

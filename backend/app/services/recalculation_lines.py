@@ -703,7 +703,7 @@ def _resolve_key(key: str, known: dict[str, cl.CalculationLine], facilities: lis
             line = cl.facility_line(category, "electricity", ELECTRICITY_LEVEL2, facility)
         elif category == "fugitive":  # a refrigerant the company gave figures for at a facility, with no record yet
             gas = find_refrigerant(level2.replace("-", " ")) if facility is not None else None
-            if gas is None or gas.montreal or facility is None:
+            if gas is None or gas.montreal or facility is None or cl.slug(gas.name) != level2:  # the exact refrigerant
                 return None
             line = cl.facility_line(category, level2, gas.name, facility)
         elif category in ("stationary", "mobile", "biogenic"):
