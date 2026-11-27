@@ -229,7 +229,8 @@ def test_the_pipeline_with_ai_off_is_unchanged(tmp_path: Any) -> None:
 
 
 def test_the_module_constants_say_what_they_bound() -> None:
-    assert ai_facility.FEATURE == "facility" and ai_facility.MAX_LINES == 150 and ai_facility.MAX_CHARS == 8_000
+    assert ai_facility.FEATURE == "facility" and ai_facility.RESERVED_TOKENS == 8_000
+    assert not hasattr(ai_facility, "MAX_PAGE")  # the whole document is read, never only its first pages
 
 
 # --- the quote must point at the facility (fix round 1) -----------------------------------------------------------------

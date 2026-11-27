@@ -1,5 +1,5 @@
 import { NO_REASON, type AiExplanation } from "../api/aiExplanation";
-import { AI_TYPE } from "../constants/copy";
+import { AI_TYPE, READ_IN_PART } from "../constants/copy";
 import type { EvidenceItem } from "../types";
 import { AiExplainPopover } from "./AiExplainPopover";
 
@@ -38,6 +38,16 @@ function shortQuote(quote: string): string {
   return text.length > MAX_QUOTE ? `${text.slice(0, MAX_QUOTE).trimEnd()}…` : text;
 }
 
+/** The lines under the quote: other types parts of the document were read as, and what the read did not reach. */
+function TypeReadNotes({ ai }: { ai: NonNullable<EvidenceItem["aiType"]> }) {
+  return (
+    <>
+      {ai.otherTypes?.length ? <div data-testid="ai-type-others">{AI_TYPE.otherTypes(ai.otherTypes)}</div> : null}
+      {ai.readInPart ? <div data-testid="ai-type-read-in-part">{READ_IN_PART.pages(ai.readInPart)}</div> : null}
+    </>
+  );
+}
+
 export function AiTypeNote({ item }: { item: Pick<EvidenceItem, "aiType" | "detectedType" | "typeConfirmed"> }) {
   const ai = item.aiType;
   if (!ai) return null;
@@ -51,6 +61,7 @@ export function AiTypeNote({ item }: { item: Pick<EvidenceItem, "aiType" | "dete
         <div>
           “{ai.quote}”{ai.page != null ? ` · page ${ai.page}` : ""}
         </div>
+        <TypeReadNotes ai={ai} />
       </div>
     );
   }
@@ -69,6 +80,7 @@ export function AiTypeNote({ item }: { item: Pick<EvidenceItem, "aiType" | "dete
           “{quote}”{ai.page != null ? ` · page ${ai.page}` : ""}
         </div>
       ) : null}
+      <TypeReadNotes ai={ai} />
     </div>
   );
 }

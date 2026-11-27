@@ -255,6 +255,20 @@
         },
         "review_required": {
           "type": "boolean"
+        },
+        "other_types": {
+          "description": "The other types parts of the document were read as: a document that may hold several documents.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "read_in_part": {
+          "description": "What was not read when the read stopped in the document (the monthly limit, or a failed call), e.g. \"pages 12–40\".",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     }

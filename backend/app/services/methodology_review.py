@@ -37,6 +37,7 @@ record stays complete. Refusals are plain sentences, because the frontend shows 
 from __future__ import annotations
 
 import copy
+import json
 import re
 import uuid
 from collections.abc import Mapping, Sequence
@@ -709,6 +710,19 @@ def _bound_evidence(items: list[Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _bound_conflict(answer: Mapping[str, Any]) -> dict[str, Any]:
+    """Another answer for the field, as stored with the suggestion: its value as text, quote, document and page."""
+
+    value = answer.get("value")
+    page, part = answer.get("page"), answer.get("part")
+    return {"value": _clip(value if isinstance(value, str) else json.dumps(value, default=str), 200) or "",
+            "quote": _clip(answer.get("quote"), MAX_EVIDENCE_QUOTE) or "",
+            "document_id": _clip(answer.get("document_id"), 100) or "",
+            "file_name": _clip(answer.get("file_name"), 255) or "",
+            "page": page if isinstance(page, int) and not isinstance(page, bool) else None,
+            "part": part if isinstance(part, int) and not isinstance(part, bool) else None}
+
+
 def bound_suggestion(field: Mapping[str, Any], suggestion: Mapping[str, Any]) -> dict[str, Any]:
     """The suggestion with a validated value and every other part bounded: the quote is cut to
     MAX_QUOTE characters (``quote_truncated: true``), the other texts to their limits, the
@@ -724,6 +738,12 @@ def bound_suggestion(field: Mapping[str, Any], suggestion: Mapping[str, Any]) ->
                 out["quote_truncated"] = True
     if "source_reference" in suggestion:
         out["source_reference"] = _bound_reference(suggestion["source_reference"])
+    conflicts = suggestion.get("conflicts")
+    if suggestion.get("conflicting") and isinstance(conflicts, list) and conflicts:
+        # Another part of the documents states a different answer (MVP-237): kept with its quote and page.
+        out["conflicting"] = True
+        out["conflict_note"] = _clip(suggestion.get("conflict_note"), 500) or ""
+        out["conflicts"] = [_bound_conflict(c) for c in conflicts[:5] if isinstance(c, Mapping)]
     evidence = suggestion.get("evidence")
     if isinstance(evidence, list) and isinstance(out["value"], list):
         kept_evidence = _bound_evidence(evidence)

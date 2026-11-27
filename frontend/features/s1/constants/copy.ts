@@ -18,13 +18,20 @@ export const AI_TYPE = {
   suggested: "Type suggested by Sustentra's AI, please confirm",
   toCheck: "Type to check",
   disagreesOn: (rulesType: string, claudeType: string) =>
-    `The rules chose ${rulesType}, but Sustentra's AI read the first pages as ${claudeType}. The type was not changed.`,
+    `The rules chose ${rulesType}, but Sustentra's AI read the document as ${claudeType}. The type was not changed.`,
+  otherTypes: (names: string[]) => `Parts of this document read as ${names.join(", ")}: it may hold several documents.`,
+} as const;
+
+/** A read by Sustentra's AI that stopped before the end of the document (backend document_parts.read_in_part). */
+export const READ_IN_PART = {
+  pages: (notRead: string) => `Read in part: ${notRead} not read.`,
 } as const;
 
 /** Claude's facility suggestion for a bill that names none (backend services/ai_facility.py). */
 export const AI_FACILITY = {
   suggested: "Facility suggested by Sustentra's AI",
   place: (facilityName: string) => `Place on ${facilityName}`,
+  several: (quotes: string[]) => `The document points at more than one facility: ${quotes.join("; ")}. Choose the right one.`,
 } as const;
 
 /** Claude's reading of a value (backend services/ai_extraction.py). */

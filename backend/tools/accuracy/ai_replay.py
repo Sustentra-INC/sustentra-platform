@@ -33,7 +33,7 @@ class NullLedger:
         return 0
 
     def record(self, *, org_id: uuid.UUID, engagement_id: uuid.UUID | None, provider: str,
-               reply: StructuredReply[Any]) -> None:
+               reply: StructuredReply[Any], document_id: str | None = None) -> None:
         return None
 
 

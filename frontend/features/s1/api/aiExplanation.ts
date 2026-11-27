@@ -29,4 +29,8 @@ export interface AiExplanation {
   read_at?: string | null;
   model?: string | null;
   items: AiExplanationItem[];
+  /** A facility read that stopped before the end of the document: what it did not reach ("pages 12–40"). */
+  read_in_part?: string | null;
+  /** A facility read whose parts point at more than one facility: each, with its quote and page. */
+  candidates?: { facility_id: string; quote: string; page: number | null }[];
 }

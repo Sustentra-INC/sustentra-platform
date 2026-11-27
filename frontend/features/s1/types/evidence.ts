@@ -43,6 +43,10 @@ export interface AiTypeReading {
   typeName: string;
   used: boolean;
   disagrees: boolean;
+  /** Other types parts of the document were read as (display names): it may hold several documents. */
+  otherTypes?: string[];
+  /** What the type read did not reach ("pages 12–40"), when it stopped in the document. */
+  readInPart?: string | null;
 }
 
 export interface EvidenceItem {
@@ -70,7 +74,15 @@ export interface EvidenceItem {
    * Claude's suggested facility for a bill that names none: shown with its quote while the bill is unplaced and the
    * reviewer has not chosen one (utils/documentView.ts decides when). A suggestion, never a placement.
    */
-  facilitySuggestion?: { facilityId: string; quote: string; where: string };
+  facilitySuggestion?: {
+    facilityId: string;
+    quote: string;
+    where: string;
+    /** What the facility read did not reach ("pages 12–40"). */
+    readInPart?: string | null;
+    /** Every facility the document's parts point at, when more than one. */
+    candidates?: { facility_id: string; quote: string; page: number | null }[];
+  };
   /** The account and meter number read from the bill, for the provisional placement step (utils/facilityNumbers.ts). */
   accountNumber?: string | null;
   meterNumber?: string | null;

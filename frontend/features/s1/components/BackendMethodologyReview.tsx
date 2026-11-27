@@ -613,6 +613,11 @@ export function FieldRow({
           }
         />
         {quoteNote?.(null) ? <span className="s1-mb-notlocated">{quoteNote(null)}</span> : null}
+        {suggestion.conflicting && suggestion.conflict_note ? (
+          <span className="s1-mr-muted" data-testid="mr-conflict">
+            The documents disagree: {suggestion.conflict_note}. Check both before you accept.
+          </span>
+        ) : null}
       </div>
     )
   ) : null;
@@ -1005,7 +1010,14 @@ export function BackendMethodologyReview({
     setBusy(true);
     setNotice(null);
     try {
-      setResult(await prefillMethodology(engagementId));
+      const answer = await prefillMethodology(engagementId);
+      // The read runs on the background reader: the page shows its marker and polls it to the end.
+      if (answer.state === "started" || answer.state === "joined") {
+        setResult(null);
+        if (answer.auto_read) setData((current) => (current ? { ...current, autoRead: answer.auto_read } : current));
+      } else {
+        setResult(answer);
+      }
       await load();
     } catch (error) {
       if (!onError?.(error)) setNotice(userFacingApiError(error));
@@ -1054,6 +1066,11 @@ export function BackendMethodologyReview({
   }
 
   const aiOff = aiStatusWords(data.ai);
+  // A read that stopped before the end of a document says so, with its reason: from the finished read's marker
+  // (the button's read and the automatic one), or a read answered at once.
+  const readInPart = (
+    result?.documents_read ?? (!autoActive && data.autoRead?.state === "done" ? data.autoRead.not_read ?? [] : [])
+  ).filter((d) => d.note);
   const spendLine = spendWords(data.ai);
   // An entity row counts once it has a name: the reviewer's decision, or Claude's suggestion while still undecided.
   const entitiesNamed = data.catalog.some((d) => {
@@ -1240,7 +1257,7 @@ export function BackendMethodologyReview({
       {confirming ? (
         <div className="s1-mb-confirm" role="alertdialog" aria-label="Read the client's reports">
           <p>
-            Sustentra&apos;s AI will read this engagement&apos;s report documents (the GHG inventory report, boundary statement and methodology documents, up to five) and suggest values with quotes. Suggestions need your review before they count. The result will list the documents it read.
+            Sustentra&apos;s AI will read this engagement&apos;s report documents (the GHG inventory report, boundary statement and methodology documents, every page of each) and suggest values with quotes. Suggestions need your review before they count. It reads in the background: you can leave this page, and it says if a document could only be read in part.
           </p>
           <span className="s1-mr-actions">
             <button type="button" className="s1-button s1-button--pri" disabled={prefilling} onClick={() => void runPrefill()}>
@@ -1271,6 +1288,11 @@ export function BackendMethodologyReview({
       {!autoActive && data.autoRead?.state === "skipped" && data.autoRead.reason ? (
         <p className="s1-mb-ai" role="status">
           Not read automatically: {data.autoRead.reason}
+        </p>
+      ) : null}
+      {readInPart.length ? (
+        <p className="s1-mr-muted" role="status" data-testid="mr-read-in-part">
+          {readInPart.map((d) => `${d.file_name}: ${d.note}`).join(" ")}
         </p>
       ) : null}
       {result?.reused ? (

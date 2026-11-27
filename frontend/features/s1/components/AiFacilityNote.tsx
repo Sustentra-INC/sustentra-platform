@@ -1,5 +1,5 @@
 import { NO_REASON, type AiExplanation } from "../api/aiExplanation";
-import { AI_FACILITY } from "../constants/copy";
+import { AI_FACILITY, READ_IN_PART } from "../constants/copy";
 import { AiExplainPopover } from "./AiExplainPopover";
 
 /**
@@ -18,6 +18,8 @@ export function AiFacilityNote({
   disabled,
   explanation,
   onOpenDocument,
+  readInPart,
+  candidates,
 }: {
   facilityName: string;
   quote: string;
@@ -27,7 +29,13 @@ export function AiFacilityNote({
   explanation?: AiExplanation | null;
   /** Opens the document the quote is on (the popover's link). */
   onOpenDocument?: (documentId: string) => void;
+  /** What the read did not reach; else the explanation's. */
+  readInPart?: string | null;
+  /** Every facility the document points at, when more than one; else the explanation's. */
+  candidates?: { facility_id: string; quote: string; page: number | null }[];
 }) {
+  const several = candidates ?? explanation?.candidates ?? [];
+  const notRead = readInPart ?? explanation?.read_in_part ?? null;
   const shown: AiExplanation = explanation ?? {
     reason: null,
     reason_note: NO_REASON,
@@ -41,6 +49,12 @@ export function AiFacilityNote({
       <div>
         “{quote}” · {where}
       </div>
+      {several.length > 1 ? (
+        <div data-testid="ai-facility-candidates">
+          {AI_FACILITY.several(several.map((c) => `“${c.quote}”${c.page != null ? ` · page ${c.page}` : ""}`))}
+        </div>
+      ) : null}
+      {notRead ? <div data-testid="ai-facility-read-in-part">{READ_IN_PART.pages(notRead)}</div> : null}
       <button className="s1-button s1-button--compact" type="button" disabled={disabled} onClick={onPlace}>
         {AI_FACILITY.place(facilityName)}
       </button>

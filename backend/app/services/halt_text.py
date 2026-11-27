@@ -69,7 +69,7 @@ _COST = re.compile(r",? cost \$[0-9.]+")
 # (pattern, replacement) in order; the first match wins. Codes are kept as the sentence's prefix.
 _WARNING_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^ai_type_disagrees:"),
-     "ai_type_disagrees: Sustentra's AI read the first pages as a different type than the rules chose. "
+     "ai_type_disagrees: Sustentra's AI read the document as a different type than the rules chose. "
      "The type was not changed."),
     (re.compile(r"^ai_routing_ignored:"), "ai_routing_ignored: Sustentra AI's type suggestion was not used."),
     (re.compile(r"^The classifier chose "),
@@ -78,7 +78,7 @@ _WARNING_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^Classifier confidence "),
      "type_accepted: The type was not certain; it was accepted because of what the document says."),
     (re.compile(r"^(?:Claude|Sustentra's AI) suggested "),
-     "ai_type_suggested: Sustentra's AI suggested a type from the first pages; the rules could not place this "
+     "ai_type_suggested: Sustentra's AI suggested a type from the document; the rules could not place this "
      "document. Confirm the type."),
     (re.compile(r"^No confident canonical_type_id"),
      "no_type: No document type was found with enough confidence, so no values were read."),
@@ -86,7 +86,7 @@ _WARNING_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^Pipeline orchestration failed"), PIPELINE_FAILED),
 )
 # Codes whose text is already counts and ranges only; kept as written.
-_KEPT_CODES = ("pages_unread:", "scan_cap_reached:", "scan_limit_unchecked:", "ai_unavailable:", "ai_cap_reached:", "ai_double_check_skipped:", "ai_pages_skipped:", "ai_time_budget:")
+_KEPT_CODES = ("pages_unread:", "scan_cap_reached:", "scan_limit_unchecked:", "ai_unavailable:", "ai_cap_reached:", "ai_double_check_skipped:", "ai_pages_skipped:", "ai_time_budget:", "ai_read_in_part:", "ai_several_types:")
 
 logger = logging.getLogger("sustentra.halt_text")
 

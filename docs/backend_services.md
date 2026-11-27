@@ -126,18 +126,22 @@ Claude yet, and the feature is off everywhere.
 | `AI_BEDROCK_MODEL_ID` | none | Bedrock only: full model id, sent as given. Unset, the adapter sends `anthropic.` + `AI_MODEL`. Prices stay keyed by `AI_MODEL`. |
 | `AI_EFFORT` | `low` | `low`, `medium` or `high`. |
 | `S1_AI_ROUTING_SHADOW` | `false` | Claude routing also reads documents the rules placed confidently, and may only add the warning `ai_type_disagrees`. One call per document; needs `AI_SUGGESTIONS_ENABLED`. Deployed only when the Parameter Store value `/<env>/s1_ai_routing_shadow` is `true`; a blank or unreadable value leaves it off. One call waits at most 15 s, with no retry. |
-| `AI_WINDOW_PAGES` | `5` | Claude reading: pages per window (one page of overlap between windows). |
-| `AI_MAX_WINDOWS` | `10` | Claude reading: windows per document; the pages left out are the warning `ai_pages_skipped`. |
-| `AI_INLINE_MAX_WINDOWS` | `2` | Claude reading in inline mode (inside the upload request): at most this many windows. |
-| `AI_INLINE_BUDGET_SECONDS` | `60` | Inline mode: no window starts after this many seconds. |
+| `AI_PART_TOKENS` | `40000` | Whole-document reads (MVP-237): the input tokens of one part, prompt and reply included. Every AI read (type, values, facility) cuts the whole document into parts of this size and reads every part; there is no page or window cap. |
+| `AI_WINDOW_PAGES` | `5` | Claude reading (values): at most this many pages in one part. |
+| `AI_INLINE_BUDGET_SECONDS` | `60` | Inline mode (inside the upload request): no part starts after this many seconds; the pages left are marked `ai_read_in_part`. |
 | `AI_MONTHLY_CAP_USD` | `25` | Per-organization monthly cap (UTC calendar month; enforced before each call against the `ai_usage` ledger, which records every call; used by Methodology review prefill). |
 
 ### Claude routing (document type)
 
 `services/ai_routing.py`, called by `PipelineOrchestrationService` right after the rule
-classifier. Claude reads pages 1-2 (at most 200 lines and 12,000 characters, from
-`ai_locator.document_lines`) and answers one `structured()` call:
-`{canonical_type_id (the vocabulary's ids + "none"), quote, line, reason_code (title | header_terms | table_headers | other)}`.
+classifier. Claude reads the whole document (`ai_locator.document_lines`, cut into parts by
+`services/document_parts.py`), one `structured()` call a part, in order, until a part names a type
+with high confidence or every part is read:
+`{canonical_type_id (the vocabulary's ids + "none"), quote, line, reason_code (title | header_terms | table_headers | other), confidence (high | low)}`.
+
+- The parts' verdicts are combined by evidence weight (high 2, low 1; a tie goes to the type read
+  first). When parts name more than one type, `ai_routing.other_types` lists the others and the run
+  gets the warning `ai_several_types` (a document that may hold several documents).
 
 - Runs when the classifier status is `unclassified` or `low_confidence` and the content-check
   accept path did not take the document. A type that has extraction targets is used with
@@ -164,17 +168,25 @@ classifier. Claude reads pages 1-2 (at most 200 lines and 12,000 characters, fro
 
 `services/ai_extraction.py`, called by `PipelineOrchestrationService` after
 `ExtractionService.extract` and before the result is persisted (not when the extraction halted).
-Claude reads the document in windows and suggests values the rule extractors missed. Claude
+Claude reads the whole document in parts and suggests values the rule extractors missed. Claude
 only suggests.
 
-- **Windows.** The parser's lines (`ai_locator.document_lines`) are split by page into windows
-  of `AI_WINDOW_PAGES` pages with a one-page overlap (a workbook or CSV has no pages: its lines
-  are cut into parts of 100), at most `AI_MAX_WINDOWS`, read in sequence. Every window's prompt
-  starts with a header: canonical type, file name and the account number, period and supplier
-  the rules already read, so context crosses the window borders. Pages left out: warning
-  `ai_pages_skipped: pages 10-12 ...`. The run stops early at 80% of
-  `S1_READER_MAX_RUN_SECONDS` (counted from the start of the document's run): warning
-  `ai_time_budget` with the pages not read.
+- **Parts (MVP-237).** The parser's lines are cut by `services/document_parts.py`: whole pages, at
+  most `AI_WINDOW_PAGES` of them and at most `AI_PART_TOKENS` (100 lines of a workbook or CSV count
+  as a page); a page too long is cut between lines and a line too long (a 200 KB line) into
+  overlapping pieces. Parts overlap only where a table runs over a page break. Every part is read, in
+  sequence: no page or window cap. Every part's prompt starts with a header: canonical type, file
+  name and the account number, period and supplier the rules already read. A value read twice (an
+  overlap, a summary page) counts once.
+- **Read in part.** The monthly limit (AI and scans) is checked before every part. When it is
+  reached, when the time runs out (80% of `S1_READER_MAX_RUN_SECONDS`, or the inline budget) or a
+  call fails, the read stops, what was read is kept, the run is `partial`, and the warning says
+  `ai_read_in_part: Read in part: pages X–Y not read because ...`. Each part's call is recorded in
+  `ai_usage` with its `document_id` (migration 0030), so a document's cost is the sum of its rows
+  (`ai_usage.document_spend_microusd_sync`). The type and facility reads do the same, under the run's one
+  time budget (`document_parts.deadline_for`): inline, what the upload's budget allows is read and the rest is
+  marked read in part. Any AI read in part makes the run `partial`. A read that runs out of time is not resumed
+  in a later reader pass: the run keeps the honest partial state (see PR #373 for why).
 - **What is asked.** Fields whose document-level candidate is empty (`normalized_value` and
   `raw_value` null), each as an enum value with its label and allowed units, plus the known-gap
   fields of the type (extraction-config rows with `ai_only: true`: `heat_content`

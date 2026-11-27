@@ -20,7 +20,10 @@ from backend.app.repositories import s1_stores
 from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
 from backend.app.services.ai_extraction import AiExtraction
 from backend.app.services.ai_facility import AiFacility
+from backend.app.core.config import get_settings
+from backend.app.services import document_parts as dp
 from backend.app.services.ai_routing import AiRouting, RoutingResult
+from backend.app.services.document_parts import READ_IN_PART
 from backend.app.services.calculation_lines import SUMMARY_TYPES
 from backend.app.services.document_shape import (
     CONTRACT_MESSAGE,
@@ -206,6 +209,9 @@ class PipelineOrchestrationService:
         resolved_file_name = file_name or path.name
 
         started = time.monotonic()
+        # One time budget for the run's AI reads (type, values, facility), counted from its start.
+        ai_deadline = dp.deadline_for(getattr(self._ai_routing, "settings", None) or get_settings(), started,
+                                      time.monotonic)
         created_at = self._clock()
         stage_statuses = PipelineStageStatuses()
         warnings: list[str] = []
@@ -486,7 +492,8 @@ class PipelineOrchestrationService:
                     )
                 else:
                     routed = (
-                        self._route(parser_output, org_id, engagement_id, include_optional, include_deprecated)
+                        self._route(parser_output, org_id, engagement_id, include_optional, include_deprecated,
+                                    deadline=ai_deadline)
                         if classification_status in AI_ROUTING_STATUSES
                         else None
                     )
@@ -502,7 +509,7 @@ class PipelineOrchestrationService:
                         )
                         ai_routing = routed.as_record(used=True, disagrees=False)
                         warnings.append(
-                            f"Sustentra's AI suggested {canonical_type_id} from the first pages; the rules could not place "
+                            f"Sustentra's AI suggested {canonical_type_id} from the document; the rules could not place "
                             "this document. Confirm the type."
                         )
                     else:
@@ -545,16 +552,17 @@ class PipelineOrchestrationService:
                 if canonical_type_source in ("classifier", "content_check") and self._ai_routing.shadow:
                     # Shadow mode: Claude reads the document too, and may only disagree in a warning.
                     shadow = self._route(parser_output, org_id, engagement_id, include_optional, include_deprecated,
-                                         quick=True)
+                                         quick=True, deadline=ai_deadline)
                     if shadow.status == "unavailable" or (shadow.status == "off" and shadow.warning):
                         # The rules placed this type; a failed check is a plain note, never an alarm.
                         warnings.append(DOUBLE_CHECK_SKIPPED)
                     if shadow.status == "suggested" and shadow.canonical_type_id != canonical_type_id:
                         warnings.append(
-                            f"ai_type_disagrees: the rules chose {canonical_type_id}, Sustentra's AI read the first pages "
+                            f"ai_type_disagrees: the rules chose {canonical_type_id}, Sustentra's AI read the document "
                             f"as {shadow.canonical_type_id}. The type was not changed."
                         )
                         ai_routing = shadow.as_record(used=False, disagrees=True)
+                    warnings.extend(shadow.notes())
 
             if canonical_type_id is None:
                 stage_statuses.target_plan = "skipped"
@@ -633,12 +641,15 @@ class PipelineOrchestrationService:
                     suggestion = self._ai_facility.suggest(
                         parser_output=parser_output, extraction_result=extraction_result,
                         canonical_type_id=canonical_type_id, file_name=resolved_file_name, org_id=org_id,
-                        engagement_id=engagement_id, document_id=resolved_document_id)
+                        engagement_id=engagement_id, document_id=resolved_document_id, warnings=warnings,
+                        deadline=ai_deadline)
                     if suggestion is not None:
                         extraction_result = {**extraction_result, "facility_suggestion": suggestion.as_record()}
             else:
                 stage_statuses.candidate_generation = "skipped"
                 overall_status = "partial"
+            if overall_status == "completed" and any(str(w).startswith(READ_IN_PART) for w in warnings):
+                overall_status = "partial"  # an AI read (type, values, facility) stopped in the document
 
             run = self._build_pipeline_run(
                 pipeline_run_id=resolved_pipeline_run_id,
@@ -1067,14 +1078,16 @@ class PipelineOrchestrationService:
         return dumped
 
     def _route(self, parser_output: dict, org_id: str | None, engagement_id: str, include_optional: bool,
-               include_deprecated: bool, quick: bool = False) -> RoutingResult:
+               include_deprecated: bool, quick: bool = False, deadline: Any = None) -> RoutingResult:
         """Claude's suggestion for the document's type (a no-op, ``off``, when AI is not enabled)."""
 
         def has_targets(type_id: str) -> bool:
             return bool(self._get_target_service().get_targets_for_canonical_type(
                 type_id, include_optional=include_optional, include_deprecated=include_deprecated))
 
-        extra = {"quick": True} if quick else {}  # only the optional double-check asks for the quick client
+        extra: dict[str, Any] = {"quick": True} if quick else {}  # only the optional double-check asks for the quick client
+        if deadline is not None:
+            extra["deadline"] = deadline
         result: RoutingResult = self._ai_routing.suggest(
             parser_output, org_id=org_id, engagement_id=engagement_id, has_targets=has_targets, **extra)
         return result
@@ -1083,9 +1096,10 @@ class PipelineOrchestrationService:
     def _routing_warnings(result: RoutingResult) -> list[str]:
         if result.status in ("unavailable", "off") and result.warning:
             return [result.warning]
+        notes = result.notes()
         if result.status == "ignored":
-            return [f"ai_routing_ignored: {result.ignored_reason}"]
-        return []
+            return [f"ai_routing_ignored: {result.ignored_reason}", *notes]
+        return [*([result.warning] if result.warning else []), *notes]
 
     @staticmethod
     def _expected_targets(extraction_targets: list[dict], items: list[Any]) -> list[dict]:

@@ -41,6 +41,10 @@ class AiRoutingRecord(BaseModel):
     used: bool
     disagrees: bool = False
     review_required: bool = True
+    # The other types parts of the document were read as (MVP-237): a bundle of several documents.
+    other_types: list[str] = Field(default_factory=list)
+    # What was not read when the monthly limit (or a failed call) stopped the read: "pages 12–40".
+    read_in_part: str | None = None
 
 
 class PipelineRun(BaseModel):

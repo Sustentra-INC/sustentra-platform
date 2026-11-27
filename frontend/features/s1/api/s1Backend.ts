@@ -43,7 +43,15 @@ export interface BackendExtractionResult {
   created_at?: string | null;
   items: BackendExtractionCandidateLike[];
   /** Claude's facility suggestion for a bill that names none (a suggestion, never a placement). */
-  facility_suggestion?: { facility_id: string; quote: string; source: "file_name" | "line"; page_number?: number | null } | null;
+  facility_suggestion?: {
+    facility_id: string;
+    quote: string;
+    source: "file_name" | "line";
+    page_number?: number | null;
+    read_in_part?: string | null;
+    several?: boolean;
+    candidates?: { facility_id: string; quote: string; page_number?: number | null }[];
+  } | null;
 }
 
 export interface BackendReviewDecision {
@@ -165,6 +173,10 @@ export async function listWorkspaceEvidence(engagementId: string): Promise<{
                   quote: suggestion.quote,
                   where:
                     suggestion.source === "file_name" ? "the file name" : suggestion.page_number ? `page ${suggestion.page_number}` : "the text",
+                  readInPart: suggestion.read_in_part ?? null,
+                  ...(suggestion.several && suggestion.candidates
+                    ? { candidates: suggestion.candidates.map((c) => ({ facility_id: c.facility_id, quote: c.quote, page: c.page_number ?? null })) }
+                    : {}),
                 },
               }
             : {}),

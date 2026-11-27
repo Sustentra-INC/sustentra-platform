@@ -123,17 +123,16 @@ class Settings(BaseSettings):
     ai_monthly_cap_usd: float = Field(default=25.0, ge=0)
     # Claude routing (services/ai_routing.py): a document the rule classifier places confidently
     # is also shown to Claude, which may only add the warning ai_type_disagrees, never change the
-    # type. Off by default; it costs one call per document. Needs AI_SUGGESTIONS_ENABLED.
+    # type. Off by default; it costs a call per part read (one for most documents). Needs AI_SUGGESTIONS_ENABLED.
     s1_ai_routing_shadow: bool = False
-    # Claude reading (services/ai_extraction.py): the document is read in windows of AI_WINDOW_PAGES
-    # pages (one page of overlap), at most AI_MAX_WINDOWS windows, in sequence, stopping at 80% of
-    # S1_READER_MAX_RUN_SECONDS. Needs AI_SUGGESTIONS_ENABLED.
+    # Whole-document reads (services/document_parts.py, MVP-237): every AI read (type, values, facility,
+    # methodology) cuts the whole document into parts of at most AI_PART_TOKENS input tokens (the prompt and the
+    # reply included) and reads every part; the monthly limit is checked before each one. The values read also
+    # keeps a part to at most AI_WINDOW_PAGES pages, so each call looks at a few pages closely. A queued read
+    # stops at 80% of S1_READER_MAX_RUN_SECONDS and says which pages it did not read. Needs AI_SUGGESTIONS_ENABLED.
+    ai_part_tokens: int = Field(default=40_000, ge=4_000, le=150_000)
     ai_window_pages: int = Field(default=5, ge=1, le=20)
-    ai_max_windows: int = Field(default=10, ge=1, le=100)
-    # Inline mode (S1_PROCESSING=inline) reads inside the upload request: at most this many windows,
-    # and no window starts after this many seconds. Queued mode keeps AI_MAX_WINDOWS and 80% of
-    # S1_READER_MAX_RUN_SECONDS.
-    ai_inline_max_windows: int = Field(default=2, ge=1, le=10)
+    # Inline mode (S1_PROCESSING=inline) reads inside the upload request: no part starts after this many seconds.
     ai_inline_budget_seconds: int = Field(default=60, ge=10, le=600)
 
     @field_validator("allowed_origins_csv", "ai_model")

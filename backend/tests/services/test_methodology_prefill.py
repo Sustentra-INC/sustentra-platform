@@ -175,25 +175,22 @@ def candidates(count: int) -> list[dict[str, Any]]:
             for i in range(count)]
 
 
-def test_at_most_five_documents_are_read() -> None:
-    read = mp.read_documents(candidates(7), storage=Storage(), parser=Parser(3))
-    assert [d.alias for d in read] == ["D1", "D2", "D3", "D4", "D5"] and not any(d.truncated for d in read)
+def test_every_document_is_read_with_every_line() -> None:
+    read = mp.read_documents(candidates(7), storage=Storage(), parser=Parser(800))
+    assert [d.alias for d in read] == [f"D{i}" for i in range(1, 8)]  # no five-document cap
+    assert [len(d.lines) for d in read] == [800] * 7 and not any(d.truncated for d in read)  # no 1,500-line cap
 
 
-def test_the_line_budget_is_taken_in_document_order_and_truncation_is_reported() -> None:
-    read = mp.read_documents(candidates(3), storage=Storage(), parser=Parser(800))
-    assert [len(d.lines) for d in read] == [800, 700, 0]
-    assert [d.truncated for d in read] == [False, True, True]
-
-
-def test_the_character_budget_cuts_a_document() -> None:
+def test_a_wide_document_is_kept_whole_and_cut_into_parts_for_the_calls() -> None:
 
     class Wide(Parser):
         def parse_document(self, **kwargs: Any) -> dict[str, Any]:
-            return _pdf_like([(1, "y" * 10_000)] * 20, kwargs["document_id"])
+            return _pdf_like([(page, "y" * 10_000) for page in range(1, 21)], kwargs["document_id"])
 
-    read = mp.read_documents(candidates(1), storage=Storage(), parser=Wide(0))
-    assert len(read[0].lines) == 14 and read[0].truncated  # 150,000 characters
+    (read,) = mp.read_documents(candidates(1), storage=Storage(), parser=Wide(0))
+    assert len(read.lines) == 20 and not read.truncated  # 200,000 characters, all kept
+    parts = list(mp.chunks(read))
+    assert [p.pages for p in parts] == [tuple(range(1, 15)), tuple(range(15, 21))]  # 150,000 characters a part
 
 
 def test_a_foreign_missing_or_unreadable_file_is_skipped() -> None:

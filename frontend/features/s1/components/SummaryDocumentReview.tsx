@@ -200,7 +200,7 @@ export function useMethodologyFacts({
       {groups.length === 0 ? (
         <div className="s1-mb-confirm">
           <p className="s1-sd__note">
-            No methodology facts have been read from this document yet. Sustentra&apos;s AI reads the engagement&apos;s company-prepared documents (up to five) and suggests what they state, each with a quote. Nothing counts until you accept or edit it.
+            No methodology facts have been read from this document yet. Sustentra&apos;s AI reads the engagement&apos;s company-prepared documents (every page of each) and suggests what they state, each with a quote. Nothing counts until you accept or edit it.
           </p>
           <span className="s1-mr-actions">
             <button type="button" className="s1-button s1-button--pri" disabled={busy || aiBlocker !== null} onClick={() => void readWithAi()}>
