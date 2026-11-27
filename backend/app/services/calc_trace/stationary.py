@@ -39,8 +39,8 @@ EQUATION = {EQ1: ("Eq. 1", "Fuel × EF₁"), EQ2: ("Eq. 2", "Fuel × HHV × EF�
             EQ3: ("Eq. 3", "Fuel × carbon content × 44/12")}
 SITE_INPUTS = ("hhv", "cc")  # what a reviewer enters for a line to open Eq. 2 and Eq. 3
 CC_UNIT = "% by mass"
-HHV_BAND = (0.2, 5.0)  # a site HHV is taken within this factor of the Hub's typical one (a Btu / MMBtu slip is not)
-CC_FLOOR = 0.2  # a carbon content is taken above this share of the fuel's Hub-implied one (0.75 for 75% is not)
+HHV_BAND = (0.5, 2.0)  # a site HHV is taken within this factor of the Hub's typical one (a Btu / MMBtu slip is not)
+CC_BAND = (0.5, 1.5)  # a carbon content, against the one the Hub's CO2 factor implies (0.75 for 75% is not)
 SCALE = {"CO2": (1000.0, "kg/t"), "CH4": (1_000_000.0, "g/t"), "N2O": (1_000_000.0, "g/t")}
 ENERGY_UNIT = {"CO2": "kg/MMBtu", "CH4": "g/MMBtu", "N2O": "g/MMBtu"}
 CO2_PER_C = calc.CO2_PER_C
@@ -134,7 +134,7 @@ def _choices(line: dict[str, Any], shape: Shape | None) -> list[Choice]:
         options = _options(gas, shape)
         if chosen not in {o.id for o in options}:  # an equation this module does not know: only what was used
             options = [ChoiceOption(chosen, equation, equation=equation, citation=HUB)]
-        out.append(Choice(f"equation:{gas}", f"{GAS_LABEL[gas]} equation", options, chosen=chosen))
+        out.append(Choice(f"equation:{gas}", f"{gas} equation", options, chosen=chosen))
     return out
 
 
@@ -223,10 +223,13 @@ def route_refusal(trace: LineTrace, gas: str, option: str, site: Mapping[str, fl
     return None
 
 
-def check_site(input_id: str, number: float, trace: LineTrace, context: dict[str, Any] | None) -> str | None:
-    """None when a decided site value is plausible for the line's fuel, else why not. A carbon content is at most
-    100% and not far under what EPA's CO2 factor implies; an HHV is within a factor of 5 of EPA's typical one. A
-    slip of units (Btu for MMBtu, 0.75 for 75%) is the usual mistake, and it must not move a total."""
+def check_site(input_id: str, number: float, trace: LineTrace, context: dict[str, Any] | None,
+               has_reason: bool = False) -> str | None:
+    """None when a decided site value may be used for the line's fuel, else why not. It is checked against EPA's own
+    figures: an HHV within 0.5x to 2x of the Hub's typical one, a carbon content (at most 100%) within 0.5x to 1.5x of
+    what the Hub's CO2 factor implies. A slip of units (Btu for MMBtu, 0.75 for 75%) is the usual mistake and must not
+    move a total. A value there is nothing to check against (no Hub figure, or in a unit the Hub's is not) is taken
+    only with a reason, the source note."""
 
     fuel = (context or {}).get("fuel")
     item = trace.inputs.get(input_id)
@@ -235,22 +238,30 @@ def check_site(input_id: str, number: float, trace: LineTrace, context: dict[str
         row = default_emission_factor_reference().stationary_fuel(str(fuel))
     except EmissionFactorNotFoundError:
         row = {}
+    unchecked = ("Not applied: No reference heat content for this fuel to check against; enter it with a source note."
+                 if input_id == "hhv" else
+                 "Not applied: No reference carbon content for this fuel to check against; enter it with a source "
+                 "note.")
     if input_id == "cc":
         if number > 100:
             return "Not applied: a carbon content is at most 100% by mass."
         implied = _implied_cc(row, unit)
-        if implied is not None and number < CC_FLOOR * implied:
-            return (f"Not applied: {number:g}% by mass is far below the {implied:.0f}% EPA's factor implies for "
-                    f"{fuel}. Enter it as a percent (75 for 75%).")
+        if implied is None:
+            return None if has_reason else unchecked
+        low, high = CC_BAND[0] * implied, min(100.0, CC_BAND[1] * implied)
+        if not low <= number <= high:
+            return (f"Not applied: {number:g}% by mass is outside {low:.0f}% to {high:.0f}%, what EPA's factor "
+                    f"implies for {fuel}. Enter it as a percent (75 for 75%).")
         return None
     typical = row.get("heat_content_hhv") or {}
     per = str(typical.get("unit", "")).split(" per ", 1)[-1]
     canonical = EPA_UNIT_TO_CANONICAL.get(per) or fuel_units.canonical_unit(per)
-    if typical.get("value") and unit == f"MMBtu/{canonical}":
-        low, high = (f * float(typical["value"]) for f in HHV_BAND)
-        if not low <= number <= high:
-            return (f"Not applied: an HHV of {number:g} MMBtu per {canonical} is far from the {typical['value']:g} "
-                    f"EPA gives for {fuel}. Check the unit (MMBtu, not Btu).")
+    if not (typical.get("value") and unit == f"MMBtu/{canonical}"):
+        return None if has_reason else unchecked
+    low, high = (f * float(typical["value"]) for f in HHV_BAND)
+    if not low <= number <= high:
+        return (f"Not applied: an HHV of {number:g} MMBtu per {canonical} is outside {low:g} to {high:g}, around the "
+                f"{typical['value']:g} EPA gives for {fuel}. Check the unit (MMBtu, not Btu).")
     return None
 
 
@@ -313,6 +324,7 @@ def worked(trace: LineTrace, gas: str, option: str, converted: float, site: Mapp
                "unit_conversion": 1 / scale}
     operation = ops.make_operation(terms, "mass", "t")
     ops.verify(operation, _calculator_mass(context, gas, option, converted, unit, site))
+    row["equation"] = EQUATION[option][0]
     row["mass_t"] = float(operation.result.value)  # type: ignore[arg-type]
     return Worked(operation, columns, row)
 
@@ -340,3 +352,24 @@ def _calculator_mass(context: dict[str, Any] | None, gas: str, option: str, conv
     if not math.isfinite(value):
         raise Refused("the calculator returned no number")
     return float(value)
+
+
+def follow_co2(trace: LineTrace, routes: dict[str, tuple[str, str]], decided: set[str],
+               site: Mapping[str, float]) -> None:
+    """CO2 on Eq. 3 takes CH4 and N2O to Eq. 2 when an accepted HHV exists (else they stay on Eq. 1), as the
+    calculator does, unless the reviewer decided that gas's equation themselves. Shown on the gas as its default."""
+
+    if routes.get("equation:CO2", ("", ""))[1] != EQ3:
+        return
+    for gas in ("CH4", "N2O"):
+        choice_id = f"equation:{gas}"
+        choice = next((c for c in trace.choices if c.id == choice_id), None)
+        if choice is None or choice_id in decided or choice.chosen != EQ1:
+            continue
+        if route_refusal(trace, gas, EQ2, site) is not None:
+            continue
+        for option in choice.options:
+            if option.id == EQ2:
+                option.label = "Eq. 2 (follows CO₂ Eq. 3)"
+        routes[choice_id] = (choice.chosen, EQ2)
+        choice.chosen = EQ2

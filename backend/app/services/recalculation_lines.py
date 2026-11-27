@@ -100,6 +100,7 @@ class DecidedLine:
             if "ef_unit" in worked:  # a gas on Eq. 2 or Eq. 3: its activity, factor and units are its own
                 row["activity"]["unit"], row["ef"]["unit"] = worked["activity_unit"], worked["ef_unit"]
                 row["ef"]["source"], row["unit_conversion"] = worked["ef_source"], worked["unit_conversion"]
+                out["method"]["equations"][row["gas"]] = worked["equation"]  # the label names the equation used
             row["mass_t"], row["co2e_t"] = worked["mass_t"], worked["co2e_t"]
             if row.get("company_co2e_t") is not None:
                 row["difference_to_company_t"] = row["co2e_t"] - row["company_co2e_t"]

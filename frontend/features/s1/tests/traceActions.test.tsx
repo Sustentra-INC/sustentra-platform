@@ -43,8 +43,11 @@ const totalOf = (t: LineTrace, value: number) => {
 };
 /** Equation choice CO2 with Eq. 2 available, so a reviewer can pick it. */
 function withEq2(t: LineTrace): LineTrace {
-  const c = t.choices.find((x) => x.id === "equation:CO2")!;
-  c.options.push({ id: "eq_2", label: "Eq. 2", available: true, required_inputs: [] }, { id: "eq_3", label: "Eq. 3", available: false, why_unavailable: "Needs an accepted carbon content.", required_inputs: [] });
+  const c = t.choices.find((x) => x.id === "equation:CO2")!; // the backend's trace already lists Eq. 1, 2 and 3
+  const eq2 = c.options.find((o) => o.id === "eq_2")!;
+  eq2.available = true;
+  delete eq2.why_unavailable;
+  c.options.find((o) => o.id === "eq_3")!.why_unavailable = "Needs an accepted carbon content.";
   return t;
 }
 

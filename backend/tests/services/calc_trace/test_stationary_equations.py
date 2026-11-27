@@ -19,6 +19,7 @@ from backend.app.services import line_totals
 from backend.app.services.calc_trace import stationary
 from backend.app.services.request_service import Actor
 from backend.app.services.review_field import ReviewConflict
+from backend.tests.services.calc_trace import fixture_replay
 from backend.tests.services.calc_trace.recalc_scenarios import run
 from backend.tests.services.calc_trace.test_calc_trace_decisions import block, event, gas_store, line_of
 from backend.tests.services.test_calculation_lines import GAS_KC
@@ -439,3 +440,103 @@ def test_the_equation_choice_is_a_choice_with_a_stable_id_per_gas() -> None:
     assert [b["choice_id"] for b in next(s for s in trace["steps"] if s["id"] == "emissions")["blocks"]] == [
         "equation:CO2", "equation:CH4", "equation:N2O"]
     assert math.isfinite(trace["result"]["recomputed"])
+
+
+# --- CH4 and N2O follow CO2 on Eq. 3 -----------------------------------------------------------------------------
+def test_co2_on_eq3_takes_ch4_and_n2o_to_eq2_with_an_accepted_hhv() -> None:
+    store = coal_store()
+    after = worked(store, COAL, [cc(), hhv(), pick("CO2", "eq_3")])
+    line = line_of(after, COAL)
+    trace = line["trace"]
+    for gas in ("CH4", "N2O"):
+        choice = next(c for c in trace["choices"] if c["id"] == f"equation:{gas}")
+        assert choice["chosen"] == "eq_2" and choice["chosen_by"] == "default"
+        assert next(o for o in choice["options"] if o["id"] == "eq_2")["label"] == "Eq. 2 (follows CO₂ Eq. 3)"
+    both = calculator("Bituminous", 1000, "short_ton", heat_content=calc.Measure(25.5, "MMBtu per short_ton"),
+                      carbon_content=calc.Measure(75, calc.PERCENT_BY_MASS))
+    for gas in calc.GASES:
+        assert mass(trace, gas) == pytest.approx(both.mass_t[gas], rel=1e-12)
+    assert line["results"]["mass_t"]["CH4"] == pytest.approx(both.mass_t["CH4"], rel=1e-12)
+    cat = after["categories"]["stationary_combustion"]
+    assert cat["total_mass_t"]["CO2"] == pytest.approx(both.mass_t["CO2"], rel=1e-12)
+    assert cat["total_mass_t"]["N2O"] == pytest.approx(both.mass_t["N2O"], rel=1e-12)
+    assert [line["method"]["equations"][g] for g in calc.GASES] == ["Eq. 3", "Eq. 2", "Eq. 2"]
+
+
+def test_co2_on_eq3_without_an_hhv_leaves_ch4_and_n2o_on_eq1() -> None:
+    store = coal_store()
+    trace = line_of(worked(store, COAL, [cc(), pick("CO2", "eq_3")]), COAL)["trace"]
+    by1 = calculator("Bituminous", 1000, "short_ton", carbon_content=calc.Measure(75, calc.PERCENT_BY_MASS))
+    for gas in calc.GASES:
+        assert mass(trace, gas) == pytest.approx(by1.mass_t[gas], rel=1e-12)
+    assert next(c for c in trace["choices"] if c["id"] == "equation:CH4")["chosen"] == "eq_1"
+
+
+def test_a_reviewers_own_choice_for_ch4_beats_the_follow() -> None:
+    trace = line_of(worked(coal_store(), COAL, [cc(), hhv(), pick("CO2", "eq_3"), pick("CH4", "eq_1")]),
+                    COAL)["trace"]
+    assert next(c for c in trace["choices"] if c["id"] == "equation:CH4")["chosen"] == "eq_1"
+    assert next(c for c in trace["choices"] if c["id"] == "equation:N2O")["chosen"] == "eq_2"
+    assert mass(trace, "CH4") == pytest.approx(0.274, rel=1e-12)
+
+
+# --- the equation label follows the decision ---------------------------------------------------------------------
+def test_the_equation_label_names_the_equation_actually_used() -> None:
+    default = line_of(run(coal_store(), **COAL_KW), COAL)
+    assert default["method"]["equations"] == {"CO2": "Eq. 1", "CH4": "Eq. 1", "N2O": "Eq. 1"}
+    eq2 = line_of(worked(coal_store(), COAL, [hhv(), pick("CO2", "eq_2"), pick("N2O", "eq_2")]), COAL)
+    assert eq2["method"]["equations"] == {"CO2": "Eq. 2", "CH4": "Eq. 1", "N2O": "Eq. 2"}
+    eq3 = line_of(worked(coal_store(), COAL, [cc(), pick("CO2", "eq_3")]), COAL)
+    assert eq3["method"]["equations"]["CO2"] == "Eq. 3"
+
+
+# --- a value that cannot be checked needs a source note -----------------------------------------------------------
+def _site_trace() -> Any:
+    from backend.app.services.calc_trace.model import LineTrace, Side, TraceInput, TraceResult
+
+    out = LineTrace(line_key="k", panel="stationary", state="complete", result=TraceResult("t CO2e", None, None, None))
+    for input_id, unit in (("hhv", HHV_UNIT), ("cc", CC_UNIT)):
+        out.inputs[input_id] = TraceInput(input_id, input_id, "reviewer_entered",
+                                          recomputed=Side(None, unit, "awaiting_review"))
+    return out
+
+
+def test_a_site_value_with_nothing_to_check_it_against_needs_a_reason() -> None:
+    lt, ctx = _site_trace(), {"fuel": "Not A Fuel"}
+    msg = stationary.check_site("hhv", 25.5, lt, ctx, has_reason=False)
+    assert msg and "No reference heat content for this fuel to check against; enter it with a source note" in msg
+    assert stationary.check_site("hhv", 25.5, lt, ctx, has_reason=True) is None
+    assert stationary.check_site("cc", 75, lt, ctx, has_reason=False)
+    assert stationary.check_site("cc", 75, lt, ctx, has_reason=True) is None
+
+
+@pytest.mark.parametrize("value", [12.0, 12.6, 50.0, 49.9, 24.93 * 0.49, 24.93 * 2.01])
+def test_an_hhv_outside_half_to_double_the_hubs_is_refused(value: float) -> None:
+    line = line_of(worked(coal_store(), COAL, [hhv(value), pick("CO2", "eq_2")]), COAL)
+    assert ("invalid_value" in reasons(line)) == (not 24.93 * 0.5 <= value <= 24.93 * 2.0)
+
+
+@pytest.mark.parametrize("value", [30, 34, 105, 35, 100])
+def test_a_carbon_content_outside_half_to_one_and_a_half_times_the_implied_is_refused(value: float) -> None:
+    line = line_of(worked(coal_store(), COAL, [cc(value), pick("CO2", "eq_3")]), COAL)
+    implied = 2325.0 / calc.CO2_PER_C / 907.18474 * 100
+    low, high = 0.5 * implied, min(100.0, 1.5 * implied)
+    assert ("invalid_value" in reasons(line)) == (not low <= value <= high)
+
+
+# --- the guard over every recorded recalculation fixture --------------------------------------------------------------
+@pytest.mark.parametrize("name", fixture_replay.NAMES, ids=fixture_replay.slug)
+def test_every_recorded_fixture_is_unmoved_by_equation_decisions_it_cannot_take(name: str) -> None:
+    plain = fixture_replay.replay(name, with_traces=True)
+    events: list[dict[str, Any]] = []
+    for line in plain["calculation_lines"]:
+        if line["counts_toward"] != "stationary":
+            continue
+        for stream, value in ((HHV, 25.5), (CC, 75)):
+            events.append(event(line["key"], stream, "edited", value, HHV_UNIT if stream == HHV else CC_UNIT))
+        events += [event(line["key"], f"choice|equation:{g}|", "edited", o) for g in calc.GASES
+                   for o in ("eq_2", "eq_3")]
+    after = fixture_replay.replay(name, with_traces=True, line_decisions=events)
+    assert after["categories"] == plain["categories"]
+    for line in after["calculation_lines"]:
+        assert line["results"] == next(p for p in plain["calculation_lines"] if p["key"] == line["key"])["results"]

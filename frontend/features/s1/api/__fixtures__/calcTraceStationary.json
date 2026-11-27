@@ -33,7 +33,7 @@
   },
   {
    "id": "equation:CO2",
-   "label": "CO₂ equation",
+   "label": "CO2 equation",
    "options": [
     {
      "id": "eq_1",
@@ -86,7 +86,7 @@
   },
   {
    "id": "equation:CH4",
-   "label": "CH₄ equation",
+   "label": "CH4 equation",
    "options": [
     {
      "id": "eq_1",
@@ -137,7 +137,7 @@
   },
   {
    "id": "equation:N2O",
-   "label": "N₂O equation",
+   "label": "N2O equation",
    "options": [
     {
      "id": "eq_1",

@@ -213,7 +213,7 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
                                                       f"{side_now.unit}."))
             continue
         if panel == "stationary" and target_id in stationary.SITE_INPUTS:
-            implausible = stationary.check_site(target_id, number, out, context)
+            implausible = stationary.check_site(target_id, number, out, context, bool(decision.get("reason")))
             if implausible is not None:
                 outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="invalid_value",
                                                   message=implausible))
@@ -224,6 +224,8 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
     site = {k: values[k][0] for k in stationary.SITE_INPUTS if k in values}
     for target_id, decision in chosen:
         _choice(out, target_id, decision, outcome, panel, site)
+    if panel == "stationary":
+        stationary.follow_co2(out, outcome.routes, {i for i, _ in chosen}, site)
     _equation_overrides(out, values, outcome)
     used = {option for _, option in outcome.routes.values()}
     for input_id, option in (("hhv", stationary.EQ2), ("cc", stationary.EQ3)):
