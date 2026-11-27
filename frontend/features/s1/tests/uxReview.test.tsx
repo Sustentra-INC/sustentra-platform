@@ -199,9 +199,9 @@ describe("coverage & requests: one page", () => {
     // Opens on the checks missing their inputs; a filter shows another state.
     const missing = coverageRules.filter((r) => r.status === "inputs_missing");
     expect(screen.getAllByRole("button", { name: /^Request$/ })).toHaveLength(missing.length);
-    fireEvent.click(screen.getByRole("button", { name: /Inputs present/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^\d+ ?Present$/ }));
     expect(screen.queryAllByRole("button", { name: /^Request$/ })).toHaveLength(0);
-    fireEvent.click(screen.getByRole("button", { name: /Inputs present/ })); // off again: every check
+    fireEvent.click(screen.getByRole("button", { name: /^\d+ ?Present$/ })); // off again: every check
 
     fireEvent.click(screen.getAllByRole("button", { name: /^Request$/ })[0]);
     fireEvent.click(screen.getByRole("button", { name: "Add to requests" }));

@@ -123,7 +123,7 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
             >
               3
             </span>
-            Inputs missing
+            Missing
           </button>
           <button
             aria-pressed="false"
@@ -139,7 +139,7 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
             >
               3
             </span>
-            Inputs present
+            Present
           </button>
           <button
             aria-pressed="false"
@@ -175,10 +175,10 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           style="transition-delay: 0ms;"
         >
           <span
-            aria-label="Inputs missing"
+            aria-label="Missing"
             class="s1-cr-rule__icon"
             role="img"
-            title="Inputs missing"
+            title="Missing"
           >
             <svg
               aria-hidden="true"
@@ -240,7 +240,7 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
             <div
               class="s1-cr-rule__what"
             >
-              Natural gas consumption is present for every reporting month
+              Natural gas consumption is present for every reporting month · Natural gas consumed
             </div>
           </div>
           <div
@@ -299,10 +299,10 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           style="transition-delay: 24ms;"
         >
           <span
-            aria-label="Inputs missing"
+            aria-label="Missing"
             class="s1-cr-rule__icon"
             role="img"
-            title="Inputs missing"
+            title="Missing"
           >
             <svg
               aria-hidden="true"
@@ -364,7 +364,7 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
             <div
               class="s1-cr-rule__what"
             >
-              Scope 2 electricity is present on both a location and a market basis
+              Scope 2 electricity is present on both a location and a market basis · Electricity consumed (location-based) · Electricity consumed (market-based)
             </div>
           </div>
           <div
@@ -423,10 +423,10 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
           style="transition-delay: 48ms;"
         >
           <span
-            aria-label="Inputs missing"
+            aria-label="Missing"
             class="s1-cr-rule__icon"
             role="img"
-            title="Inputs missing"
+            title="Missing"
           >
             <svg
               aria-hidden="true"
@@ -488,7 +488,7 @@ exports[`request screens: fixture parity > draws Coverage & requests as it alway
             <div
               class="s1-cr-rule__what"
             >
-              Mobile combustion fuel is present for the fleet
+              Mobile combustion fuel is present for the fleet · Gasoline purchased · mobile combustion
             </div>
           </div>
           <div

@@ -21,8 +21,8 @@ export interface CoverageState {
 
 /** Only missing and present get a dot in the filter (MVP-228); the other two are plain labels. */
 const STATUS: Record<CoverageStatus, { label: string; role: string; icon: ReactNode; dot?: "warning" | "success" }> = {
-  inputs_missing: { label: "Inputs missing", role: "open", icon: <IconWarning size={18} />, dot: "warning" },
-  inputs_present: { label: "Inputs present", role: "resolved", icon: <IconCheckCircle size={18} />, dot: "success" },
+  inputs_missing: { label: "Missing", role: "open", icon: <IconWarning size={18} />, dot: "warning" },
+  inputs_present: { label: "Present", role: "resolved", icon: <IconCheckCircle size={18} />, dot: "success" },
   not_applicable: { label: "Not applicable", role: "na", icon: <CircleMinus /> },
   out_of_scope: { label: "Out of scope", role: "unverifiable", icon: <Ban /> },
 };
@@ -96,7 +96,7 @@ export function CoveragePanel({
                 {/* The finding leads; the check it belongs to follows, quieter (MVP-228). */}
                 <div className="s1-cr-rule__main">
                   <div className="s1-cr-rule__why">{rule.reason}</div>
-                  <div className="s1-cr-rule__what">{rule.assertion}</div>
+                  <div className="s1-cr-rule__what">{[rule.assertion, ...rule.appliesTo].join(" · ")}</div>
                 </div>
                 <div className="s1-cr-rule__act">
                   {rule.status !== "inputs_missing" ? null : requested ? (
