@@ -192,8 +192,9 @@ def _decided_inputs(item: DecidedLine) -> list[calc.Step]:
     steps: list[calc.Step] = []
     key = str(item.line["key"])
     for entry in item.decided.applied:
-        if entry.get("value") is None:
-            continue
+        if entry.get("target") != "input" or isinstance(entry.get("value"), bool) or not isinstance(
+                entry.get("value"), (int, float)):
+            continue  # a chosen equation is a choice, not an input
         who = f"decided by {entry.get('decided_by') or 'a reviewer'}" + (
             f" on {entry['decided_at']}" if entry.get("decided_at") else "")
         why = f": {entry['reason_given']}" if entry.get("reason_given") else ""

@@ -365,3 +365,11 @@ def test_a_new_fuel_record_moves_the_distance_instead_of_making_the_fuel_economy
     line = line_of(response, DIESEL)
     assert line["decisions"]["not_applied"] == []
     assert block(trace_of(response), "distance")["recomputed"]["result"]["value"] == pytest.approx(400000 * 6.55)
+
+
+def test_the_working_sheet_shows_a_stationary_hhv_decision_too() -> None:
+    from backend.tests.services.calc_trace.test_stationary_equations import COAL, COAL_KW, coal_store, hhv, pick, worked
+
+    response = worked(coal_store(), COAL, [hhv(), pick("CO2", "eq_2")])
+    names = [str(r[2]) for r in _working(response) if r[2] and "Decided input" in str(r[2])]
+    assert any("Site heat content (HHV)" in n for n in names), (names, COAL_KW)

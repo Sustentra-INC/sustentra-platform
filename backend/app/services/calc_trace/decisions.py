@@ -219,9 +219,9 @@ def apply(trace: LineTrace, records: Mapping[str, Mapping[str, Any]], panel: str
         elif panel == "mobile" and target_id == mobile.FUEL_ECONOMY:
             implausible = mobile.check_economy(number, out)
         if implausible is not None:
-                outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="invalid_value",
-                                                  message=implausible))
-                continue
+            outcome.not_applied.append(_entry(target, target_id, side, status=status, reason="invalid_value",
+                                              message=implausible))
+            continue
         values[target_id] = (number, decision, record)
         outcome.applied.append(_entry(target, target_id, side, status=status, value=number, unit=side_now.unit,
                                       decided_by=_by(decision), decided_at=str(decision.get("at") or ""),
