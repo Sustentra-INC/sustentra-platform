@@ -1,7 +1,7 @@
 "use client";
 
-import { ArrowRight, ListChecks, Send } from "lucide-react";
-import { IconActivity, IconSend, IconTrash } from "./icons";
+import { Send } from "lucide-react";
+import { IconActivity, IconArrowRight, IconChecklist, IconSend, IconTrash } from "./icons";
 import { Fragment, useMemo, useState } from "react";
 
 import { andThen, NOT_SAVED_TITLE, problemText, settle, useStillOpen, type MaybePromise } from "../requests/maybePromise";
@@ -150,7 +150,7 @@ export function EvidenceRequests({
 
   return (
     <section className="s1-content s1-req s1-cr">
-      <header className="s1-ws-header">
+      <header className="s1-ws-header s1-cr-head">
         <div className="s1-ws-header__id">
           <h1>Coverage &amp; requests</h1>
           <InfoTip label="Coverage and requests">
@@ -158,6 +158,19 @@ export function EvidenceRequests({
             reviewed; anything missing becomes a request.
           </InfoTip>
         </div>
+        {valuesToReview > 0 ? (
+          <button className="s1-cr-review" type="button" onClick={onReview}>
+            <span className="s1-cr-review__icon" aria-hidden>
+              <IconChecklist size={19} />
+            </span>
+            <span className="s1-cr-review__text">
+              {valuesToReview} {valuesToReview === 1 ? "value" : "values"} waiting for review
+            </span>
+            <span className="s1-cr-review__go">
+              Review now <IconArrowRight size={14} aria-hidden />
+            </span>
+          </button>
+        ) : null}
       </header>
 
       {problem ? (
@@ -165,23 +178,6 @@ export function EvidenceRequests({
           <strong>{NOT_SAVED_TITLE}</strong>
           <span>{problem}</span>
         </div>
-      ) : null}
-
-      {valuesToReview > 0 ? (
-        <button className="s1-cr-review" type="button" onClick={onReview}>
-          <span className="s1-cr-review__icon" aria-hidden>
-            <ListChecks />
-          </span>
-          <span className="s1-cr-review__text">
-            <strong>
-              {valuesToReview} {valuesToReview === 1 ? "value" : "values"} waiting for review
-            </strong>
-            <span>Checks count a value once it is accepted or corrected.</span>
-          </span>
-          <span className="s1-cr-review__go">
-            Review now <ArrowRight aria-hidden />
-          </span>
-        </button>
       ) : null}
 
       <CoveragePanel coverage={coverage} isRequested={isRequested} onRequest={setRequestRule} />

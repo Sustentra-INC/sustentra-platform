@@ -3977,27 +3977,32 @@ html, body { margin: 0; padding: 0; }
    then the requests. Filters animate the list they filter.
    ========================================================================== */
 .s1-cr { gap: var(--sp-5); }
+/* Header row: title with its tip on the left, the review card on the right (wraps under on narrow screens). */
+.s1-cr-head.s1-ws-header { align-items: flex-end; gap: var(--sp-3); margin-bottom: 0; padding: var(--sp-2) var(--sp-1) var(--sp-1); }
+.s1-cr-head .s1-ws-header__id { align-items: center; gap: var(--sp-2); }
+.s1-cr-head .s1-ws-header__id h1 { font-size: var(--text-display); font-weight: var(--weight-bold); letter-spacing: var(--tracking-title); line-height: var(--leading-tight); }
+/* Review card: one button; icon, count and the "Review now" chip are all part of it. */
 .s1-cr-review {
-  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--sp-4); width: 100%;
-  padding: var(--sp-4) var(--sp-5); text-align: left; font: inherit; color: var(--ink); cursor: pointer;
-  background: linear-gradient(90deg, var(--state-open-bg), var(--sf-card) 70%);
-  border: var(--hairline-width) solid var(--state-open-line); border-radius: var(--radius-card);
-  transition: border-color 0.15s ease, transform 0.16s var(--ease-out), box-shadow 0.2s var(--ease-out);
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2-5) var(--sp-3) var(--sp-2-5) var(--sp-2-5);
+  border: 0; border-radius: var(--r-card); background: var(--sf-card); box-shadow: var(--shadow-card);
+  font: inherit; color: var(--ink); text-align: left; cursor: pointer;
+  transition: box-shadow 0.2s var(--ease-out), transform 0.16s var(--ease-out);
 }
-.s1-cr-review:hover { border-color: var(--state-open-fg); box-shadow: 0 0.25rem 1rem rgba(138, 81, 8, 0.1); }
-.s1-cr-review:active { transform: scale(0.995); }
-.s1-cr-review:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-.s1-cr-review__icon {
-  display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem;
-  border-radius: 50%; background: var(--state-open-fg); color: var(--sf-card);
+.s1-cr-review:hover { box-shadow: var(--shadow-pop); transform: translateY(calc(var(--hairline-width) * -1)); }
+.s1-cr-review:active { transform: none; }
+.s1-cr-review:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.s1-cr-review__icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: var(--cr-review-icon-box); color: var(--state-open-fg); }
+.s1-cr-review__text { font-size: var(--text-md); font-weight: var(--weight-bold); color: var(--ink); }
+.s1-cr-review__go {
+  display: inline-flex; align-items: center; gap: var(--sp-1-5); height: var(--chip-action-h); padding: 0 var(--sp-3); margin-left: var(--sp-1-5);
+  border-radius: var(--r-md); background: var(--accent-solid); color: var(--on-brand); font-size: var(--text-base); font-weight: var(--weight-strong); white-space: nowrap;
 }
-.s1-cr-review__icon svg { width: 1.2rem; height: 1.2rem; }
-.s1-cr-review__text { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; }
-.s1-cr-review__text strong { font-size: var(--text-md); font-weight: var(--weight-strong); color: var(--state-open-fg); }
-.s1-cr-review__text span { font-size: var(--text-sm); color: var(--ink-2); }
-.s1-cr-review__go { display: inline-flex; align-items: center; gap: var(--sp-1); font-weight: var(--weight-strong); color: var(--state-open-fg); }
-.s1-cr-review__go svg { width: 1rem; height: 1rem; transition: transform 0.16s var(--ease-out); }
-.s1-cr-review:hover .s1-cr-review__go svg { transform: translateX(0.2rem); }
+.s1-cr-review__go svg { transition: transform 0.16s var(--ease-out); }
+.s1-cr-review:hover .s1-cr-review__go svg { transform: translateX(var(--sp-half)); }
+@media (prefers-reduced-motion: reduce) { .s1-cr-review, .s1-cr-review__go svg { transition: none; } .s1-cr-review:hover { transform: none; } }
+.s1-cr-sectionhead__title { display: inline-flex; align-items: center; gap: var(--sp-1-5); }
+.s1-cr-sectionhead .s1-cr-sectionhead__title h2 { margin: 0; }
 
 .s1-cr-cov, .s1-cr-reqs { display: flex; flex-direction: column; gap: var(--sp-3); }
 .s1-cr-sectionhead { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }

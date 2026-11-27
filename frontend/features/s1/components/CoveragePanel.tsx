@@ -4,6 +4,7 @@ import { Ban, CircleCheck, CircleMinus, CircleAlert, Send } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import type { CoverageRule, CoverageStatus } from "../types/verification";
+import { InfoTip } from "./InfoTip";
 
 /**
  * What can and cannot be checked with the evidence held. The status states input
@@ -44,7 +45,10 @@ export function CoveragePanel({
   return (
     <section className="s1-cr-cov" aria-labelledby="s1-cr-cov-title">
       <div className="s1-cr-sectionhead">
-        <h2 id="s1-cr-cov-title">What can be checked</h2>
+        <span className="s1-cr-sectionhead__title">
+          <h2 id="s1-cr-cov-title">What can be checked</h2>
+          <InfoTip label="What can be checked">Checks count a value once it is accepted or corrected.</InfoTip>
+        </span>
         {coverage.rules ? (
           <div className="s1-cr-filters" role="group" aria-label="Show checks">
             {ORDER.map((status) => {
