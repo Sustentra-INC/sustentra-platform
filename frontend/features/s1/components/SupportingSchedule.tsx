@@ -140,7 +140,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
           {/* "<Line> · <Level 2>", unless the server's label already names the fuel. */}
           <h1>{line.label.toLowerCase().includes(line.level2_label.toLowerCase()) ? line.label : `${line.label} · ${line.level2_label}`}</h1>
           <p className="s1-sch-meta">
-            <span className="s1-state s1-state--active">Supporting schedule</span>
+            <span className="s1-sch-meta__kind">Supporting schedule</span>
             {year ? <span>Reporting year {year}</span> : null}
           </p>
         </div>

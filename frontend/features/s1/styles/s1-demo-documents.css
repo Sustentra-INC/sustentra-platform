@@ -201,9 +201,6 @@
   font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums;
   padding: var(--sp-1-5) var(--sp-2-5); background: var(--sf-inset); border-radius: var(--r-sm); overflow-wrap: anywhere;
 }
-/* .s1-app aliases --border-strong to a bare colour, so restate the shared field border here. */
-.s1-dd-hlform .s1-input { border: var(--hairline-width) solid var(--line-strong); }
-.s1-dd-hlform .s1-input:focus { border-color: var(--accent); }
 .s1-dd-hlform label { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
 .s1-dd-hlform__pair { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--sp-2); }
 .s1-dd-hlform__actions { display: flex; align-items: center; gap: var(--sp-2-5); flex-wrap: wrap; }

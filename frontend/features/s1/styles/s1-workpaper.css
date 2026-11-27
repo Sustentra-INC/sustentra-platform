@@ -6,7 +6,6 @@
   --surface-subtle: var(--sf-inset);
   --surface-raised: var(--sf-card);
   --border-default: var(--line);
-  --border-strong: var(--line-strong);
   --border-muted: var(--line);
   --text-primary: var(--ink);
   --text-secondary: var(--ink-2);
@@ -60,7 +59,7 @@
   top: 0;
   height: var(--viewport-full-height);
   overflow: auto;
-  border-right: var(--hairline-width) solid var(--border-strong);
+  border-right: var(--hairline-width) solid var(--line-strong);
   background: var(--surface-muted);
   padding: var(--spacing-lg);
 }
@@ -168,7 +167,7 @@
 }
 
 .s1-needs__item:hover {
-  border-color: var(--border-strong);
+  border-color: var(--line-strong);
   background: var(--surface-muted);
 }
 
@@ -455,7 +454,7 @@ button.s1-state:focus-visible { outline: none; box-shadow: var(--shadow-focus); 
   display: none;
   min-width: var(--tooltip-min-width);
   max-width: var(--tooltip-max-width);
-  border: var(--hairline-width) solid var(--border-strong);
+  border: var(--hairline-width) solid var(--line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-primary);
   color: var(--text-primary);
@@ -561,7 +560,7 @@ button.s1-state:focus-visible { outline: none; box-shadow: var(--shadow-focus); 
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
-  border: var(--hairline-width) solid var(--border-strong);
+  border: var(--hairline-width) solid var(--line-strong);
   border-bottom: 0;
   background: var(--surface-subtle);
   padding: var(--spacing-sm) var(--spacing-md);
@@ -1024,7 +1023,7 @@ button.s1-state:focus-visible { outline: none; box-shadow: var(--shadow-focus); 
 
 .s1-field-row:hover {
   background: var(--surface-primary);
-  box-shadow: inset var(--active-row-marker-width) 0 0 var(--border-strong);
+  box-shadow: inset var(--active-row-marker-width) 0 0 var(--line-strong);
 }
 
 .s1-queue-item[aria-current="true"],
@@ -1193,7 +1192,7 @@ button.s1-state:focus-visible { outline: none; box-shadow: var(--shadow-focus); 
 }
 
 .s1-snippet {
-  border-left: var(--active-row-marker-width) solid var(--border-strong);
+  border-left: var(--active-row-marker-width) solid var(--line-strong);
   background: var(--surface-muted);
   padding: var(--spacing-sm);
   line-height: var(--leading-body);
@@ -1218,7 +1217,7 @@ button.s1-state:focus-visible { outline: none; box-shadow: var(--shadow-focus); 
 }
 
 .s1-history-entry {
-  border-left: var(--active-row-marker-width) solid var(--border-strong);
+  border-left: var(--active-row-marker-width) solid var(--line-strong);
   background: var(--surface-primary);
   padding: var(--spacing-sm);
 }
@@ -4794,6 +4793,7 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-sch-crumbs .s1-sch-crumbs__root { font-size: inherit; font-weight: var(--weight-medium); color: var(--accent); text-decoration: none; }
 .s1-sch-crumbs .s1-sch-crumbs__root:hover { text-decoration: underline; }
 .s1-sch-crumbs__here { font-weight: var(--weight-medium); color: var(--ink); }
+.s1-sch-meta__kind { font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink-3); }
 .s1-sch-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--text-md); color: var(--ink-2); }
 .s1-sch-head__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .s1-sch-head__back, .s1-sch-head__open { height: var(--page-action-h); gap: var(--sp-1-5); border-radius: var(--r-card-sm); font-size: var(--text-md); font-weight: var(--weight-strong); }
