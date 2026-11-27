@@ -4102,17 +4102,20 @@ textarea.s1-req-message { width: 100%; box-sizing: border-box; font-variant-nume
 .s1-xr-addform__title { font-size: var(--text-title); font-weight: var(--weight-bold); color: var(--ink); overflow-wrap: anywhere; }
 /* Labels: flex column, label text on top, field below */
 .s1-xr-addform label { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink); text-transform: none; letter-spacing: 0; }
+/* What-it-is input wrapper: holds the input + trailing chevron */
+.s1-xr-addform__what-wrap { position: relative; display: flex; align-items: center; }
+.s1-xr-addform__what-wrap > svg { position: absolute; right: var(--sp-2-5); color: var(--ink-3); pointer-events: none; flex: none; }
 /* What-it-is input: inset ring, focus shows accent ring + outer glow */
 .s1-xr-addform__what input {
   box-sizing: border-box; width: 100%; min-width: 0;
-  height: var(--button-h-md); padding: 0 var(--sp-3);
+  height: var(--button-h-md); padding: 0 calc(var(--sp-5) + var(--sp-2)) 0 var(--sp-3);
   font: inherit; font-size: var(--text-md); color: var(--ink);
   background: var(--sf-card); border: none; border-radius: var(--r-ctl);
   box-shadow: inset 0 0 0 var(--hairline-width) var(--line-strong);
   outline: none; text-transform: none; letter-spacing: normal;
 }
 .s1-xr-addform__what input:focus {
-  box-shadow: inset 0 0 0 var(--nav-current-marker-width) var(--accent-solid), var(--field-focus-shadow);
+  box-shadow: inset 0 0 0 var(--nav-current-marker-width) var(--accent-solid), var(--shadow-focus);
 }
 /* Value / Unit / Page inputs */
 .s1-xr-addform > label:not(.s1-xr-addform__what) input {
@@ -4124,14 +4127,14 @@ textarea.s1-req-message { width: 100%; box-sizing: border-box; font-variant-nume
   outline: none; text-transform: none; letter-spacing: normal;
 }
 .s1-xr-addform > label:not(.s1-xr-addform__what) input:focus {
-  box-shadow: inset 0 0 0 var(--nav-current-marker-width) var(--accent-solid), var(--field-focus-shadow);
+  box-shadow: inset 0 0 0 var(--nav-current-marker-width) var(--accent-solid), var(--shadow-focus);
 }
 /* Actions footer: note on its own line above, then Cancel + Add */
 .s1-xr-addform__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--sp-2); }
-.s1-xr-addform__note { flex: 0 0 100%; order: -1; font-size: var(--text-sm); color: var(--ink-2); }
+.s1-xr-addform__note { flex: 0 0 100%; display: flex; align-items: flex-start; gap: var(--sp-1-5); font-size: var(--text-sm); color: var(--ink-2); }
 /* Cancel: s1-linklike restyled as secondary button, no TSX change */
 .s1-xr-addform__actions .s1-linklike {
-  order: 1; display: inline-flex; align-items: center; justify-content: center;
+  display: inline-flex; align-items: center; justify-content: center;
   height: var(--button-h); padding: 0 var(--sp-3-5);
   border: none; border-radius: var(--r-md);
   background: var(--sf-card); box-shadow: inset 0 0 0 var(--hairline-width) var(--line-strong);
@@ -4141,7 +4144,7 @@ textarea.s1-req-message { width: 100%; box-sizing: border-box; font-variant-nume
 .s1-xr-addform__actions .s1-linklike:hover { background: var(--sf-inset); text-decoration: none; }
 /* Add value button: standard height, override compact */
 .s1-xr-addform__actions .s1-button--pri {
-  order: 2; height: var(--button-h); border-radius: var(--r-md);
+  height: var(--button-h); border-radius: var(--r-md);
   font-size: var(--text-base); padding: 0 var(--sp-3-5);
 }
 
