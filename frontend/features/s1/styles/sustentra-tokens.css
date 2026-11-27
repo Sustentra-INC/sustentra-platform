@@ -416,6 +416,10 @@
   --updlg-close-size: 38px;        /* upload modal close button size */
   --updlg-dz-icon: 64px;           /* upload modal drop zone icon tile size */
   --updlg-empty-bars-max: 240px;   /* upload modal empty state bars max width */
+  --updlg-pad-x: 28px;             /* upload modal side padding; drop zone padding */
+  --updlg-pad-y: 22px;             /* upload modal body top and bottom */
+  --updlg-pad-top: 24px;           /* upload modal header top and right */
+  --updlg-gap: 16px;               /* upload modal header gap; footer top and bottom */
   /* Upload processing UI */
   --upq-thumb-w: 40px;    /* file thumbnail / batch tag width */
   --upq-tag-h: 16px;      /* small file-type tag height inside thumbnails */

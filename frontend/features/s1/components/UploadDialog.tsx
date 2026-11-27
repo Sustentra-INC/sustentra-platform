@@ -1,6 +1,8 @@
 "use client";
 
-import { Check, CloudUpload, X } from "lucide-react";
+import { Check, X } from "lucide-react";
+
+import { IconUpload } from "./icons";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 
@@ -117,7 +119,7 @@ export function UploadDialog({
       <div className="s1-updlg" role="dialog" aria-modal="true" aria-labelledby="s1-updlg-title">
         <div className="s1-updlg__head">
           <span className="s1-updlg__icon" aria-hidden="true">
-            <CloudUpload />
+            <IconUpload size={22} aria-hidden />
           </span>
           <div className="s1-updlg__title">
             <h2 id="s1-updlg-title">Upload evidence</h2>
@@ -172,7 +174,7 @@ export function UploadDialog({
                 }}
               >
                 <span className="s1-updlg__drop-icon" aria-hidden="true">
-                  <CloudUpload />
+                  <IconUpload size={22} aria-hidden />
                 </span>
                 <strong className="s1-updlg__drophead">Drag files here</strong>
                 <span className="s1-updlg__hint">Up to {MAX_UPLOAD_MB} MB per file</span>
@@ -208,7 +210,7 @@ export function UploadDialog({
                   <span>{sampleFilename}</span>
                   <span className="s1-updlg__hint">A bill from the client, ready to try</span>
                 </span>
-                <button className="s1-button s1-button--pri" type="button" onClick={onUploadSample}>
+                <button className="s1-button" type="button" onClick={onUploadSample}>
                   Upload sample
                 </button>
               </div>
