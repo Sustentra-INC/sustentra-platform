@@ -276,7 +276,9 @@
   --dlg-icon-box:    22px;   /* small dialog leading icon box */
   --rail-min-w:      72px;   /* collapsed icon rail (document view) */
   --xr-nav-w:       240px;   /* document navigator width */
+  --xr-nav-min:     200px;   /* navigator minimum (flex clamp lower bound) */
   --xr-panel-w:     380px;   /* review panel width */
+  --xr-panel-min:   320px;   /* review panel minimum (flex clamp lower bound) */
   --icon-btn-lg:     44px;   /* large icon button: rail items + expand toggle */
   --empty-content-max-width: 720px;
   --queue-width: 190px;

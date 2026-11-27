@@ -4985,7 +4985,7 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-xr { flex: 1; min-height: 0; display: flex; overflow: hidden; }
 .s1-xr-grid {
   flex: 1; min-width: 0; display: grid;
-  grid-template-columns: var(--xr-nav-w) minmax(0, 1fr) var(--xr-panel-w);
+  grid-template-columns: clamp(var(--xr-nav-min), 18vw, var(--xr-nav-w)) minmax(0, 1fr) clamp(var(--xr-panel-min), 28vw, var(--xr-panel-w));
   column-gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-3) var(--sp-3) 0;
   min-height: 0;
