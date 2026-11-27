@@ -73,19 +73,28 @@ async def get_recalculation(
         for item in await workpaper_item_service.list_items(db, engagement["id"], "document")
     }
     engagement = await methodology_gwp.attach_choice(db, engagement)  # the Methodology review's GWP set
-    return _service().recalculate(engagement, lambda record: can_see(record, user), decisions)
+    line_decisions = await calc_line_review.current(db, engagement["id"])
+    return _service().recalculate(engagement, lambda record: can_see(record, user), decisions,
+                                  line_decisions=line_decisions)
 
 
-async def traced_recalculation(db: AsyncSession, engagement: dict, user: CurrentUser) -> dict:
+async def traced_recalculation(db: AsyncSession, engagement: dict, user: CurrentUser, *,
+                               with_line_decisions: bool = True) -> dict:
     """One engine run with every line's trace (``with_traces``): the trace endpoint and the reviewer's decisions on
-    a line (``calculation_line_review``) both read the line from it, so they agree with the recalculation."""
+    a line (``calculation_line_review``) both read the line from it, so they agree with the recalculation.
+
+    ``with_line_decisions`` reads the reviewer's decisions on the lines into their working (as the recalculation
+    does). The decision endpoints turn it off: a decision is checked against the line's automatic working, the
+    options and values the calculators offer, never against an earlier decision."""
 
     decisions = {
         str(item["payload"].get("documentId") or item["item_key"]): item["payload"]
         for item in await workpaper_item_service.list_items(db, engagement["id"], "document")
     }
     engagement = await methodology_gwp.attach_choice(db, engagement)
-    return _service().recalculate(engagement, lambda record: can_see(record, user), decisions, with_traces=True)
+    line_decisions = await calc_line_review.current(db, engagement["id"]) if with_line_decisions else None
+    return _service().recalculate(engagement, lambda record: can_see(record, user), decisions, with_traces=True,
+                                  line_decisions=line_decisions)
 
 
 @router.get("/engagements/{engagement_id}/recalculation/lines/{line_key}/trace")
@@ -97,8 +106,9 @@ async def get_line_trace(
 ) -> dict:
     """The step-level working of one calculation line (``services/calc_trace``), fetched when a panel is opened.
     The same engine run as the recalculation, so it agrees with it; the recalculation response itself never
-    carries traces. ``trace`` is null when the line cannot be traced. Each choice and input side also carries
-    the reviewer's decision on it (``decision``) and any AI suggestion, for display: no total reads them yet."""
+    carries traces. ``trace`` is null when the line cannot be traced. The working is the decided one (accepted and
+    edited values, chosen options); each choice and input side also carries the reviewer's decision on it
+    (``decision``) and any AI suggestion. ``decisions`` says which were applied and which not, and why."""
 
     engagement = await _visible(db, engagement_id, user)
     result = await traced_recalculation(db, engagement, user)
@@ -109,7 +119,10 @@ async def get_line_trace(
     if trace:
         events = await calc_line_review.current(db, engagement["id"], line_key)
         trace = calc_line_review.with_decisions(trace, calc_line_review.records_of(events))
-    return {"line_key": line_key, "trace": trace}
+    out = {"line_key": line_key, "trace": trace}
+    if line.get("decisions"):
+        out["decisions"] = line["decisions"]
+    return out
 
 
 def copy_store(db: AsyncSession) -> WorkpaperCopyStore:
@@ -162,7 +175,8 @@ async def export_workpaper(
     service = _service()
     visible = lambda record: can_see(record, user)  # noqa: E731
     engagement = await methodology_gwp.attach_choice(db, engagement)
-    recalculation = service.recalculate(engagement, visible, decisions)
+    recalculation = service.recalculate(engagement, visible, decisions,
+                                        line_decisions=await calc_line_review.current(db, engagement["id"]))
     if recalculation.get("gwp_blocked"):  # the workpaper must not state numbers Results does not show
         raise HTTPException(status_code=409, detail=recalculation["gwp_blocked"])
     register = service.evidence_register(str(engagement["id"]), visible)

@@ -54,7 +54,7 @@ BACKEND = Path(__file__).resolve().parents[2]
 
 @pytest.fixture(autouse=True)
 def one_line(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake(db: Any, engagement: dict, user: Any) -> dict:
+    async def fake(db: Any, engagement: dict, user: Any, **_: Any) -> dict:
         return {"calculation_lines": [{"key": LINE, "trace": copy.deepcopy(TRACE)}]}
 
     monkeypatch.setattr(recalculation_api, "traced_recalculation", fake)
@@ -94,7 +94,8 @@ def test_each_decision_is_a_new_row_and_the_trace_shows_the_current_one() -> Non
     shown = call("GET", f"{BASE}/{eid}/recalculation/lines/{LINE}/trace", "a_member").json()
     assert shown["trace"]["choices"][0]["decision"]["value"] == "per_unit"
     recomputed = shown["trace"]["inputs"]["activity.total"]["recomputed"]
-    assert recomputed["decision"]["value"] == 640000.0 and recomputed["value"] == 650000.0  # shown, not applied
+    # the engine is faked here, so the working is not redone (the engine tests cover that)
+    assert recomputed["decision"]["value"] == 640000.0 and recomputed["value"] == 650000.0
     listed = call("GET", path(eid, "decisions"), "a_member").json()
     assert len(listed["decisions"]) == 2 and listed["orphaned_decisions"] == []
 

@@ -12,6 +12,7 @@ import jsonschema
 import pytest
 
 from backend.app.services import calc_line_review as c
+from backend.app.services.calc_trace.decisions import not_decidable
 from backend.app.services.request_service import Actor
 from backend.app.services.review_field import ReviewConflict, ReviewInvalid
 from backend.app.services.workpaper_item_service import ITEM_KEY
@@ -232,12 +233,28 @@ def test_wrong_units_are_a_422_and_the_inputs_own_unit_is_used_when_none_is_give
 
 
 def test_text_inputs_take_text_and_keep_unicode() -> None:
-    done = edit(new(), "  AKGD – Alaska ✓ ", input_id="grid_region")
+    done = edit(new(), "  AKGD – Alaska ✓ ", side="company", input_id="grid_region")
     assert done["decision"]["value"] == "AKGD – Alaska ✓" and "unit" not in done["decision"]
     with pytest.raises(ReviewInvalid, match="takes text"):
-        edit(new(), 5, input_id="grid_region")
+        edit(new(), 5, side="company", input_id="grid_region")
     with pytest.raises(ReviewInvalid):
-        edit(new(), "bad\nvalue", input_id="grid_region")
+        edit(new(), "bad\nvalue", side="company", input_id="grid_region")
+
+
+def test_a_recomputed_value_is_a_number_above_zero_on_an_input_a_line_can_decide() -> None:
+    """The recomputed side is worked into the line's numbers (F3b): zero, a negative value, NaN and infinity never
+    get there, and an input set for the whole engagement is not changed for one line."""
+
+    for value in (0, -0.0, -3, "0", "-1,000", "NaN", "inf", float("nan"), float("-inf")):
+        with pytest.raises(ReviewInvalid):
+            edit(new(), value)
+    assert edit(new(), "1,250.5")["decision"]["value"] == 1250.5
+    for input_id in ("grid_region", "empty"):
+        with pytest.raises(ReviewConflict, match="can't be changed for one line"):
+            edit(new(), 5, input_id=input_id)
+    assert edit(new(), 0, side="company")["decision"]["value"] == 0  # the company's side may say 0
+    assert c.decide_input(new(), *c.find_input(trace(), "grid_region"), "recomputed", "reject",  # type: ignore[misc]
+                          reason="wrong", actor=ANN, now=NOW)["decision"]["status"] == "rejected"
 
 
 def test_an_input_with_no_value_yet_takes_a_number_or_text() -> None:
@@ -339,8 +356,9 @@ def test_a_real_trace_with_decisions_still_validates_against_the_schema() -> Non
             assert found is not None
             unit = (item.get("recomputed") or item.get("company") or {}).get("unit")
             numeric = isinstance((item.get("recomputed") or {}).get("value"), (int, float))
-            records[c.stream_of("input", input_id, "recomputed")] = c.decide_input(
-                new(), found[0], None, "recomputed", "edit", value=5 if numeric else "text", unit=unit,
+            side = "recomputed" if not_decidable(input_id) is None else "company"
+            records[c.stream_of("input", input_id, side)] = c.decide_input(
+                new(), found[0], None, side, "edit", value=5 if numeric else "text", unit=unit,
                 reason="because", document_id="DOC-1", actor=ANN, now=NOW)
         shown = c.with_decisions(t, records)
         validator.validate(shown)

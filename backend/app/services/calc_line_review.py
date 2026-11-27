@@ -13,8 +13,11 @@ where ``record`` is the stream's whole field record after the move and ``seq`` c
 row with the highest ``seq`` is the stream's current state; the earlier rows are what the reviewer decided before.
 ``item_key`` is a hash of (line key, stream) and ``seq``: a line key can fill the whole 200-character key limit.
 
-A decision is only read for display here. Nothing in the totals reads it yet (the next PR, F3b); until then a
-decision never changes a number. A pending AI suggestion is never an operand.
+A decision is shown on the trace here (``with_decisions``) and read into the line's working by
+``calc_trace/decisions`` (F3b): an accepted or edited value on the recomputed side is an operand, a pending AI
+suggestion never is. So a value that would reach the arithmetic is checked here first: a number above 0, in the
+input's own unit, on an input a line can decide (the activity, an emission factor, a distance). The GWP, the
+consolidated share, the unit conversion and the grid region are set for the whole engagement: 409.
 
 A decision on a line that no longer exists (deleted or renamed) is kept and listed as orphaned, never applied to
 another line (``split_orphans``).
@@ -37,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.services import review_field
 from backend.app.services.calc_trace._line import normalise_unit
+from backend.app.services.calc_trace.decisions import not_decidable
 from backend.app.services.request_service import Actor
 from backend.app.services.review_field import ReviewConflict, ReviewInvalid
 from backend.app.services.workpaper_item_service import MAX_PAYLOAD_BYTES, _row, insert_item, payload_size
@@ -310,9 +314,19 @@ def decide_input(record: Mapping[str, Any], item: Mapping[str, Any], row: Mappin
     own = holder.get(side)
     record = _seeded(record, own.get("suggestion") if isinstance(own, Mapping) else None)
 
-    def validate(given: Any) -> Any:
-        return _input_value(label, given, numeric)
+    operand = side == "recomputed"  # this side's value is worked into the line's numbers
 
+    def validate(given: Any) -> Any:
+        value = _input_value(label, given, numeric)
+        if operand and not isinstance(value, str) and value <= 0:
+            raise ReviewInvalid(f"'{label}': enter a number above 0.")
+        return value
+
+    if operand and action in ("accept", "edit"):
+        target = str(item.get("id") or "") + (f"/{row.get('id')}" if row is not None else "")
+        why = not_decidable(target)
+        if why is not None:
+            raise ReviewConflict(f"'{label}' can't be changed for one line: {why}.")
     if action == "accept":
         return review_field.accept(record, label, validate, actor, now, carry=("unit",))
     if action == "edit":

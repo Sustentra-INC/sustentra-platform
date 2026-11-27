@@ -15,7 +15,9 @@ or reason) in the same transaction. Who acted and when come from the session, ne
 fields). Writes are s1_writer on an open engagement: another org's engagement answers 404, a provider_admin 403 and
 an archived engagement 409. A malformed line key is 422, a well-formed one the engagement does not have is 404.
 
-A decision is recorded and shown (the trace endpoint carries it) but no total reads it yet: that is the next change.
+A decision is checked against the line's automatic working (``with_line_decisions=False``). Accepted and edited values
+on the recomputed side, and chosen options, are then read into the line's working (F3b, ``calc_trace/decisions``); a
+pending suggestion never is.
 
 No ``from __future__ import annotations``: FastAPI resolves these at runtime.
 """
@@ -83,7 +85,7 @@ async def _line_trace(db: AsyncSession, engagement: dict[str, Any], user: Curren
                       ) -> dict[str, Any]:
     """The line's trace from one engine run: 404 when the engagement has no such line, 409 when it has no working."""
 
-    result = await recalculation_api.traced_recalculation(db, engagement, user)
+    result = await recalculation_api.traced_recalculation(db, engagement, user, with_line_decisions=False)
     line = next((ln for ln in result.get("calculation_lines", []) if ln.get("key") == line_key), None)
     if line is None:
         raise HTTPException(status_code=404, detail="No such calculation line. Reload the page to see the current "
@@ -195,7 +197,7 @@ async def list_decisions(
     was deleted or renamed): kept and reported here, never applied to another line."""
 
     engagement = await _visible(db, engagement_id, user)
-    result = await recalculation_api.traced_recalculation(db, engagement, user)
+    result = await recalculation_api.traced_recalculation(db, engagement, user, with_line_decisions=False)
     keys = [str(ln["key"]) for ln in result.get("calculation_lines", []) if ln.get("key") is not None]
     placed, orphaned = rules.split_orphans(await rules.current(db, engagement["id"]), keys)
     return {"decisions": placed, "orphaned_decisions": orphaned}

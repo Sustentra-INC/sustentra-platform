@@ -15,10 +15,12 @@ GROUP_ROAD = {"fuel": "Diesel Fuel", "vehicle_type": "Medium- and Heavy-Duty Veh
               "on_road": True, "model_year": 2018, "distance": 10000, "distance_unit": "mi", "label": "Heavy trucks"}
 
 
-def run(store: FakeStore, with_traces: bool = True, **recalculation: Any) -> dict:
+def run(store: FakeStore, with_traces: bool = True, line_decisions: list[dict] | None = None,
+        **recalculation: Any) -> dict:
     engagement = {"id": "ENG-1", "reporting_period_start": "2025-01-01", "reporting_period_end": "2025-12-31",
                   "settings": {"facilities": [KC, STL], "recalculation": recalculation}}
-    return EngagementRecalculationService(store, store, store).recalculate(engagement, _own, None, with_traces=with_traces)
+    return EngagementRecalculationService(store, store, store).recalculate(
+        engagement, _own, None, with_traces=with_traces, line_decisions=line_decisions)
 
 
 def mixed_store() -> FakeStore:

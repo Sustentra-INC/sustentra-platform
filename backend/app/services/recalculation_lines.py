@@ -29,7 +29,7 @@ from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorNotFoundError, EmissionFactorReference
 from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
-from backend.app.services.calc_trace import build_trace
+from backend.app.services.calc_trace import build_trace, decided_trace
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
 from backend.app.services.reviewed_evidence import ReviewedRecord, place_on_facility, to_date
 
@@ -132,8 +132,10 @@ def _group_miles(sub: _Sub) -> float | None:
 
 class _Builder:
     def __init__(self, ref: EmissionFactorReference, ledger: Ledger, inputs: RecalculationInputs,
-                 tolerance: float, open_sources: dict[str, bool], with_traces: bool = False) -> None:
+                 tolerance: float, open_sources: dict[str, bool], with_traces: bool = False,
+                 line_decisions: dict[str, dict[str, dict[str, Any]]] | None = None) -> None:
         self.with_traces = with_traces
+        self.line_decisions = line_decisions or {}
         self.ref = ref
         self.ledger = ledger
         self.inputs = inputs
@@ -251,17 +253,26 @@ class _Builder:
         else:
             self._company_and_reported(out, bucket, subs, share_pct)
         out["flags"] = sorted(flags | set(out["flags"]))
-        if self.with_traces:  # opt-in: the default response carries no trace key at all
+        records = self.line_decisions.get(line.key) if line is not None else None
+        if records:  # the reviewer's decisions on the line, read into its working
+            decided = decided_trace(family, out, self._context(family, bucket, primary), records)
+            out["decisions"] = {"applied": decided.applied, "not_applied": decided.not_applied}
+            if self.with_traces:
+                out["trace"] = decided.trace
+        elif self.with_traces:  # opt-in: the default response carries no trace key at all
             out["trace"] = self._trace(family, out, bucket, primary) if line is not None else None
         return out
+
+    def _context(self, family: str, bucket: _Bucket, primary: _Sub | None) -> dict[str, Any]:
+        context: dict[str, Any] = {}
+        if family == "electricity" and primary is not None:
+            context["grid_region"] = self.ledger.regions.get(primary.sub[0]) or self._region_of(bucket, primary.sub[0])
+        return context
 
     def _trace(self, family: str, out: dict[str, Any], bucket: _Bucket, primary: _Sub | None) -> dict[str, Any] | None:
         """The step-level working of the line (``calc_trace``). Read-only: it restates ``out``, never changes it."""
 
-        context: dict[str, Any] = {}
-        if family == "electricity" and primary is not None:
-            context["grid_region"] = self.ledger.regions.get(primary.sub[0]) or self._region_of(bucket, primary.sub[0])
-        return build_trace(family, out, context)
+        return build_trace(family, out, self._context(family, bucket, primary))
 
     def _empty_sub(self, bucket: _Bucket) -> tuple[str, ...]:
         """The run a line with no evidence stands on: its fuel in the unit the company gave (or the
@@ -534,13 +545,16 @@ def file_records(ref: EmissionFactorReference, records: list[ReviewedRecord], in
 def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRecord],
           inputs: RecalculationInputs, settings: dict[str, Any], decisions: dict[str, dict[str, Any]],
           tolerance: float, open_sources: dict[str, bool], facilities: list[dict[str, Any]],
-          company: str | None, filing: Filing, with_traces: bool = False) -> Built:
+          company: str | None, filing: Filing, with_traces: bool = False,
+          line_decisions: dict[str, dict[str, dict[str, Any]]] | None = None) -> Built:
     """The calculation lines of one recalculation, from what its categories counted (``ledger``).
     ``records`` are all the records the lines are made from (a line exists because a document files
-    there, counted or not); ``filing`` is ``file_records`` of them, made once by the caller."""
+    there, counted or not); ``filing`` is ``file_records`` of them, made once by the caller.
+    ``line_decisions`` are the reviewer's current decisions on the lines (``{line key: {stream: record}}``,
+    ``calc_line_review``): a line with any is traced with them read in, and carries ``decisions``."""
 
     placements, known, slot_of = filing.placements, filing.known, filing.slot_of
-    builder = _Builder(ref, ledger, inputs, tolerance, open_sources, with_traces)
+    builder = _Builder(ref, ledger, inputs, tolerance, open_sources, with_traces, line_decisions)
     facility_names = {cl.facility_anchor_id(f): str(f.get("name")) for f in facilities}
     anchors = cl.vehicle_group_anchors(inputs.vehicle_groups)
     biogenic_fuels = calc.biogenic_fuel_names(ref)

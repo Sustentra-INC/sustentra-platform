@@ -24,7 +24,7 @@ import logging
 import math
 import re
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -568,10 +568,14 @@ class EngagementRecalculationService:
     # ---------------------------------------------------------------------------------
     def recalculate(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
                     decisions: dict[str, dict[str, Any]] | None = None, *,
-                    with_traces: bool = False) -> dict[str, Any]:
+                    with_traces: bool = False,
+                    line_decisions: Iterable[Mapping[str, Any]] | None = None) -> dict[str, Any]:
         """``decisions``: the reviewer's per-document decisions (facility, withdrawn,
         duplicate / supersedes), keyed by document id. ``with_traces`` adds each calculation line's ``trace``
-        (``calc_trace``); off by default, so the response is exactly what it was before traces existed."""
+        (``calc_trace``); off by default, so the response is exactly what it was before traces existed.
+        ``line_decisions``: the current decision events on calculation lines (``calc_line_review.current``). A line
+        with any is worked with them (its trace, and its ``decisions``); one on a line that does not exist is listed
+        under ``calculation_line_decisions.orphaned``, never applied. None or empty leaves the response as it was."""
 
         engagement_id = str(engagement.get("id") or engagement.get("engagement_id"))
         inputs = parse_inputs(engagement.get("settings"))
@@ -763,13 +767,17 @@ class EngagementRecalculationService:
                                           out_of_scope=not_in_scope, tolerance=tolerance, gwp_set=inputs.gwp_set,
                                           ref=self.reference),
         }
+        events = [e for e in line_decisions or [] if isinstance(e, Mapping) and e.get("line_key") is not None]
+        by_line: dict[str, dict[str, dict[str, Any]]] = {}
+        for event in events:
+            by_line.setdefault(str(event["line_key"]), {})[str(event.get("stream"))] = event.get("record") or {}
         built = recalculation_lines.Built()
         if filing is not None:
             try:
                 built = recalculation_lines.build(
                     self.reference, self._ledger, placed, inputs, settings, decisions,
                     tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities, self._company, filing,
-                    with_traces)
+                    with_traces, by_line)
             except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
                 log.warning("calculation lines failed: %s", type(exc).__name__)
                 built = recalculation_lines.Built(needs_input=[{
@@ -777,6 +785,8 @@ class EngagementRecalculationService:
                     "message": "The calculation lines could not be built. Try again, and report it if it persists."}])
         response.update(calculation_lines=built.lines, calculation_unplaced=built.unplaced,
                         calculation_line_inputs=built.inputs)
+        if events:
+            response["calculation_line_decisions"] = self._line_decision_report(events, built)
         # Problems with the company's own figures never change a recalculated number or its status.
         open_inputs = [*needs_input, *built.needs_input]
         response["needs_input"] = open_inputs
@@ -786,6 +796,21 @@ class EngagementRecalculationService:
             if item.get("key") in reported_sources:
                 item["reported_source"] = reported_sources[item["key"]]
         return response
+
+    @staticmethod
+    def _line_decision_report(events: list[Mapping[str, Any]], built: recalculation_lines.Built) -> dict[str, Any]:
+        """What happened to the reviewer's decisions on calculation lines: how many lines they changed, those not
+        applied (with why), and those on a line that no longer exists (deleted or renamed: kept, never applied)."""
+
+        keys = {str(line["key"]) for line in built.lines if line.get("key") is not None}
+        orphaned = [{"line_key": e["line_key"], "target": e.get("target"), "id": e.get("target_id"),
+                     "side": e.get("side"), "status": ((e.get("record") or {}).get("decision") or {}).get("status")}
+                    for e in events if str(e["line_key"]) not in keys]
+        not_applied = [{"line_key": line["key"], **item} for line in built.lines
+                       for item in (line.get("decisions") or {}).get("not_applied", [])]
+        applied = sum(1 for line in built.lines if (line.get("decisions") or {}).get("applied"))
+        return {"lines_with_decisions": applied, "not_applied": not_applied,
+                "orphaned": sorted(orphaned, key=lambda o: (str(o["line_key"]), str(o["target"]), str(o["id"])))}
 
     def _document_figures(self, engagement_id: str, can_see: Callable[[dict], bool],
                           decisions: dict[str, dict[str, Any]]) -> list[reported_totals.DocumentFigure]:
