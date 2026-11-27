@@ -616,7 +616,10 @@ describe("the supporting schedule", () => {
     expect(screen.getByText("2 of 3 documents")).toBeInTheDocument();
     expect(screen.getByText("Activity quantity: fuel quantity combusted")).toBeInTheDocument();
     expect(screen.getByText("Matched by: Service address in Setup")).toBeInTheDocument();
-    expect(screen.getByText(/M\. Osei accepted 120 therm from jan\.pdf, page 2/)).toBeInTheDocument();
+    const history = screen.getByRole("region", { name: "Line history" });
+    const [event] = within(history).getAllByRole("listitem");
+    expect(event).toHaveTextContent("M. Osei accepted 120 therm from jan.pdf, page 2");
+    expect(within(event).getByText("M. Osei").tagName).toBe("STRONG");
   });
 
   it("shows one row per record with units, MM/DD/YY dates, server day counts and a word for each unreviewed row", async () => {

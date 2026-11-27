@@ -4923,8 +4923,23 @@ button.s1-sch-bar:focus-visible { outline: var(--focus-ring); outline-offset: va
 .s1-sch-doclink span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s1-sch-doclink:hover span { text-decoration: underline; }
 .s1-sch-doclink:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); border-radius: var(--r-xs); }
-.s1-sch-history summary { cursor: pointer; font-weight: var(--weight-strong); }
-.s1-sch-history ul { display: flex; flex-direction: column; gap: var(--sp-2); margin: var(--sp-3) 0 0; padding: 0; list-style: none; }
+/* Line history: folded by default; who, what, when per event. */
+.s1-sch-hist { padding: var(--sp-4-5) var(--card-pad-lg); border-radius: var(--r-lg); background: var(--sf-card); box-shadow: var(--shadow-card-soft); }
+.s1-sch-hist summary { display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; list-style: none; border-radius: var(--r-sm); }
+.s1-sch-hist summary::-webkit-details-marker { display: none; }
+.s1-sch-hist summary:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-sch-hist summary h2 { margin: 0; font-size: var(--text-title); font-weight: var(--weight-strong); color: var(--ink); }
+.s1-sch-hist__chevron { flex: none; color: var(--ink-3); transform: rotate(-90deg); transition: transform 0.16s var(--ease-out); }
+.s1-sch-hist details[open] .s1-sch-hist__chevron { transform: none; }
+.s1-sch-hist__count { font-size: var(--text-title); font-weight: var(--weight-medium); color: var(--ink-3); }
+.s1-sch-hist ol { display: flex; flex-direction: column; margin: var(--sp-3) 0 0; padding: 0; list-style: none; }
+.s1-sch-hist li { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-2) 0; }
+.s1-sch-hist li .s1-team-avatar { flex: none; }
+.s1-sch-hist__text { flex: 1; min-width: 0; padding-top: var(--sp-1); font-size: var(--text-base); color: var(--ink-2); }
+.s1-sch-hist__text strong { font-weight: var(--weight-strong); color: var(--ink); }
+.s1-sch-hist__at { flex: none; padding-top: var(--sp-1); font-size: var(--text-sm); color: var(--ink-3); white-space: nowrap; }
+.s1-sch-hist__empty { margin: var(--sp-3) 0 0; font-size: var(--text-base); color: var(--ink-3); }
+@media (prefers-reduced-motion: reduce) { .s1-sch-hist__chevron { transition: none; } }
 .s1-chip { display: inline-block; padding: 0 var(--sp-2); font-size: var(--text-sm); font-weight: var(--weight-regular); color: var(--ink-2); background: var(--sf-sunken); border: var(--border-hairline); border-radius: var(--radius-chip); white-space: nowrap; }
 .s1-icon-tile {
   display: inline-grid; place-items: center; width: 2.25rem; height: 2.25rem; padding: 0; color: var(--brand-ink);

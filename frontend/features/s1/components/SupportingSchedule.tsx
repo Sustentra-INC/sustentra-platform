@@ -6,7 +6,7 @@ import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSc
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { userFacingApiError } from "../api/s1Backend";
 import { ContainerStateSurface } from "./ContainerStateSurface";
-import { IconArrowRight, IconChevronDown, IconChevronLeft, IconChevronRight, IconDocument } from "./icons";
+import { IconArrowRight, IconChecklist, IconChevronDown, IconChevronLeft, IconChevronRight, IconDocument } from "./icons";
 
 /**
  * One calculation line's supporting schedule: what covers each month of the year, which
@@ -245,20 +245,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
         )}
       </section>
 
-      <details className="s1-panel s1-sch-history">
-        <summary>Line history ({schedule.history.length})</summary>
-        {schedule.history.length ? (
-          <ul>
-            {schedule.history.map((h, i) => (
-              <li key={`${h.at}:${i}`}>
-                <span className="s1-muted">{formatDateTime(h.at)}</span> {h.text}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="s1-muted">Nothing has happened on this line yet.</p>
-        )}
-      </details>
+      <LineHistory history={schedule.history} people={rows.flatMap((r) => (r.saved_by ? [r.saved_by.name] : []))} />
     </section>
   );
 }
@@ -516,6 +503,57 @@ function CoverageChart({
       ) : (
         <p className="s1-muted">No months to show yet.</p>
       )}
+    </section>
+  );
+}
+
+const SYSTEM_ACTOR = "System";
+
+/** Who an event's sentence starts with: a reviewer on this line, or the system; null when it names neither. */
+function eventActor(text: string, people: string[]): string | null {
+  return [SYSTEM_ACTOR, ...people].find((name) => text.startsWith(`${name} `)) ?? null;
+}
+
+/** The line's history, folded by default; each event says who did it, then what, then when. */
+function LineHistory({ history, people }: { history: LineSchedule["history"]; people: string[] }) {
+  const names = [...new Set(people)].sort((a, b) => b.length - a.length);
+  return (
+    <section className="s1-sch-hist" aria-labelledby="s1-sch-hist-title">
+      <details>
+        <summary>
+          <IconChevronDown size={16} aria-hidden className="s1-sch-hist__chevron" />
+          <h2 id="s1-sch-hist-title">Line history</h2>
+          <span className="s1-sch-hist__count">{history.length}</span>
+        </summary>
+        {history.length ? (
+          <ol>
+            {history.map((h, i) => {
+              const actor = eventActor(h.text, names);
+              const rest = actor ? h.text.slice(actor.length) : h.text;
+              return (
+                <li key={`${h.at}:${i}`}>
+                  {actor === SYSTEM_ACTOR ? (
+                    <span className="s1-team-avatar s1-team-avatar--sm s1-team-avatar--3" aria-hidden>
+                      <IconChecklist size={14} />
+                    </span>
+                  ) : (
+                    <span className={`s1-team-avatar s1-team-avatar--sm s1-team-avatar--${actor ? avatarTone(actor) : 3}`} aria-hidden>
+                      {actor ? initials(actor) : null}
+                    </span>
+                  )}
+                  <span className="s1-sch-hist__text">
+                    {actor ? <strong>{actor}</strong> : null}
+                    {rest}
+                  </span>
+                  <span className="s1-sch-hist__at">{formatDateTime(h.at)}</span>
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <p className="s1-sch-hist__empty">Nothing has happened on this line yet.</p>
+        )}
+      </details>
     </section>
   );
 }
